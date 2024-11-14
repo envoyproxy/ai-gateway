@@ -1,0 +1,1523 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: llmroutes.aigateway.envoyproxy.io
+spec:
+  group: aigateway.envoyproxy.io
+  names:
+    kind: LLMRoute
+    listKind: LLMRouteList
+    plural: llmroutes
+    singular: llmroute
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: "LLMRoute is the Schema for controlling the LLM provider routing.\nThis
+          corresponds to HTTPRoute in the Gateway API, and is an abstraction layer
+          on top of it.\n\nAll resources created by a LLMRoute have the same namespace
+          as LLMRoute as well as owner references set to the LLMRoute.\n\nThis corresponds
+          to one gateway.networking.k8s.io/v1.HTTPRoute resource with the exact header\nmatch
+          rules where \"x-ai-gateway-llm-backend\" header is set to the name of each
+          LLMBackend.\n\n\"x-ai-gateway-llm-backend\" is a reserved header and should
+          be directly set by the client or the earlier filters,\ne.g. additional external
+          filters like the ExtProc field in the LLMRoute.\n\nFor example, if [LLMRouteSpec.Backends]
+          has two backends named \"openai\" and \"ollama\", the controller will create
+          an HTTPRoute\nwith the following rules:\n\n\tapiVersion: gateway.networking.k8s.io/v1\n\tkind:
+          HTTPRoute\n\tmetadata:\n\t  name: llmroute-${LLMRoute.name}\n\t  namespace:
+          ${LLMRoute.namespace}\n\tspec:\n\t  ..... # Omitting other fields for brevity.\n\t
+          \ rules:\n\t  - backendRefs:\n\t    - kind: Service\n\t      name: ollama\n\t
+          \     port: 80\n\t    matches:\n\t    - headers:\n\t      - name: x-ai-gateway-llm-backend\n\t
+          \       exact: ollama\n\t  - backendRefs:\n\t    - group: gateway.envoyproxy.io\n\t
+          \     kind: Backend\n\t      name: openai\n\t    matches:\n\t    - headers:\n\t
+          \     - name: x-ai-gateway-llm-backend\n\t        exact: openai\n\nOptionally,
+          this might also create or update an EnvoyProxy resource for each target
+          Gateway.\n\nImplementation note: The controller generates a corresponding
+          Deployment and Service for the external processor.\nThese resources are
+          created in the same namespace as the LLMRoute.\nThe name of the Deployment
+          and Service is \"ai-gateway-extproc-${LLMRoute.name}-${LLMRoute.namespace}\".\nThe
+          corresponding external processor is started with the LLMRoute configuration
+          to control the behavior.\nFor all Backends, requests are sent to that external
+          processor for processing."
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the details of the LLM policy.
+            properties:
+              backends:
+                description: Backends lists the details of the LLM backends available
+                  to the Gateway.
+                items:
+                  description: |-
+                    LLMBackend describes the details of a LLM backend, e.g. OpenAI, AWS Bedrock, etc.
+                    Each backend can have its own rate limit policy as well as request/response transformation.
+                    This configures how to perform the LLM specific operations on the requests and responses to and from
+                    that referenced backend.
+                  properties:
+                    backendRef:
+                      description: |-
+                        BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+
+                        The backend can be of either k8s Service or [egv1a1.Backend] kind plus the resource must be in the same namespace as the LLMRoute.
+                        For the sake of simplicity, currently the same backend cannot be referenced by multiple LLMBackend(s).
+                      properties:
+                        fallback:
+                          description: |-
+                            Fallback indicates whether the backend is designated as a fallback.
+                            Multiple fallback backends can be configured.
+                            It is highly recommended to configure active or passive health checks to ensure that failover can be detected
+                            when the active backends become unhealthy and to automatically readjust once the primary backends are healthy again.
+                            The overprovisioning factor is set to 1.4, meaning the fallback backends will only start receiving traffic when
+                            the health of the active backends falls below 72%.
+                          type: boolean
+                        group:
+                          default: ""
+                          description: |-
+                            Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                            When unspecified or empty string, core API group is inferred.
+                          maxLength: 253
+                          pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                          type: string
+                        kind:
+                          default: Service
+                          description: |-
+                            Kind is the Kubernetes resource kind of the referent. For example
+                            "Service".
+
+                            Defaults to "Service" when not specified.
+
+                            ExternalName services can refer to CNAME DNS records that may live
+                            outside of the cluster and as such are difficult to reason about in
+                            terms of conformance. They also may not be safe to forward to (see
+                            CVE-2021-25740 for more information). Implementations SHOULD NOT
+                            support ExternalName Services.
+
+                            Support: Core (Services with a type other than ExternalName)
+
+                            Support: Implementation-specific (Services with type ExternalName)
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                          type: string
+                        name:
+                          description: Name is the name of the referent.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the backend. When unspecified, the local
+                            namespace is inferred.
+
+                            Note that when a namespace different than the local namespace is specified,
+                            a ReferenceGrant object is required in the referent namespace to allow that
+                            namespace's owner to accept the reference. See the ReferenceGrant
+                            documentation for details.
+
+                            Support: Core
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        port:
+                          description: |-
+                            Port specifies the destination port number to use for this resource.
+                            Port is required when the referent is a Kubernetes Service. In this
+                            case, the port number is the service port number, not the target port.
+                            For other resources, destination port might be derived from the referent
+                            resource or this field.
+                          format: int32
+                          maximum: 65535
+                          minimum: 1
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                      x-kubernetes-validations:
+                      - message: Must have port for Service reference
+                        rule: '(size(self.group) == 0 && self.kind == ''Service'')
+                          ? has(self.port) : true'
+                    providerPolicy:
+                      description: ProviderPolicy specifies the provider specific
+                        configuration such as.
+                      properties:
+                        apiKey:
+                          description: APIKey specific configuration. The API key
+                            will be injected into the Authorization header.
+                          properties:
+                            inline:
+                              description: Inline specifies the inline API key.
+                              type: string
+                            secretRef:
+                              description: |-
+                                SecretRef is the reference to the secret containing the API key.
+                                ai-gateway must be given the permission to read this secret.
+                                The key of the secret should be "apiKey".
+                              properties:
+                                group:
+                                  default: ""
+                                  description: |-
+                                    Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                                    When unspecified or empty string, core API group is inferred.
+                                  maxLength: 253
+                                  pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                  type: string
+                                kind:
+                                  default: Secret
+                                  description: Kind is kind of the referent. For example
+                                    "Secret".
+                                  maxLength: 63
+                                  minLength: 1
+                                  pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                                  type: string
+                                name:
+                                  description: Name is the name of the referent.
+                                  maxLength: 253
+                                  minLength: 1
+                                  type: string
+                                namespace:
+                                  description: |-
+                                    Namespace is the namespace of the referenced object. When unspecified, the local
+                                    namespace is inferred.
+
+                                    Note that when a namespace different than the local namespace is specified,
+                                    a ReferenceGrant object is required in the referent namespace to allow that
+                                    namespace's owner to accept the reference. See the ReferenceGrant
+                                    documentation for details.
+
+                                    Support: Core
+                                  maxLength: 63
+                                  minLength: 1
+                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type:
+                              default: SecretRef
+                              description: |-
+                                Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+                                This defaults to "SecretRef".
+                              enum:
+                              - SecretRef
+                              - Inline
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        awsBedrock:
+                          description: |-
+                            AWS Bedrock specific configuration. Note that at most one AWS Bedrock policy can be specified.
+                            Otherwise, the Envoy cannot determine which credentials to use.
+
+                            AWS Bedrock provider utilizes the EnvoyProxy resource to attach the environment variables for the AWS credentials
+                            to the Envoy container. The controller checks the existence of the EnvoyProxy resource attached to each
+                            target Gateway and creates a new one if it doesn't exist. If it exists, it updates the existing one.
+                            If the new EnvoyProxy resource is created, the controller sets the owner reference to the LLMRoute.
+                            The created EnvoyProxy resource will have the same namespace and name as in the form of "${LLMRoute's name}-${Each target Gateway's name}".
+                            It is user's responsibility to attach the Gateway resource to the EnvoyProxy resource via "infrastructure" field. See
+                            https://github.com/envoyproxy/gateway/blob/a6590bf81463d5cfeadc817f5238a01507ab1a9b/test/e2e/testdata/tracing-zipkin.yaml#L15-L19
+                            for an example.
+
+                            This EnvoyProxy resource manipulation is necessary because the AWS signing filter doesn't support
+                            dynamic configuration, but it can be configured only by the environment variables.
+                            https://github.com/envoyproxy/envoy/blob/0ad67a1d7f8f6352e8c2b7abcce627d8f212c081/source/extensions/common/aws/credentials_provider_impl.cc#L775
+                            See the upstream issue: https://github.com/envoyproxy/envoy/issues/36109 for more details. Once this issue is resolved,
+                            we can remove this EnvoyProxy resource manipulation.
+                          properties:
+                            credentialsFile:
+                              description: CredentialsFile specifies the credentials
+                                file to use for the AWS Bedrock provider.
+                              properties:
+                                path:
+                                  description: |-
+                                    Path is the path to the credentials file.
+                                    This defaults to "~/.aws/credentials".
+                                  type: string
+                                profile:
+                                  description: |-
+                                    Profile is the profile to use in the credentials file.
+                                    This defaults to "default".
+                                  type: string
+                              type: object
+                            hostRewrite:
+                              description: |-
+                                HostRewrite specifies the real AWE Bedrock host (e.g. bedrock-runtime.us-east-1.amazonaws.com)
+                                to rewrite in the request before the AWS request signing.
+                                Usually, this matches the hostname of the backend, but it can be different in case of a proxy.
+
+                                This defaults to "bedrock-runtime.${Region}.amazonaws.com".
+                              type: string
+                            inlineCredential:
+                              description: InlineCredential specifies the inline credential
+                                to use for the AWS Bedrock provider.
+                              properties:
+                                accessKeyID:
+                                  description: AccessKeyID is the AWS access key ID.
+                                  minLength: 1
+                                  type: string
+                                secretAccessKey:
+                                  description: SecretAccessKey is the AWS secret access
+                                    key.
+                                  minLength: 1
+                                  type: string
+                                sessionToken:
+                                  description: SessionToken is the AWS session token.
+                                  type: string
+                              required:
+                              - accessKeyID
+                              - secretAccessKey
+                              type: object
+                            region:
+                              description: Region is the AWS region to use.
+                              type: string
+                            signingAlgorithm:
+                              description: |-
+                                SigningAlgorithm specifies the algorithm to use for signing the request.
+                                AWS_SIGV4 or AWS_SIGV4A are supported. This is optional and defaults to AWS_SIGV4.
+                              type: string
+                            type:
+                              default: InlineCredential
+                              description: |-
+                                Type specifies the type of the AWS Bedrock provider. Currently, "InlineCredential" and "CredentialsFile" are supported.
+                                This defaults to "InlineCredential".
+                              enum:
+                              - InlineCredential
+                              - CredentialsFile
+                              type: string
+                          required:
+                          - region
+                          - type
+                          type: object
+                        type:
+                          description: Type specifies the type of the provider. Currently,
+                            only "APIKey" and "AWSBedrock" are supported.
+                          enum:
+                          - APIKey
+                          - AWSBedrock
+                          type: string
+                      required:
+                      - type
+                      type: object
+                    schema:
+                      default: OpenAI
+                      description: |-
+                        Schema specifies the schema of the LLM backend.
+                        Currently, only "OpenAI" and "AWSBedrock" are supported. This defaults to "OpenAI".
+                      enum:
+                      - OpenAI
+                      - AWSBedrock
+                      type: string
+                    trafficPolicy:
+                      description: TrafficPolicy controls the flow of traffic to the
+                        backend.
+                      properties:
+                        rateLimit:
+                          description: RateLimit defines the usual rate limit policy
+                            for this backend.
+                          properties:
+                            rules:
+                              description: Rules defines the rate limit rules.
+                              items:
+                                description: LLMTrafficPolicyRateLimitRule defines
+                                  the details of the rate limit policy.
+                                properties:
+                                  headers:
+                                    description: |-
+                                      Headers is a list of request headers to match. Multiple header values are ANDed together,
+                                      meaning, a request MUST match all the specified headers.
+                                      At least one of headers or sourceCIDR condition must be specified.
+                                    items:
+                                      description: LLMPolicyRateLimitHeaderMatch defines
+                                        the match attributes within the HTTP Headers
+                                        of the request.
+                                      properties:
+                                        name:
+                                          description: Name of the HTTP header.
+                                          maxLength: 256
+                                          minLength: 1
+                                          type: string
+                                        type:
+                                          description: Type specifies how to match
+                                            against the value of the header.
+                                          enum:
+                                          - Exact
+                                          - RegularExpression
+                                          - Distinct
+                                          type: string
+                                        value:
+                                          description: |-
+                                            Value within the HTTP header. Due to the
+                                            case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                            Do not set this field when Type="Distinct", implying matching on any/all unique
+                                            values within the header.
+                                          maxLength: 1024
+                                          type: string
+                                      required:
+                                      - name
+                                      - type
+                                      type: object
+                                    type: array
+                                  limits:
+                                    description: |-
+                                      Limits holds the rate limit values.
+                                      This limit is applied for traffic flows when the selectors
+                                      compute to True, causing the request to be counted towards the limit.
+                                      The limit is enforced and the request is ratelimited, i.e. a response with
+                                      429 HTTP status code is sent back to the client when
+                                      the selected requests have reached the limit.
+                                    items:
+                                      description: LLMPolicyRateLimitValue defines
+                                        the limits for rate limiting.
+                                      properties:
+                                        quantity:
+                                          description: Quantity specifies the number
+                                            of requests or tokens allowed in the given
+                                            interval.
+                                          type: integer
+                                        type:
+                                          default: Request
+                                          description: Type specifies the type of
+                                            rate limit.
+                                          enum:
+                                          - Request
+                                          - Token
+                                          type: string
+                                        unit:
+                                          default: Minute
+                                          description: Unit specifies the interval
+                                            for the rate limit.
+                                          enum:
+                                          - Second
+                                          - Minute
+                                          - Hour
+                                          - Day
+                                          type: string
+                                      required:
+                                      - quantity
+                                      - type
+                                      - unit
+                                      type: object
+                                    minItems: 1
+                                    type: array
+                                  metadata:
+                                    description: Metadata is a list of metadata to
+                                      match. Multiple metadata values are ANDed together,
+                                    items:
+                                      description: |-
+                                        LLMPolicyRateLimitMetadataMatch defines the match attributes within the metadata from dynamic or route entry.
+                                        The match will be ignored if the metadata is not present.
+                                      properties:
+                                        defaultValue:
+                                          description: |-
+                                            DefaultValue specifies an optional value to use if “metadata“ is empty.
+                                            Default value is "unknown".
+                                          type: string
+                                        name:
+                                          description: Name specifies the key of the
+                                            metadata to match.
+                                          type: string
+                                        paths:
+                                          description: Paths specifies the value of
+                                            the metadata to match.
+                                          items:
+                                            type: string
+                                          maxItems: 32
+                                          type: array
+                                        type:
+                                          default: Dynamic
+                                          description: Type specifies the type of
+                                            metadata to match.
+                                          enum:
+                                          - Dynamic
+                                          - RouteEntry
+                                          type: string
+                                      required:
+                                      - name
+                                      - type
+                                      type: object
+                                    type: array
+                                required:
+                                - limits
+                                type: object
+                              type: array
+                          type: object
+                      type: object
+                  required:
+                  - backendRef
+                  type: object
+                maxItems: 32
+                type: array
+              extProc:
+                description: |-
+                  ExtProc an ordered list of external processing filters that should be added to the envoy filter chain.
+                  This is non-backend specific and applies to all backends. In other words, these filters are applied to all
+                  requests before backend specific filters are applied (the ones specified in the LLMBackend).
+
+                  This is especially useful for selecting the backend based on the custom logic. Since routing decisions are
+                  made via the "x-ai-gateway-llm-backend" header, the external filters can set this header based on the custom logic.
+                items:
+                  description: ExtProc defines the configuration for External Processing
+                    filter.
+                  properties:
+                    backendRef:
+                      description: |-
+                        BackendRef references a Kubernetes object that represents the
+                        backend server to which the authorization request will be sent.
+
+                        Deprecated: Use BackendRefs instead.
+                      properties:
+                        group:
+                          default: ""
+                          description: |-
+                            Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                            When unspecified or empty string, core API group is inferred.
+                          maxLength: 253
+                          pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                          type: string
+                        kind:
+                          default: Service
+                          description: |-
+                            Kind is the Kubernetes resource kind of the referent. For example
+                            "Service".
+
+                            Defaults to "Service" when not specified.
+
+                            ExternalName services can refer to CNAME DNS records that may live
+                            outside of the cluster and as such are difficult to reason about in
+                            terms of conformance. They also may not be safe to forward to (see
+                            CVE-2021-25740 for more information). Implementations SHOULD NOT
+                            support ExternalName Services.
+
+                            Support: Core (Services with a type other than ExternalName)
+
+                            Support: Implementation-specific (Services with type ExternalName)
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                          type: string
+                        name:
+                          description: Name is the name of the referent.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the backend. When unspecified, the local
+                            namespace is inferred.
+
+                            Note that when a namespace different than the local namespace is specified,
+                            a ReferenceGrant object is required in the referent namespace to allow that
+                            namespace's owner to accept the reference. See the ReferenceGrant
+                            documentation for details.
+
+                            Support: Core
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        port:
+                          description: |-
+                            Port specifies the destination port number to use for this resource.
+                            Port is required when the referent is a Kubernetes Service. In this
+                            case, the port number is the service port number, not the target port.
+                            For other resources, destination port might be derived from the referent
+                            resource or this field.
+                          format: int32
+                          maximum: 65535
+                          minimum: 1
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                      x-kubernetes-validations:
+                      - message: Must have port for Service reference
+                        rule: '(size(self.group) == 0 && self.kind == ''Service'')
+                          ? has(self.port) : true'
+                    backendRefs:
+                      description: |-
+                        BackendRefs references a Kubernetes object that represents the
+                        backend server to which the authorization request will be sent.
+                      items:
+                        description: BackendRef defines how an ObjectReference that
+                          is specific to BackendRef.
+                        properties:
+                          fallback:
+                            description: |-
+                              Fallback indicates whether the backend is designated as a fallback.
+                              Multiple fallback backends can be configured.
+                              It is highly recommended to configure active or passive health checks to ensure that failover can be detected
+                              when the active backends become unhealthy and to automatically readjust once the primary backends are healthy again.
+                              The overprovisioning factor is set to 1.4, meaning the fallback backends will only start receiving traffic when
+                              the health of the active backends falls below 72%.
+                            type: boolean
+                          group:
+                            default: ""
+                            description: |-
+                              Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                              When unspecified or empty string, core API group is inferred.
+                            maxLength: 253
+                            pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                            type: string
+                          kind:
+                            default: Service
+                            description: |-
+                              Kind is the Kubernetes resource kind of the referent. For example
+                              "Service".
+
+                              Defaults to "Service" when not specified.
+
+                              ExternalName services can refer to CNAME DNS records that may live
+                              outside of the cluster and as such are difficult to reason about in
+                              terms of conformance. They also may not be safe to forward to (see
+                              CVE-2021-25740 for more information). Implementations SHOULD NOT
+                              support ExternalName Services.
+
+                              Support: Core (Services with a type other than ExternalName)
+
+                              Support: Implementation-specific (Services with type ExternalName)
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                            type: string
+                          name:
+                            description: Name is the name of the referent.
+                            maxLength: 253
+                            minLength: 1
+                            type: string
+                          namespace:
+                            description: |-
+                              Namespace is the namespace of the backend. When unspecified, the local
+                              namespace is inferred.
+
+                              Note that when a namespace different than the local namespace is specified,
+                              a ReferenceGrant object is required in the referent namespace to allow that
+                              namespace's owner to accept the reference. See the ReferenceGrant
+                              documentation for details.
+
+                              Support: Core
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
+                          port:
+                            description: |-
+                              Port specifies the destination port number to use for this resource.
+                              Port is required when the referent is a Kubernetes Service. In this
+                              case, the port number is the service port number, not the target port.
+                              For other resources, destination port might be derived from the referent
+                              resource or this field.
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                        required:
+                        - name
+                        type: object
+                        x-kubernetes-validations:
+                        - message: Must have port for Service reference
+                          rule: '(size(self.group) == 0 && self.kind == ''Service'')
+                            ? has(self.port) : true'
+                      maxItems: 16
+                      type: array
+                    backendSettings:
+                      description: |-
+                        BackendSettings holds configuration for managing the connection
+                        to the backend.
+                      properties:
+                        circuitBreaker:
+                          description: |-
+                            Circuit Breaker settings for the upstream connections and requests.
+                            If not set, circuit breakers will be enabled with the default thresholds
+                          properties:
+                            maxConnections:
+                              default: 1024
+                              description: The maximum number of connections that
+                                Envoy will establish to the referenced backend defined
+                                within a xRoute rule.
+                              format: int64
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                            maxParallelRequests:
+                              default: 1024
+                              description: The maximum number of parallel requests
+                                that Envoy will make to the referenced backend defined
+                                within a xRoute rule.
+                              format: int64
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                            maxParallelRetries:
+                              default: 1024
+                              description: The maximum number of parallel retries
+                                that Envoy will make to the referenced backend defined
+                                within a xRoute rule.
+                              format: int64
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                            maxPendingRequests:
+                              default: 1024
+                              description: The maximum number of pending requests
+                                that Envoy will queue to the referenced backend defined
+                                within a xRoute rule.
+                              format: int64
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                            maxRequestsPerConnection:
+                              description: |-
+                                The maximum number of requests that Envoy will make over a single connection to the referenced backend defined within a xRoute rule.
+                                Default: unlimited.
+                              format: int64
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                          type: object
+                        connection:
+                          description: Connection includes backend connection settings.
+                          properties:
+                            bufferLimit:
+                              allOf:
+                              - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              - pattern: ^[1-9]+[0-9]*([EPTGMK]i|[EPTGMk])?$
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: |-
+                                BufferLimit Soft limit on size of the cluster’s connections read and write buffers.
+                                BufferLimit applies to connection streaming (maybe non-streaming) channel between processes, it's in user space.
+                                If unspecified, an implementation defined default is applied (32768 bytes).
+                                For example, 20Mi, 1Gi, 256Ki etc.
+                                Note: that when the suffix is not provided, the value is interpreted as bytes.
+                              x-kubernetes-int-or-string: true
+                            socketBufferLimit:
+                              allOf:
+                              - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              - pattern: ^[1-9]+[0-9]*([EPTGMK]i|[EPTGMk])?$
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: |-
+                                SocketBufferLimit provides configuration for the maximum buffer size in bytes for each socket
+                                to backend.
+                                SocketBufferLimit applies to socket streaming channel between TCP/IP stacks, it's in kernel space.
+                                For example, 20Mi, 1Gi, 256Ki etc.
+                                Note that when the suffix is not provided, the value is interpreted as bytes.
+                              x-kubernetes-int-or-string: true
+                          type: object
+                        dns:
+                          description: DNS includes dns resolution settings.
+                          properties:
+                            dnsRefreshRate:
+                              description: |-
+                                DNSRefreshRate specifies the rate at which DNS records should be refreshed.
+                                Defaults to 30 seconds.
+                              type: string
+                            respectDnsTtl:
+                              description: |-
+                                RespectDNSTTL indicates whether the DNS Time-To-Live (TTL) should be respected.
+                                If the value is set to true, the DNS refresh rate will be set to the resource record’s TTL.
+                                Defaults to true.
+                              type: boolean
+                          type: object
+                        healthCheck:
+                          description: HealthCheck allows gateway to perform active
+                            health checking on backends.
+                          properties:
+                            active:
+                              description: Active health check configuration
+                              properties:
+                                grpc:
+                                  description: |-
+                                    GRPC defines the configuration of the GRPC health checker.
+                                    It's optional, and can only be used if the specified type is GRPC.
+                                  properties:
+                                    service:
+                                      description: |-
+                                        Service to send in the health check request.
+                                        If this is not specified, then the health check request applies to the entire
+                                        server and not to a specific service.
+                                      type: string
+                                  type: object
+                                healthyThreshold:
+                                  default: 1
+                                  description: HealthyThreshold defines the number
+                                    of healthy health checks required before a backend
+                                    host is marked healthy.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                http:
+                                  description: |-
+                                    HTTP defines the configuration of http health checker.
+                                    It's required while the health checker type is HTTP.
+                                  properties:
+                                    expectedResponse:
+                                      description: ExpectedResponse defines a list
+                                        of HTTP expected responses to match.
+                                      properties:
+                                        binary:
+                                          description: Binary payload base64 encoded.
+                                          format: byte
+                                          type: string
+                                        text:
+                                          description: Text payload in plain text.
+                                          type: string
+                                        type:
+                                          allOf:
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          description: Type defines the type of the
+                                            payload.
+                                          type: string
+                                      required:
+                                      - type
+                                      type: object
+                                      x-kubernetes-validations:
+                                      - message: If payload type is Text, text field
+                                          needs to be set.
+                                        rule: 'self.type == ''Text'' ? has(self.text)
+                                          : !has(self.text)'
+                                      - message: If payload type is Binary, binary
+                                          field needs to be set.
+                                        rule: 'self.type == ''Binary'' ? has(self.binary)
+                                          : !has(self.binary)'
+                                    expectedStatuses:
+                                      description: |-
+                                        ExpectedStatuses defines a list of HTTP response statuses considered healthy.
+                                        Defaults to 200 only
+                                      items:
+                                        description: HTTPStatus defines the http status
+                                          code.
+                                        exclusiveMaximum: true
+                                        maximum: 600
+                                        minimum: 100
+                                        type: integer
+                                      type: array
+                                    method:
+                                      description: |-
+                                        Method defines the HTTP method used for health checking.
+                                        Defaults to GET
+                                      type: string
+                                    path:
+                                      description: Path defines the HTTP path that
+                                        will be requested during health checking.
+                                      maxLength: 1024
+                                      minLength: 1
+                                      type: string
+                                  required:
+                                  - path
+                                  type: object
+                                interval:
+                                  default: 3s
+                                  description: Interval defines the time between active
+                                    health checks.
+                                  format: duration
+                                  type: string
+                                tcp:
+                                  description: |-
+                                    TCP defines the configuration of tcp health checker.
+                                    It's required while the health checker type is TCP.
+                                  properties:
+                                    receive:
+                                      description: Receive defines the expected response
+                                        payload.
+                                      properties:
+                                        binary:
+                                          description: Binary payload base64 encoded.
+                                          format: byte
+                                          type: string
+                                        text:
+                                          description: Text payload in plain text.
+                                          type: string
+                                        type:
+                                          allOf:
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          description: Type defines the type of the
+                                            payload.
+                                          type: string
+                                      required:
+                                      - type
+                                      type: object
+                                      x-kubernetes-validations:
+                                      - message: If payload type is Text, text field
+                                          needs to be set.
+                                        rule: 'self.type == ''Text'' ? has(self.text)
+                                          : !has(self.text)'
+                                      - message: If payload type is Binary, binary
+                                          field needs to be set.
+                                        rule: 'self.type == ''Binary'' ? has(self.binary)
+                                          : !has(self.binary)'
+                                    send:
+                                      description: Send defines the request payload.
+                                      properties:
+                                        binary:
+                                          description: Binary payload base64 encoded.
+                                          format: byte
+                                          type: string
+                                        text:
+                                          description: Text payload in plain text.
+                                          type: string
+                                        type:
+                                          allOf:
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          - enum:
+                                            - Text
+                                            - Binary
+                                          description: Type defines the type of the
+                                            payload.
+                                          type: string
+                                      required:
+                                      - type
+                                      type: object
+                                      x-kubernetes-validations:
+                                      - message: If payload type is Text, text field
+                                          needs to be set.
+                                        rule: 'self.type == ''Text'' ? has(self.text)
+                                          : !has(self.text)'
+                                      - message: If payload type is Binary, binary
+                                          field needs to be set.
+                                        rule: 'self.type == ''Binary'' ? has(self.binary)
+                                          : !has(self.binary)'
+                                  type: object
+                                timeout:
+                                  default: 1s
+                                  description: Timeout defines the time to wait for
+                                    a health check response.
+                                  format: duration
+                                  type: string
+                                type:
+                                  allOf:
+                                  - enum:
+                                    - HTTP
+                                    - TCP
+                                    - GRPC
+                                  - enum:
+                                    - HTTP
+                                    - TCP
+                                    - GRPC
+                                  description: Type defines the type of health checker.
+                                  type: string
+                                unhealthyThreshold:
+                                  default: 3
+                                  description: UnhealthyThreshold defines the number
+                                    of unhealthy health checks required before a backend
+                                    host is marked unhealthy.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                              required:
+                              - type
+                              type: object
+                              x-kubernetes-validations:
+                              - message: If Health Checker type is HTTP, http field
+                                  needs to be set.
+                                rule: 'self.type == ''HTTP'' ? has(self.http) : !has(self.http)'
+                              - message: If Health Checker type is TCP, tcp field
+                                  needs to be set.
+                                rule: 'self.type == ''TCP'' ? has(self.tcp) : !has(self.tcp)'
+                              - message: The grpc field can only be set if the Health
+                                  Checker type is GRPC.
+                                rule: 'has(self.grpc) ? self.type == ''GRPC'' : true'
+                            passive:
+                              description: Passive passive check configuration
+                              properties:
+                                baseEjectionTime:
+                                  default: 30s
+                                  description: BaseEjectionTime defines the base duration
+                                    for which a host will be ejected on consecutive
+                                    failures.
+                                  format: duration
+                                  type: string
+                                consecutive5XxErrors:
+                                  default: 5
+                                  description: Consecutive5xxErrors sets the number
+                                    of consecutive 5xx errors triggering ejection.
+                                  format: int32
+                                  type: integer
+                                consecutiveGatewayErrors:
+                                  default: 0
+                                  description: ConsecutiveGatewayErrors sets the number
+                                    of consecutive gateway errors triggering ejection.
+                                  format: int32
+                                  type: integer
+                                consecutiveLocalOriginFailures:
+                                  default: 5
+                                  description: |-
+                                    ConsecutiveLocalOriginFailures sets the number of consecutive local origin failures triggering ejection.
+                                    Parameter takes effect only when split_external_local_origin_errors is set to true.
+                                  format: int32
+                                  type: integer
+                                interval:
+                                  default: 3s
+                                  description: Interval defines the time between passive
+                                    health checks.
+                                  format: duration
+                                  type: string
+                                maxEjectionPercent:
+                                  default: 10
+                                  description: MaxEjectionPercent sets the maximum
+                                    percentage of hosts in a cluster that can be ejected.
+                                  format: int32
+                                  type: integer
+                                splitExternalLocalOriginErrors:
+                                  default: false
+                                  description: SplitExternalLocalOriginErrors enables
+                                    splitting of errors between external and local
+                                    origin.
+                                  type: boolean
+                              type: object
+                          type: object
+                        http2:
+                          description: HTTP2 provides HTTP/2 configuration for backend
+                            connections.
+                          properties:
+                            initialConnectionWindowSize:
+                              allOf:
+                              - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              - pattern: ^[1-9]+[0-9]*([EPTGMK]i|[EPTGMk])?$
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: |-
+                                InitialConnectionWindowSize sets the initial window size for HTTP/2 connections.
+                                If not set, the default value is 1 MiB.
+                              x-kubernetes-int-or-string: true
+                            initialStreamWindowSize:
+                              allOf:
+                              - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              - pattern: ^[1-9]+[0-9]*([EPTGMK]i|[EPTGMk])?$
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: |-
+                                InitialStreamWindowSize sets the initial window size for HTTP/2 streams.
+                                If not set, the default value is 64 KiB(64*1024).
+                              x-kubernetes-int-or-string: true
+                            maxConcurrentStreams:
+                              description: |-
+                                MaxConcurrentStreams sets the maximum number of concurrent streams allowed per connection.
+                                If not set, the default value is 100.
+                              format: int32
+                              maximum: 2147483647
+                              minimum: 1
+                              type: integer
+                            onInvalidMessage:
+                              description: |-
+                                OnInvalidMessage determines if Envoy will terminate the connection or just the offending stream in the event of HTTP messaging error
+                                It's recommended for L2 Envoy deployments to set this value to TerminateStream.
+                                https://www.envoyproxy.io/docs/envoy/latest/configuration/best_practices/level_two
+                                Default: TerminateConnection
+                              type: string
+                          type: object
+                        loadBalancer:
+                          description: |-
+                            LoadBalancer policy to apply when routing traffic from the gateway to
+                            the backend endpoints. Defaults to `LeastRequest`.
+                          properties:
+                            consistentHash:
+                              description: |-
+                                ConsistentHash defines the configuration when the load balancer type is
+                                set to ConsistentHash
+                              properties:
+                                cookie:
+                                  description: Cookie configures the cookie hash policy
+                                    when the consistent hash type is set to Cookie.
+                                  properties:
+                                    attributes:
+                                      additionalProperties:
+                                        type: string
+                                      description: Additional Attributes to set for
+                                        the generated cookie.
+                                      type: object
+                                    name:
+                                      description: |-
+                                        Name of the cookie to hash.
+                                        If this cookie does not exist in the request, Envoy will generate a cookie and set
+                                        the TTL on the response back to the client based on Layer 4
+                                        attributes of the backend endpoint, to ensure that these future requests
+                                        go to the same backend endpoint. Make sure to set the TTL field for this case.
+                                      type: string
+                                    ttl:
+                                      description: |-
+                                        TTL of the generated cookie if the cookie is not present. This value sets the
+                                        Max-Age attribute value.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                header:
+                                  description: Header configures the header hash policy
+                                    when the consistent hash type is set to Header.
+                                  properties:
+                                    name:
+                                      description: Name of the header to hash.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                tableSize:
+                                  default: 65537
+                                  description: The table size for consistent hashing,
+                                    must be prime number limited to 5000011.
+                                  format: int64
+                                  maximum: 5000011
+                                  minimum: 2
+                                  type: integer
+                                type:
+                                  description: |-
+                                    ConsistentHashType defines the type of input to hash on. Valid Type values are
+                                    "SourceIP",
+                                    "Header",
+                                    "Cookie".
+                                  enum:
+                                  - SourceIP
+                                  - Header
+                                  - Cookie
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                              x-kubernetes-validations:
+                              - message: If consistent hash type is header, the header
+                                  field must be set.
+                                rule: 'self.type == ''Header'' ? has(self.header)
+                                  : !has(self.header)'
+                              - message: If consistent hash type is cookie, the cookie
+                                  field must be set.
+                                rule: 'self.type == ''Cookie'' ? has(self.cookie)
+                                  : !has(self.cookie)'
+                            slowStart:
+                              description: |-
+                                SlowStart defines the configuration related to the slow start load balancer policy.
+                                If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
+                                Currently this is only supported for RoundRobin and LeastRequest load balancers
+                              properties:
+                                window:
+                                  description: |-
+                                    Window defines the duration of the warm up period for newly added host.
+                                    During slow start window, traffic sent to the newly added hosts will gradually increase.
+                                    Currently only supports linear growth of traffic. For additional details,
+                                    see https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/cluster.proto#config-cluster-v3-cluster-slowstartconfig
+                                  type: string
+                              required:
+                              - window
+                              type: object
+                            type:
+                              description: |-
+                                Type decides the type of Load Balancer policy.
+                                Valid LoadBalancerType values are
+                                "ConsistentHash",
+                                "LeastRequest",
+                                "Random",
+                                "RoundRobin".
+                              enum:
+                              - ConsistentHash
+                              - LeastRequest
+                              - Random
+                              - RoundRobin
+                              type: string
+                          required:
+                          - type
+                          type: object
+                          x-kubernetes-validations:
+                          - message: If LoadBalancer type is consistentHash, consistentHash
+                              field needs to be set.
+                            rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
+                              : !has(self.consistentHash)'
+                          - message: Currently SlowStart is only supported for RoundRobin
+                              and LeastRequest load balancers.
+                            rule: 'self.type in [''Random'', ''ConsistentHash''] ?
+                              !has(self.slowStart) : true '
+                        proxyProtocol:
+                          description: ProxyProtocol enables the Proxy Protocol when
+                            communicating with the backend.
+                          properties:
+                            version:
+                              description: |-
+                                Version of ProxyProtol
+                                Valid ProxyProtocolVersion values are
+                                "V1"
+                                "V2"
+                              enum:
+                              - V1
+                              - V2
+                              type: string
+                          required:
+                          - version
+                          type: object
+                        retry:
+                          description: |-
+                            Retry provides more advanced usage, allowing users to customize the number of retries, retry fallback strategy, and retry triggering conditions.
+                            If not set, retry will be disabled.
+                          properties:
+                            numRetries:
+                              default: 2
+                              description: NumRetries is the number of retries to
+                                be attempted. Defaults to 2.
+                              format: int32
+                              minimum: 0
+                              type: integer
+                            perRetry:
+                              description: PerRetry is the retry policy to be applied
+                                per retry attempt.
+                              properties:
+                                backOff:
+                                  description: |-
+                                    Backoff is the backoff policy to be applied per retry attempt. gateway uses a fully jittered exponential
+                                    back-off algorithm for retries. For additional details,
+                                    see https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#config-http-filters-router-x-envoy-max-retries
+                                  properties:
+                                    baseInterval:
+                                      description: BaseInterval is the base interval
+                                        between retries.
+                                      format: duration
+                                      type: string
+                                    maxInterval:
+                                      description: |-
+                                        MaxInterval is the maximum interval between retries. This parameter is optional, but must be greater than or equal to the base_interval if set.
+                                        The default is 10 times the base_interval
+                                      format: duration
+                                      type: string
+                                  type: object
+                                timeout:
+                                  description: Timeout is the timeout per retry attempt.
+                                  format: duration
+                                  type: string
+                              type: object
+                            retryOn:
+                              description: |-
+                                RetryOn specifies the retry trigger condition.
+
+                                If not specified, the default is to retry on connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes(503).
+                              properties:
+                                httpStatusCodes:
+                                  description: |-
+                                    HttpStatusCodes specifies the http status codes to be retried.
+                                    The retriable-status-codes trigger must also be configured for these status codes to trigger a retry.
+                                  items:
+                                    description: HTTPStatus defines the http status
+                                      code.
+                                    exclusiveMaximum: true
+                                    maximum: 600
+                                    minimum: 100
+                                    type: integer
+                                  type: array
+                                triggers:
+                                  description: Triggers specifies the retry trigger
+                                    condition(Http/Grpc).
+                                  items:
+                                    description: TriggerEnum specifies the conditions
+                                      that trigger retries.
+                                    enum:
+                                    - 5xx
+                                    - gateway-error
+                                    - reset
+                                    - connect-failure
+                                    - retriable-4xx
+                                    - refused-stream
+                                    - retriable-status-codes
+                                    - cancelled
+                                    - deadline-exceeded
+                                    - internal
+                                    - resource-exhausted
+                                    - unavailable
+                                    type: string
+                                  type: array
+                              type: object
+                          type: object
+                        tcpKeepalive:
+                          description: |-
+                            TcpKeepalive settings associated with the upstream client connection.
+                            Disabled by default.
+                          properties:
+                            idleTime:
+                              description: |-
+                                The duration a connection needs to be idle before keep-alive
+                                probes start being sent.
+                                The duration format is
+                                Defaults to `7200s`.
+                              pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                              type: string
+                            interval:
+                              description: |-
+                                The duration between keep-alive probes.
+                                Defaults to `75s`.
+                              pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                              type: string
+                            probes:
+                              description: |-
+                                The total number of unacknowledged probes to send before deciding
+                                the connection is dead.
+                                Defaults to 9.
+                              format: int32
+                              type: integer
+                          type: object
+                        timeout:
+                          description: Timeout settings for the backend connections.
+                          properties:
+                            http:
+                              description: Timeout settings for HTTP.
+                              properties:
+                                connectionIdleTimeout:
+                                  description: |-
+                                    The idle timeout for an HTTP connection. Idle time is defined as a period in which there are no active requests in the connection.
+                                    Default: 1 hour.
+                                  pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                  type: string
+                                maxConnectionDuration:
+                                  description: |-
+                                    The maximum duration of an HTTP connection.
+                                    Default: unlimited.
+                                  pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                  type: string
+                                requestTimeout:
+                                  description: RequestTimeout is the time until which
+                                    entire response is received from the upstream.
+                                  pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                  type: string
+                              type: object
+                            tcp:
+                              description: Timeout settings for TCP.
+                              properties:
+                                connectTimeout:
+                                  description: |-
+                                    The timeout for network connection establishment, including TCP and TLS handshakes.
+                                    Default: 10 seconds.
+                                  pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                  type: string
+                              type: object
+                          type: object
+                      type: object
+                    failOpen:
+                      description: |-
+                        FailOpen defines if requests or responses that cannot be processed due to connectivity to the
+                        external processor are terminated or passed-through.
+                        Default: false
+                      type: boolean
+                    messageTimeout:
+                      description: |-
+                        MessageTimeout is the timeout for a response to be returned from the external processor
+                        Default: 200ms
+                      pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                      type: string
+                    processingMode:
+                      description: |-
+                        ProcessingMode defines how request and response body is processed
+                        Default: header and body are not sent to the external processor
+                      properties:
+                        request:
+                          description: |-
+                            Defines processing mode for requests. If present, request headers are sent. Request body is processed according
+                            to the specified mode.
+                          properties:
+                            body:
+                              description: Defines body processing mode
+                              enum:
+                              - Streamed
+                              - Buffered
+                              - BufferedPartial
+                              type: string
+                          type: object
+                        response:
+                          description: |-
+                            Defines processing mode for responses. If present, response headers are sent. Response body is processed according
+                            to the specified mode.
+                          properties:
+                            body:
+                              description: Defines body processing mode
+                              enum:
+                              - Streamed
+                              - Buffered
+                              - BufferedPartial
+                              type: string
+                          type: object
+                      type: object
+                  type: object
+                  x-kubernetes-validations:
+                  - message: BackendRefs must be used, backendRef is not supported.
+                    rule: '!has(self.backendRef)'
+                  - message: BackendRefs only supports Service and Backend kind.
+                    rule: 'has(self.backendRefs) ? self.backendRefs.all(f, f.kind
+                      == ''Service'' || f.kind == ''Backend'') : true'
+                  - message: BackendRefs only supports Core and gateway.envoyproxy.io
+                      group.
+                    rule: 'has(self.backendRefs) ? (self.backendRefs.all(f, f.group
+                      == "" || f.group == ''gateway.envoyproxy.io'')) : true'
+                maxItems: 32
+                type: array
+              extProcConfig:
+                description: ExtProcConfig contains the configuration for the Deployment
+                  of the ai-gateway's external processor.
+                properties:
+                  replicas:
+                    default: 1
+                    description: Replicas is the number of replicas of the external
+                      processor. Defaults to 1.
+                    format: int32
+                    type: integer
+                  resources:
+                    description: Resources is the resource requirements for the external
+                      processor.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This is an alpha field and requires enabling the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                type: object
+              schema:
+                default: OpenAI
+                description: |-
+                  Schema specifies the API schema of the LLM route. In other words, this specifies the API schema that clients
+                  should use to interact with the LLM route.
+
+                  Currently, only "OpenAI" is supported, and it defaults to "OpenAI".
+                enum:
+                - OpenAI
+                type: string
+              targetRefs:
+                description: |-
+                  TargetRefs are the names of the Gateway resources this policy is being attached to.
+                  The namespace is "local", i.e. the same namespace as the LLMRoute.
+                  A Gateway cannot have more than one LLMRoute attached to it. TODO: enforce this rule in the controller.
+                items:
+                  description: |-
+                    LocalPolicyTargetReferenceWithSectionName identifies an API object to apply a
+                    direct policy to. This should be used as part of Policy resources that can
+                    target single resources. For more information on how this policy attachment
+                    mode works, and a sample Policy resource, refer to the policy attachment
+                    documentation for Gateway API.
+
+                    Note: This should only be used for direct policy attachment when references
+                    to SectionName are actually needed. In all other cases,
+                    LocalPolicyTargetReference should be used.
+                  properties:
+                    group:
+                      description: Group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    kind:
+                      description: Kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                      type: string
+                    name:
+                      description: Name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    sectionName:
+                      description: |-
+                        SectionName is the name of a section within the target resource. When
+                        unspecified, this targetRef targets the entire resource. In the following
+                        resources, SectionName is interpreted as the following:
+
+                        * Gateway: Listener name
+                        * HTTPRoute: HTTPRouteRule name
+                        * Service: Port name
+
+                        If a SectionName is specified, but does not exist on the targeted object,
+                        the Policy must fail to attach, and the policy implementation should record
+                        a `ResolvedRefs` or similar Condition in the Policy's status.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                  required:
+                  - group
+                  - kind
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true

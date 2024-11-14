@@ -1,0 +1,71 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: test-resource-translation
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: test-resource-translation
+  namespace: default
+spec:
+  gatewayClassName: test-resource-translation
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: test-resource-translation-policy
+  namespace: default
+spec:
+  targetRefs:
+    - name: "test-resource-translation"
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: foo-backend
+        kind: Backend
+        group: gateway.envoyproxy.io
+    - backendRef:
+        name: bar-backend
+        kind: Backend
+        group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: foo-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: bar-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: cat-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80

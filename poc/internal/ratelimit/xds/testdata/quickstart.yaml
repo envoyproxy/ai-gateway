@@ -1,0 +1,28 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: ratelimit-quickstart
+  namespace: default
+spec:
+  targetRefs:
+    - name: test-aig-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: backend-ratelimit
+        kind: Backend
+        group: gateway.envoyproxy.io
+      trafficPolicy:
+        rateLimit:
+          rules:
+            - headers:
+                - name: x-ai-gateway-llm-model-name
+                  type: Exact
+                  value: gpt-4o-mini
+                - name: x-user-id
+                  type: Distinct
+              limits:
+                - type: Token
+                  quantity: 10
+                  unit: Hour

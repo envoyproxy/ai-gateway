@@ -1,0 +1,47 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: ratelimit-multiple-backends
+  namespace: default
+spec:
+  targetRefs:
+    - name: test-aig-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    # This ensures that Service can also be used as a backend.
+    - backendRef:
+        name: testupstream
+        kind: Service
+        port: 80
+      trafficPolicy:
+        rateLimit:
+          rules:
+            - headers:
+                - name: x-ai-gateway-llm-model-name
+                  type: Exact
+                  value: gpt-4o-mini
+                - type: Distinct
+                  name: x-user-id
+              limits:
+                - type: Token
+                  quantity: 10
+                  unit: Hour
+    # This ensures that Service can also be used as a backend.
+    - backendRef:
+        name: testupstream-canary
+        kind: Service
+        port: 80
+      trafficPolicy:
+        rateLimit:
+          rules:
+            - headers:
+                - name: x-ai-gateway-llm-model-name
+                  type: Exact
+                  value: gpt-4o-turbo
+                - name: x-user-id
+                  type: Distinct
+              limits:
+                - type: Token
+                  quantity: 20
+                  unit: Hour

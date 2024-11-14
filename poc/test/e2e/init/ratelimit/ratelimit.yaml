@@ -1,0 +1,133 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: ai-gateway-system
+  labels:
+    app: redis
+spec:
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: ai-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - image: redis:alpine
+          imagePullPolicy: IfNotPresent
+          name: redis
+          ports:
+            - name: redis
+              containerPort: 6379
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratelimit
+  namespace: ai-gateway-system
+  labels:
+    app: ratelimit
+spec:
+  ports:
+    - name: http-port
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: grpc-port
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+    - name: http-debug
+      port: 6070
+      targetPort: 6070
+      protocol: TCP
+  selector:
+    app: ratelimit
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ratelimit
+  namespace: ai-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ratelimit
+  template:
+    metadata:
+      labels:
+        app: ratelimit
+    spec:
+      restartPolicy: Always
+      containers:
+        - image: envoyproxy/ratelimit:master
+          imagePullPolicy: IfNotPresent
+          name: ratelimit
+          command: ["/bin/ratelimit"]
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          env:
+            - name: DISABLE_STATS
+              value: "true"
+            - name: LOG_LEVEL
+              value: debug
+            - name: REDIS_SOCKET_TYPE
+              value: tcp
+            - name: REDIS_URL
+              value: redis:6379
+            - name: USE_STATSD
+              value: "false"
+            - name: RUNTIME_ROOT
+              value: /data
+            - name: RUNTIME_SUBDIRECTORY
+              value: ratelimit
+            - name: RUNTIME_WATCH_ROOT
+              value: "false"
+            - name: RUNTIME_IGNOREDOTFILES
+              value: "true"
+            - name: HOST
+              value: "::"
+            - name: GRPC_HOST
+              value: "::"
+            - name: CONFIG_TYPE
+              value: GRPC_XDS_SOTW
+            - name: CONFIG_GRPC_XDS_NODE_ID
+              value: llm-ratelimit
+            - name: CONFIG_GRPC_XDS_SERVER_URL
+              value: ai-gateway-controller:1063
+          ports:
+            - containerPort: 8080 # http
+            - containerPort: 8081 # grpc
+            - containerPort: 6070 # debug

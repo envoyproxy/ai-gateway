@@ -1,0 +1,56 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: test-api-key-backend
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: test-api-key-backend
+  namespace: default
+spec:
+  gatewayClassName: test-api-key-backend
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: test-api-key-backend
+  namespace: default
+spec:
+  targetRefs:
+    - name: test-api-key-backend
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: testupstream
+        kind: Service
+        port: 80
+      providerPolicy:
+        type: APIKey
+        apiKey:
+          type: SecretRef
+          secretRef:
+            name: test-api-key
+    - backendRef:
+        name: testupstream-canary
+        kind: Service
+        port: 80
+      providerPolicy:
+        type: APIKey
+        apiKey:
+          type: Inline
+          inline: inlineapikey
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-api-key
+data:
+  apiKey: dGhpc2lzYXBpa2V5

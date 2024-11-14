@@ -1,0 +1,15 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: ratelimit-empty
+  namespace: default
+spec:
+  targetRefs:
+    - name: test-aig-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: backend-ratelimit
+        kind: Backend
+        group: gateway.envoyproxy.io

@@ -1,0 +1,15 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: test-resource-translation-policy
+  namespace: default
+spec:
+  targetRefs:
+    - name: "test-resource-translation"
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: cat-backend
+        kind: Backend
+        group: gateway.envoyproxy.io

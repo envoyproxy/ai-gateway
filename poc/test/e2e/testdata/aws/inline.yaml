@@ -1,0 +1,94 @@
+---
+# This is not needed in practice - the controller will create if not present.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: awsinline-awsinline-gateway
+spec:
+  logging:
+    level:
+      default: warn
+  mergeGateways: true
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: awsinline
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: awsinline-gateway
+  namespace: default
+spec:
+  gatewayClassName: awsinline
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: awsinline-awsinline-gateway
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: awsinline
+  namespace: default
+spec:
+  targetRefs:
+    - name: awsinline-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backends:
+    - backendRef:
+        name: testupstream
+        kind: Service
+        group: ""
+        port: 80
+    - backendRef:
+        name: aws-bedrock
+        kind: Backend
+        group: gateway.envoyproxy.io
+      schema: AWSBedrock
+      providerPolicy:
+        type: AWSBedrock
+        awsBedrock:
+          region: AWS_REGION
+          type: InlineCredential
+          inlineCredential:
+            # This will be replaced by the test.
+            accessKeyID: AWS_ACCESS_KEY_ID
+            # This will be replaced by the test.
+            secretAccessKey: AWS_SECRET_ACCESS_KEY
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-bedrock
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        # https://docs.aws.amazon.com/general/latest/gr/bedrock.html
+        # https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+        hostname: bedrock-runtime.AWS_REGION.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: enable-backend-tls-for-aws
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: aws-bedrock
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.AWS_REGION.amazonaws.com
