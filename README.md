@@ -17,7 +17,6 @@ Please register for the meeting, add agenda points, and get involved.
 
 
 [meeting]: https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0
-[blog]: https://blog.envoyproxy.io/introducing-envoy-gateway-ad385cc59532
 [Envoy Slack workspace]: https://communityinviter.com/apps/envoyproxy/envoy
 [Envoy AI Gateway channel]: https://envoyproxy.slack.com/archives/C07Q4N24VAA
 [Code of conduct]: https://github.com/cncf/foundation/blob/main/code-of-conduct.md
