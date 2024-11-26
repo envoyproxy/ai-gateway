@@ -1,0 +1,54 @@
+name: Commit
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  style:
+    # This verifies the code is formatted correctly via `make precommit`.
+    name: Code Style Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Run code style check
+        run: make check
+
+  unittest:
+    name: Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Run unit tests
+        run: make test
