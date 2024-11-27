@@ -7,16 +7,12 @@ lint: golangci-lint
 	@$(GOLANGCI_LINT) run --build-tags=$(LINT_BUILD_TAGS) ./...
 
 .PHONY: format
-format: goimports gofumpt
+format: gci gofumpt
 	@echo "format => *.go"
 	@find . -type f -name '*.go' | xargs gofmt -s -w
 	@find . -type f -name '*.go' | xargs $(GO_FUMPT) -l -w
-	@echo "goimports => *.go"
-	@for f in `find . -name '*.go'`; do \
-	    awk '/^import \($$/,/^\)$$/{if($$0=="")next}{print}' $$f > /tmp/fmt; \
-	    mv /tmp/fmt $$f; \
-	done
-	@$(GO_IMPORTS) -w -local github.com/envoyproxy/ai-gateway `find . -name '*.go'`
+	@echo "gci => *.go"
+	@$(GCI) write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
 
 .PHONY: tidy
 tidy: ## Runs go mod tidy on every module

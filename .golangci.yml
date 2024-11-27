@@ -9,9 +9,7 @@ linters:
     - exportloopref
     - importas
     - gci
-    - gofmt
     - gofumpt
-    - goimports
     - gocritic
     - gosec
     - govet
@@ -70,12 +68,6 @@ linters-settings:
       - default
       # Groups all imports with the specified Prefix.
       - prefix(github.com/envoyproxy/ai-gateway)
-  gofmt:
-    simplify: true
-  goimports:
-    # put imports beginning with prefix after 3rd-party packages;
-    # it's a comma-separated list of prefixes
-    local-prefixes: github.com/envoyproxy/ai-gateway
   govet:
     enable-all: true
     disable:
