@@ -32,7 +32,7 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: apigen format tidy lint
+precommit: tidy apigen format lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
@@ -44,7 +44,7 @@ check:
 	fi
 
 # This runs the unit tests for the codebase.
-.PHONY: test
+.PHONY: testf
 test:
 	@echo "test => ./..."
 	@go test -v $(shell go list ./... | grep -v e2e)
