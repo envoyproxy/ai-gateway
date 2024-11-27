@@ -3,11 +3,13 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 ## Tool binary names.
+CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 GO_FUMPT = $(LOCALBIN)/gofumpt
 GCI = $(LOCALBIN)/gci
 
 ## Tool versions.
+CONTROLLER_TOOLS_VERSION ?= v0.16.2
 GOLANGCI_LINT_VERSION ?= v1.60.1
 GO_FUMPT_VERSION ?= v0.6.0
 GCI_VERSION ?= v0.13.5
@@ -26,6 +28,11 @@ $(GO_FUMPT): $(LOCALBIN)
 gci: $(GCI)
 $(GCI): $(LOCALBIN)
 	$(call go-install-tool,$(GCI),github.com/daixiang0/gci,$(GCI_VERSION))
+
+.PHONY: controller-gen
+controller-gen: $(CONTROLLER_GEN)
+$(CONTROLLER_GEN): $(LOCALBIN)
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
