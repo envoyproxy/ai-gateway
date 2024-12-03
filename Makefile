@@ -38,6 +38,7 @@ precommit: tidy apigen format lint
 .PHONY: check
 check: editorconfig-checker
 	@$(MAKE) precommit
+	@echo "running editorconfig-checker"
 	@$(EDITORCONFIG_CHECKER)
 	@if [ ! -z "`git status -s`" ]; then \
 		echo "The following differences will fail CI until committed:"; \
