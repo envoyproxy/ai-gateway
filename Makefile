@@ -44,7 +44,7 @@ check:
 	fi
 
 # This runs the unit tests for the codebase.
-.PHONY: testf
+.PHONY: test
 test:
 	@echo "test => ./..."
 	@go test -v $(shell go list ./... | grep -v e2e)
