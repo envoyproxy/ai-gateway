@@ -77,9 +77,7 @@ spec:
                     - AWSBedrock
                     type: string
                   version:
-                    description: |-
-                      Version is the version of the API schema.
-                      This will be used to determine the compatibility of the input and output API schema.
+                    description: Version is the version of the API schema.
                     type: string
                 required:
                 - schema

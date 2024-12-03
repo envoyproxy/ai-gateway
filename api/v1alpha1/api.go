@@ -100,7 +100,6 @@ type LLMAPISchema struct {
 	Schema APISchema `json:"schema"`
 
 	// Version is the version of the API schema.
-	// This will be used to determine the compatibility of the input and output API schema.
 	Version string `json:"version,omitempty"`
 }
 
