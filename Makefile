@@ -74,7 +74,7 @@ test:
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
-# Example usage:
+# Example:
 # - `make build.controler GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
@@ -124,7 +124,8 @@ docker-build.%:
 	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux"
 	docker buildx build . -t $(OCI_REGISTRY)/$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
-# This builds docker images for all commands.
+# This builds docker images for all commands. All options for `docker-build.%` apply.
+#
 # Example:
 # - `make docker-build`
 # - `make docker-build ENABLE_MULTI_PLATFORMS=true DOCKER_BUILD_ARGS="--load"`
