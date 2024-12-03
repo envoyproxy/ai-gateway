@@ -91,8 +91,8 @@ type LLMBackendSpec struct {
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
 //
-// Note that this is vendor specific, and the compatibility of the input and output API schema
-// is determined by them.
+// Note that this is vendor specific, and the stability of the API schema is not guaranteed by
+// the ai-gateway, but by the vendor via proper versioning.
 type LLMAPISchema struct {
 	// Schema is the API schema of the LLMRoute or LLMBackend.
 	//
