@@ -3,9 +3,9 @@
 
 ## Envoy AI Gateway Goals
 
-The high-level goal of the Envoy AI Gateway project is to facilitate seamless communication between application clients and multiple Generative AI (GenAI) services by leveraging Envoy Gateway. 
+The high-level goal of the Envoy AI Gateway project is to facilitate seamless communication between application clients and multiple Generative AI (GenAI) services by leveraging Envoy Gateway.
 
-This open-source project aims to reduce integration complexity for developers and provide a secure, scalable solution for handling GenAI-specific traffic routing. 
+This open-source project aims to reduce integration complexity for developers and provide a secure, scalable solution for handling GenAI-specific traffic routing.
 
 Envoy AI Gateway will offer a flexible and simple API for configuring GenAI traffic handling with Envoy, leveraging Envoy Gateway.
 
@@ -21,7 +21,7 @@ Envoy AI Gateway will simplify the process of setting up an AI Gateway to manage
 
 Envoy AI Gateway enables Platform Engineers to provide a Gateway solution that enables application developers to focus on leveraging GenAI for feature development.
 
-* **Preset Envoy Gateway Configurations:** Default configurations that simplify setup of routing to GenAI Services, making it accessible to application developers.  
+* **Preset Envoy Gateway Configurations:** Default configurations that simplify setup of routing to GenAI Services, making it accessible to application developers.
 * **Leveraging  Envoy:** The project aims to leverage the functionality of the Envoy Gateway control plane and the Envoy Proxy data plane.
 
 ## Non-Objectives
