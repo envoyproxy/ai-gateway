@@ -39,7 +39,7 @@ type LLMRouteSpec struct {
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
 	// +kubebuilder:validation:MaxItems=128
-	BackendRefs []LLMBackendLocalRef `json:"backends,omitempty"`
+	BackendRefs []LLMBackendLocalRef `json:"backendRefs,omitempty"`
 }
 
 // LLMBackendLocalRef is a reference to a LLMBackend resource in the "local" namespace.

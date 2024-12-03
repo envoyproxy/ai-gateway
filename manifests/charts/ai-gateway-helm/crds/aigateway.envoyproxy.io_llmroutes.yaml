@@ -43,7 +43,7 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              backends:
+              backendRefs:
                 description: |-
                   BackendRefs lists the LLMBackends that this LLMRoute will route traffic to.
                   The namespace is "local", i.e. the same namespace as the LLMRoute.
