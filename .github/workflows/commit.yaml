@@ -52,3 +52,6 @@ jobs:
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Run unit tests
         run: make test
+
+  docker_builds:
+    uses: ./.github/workflows/docker_builds_template.yaml
