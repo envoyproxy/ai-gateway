@@ -14,7 +14,8 @@ import (
 //
 // The InputSchema is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
-// on the output schema of the LLMBackend while doing the other necessary jobs like rate limit, etc.
+// on the output schema of the LLMBackend while doing the other necessary jobs like
+// upstream authentication, rate limit, etc.
 type LLMRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
