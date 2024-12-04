@@ -43,9 +43,10 @@ spec:
             properties:
               outputSchema:
                 description: |-
-                  APISchema specifies the API schema of the output that this LLMBackend can accept.
+                  APISchema specifies the API schema of the output format of requests from
+                  Envoy that this LLMBackend can accept as incoming requests.
                   Based on this schema, the ai-gateway will perform the necessary transformation for
-                  the pair of LLMRoute.APISchema and LLMBackend.APISchema.
+                  the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
 
                   This is required to be set.
                 properties:

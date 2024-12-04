@@ -25,7 +25,8 @@ spec:
 
           The InputSchema is used to determine the structure of the requests that the Gateway will
           receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
-          on the output schema of the LLMBackend while doing the other necessary jobs like rate limit, etc.
+          on the output schema of the LLMBackend while doing the other necessary jobs like
+          upstream authentication, rate limit, etc.
         properties:
           apiVersion:
             description: |-
@@ -69,6 +70,8 @@ spec:
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
                   Based on this schema, the ai-gateway will perform the necessary transformation to the
                   output schema specified in the selected LLMBackend during the routing process.
+
+                  Currently, the only supported schema is OpenAI as the input schema.
                 properties:
                   schema:
                     description: Schema is the API schema of the LLMRoute or LLMBackend.

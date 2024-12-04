@@ -37,6 +37,8 @@ type LLMRouteSpec struct {
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected LLMBackend during the routing process.
+	//
+	// Currently, the only supported schema is OpenAI as the input schema.
 	APISchema LLMAPISchema `json:"inputSchema"`
 	// TargetRefs are the names of the Gateway resources this policy is being attached to.
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
@@ -79,9 +81,10 @@ type LLMBackendList struct {
 
 // LLMBackendSpec details the LLMBackend configuration.
 type LLMBackendSpec struct {
-	// APISchema specifies the API schema of the output that this LLMBackend can accept.
+	// APISchema specifies the API schema of the output format of requests from
+	// Envoy that this LLMBackend can accept as incoming requests.
 	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of LLMRoute.APISchema and LLMBackend.APISchema.
+	// the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
 	//
 	// This is required to be set.
 	APISchema LLMAPISchema `json:"outputSchema"`
