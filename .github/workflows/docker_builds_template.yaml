@@ -5,7 +5,7 @@ on:
 
 jobs:
   docker_builds:
-    name: command_name=${{ matrix.target.command_name }}
+    name: ${{ matrix.target.command_name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
