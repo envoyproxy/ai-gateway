@@ -113,7 +113,7 @@ type APISchema string
 const (
 	// APISchemaOpenAI is the OpenAI schema.
 	//
-	// https://platform.openai.com/docs/overview
+	// https://github.com/openai/openai-openapi
 	APISchemaOpenAI APISchema = "OpenAI"
 	// APISchemaAWSBedrock is the AWS Bedrock schema.
 	//
