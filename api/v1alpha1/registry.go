@@ -5,6 +5,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
+func init() {
+	SchemeBuilder.Register(&LLMRoute{}, &LLMRouteList{})
+	SchemeBuilder.Register(&LLMBackend{}, &LLMBackendList{})
+}
+
 const GroupName = "aigateway.envoyproxy.io"
 
 var (

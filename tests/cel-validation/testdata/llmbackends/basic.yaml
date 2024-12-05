@@ -1,0 +1,8 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMBackend
+metadata:
+  name: dog-backend
+  namespace: default
+spec:
+  outputSchema:
+    schema: AWSBedrock

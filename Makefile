@@ -21,7 +21,7 @@ ENABLE_MULTI_PLATFORMS ?= false
 .PHONY: lint
 lint: golangci-lint
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run ./...
+	@$(GOLANGCI_LINT) run --build-tags==celvalidation ./...
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
@@ -66,6 +66,17 @@ check: editorconfig-checker
 test:
 	@echo "test => ./..."
 	@go test -v $(shell go list ./... | grep -v e2e)
+
+
+# This runs the integration tests of CEL validation rules in API definitions.
+ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
+.PHONY: test-cel
+test-cel: envtest apigen format
+	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
+  		echo "Run CEL Validation on k8s $$k8sVersion"; \
+        KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
+                 go test ./tests/cel-validation --tags celvalidation -count=1; \
+    done
 
 # This builds a binary for the given command under the internal/cmd directory.
 #

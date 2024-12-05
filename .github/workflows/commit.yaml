@@ -53,6 +53,26 @@ jobs:
       - name: Run unit tests
         run: make test
 
+  cel_validation:
+    name: CEL Validation Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Run unit tests
+        run: make test-cel
+
   docker_builds:
     name: Docker Build and/or Push
+    needs: [cel_validation]
     uses: ./.github/workflows/docker_builds_template.yaml

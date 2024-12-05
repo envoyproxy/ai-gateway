@@ -66,8 +66,6 @@ spec:
                 maxItems: 128
                 type: array
               inputSchema:
-                default:
-                  schema: OpenAI
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
                   Based on this schema, the ai-gateway will perform the necessary transformation to the
@@ -88,7 +86,7 @@ spec:
                 - schema
                 type: object
                 x-kubernetes-validations:
-                - rule: self.inputSchema.schema == 'OpenAI'
+                - rule: self.schema == 'OpenAI'
               targetRefs:
                 description: |-
                   TargetRefs are the names of the Gateway resources this policy is being attached to.

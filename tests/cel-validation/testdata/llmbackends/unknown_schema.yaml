@@ -1,0 +1,9 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMBackend
+metadata:
+  name: cat-backend
+  namespace: default
+spec:
+  outputSchema:
+    # Schema must be one of the known schemas, so this is invalid.
+    schema: SomeRandomVendor
