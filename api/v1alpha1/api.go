@@ -39,6 +39,10 @@ type LLMRouteSpec struct {
 	// output schema specified in the selected LLMBackend during the routing process.
 	//
 	// Currently, the only supported schema is OpenAI as the input schema.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default={schema: OpenAI}
+	// +kubebuilder:validation:XValidation:rule="self.inputSchema.schema == 'OpenAI'"
 	APISchema LLMAPISchema `json:"inputSchema"`
 	// TargetRefs are the names of the Gateway resources this policy is being attached to.
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
