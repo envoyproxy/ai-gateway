@@ -5,7 +5,7 @@ on:
 
 jobs:
   docker_builds:
-    name: Build and/or Push Docker Images
+    name: command_name=${{ matrix.target.command_name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -53,11 +53,10 @@ jobs:
       # * Only use the tag if the event is a tag event, otherwise use "latest".
       # * Build for both amd64 and arm64 platforms.
       - name: Build and Push Image
-        if: github.event_name == 'push'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
             TAG="latest"
           fi
-          make docker-build.${{ matrix.target.command_name }} ENABLE_MULTI_PLATFORMS=true TAG=$TAG BUILDX_ARGS="--push"
+          make docker-build.${{ matrix.target.command_name }} ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"

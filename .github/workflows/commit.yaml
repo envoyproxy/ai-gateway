@@ -54,4 +54,5 @@ jobs:
         run: make test
 
   docker_builds:
+    name: Docker Build and/or Push
     uses: ./.github/workflows/docker_builds_template.yaml
