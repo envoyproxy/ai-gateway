@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
@@ -47,10 +46,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body *extprocv3.H
 			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
 		}
 	}
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "host", Value: "api.openai.com"}}},
-	}
-	return headerMutation, nil, override, req.Model, nil
+	return nil, nil, override, req.Model, nil
 }
 
 // ResponseBody implements [Translator.ResponseBody].

@@ -52,10 +52,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 					require.Nil(t, mode)
 				}
 
-				require.NotNil(t, hm)
-				require.Len(t, hm.SetHeaders, 1)
-				require.Equal(t, "host", hm.SetHeaders[0].Header.Key)
-				require.Equal(t, "api.openai.com", hm.SetHeaders[0].Header.Value)
+				require.Nil(t, hm)
 			})
 		}
 	})
