@@ -123,3 +123,138 @@ const (
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
 	APISchemaAWSBedrock APISchema = "AWSBedrock"
 )
+
+// +kubebuilder:object:root=true
+
+// LLMBackendTrafficPolicy controls the flow of traffic to the backend.
+type LLMBackendTrafficPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// Spec defines the details of the LLMBackend traffic policy.
+	Spec LLMBackendTrafficPolicySpec `json:"spec,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// LLMBackendTrafficPolicyList contains a list of LLMBackendTrafficPolicy
+type LLMBackendTrafficPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []LLMBackendTrafficPolicy `json:"items"`
+}
+
+// LLMBackendTrafficPolicySpec defines the details of llm backend traffic policy
+// like rateLimit, timeout etc.
+type LLMBackendTrafficPolicySpec struct {
+	// BackendRefs lists the LLMBackends that this traffic policy will apply
+	// The namespace is "local", i.e. the same namespace as the LLMRoute.
+	//
+	BackendRef LLMBackendLocalRef `json:"backendRef,omitempty"`
+	// RateLimit defines the rate limit policy.
+	RateLimit *LLMTrafficPolicyRateLimit `json:"rateLimit,omitempty"`
+}
+
+type LLMTrafficPolicyRateLimit struct {
+	// Rules defines the rate limit rules.
+	Rules []LLMTrafficPolicyRateLimitRule `json:"rules,omitempty"`
+}
+
+// LLMTrafficPolicyRateLimitRule defines the details of the rate limit policy.
+type LLMTrafficPolicyRateLimitRule struct {
+	// Headers is a list of request headers to match. Multiple header values are ANDed together,
+	// meaning, a request MUST match all the specified headers.
+	// At least one of headers or sourceCIDR condition must be specified.
+	Headers []LLMPolicyRateLimitHeaderMatch `json:"headers,omitempty"`
+	// +kubebuilder:validation:MinItems=1
+	Limits []LLMPolicyRateLimitValue `json:"limits"`
+}
+
+// LLMPolicyRateLimitHeaderMatch defines the match attributes within the HTTP Headers of the request.
+type LLMPolicyRateLimitHeaderMatch struct {
+	// Type specifies how to match against the value of the header.
+	Type LLMPolicyRateLimitStringMatchType `json:"type"`
+
+	// Name of the HTTP header.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	Name string `json:"name"`
+
+	// Value within the HTTP header. Due to the
+	// case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+	// Do not set this field when Type="Distinct", implying matching on any/all unique
+	// values within the header.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=1024
+	Value *string `json:"value,omitempty"`
+}
+
+// LLMPolicyRateLimitStringMatchType specifies the semantics of how string values should be compared.
+// Valid LLMPolicyRateLimitStringMatchType values are "Exact", "RegularExpression", and "Distinct".
+//
+// +kubebuilder:validation:Enum=Exact;RegularExpression;Distinct
+type LLMPolicyRateLimitStringMatchType string
+
+// HeaderMatchType constants.
+const (
+	// LLMPolicyRateLimitStringMatchHeaderMatchExact matches the exact value of the Value field against the value of
+	// the specified HTTP Header.
+	LLMPolicyRateLimitStringMatchHeaderMatchExact LLMPolicyRateLimitStringMatchType = "Exact"
+	// HeaderMatchRegularExpression matches a regular expression against the value of the
+	// specified HTTP Header. The regex string must adhere to the syntax documented in
+	// https://github.com/google/re2/wiki/Syntax.
+	HeaderMatchRegularExpression LLMPolicyRateLimitStringMatchType = "RegularExpression"
+	// LLMPolicyRateLimitStringMatchHeaderMatchDistinct matches any and all possible unique values encountered in the
+	// specified HTTP Header. Note that each unique value will receive its own rate limit
+	// bucket.
+	// Note: This is only supported for Global Rate Limits.
+	LLMPolicyRateLimitStringMatchHeaderMatchDistinct LLMPolicyRateLimitStringMatchType = "Distinct"
+)
+
+// LLMPolicyRateLimitValue defines the limits for rate limiting.
+type LLMPolicyRateLimitValue struct {
+	// Type specifies the type of rate limit.
+	//
+	// +kubebuilder:default=Token
+	Type LLMPolicyRateLimitType `json:"type,omitempty"`
+	// Quantity specifies the number of requests or tokens allowed in the given interval.
+	Quantity uint `json:"quantity"`
+	// Unit specifies the interval for the rate limit.
+	//
+	// +kubebuilder:default=Minute
+	Unit LLMPolicyRateLimitUnit `json:"unit,omitempty"`
+}
+
+// LLMPolicyRateLimitType specifies the type of rate limit.
+// Valid RateLimitType values are "Request" and "Token".
+//
+// +kubebuilder:validation:Enum=Request;Token
+type LLMPolicyRateLimitType string
+
+const (
+	// LLMPolicyRateLimitTypeRequest specifies the rate limit to be based on the number of requests.
+	LLMPolicyRateLimitTypeRequest LLMPolicyRateLimitType = "Request"
+	// LLMPolicyRateLimitTypeToken specifies the rate limit to be based on the number of tokens.
+	LLMPolicyRateLimitTypeToken LLMPolicyRateLimitType = "Token"
+)
+
+// LLMPolicyRateLimitUnit specifies the intervals for setting rate limits.
+// Valid RateLimitUnit values are "Second", "Minute", "Hour", and "Day".
+//
+// +kubebuilder:validation:Enum=Second;Minute;Hour;Day
+type LLMPolicyRateLimitUnit string
+
+// RateLimitUnit constants.
+const (
+	// LLMPolicyRateLimitUnitSecond specifies the rate limit interval to be 1 second.
+	LLMPolicyRateLimitUnitSecond LLMPolicyRateLimitUnit = "Second"
+
+	// LLMPolicyRateLimitUnitMinute specifies the rate limit interval to be 1 minute.
+	LLMPolicyRateLimitUnitMinute LLMPolicyRateLimitUnit = "Minute"
+
+	// LLMPolicyRateLimitUnitHour specifies the rate limit interval to be 1 hour.
+	LLMPolicyRateLimitUnitHour LLMPolicyRateLimitUnit = "Hour"
+
+	// LLMPolicyRateLimitUnitDay specifies the rate limit interval to be 1 day.
+	LLMPolicyRateLimitUnitDay LLMPolicyRateLimitUnit = "Day"
+)
