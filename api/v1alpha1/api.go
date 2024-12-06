@@ -150,7 +150,6 @@ type LLMBackendTrafficPolicySpec struct {
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
 	BackendRef LLMBackendLocalRef `json:"backendRef,omitempty"`
-	
 	// RateLimit defines the rate limit policy.
 	RateLimit *LLMTrafficPolicyRateLimit `json:"rateLimit,omitempty"`
 }
