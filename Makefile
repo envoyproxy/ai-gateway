@@ -88,7 +88,7 @@ test-cel: envtest apigen format
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
 # Example:
-# - `make build.controler GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
+# - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%

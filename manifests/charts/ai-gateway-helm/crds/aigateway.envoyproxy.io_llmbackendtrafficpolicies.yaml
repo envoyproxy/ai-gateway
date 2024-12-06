@@ -1,0 +1,183 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: llmbackendtrafficpolicies.aigateway.envoyproxy.io
+spec:
+  group: aigateway.envoyproxy.io
+  names:
+    kind: LLMBackendTrafficPolicy
+    listKind: LLMBackendTrafficPolicyList
+    plural: llmbackendtrafficpolicies
+    singular: llmbackendtrafficpolicy
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LLMBackendTrafficPolicy controls the flow of traffic to the backend.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the details of the LLMBackend traffic policy.
+            properties:
+              backendRef:
+                description: |-
+                  BackendRefs lists the LLMBackends that this traffic policy will apply
+                  The namespace is "local", i.e. the same namespace as the LLMRoute.
+                properties:
+                  name:
+                    description: Name is the name of the LLMBackend in the same namespace
+                      as the LLMRoute.
+                    type: string
+                required:
+                - name
+                type: object
+              rateLimit:
+                description: RateLimit defines the rate limit policy.
+                properties:
+                  rules:
+                    description: Rules defines the rate limit rules.
+                    items:
+                      description: LLMTrafficPolicyRateLimitRule defines the details
+                        of the rate limit policy.
+                      properties:
+                        headers:
+                          description: |-
+                            Headers is a list of request headers to match. Multiple header values are ANDed together,
+                            meaning, a request MUST match all the specified headers.
+                            At least one of headers or sourceCIDR condition must be specified.
+                          items:
+                            description: LLMPolicyRateLimitHeaderMatch defines the
+                              match attributes within the HTTP Headers of the request.
+                            properties:
+                              name:
+                                description: Name of the HTTP header.
+                                maxLength: 256
+                                minLength: 1
+                                type: string
+                              type:
+                                description: Type specifies how to match against the
+                                  value of the header.
+                                enum:
+                                - Exact
+                                - RegularExpression
+                                - Distinct
+                                type: string
+                              value:
+                                description: |-
+                                  Value within the HTTP header. Due to the
+                                  case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                  Do not set this field when Type="Distinct", implying matching on any/all unique
+                                  values within the header.
+                                maxLength: 1024
+                                type: string
+                            required:
+                            - name
+                            - type
+                            type: object
+                          type: array
+                        limits:
+                          description: |-
+                            Limits holds the rate limit values.
+                            This limit is applied for traffic flows when the selectors
+                            compute to True, causing the request to be counted towards the limit.
+                            The limit is enforced and the request is ratelimited, i.e. a response with
+                            429 HTTP status code is sent back to the client when
+                            the selected requests have reached the limit.
+                          items:
+                            description: LLMPolicyRateLimitValue defines the limits
+                              for rate limiting.
+                            properties:
+                              quantity:
+                                description: Quantity specifies the number of requests
+                                  or tokens allowed in the given interval.
+                                type: integer
+                              type:
+                                default: Request
+                                description: Type specifies the type of rate limit.
+                                enum:
+                                - Request
+                                - Token
+                                type: string
+                              unit:
+                                default: Minute
+                                description: Unit specifies the interval for the rate
+                                  limit.
+                                enum:
+                                - Second
+                                - Minute
+                                - Hour
+                                - Day
+                                type: string
+                            required:
+                            - quantity
+                            - type
+                            - unit
+                            type: object
+                          minItems: 1
+                          type: array
+                        metadata:
+                          description: Metadata is a list of metadata to match. Multiple
+                            metadata values are ANDed together,
+                          items:
+                            description: |-
+                              LLMPolicyRateLimitMetadataMatch defines the match attributes within the metadata from dynamic or route entry.
+                              The match will be ignored if the metadata is not present.
+                            properties:
+                              defaultValue:
+                                description: |-
+                                  DefaultValue specifies an optional value to use if “metadata“ is empty.
+                                  Default value is "unknown".
+                                type: string
+                              name:
+                                description: Name specifies the key of the metadata
+                                  to match.
+                                type: string
+                              paths:
+                                description: Paths specifies the value of the metadata
+                                  to match.
+                                items:
+                                  type: string
+                                maxItems: 32
+                                type: array
+                              type:
+                                default: Dynamic
+                                description: Type specifies the type of metadata to
+                                  match.
+                                enum:
+                                - Dynamic
+                                - RouteEntry
+                                type: string
+                            required:
+                            - name
+                            - type
+                            type: object
+                          type: array
+                      required:
+                      - limits
+                      type: object
+                    type: array
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
