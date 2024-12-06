@@ -96,13 +96,6 @@ spec:
                             type: object
                           type: array
                         limits:
-                          description: |-
-                            Limits holds the rate limit values.
-                            This limit is applied for traffic flows when the selectors
-                            compute to True, causing the request to be counted towards the limit.
-                            The limit is enforced and the request is ratelimited, i.e. a response with
-                            429 HTTP status code is sent back to the client when
-                            the selected requests have reached the limit.
                           items:
                             description: LLMPolicyRateLimitValue defines the limits
                               for rate limiting.
@@ -112,7 +105,7 @@ spec:
                                   or tokens allowed in the given interval.
                                 type: integer
                               type:
-                                default: Request
+                                default: Token
                                 description: Type specifies the type of rate limit.
                                 enum:
                                 - Request
@@ -130,47 +123,8 @@ spec:
                                 type: string
                             required:
                             - quantity
-                            - type
-                            - unit
                             type: object
                           minItems: 1
-                          type: array
-                        metadata:
-                          description: Metadata is a list of metadata to match. Multiple
-                            metadata values are ANDed together,
-                          items:
-                            description: |-
-                              LLMPolicyRateLimitMetadataMatch defines the match attributes within the metadata from dynamic or route entry.
-                              The match will be ignored if the metadata is not present.
-                            properties:
-                              defaultValue:
-                                description: |-
-                                  DefaultValue specifies an optional value to use if “metadata“ is empty.
-                                  Default value is "unknown".
-                                type: string
-                              name:
-                                description: Name specifies the key of the metadata
-                                  to match.
-                                type: string
-                              paths:
-                                description: Paths specifies the value of the metadata
-                                  to match.
-                                items:
-                                  type: string
-                                maxItems: 32
-                                type: array
-                              type:
-                                default: Dynamic
-                                description: Type specifies the type of metadata to
-                                  match.
-                                enum:
-                                - Dynamic
-                                - RouteEntry
-                                type: string
-                            required:
-                            - name
-                            - type
-                            type: object
                           type: array
                       required:
                       - limits

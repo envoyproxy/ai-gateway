@@ -37,6 +37,7 @@ func runTest(m *testing.M) int {
 	for _, crd := range []string{
 		"aigateway.envoyproxy.io_llmroutes.yaml",
 		"aigateway.envoyproxy.io_llmbackends.yaml",
+		"aigateway.envoyproxy.io_llmbackendtrafficpolicies.yaml",
 	} {
 		crds = append(crds, filepath.Join(base, crd))
 	}
@@ -129,6 +130,42 @@ func TestLLMBackends(t *testing.T) {
 			} else {
 				require.NoError(t, c.Create(ctx, llmBackend))
 				require.NoError(t, c.Delete(ctx, llmBackend))
+			}
+		})
+	}
+}
+
+func TestLLMBackendTrafficPolicy(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
+	defer cancel()
+
+	for _, tc := range []struct {
+		name   string
+		expErr string
+	}{
+		{name: "basic.yaml"},
+		{
+			name:   "unknown_ratelimit_type.yaml",
+			expErr: "spec.rateLimit.rules[0].limits[0].type: Unsupported value: \"Foo\": supported values: \"Request\", \"Token\"",
+		},
+		{
+			name:   "unknown_ratelimit_unit.yaml",
+			expErr: "spec.rateLimit.rules[0].limits[0].unit: Unsupported value: \"Foo\": supported values: \"Second\", \"Minute\", \"Hour\", \"Day\"",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := tests.ReadFile(path.Join("testdata/llmbackendtrafficpolicies", tc.name))
+			require.NoError(t, err)
+
+			llmBackendTrafficPolicy := &aigv1a1.LLMBackendTrafficPolicy{}
+			err = yaml.UnmarshalStrict(data, llmBackendTrafficPolicy)
+			require.NoError(t, err)
+
+			if tc.expErr != "" {
+				require.ErrorContains(t, c.Create(ctx, llmBackendTrafficPolicy), tc.expErr)
+			} else {
+				require.NoError(t, c.Create(ctx, llmBackendTrafficPolicy))
+				require.NoError(t, c.Delete(ctx, llmBackendTrafficPolicy))
 			}
 		})
 	}

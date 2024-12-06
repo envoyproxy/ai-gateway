@@ -165,30 +165,8 @@ type LLMTrafficPolicyRateLimitRule struct {
 	// meaning, a request MUST match all the specified headers.
 	// At least one of headers or sourceCIDR condition must be specified.
 	Headers []LLMPolicyRateLimitHeaderMatch `json:"headers,omitempty"`
-	// Metadata is a list of metadata to match. Multiple metadata values are ANDed together,
-	Metadata []LLMPolicyRateLimitMetadataMatch `json:"metadata,omitempty"`
-	// Limits holds the rate limit values.
-	// This limit is applied for traffic flows when the selectors
-	// compute to True, causing the request to be counted towards the limit.
-	// The limit is enforced and the request is ratelimited, i.e. a response with
-	// 429 HTTP status code is sent back to the client when
-	// the selected requests have reached the limit.
-	//
 	// +kubebuilder:validation:MinItems=1
 	Limits []LLMPolicyRateLimitValue `json:"limits"`
-}
-
-type LLMPolicyRateLimitModelNameMatch struct {
-	// Type specifies how to match against the value of the model name.
-	// Only "Exact" and "Distinct" are supported.
-	// +kubebuilder:validation:Enum=Exact;Distinct
-	Type LLMPolicyRateLimitStringMatchType `json:"type"`
-	// Value specifies the value of the model name base on the match Type.
-	// It is ignored if the match Type is "Distinct".
-	//
-	// +optional
-	// +kubebuilder:validation:MaxLength=1024
-	Value *string `json:"value"`
 }
 
 // LLMPolicyRateLimitHeaderMatch defines the match attributes within the HTTP Headers of the request.
@@ -219,62 +197,32 @@ type LLMPolicyRateLimitStringMatchType string
 
 // HeaderMatchType constants.
 const (
-	// HeaderMatchExact matches the exact value of the Value field against the value of
+	// LLMPolicyRateLimitStringMatchHeaderMatchExact matches the exact value of the Value field against the value of
 	// the specified HTTP Header.
-	HeaderMatchExact LLMPolicyRateLimitStringMatchType = "Exact"
+	LLMPolicyRateLimitStringMatchHeaderMatchExact LLMPolicyRateLimitStringMatchType = "Exact"
 	// HeaderMatchRegularExpression matches a regular expression against the value of the
 	// specified HTTP Header. The regex string must adhere to the syntax documented in
 	// https://github.com/google/re2/wiki/Syntax.
 	HeaderMatchRegularExpression LLMPolicyRateLimitStringMatchType = "RegularExpression"
-	// HeaderMatchDistinct matches any and all possible unique values encountered in the
+	// LLMPolicyRateLimitStringMatchHeaderMatchDistinct matches any and all possible unique values encountered in the
 	// specified HTTP Header. Note that each unique value will receive its own rate limit
 	// bucket.
 	// Note: This is only supported for Global Rate Limits.
-	HeaderMatchDistinct LLMPolicyRateLimitStringMatchType = "Distinct"
-)
-
-// LLMPolicyRateLimitMetadataMatch defines the match attributes within the metadata from dynamic or route entry.
-// The match will be ignored if the metadata is not present.
-type LLMPolicyRateLimitMetadataMatch struct {
-	// Type specifies the type of metadata to match.
-	//
-	// +kubebuilder:default=Dynamic
-	Type LLMPolicyRateLimitMetadataMatchMetadataType `json:"type"`
-	// Name specifies the key of the metadata to match.
-	Name string `json:"name"`
-	// Paths specifies the value of the metadata to match.
-	// +optional
-	// +kubebuilder:validation:MaxItems=32
-	Paths []string `json:"paths,omitempty"`
-	// DefaultValue specifies an optional value to use if “metadata“ is empty.
-	// Default value is "unknown".
-	//
-	// +optional
-	DefaultValue *string `json:"defaultValue,omitempty"`
-}
-
-// LLMPolicyRateLimitMetadataMatchMetadataType specifies the type of metadata to match.
-//
-// +kubebuilder:validation:Enum=Dynamic;RouteEntry
-type LLMPolicyRateLimitMetadataMatchMetadataType string
-
-const (
-	// MetadataTypeDynamic specifies that the source of metadata is dynamic.
-	MetadataTypeDynamic LLMPolicyRateLimitMetadataMatchMetadataType = "Dynamic"
+	LLMPolicyRateLimitStringMatchHeaderMatchDistinct LLMPolicyRateLimitStringMatchType = "Distinct"
 )
 
 // LLMPolicyRateLimitValue defines the limits for rate limiting.
 type LLMPolicyRateLimitValue struct {
 	// Type specifies the type of rate limit.
 	//
-	// +kubebuilder:default=Request
-	Type LLMPolicyRateLimitType `json:"type"`
+	// +kubebuilder:default=Token
+	Type LLMPolicyRateLimitType `json:"type,omitempty"`
 	// Quantity specifies the number of requests or tokens allowed in the given interval.
 	Quantity uint `json:"quantity"`
 	// Unit specifies the interval for the rate limit.
 	//
 	// +kubebuilder:default=Minute
-	Unit LLMPolicyRateLimitUnit `json:"unit"`
+	Unit LLMPolicyRateLimitUnit `json:"unit,omitempty"`
 }
 
 // LLMPolicyRateLimitType specifies the type of rate limit.
@@ -284,10 +232,10 @@ type LLMPolicyRateLimitValue struct {
 type LLMPolicyRateLimitType string
 
 const (
-	// RateLimitTypeRequest specifies the rate limit to be based on the number of requests.
-	RateLimitTypeRequest LLMPolicyRateLimitType = "Request"
-	// RateLimitTypeToken specifies the rate limit to be based on the number of tokens.
-	RateLimitTypeToken LLMPolicyRateLimitType = "Token"
+	// LLMPolicyRateLimitTypeRequest specifies the rate limit to be based on the number of requests.
+	LLMPolicyRateLimitTypeRequest LLMPolicyRateLimitType = "Request"
+	// LLMPolicyRateLimitTypeToken specifies the rate limit to be based on the number of tokens.
+	LLMPolicyRateLimitTypeToken LLMPolicyRateLimitType = "Token"
 )
 
 // LLMPolicyRateLimitUnit specifies the intervals for setting rate limits.
@@ -298,29 +246,15 @@ type LLMPolicyRateLimitUnit string
 
 // RateLimitUnit constants.
 const (
-	// RateLimitUnitSecond specifies the rate limit interval to be 1 second.
-	RateLimitUnitSecond LLMPolicyRateLimitUnit = "Second"
+	// LLMPolicyRateLimitUnitSecond specifies the rate limit interval to be 1 second.
+	LLMPolicyRateLimitUnitSecond LLMPolicyRateLimitUnit = "Second"
 
-	// RateLimitUnitMinute specifies the rate limit interval to be 1 minute.
-	RateLimitUnitMinute LLMPolicyRateLimitUnit = "Minute"
+	// LLMPolicyRateLimitUnitMinute specifies the rate limit interval to be 1 minute.
+	LLMPolicyRateLimitUnitMinute LLMPolicyRateLimitUnit = "Minute"
 
-	// RateLimitUnitHour specifies the rate limit interval to be 1 hour.
-	RateLimitUnitHour LLMPolicyRateLimitUnit = "Hour"
+	// LLMPolicyRateLimitUnitHour specifies the rate limit interval to be 1 hour.
+	LLMPolicyRateLimitUnitHour LLMPolicyRateLimitUnit = "Hour"
 
-	// RateLimitUnitDay specifies the rate limit interval to be 1 day.
-	RateLimitUnitDay LLMPolicyRateLimitUnit = "Day"
+	// LLMPolicyRateLimitUnitDay specifies the rate limit interval to be 1 day.
+	LLMPolicyRateLimitUnitDay LLMPolicyRateLimitUnit = "Day"
 )
-
-// +kubebuilder:validation:XValidation:rule="has(self.group) ? self.group == 'gateway.networking.k8s.io' : true ", message="group must be gateway.networking.k8s.io"
-type TargetSelector struct {
-	// Group is the group that this selector targets. Defaults to gateway.networking.k8s.io
-	//
-	// +kubebuilder:default:="gateway.networking.k8s.io"
-	Group *gwapiv1a2.Group `json:"group,omitempty"`
-
-	// Kind is the resource kind that this selector targets.
-	Kind gwapiv1a2.Kind `json:"kind"`
-
-	// MatchLabels are the set of label selectors for identifying the targeted resource
-	MatchLabels map[string]string `json:"matchLabels"`
-}

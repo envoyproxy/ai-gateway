@@ -1,0 +1,20 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMBackendTrafficPolicy
+metadata:
+  name: dog-backend-traffic-policy
+  namespace: default
+spec:
+  backendRef:
+    name: dog
+  rateLimit:
+    rules:
+      - headers:
+          - name: x-ai-gateway-llm-model-name
+            type: Exact
+            value: gpt-4o-mini
+          - name: x-user-id
+            type: Distinct
+        limits:
+          - type: Token
+            quantity: 10
+            unit: Foo
