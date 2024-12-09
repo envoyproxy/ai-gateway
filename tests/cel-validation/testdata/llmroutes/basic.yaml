@@ -6,10 +6,5 @@ metadata:
 spec:
   inputSchema:
     schema: OpenAI
-  targetRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  backendRefs:
-    - name: dog-route
-    - name: cat-route
+  httpRouteRef:
+    name: dog-route
