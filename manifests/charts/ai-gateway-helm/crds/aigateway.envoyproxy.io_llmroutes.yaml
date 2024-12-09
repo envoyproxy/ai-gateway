@@ -52,7 +52,7 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              httpRoutRef:
+              httpRouteRef:
                 description: |-
                   HTTPRouteRef is the name of the HTTPRoute resource that the Gateway will use to route the traffic.
                   The namespace is "local", i.e. the same namespace as the LLMRoute.
@@ -91,63 +91,8 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - rule: self.schema == 'OpenAI'
-              targetRefs:
-                description: |-
-                  TargetRefs are the names of the Gateway resources this policy is being attached to.
-                  The namespace is "local", i.e. the same namespace as the LLMRoute.
-                items:
-                  description: |-
-                    LocalPolicyTargetReferenceWithSectionName identifies an API object to apply a
-                    direct policy to. This should be used as part of Policy resources that can
-                    target single resources. For more information on how this policy attachment
-                    mode works, and a sample Policy resource, refer to the policy attachment
-                    documentation for Gateway API.
-
-                    Note: This should only be used for direct policy attachment when references
-                    to SectionName are actually needed. In all other cases,
-                    LocalPolicyTargetReference should be used.
-                  properties:
-                    group:
-                      description: Group is the group of the target resource.
-                      maxLength: 253
-                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                      type: string
-                    kind:
-                      description: Kind is kind of the target resource.
-                      maxLength: 63
-                      minLength: 1
-                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
-                      type: string
-                    name:
-                      description: Name is the name of the target resource.
-                      maxLength: 253
-                      minLength: 1
-                      type: string
-                    sectionName:
-                      description: |-
-                        SectionName is the name of a section within the target resource. When
-                        unspecified, this targetRef targets the entire resource. In the following
-                        resources, SectionName is interpreted as the following:
-
-                        * Gateway: Listener name
-                        * HTTPRoute: HTTPRouteRule name
-                        * Service: Port name
-
-                        If a SectionName is specified, but does not exist on the targeted object,
-                        the Policy must fail to attach, and the policy implementation should record
-                        a `ResolvedRefs` or similar Condition in the Policy's status.
-                      maxLength: 253
-                      minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                      type: string
-                  required:
-                  - group
-                  - kind
-                  - name
-                  type: object
-                maxItems: 128
-                type: array
             required:
+            - httpRouteRef
             - inputSchema
             type: object
         type: object

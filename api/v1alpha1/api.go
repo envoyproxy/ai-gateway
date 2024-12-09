@@ -2,8 +2,6 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // +kubebuilder:object:root=true
@@ -48,12 +46,6 @@ type LLMRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
 	APISchema LLMAPISchema `json:"inputSchema"`
-	// TargetRefs are the names of the Gateway resources this policy is being attached to.
-	// The namespace is "local", i.e. the same namespace as the LLMRoute.
-	//
-	// +optional
-	// +kubebuilder:validation:MaxItems=128
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs"`
 	// HTTPRouteRef is the name of the HTTPRoute resource that the Gateway will use to route the traffic.
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
@@ -63,7 +55,7 @@ type LLMRouteSpec struct {
 	// Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
 	//
 	// +kubebuilder:validation:Required
-	HTTPRouteRef HTTPRouteRef `json:"httpRoutRef,omitempty"`
+	HTTPRouteRef HTTPRouteRef `json:"httpRouteRef,omitempty"`
 }
 
 // HTTPRouteRef is a reference to a HTTPRoute resource in the "local" namespace.
@@ -101,11 +93,6 @@ type LLMBackendSpec struct {
 	//
 	// This is required to be set.
 	APISchema LLMAPISchema `json:"outputSchema"`
-	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
-	//
-	// The backend can be of either k8s Service or [egv1a1.Backend] kind plus the resource must be in the same namespace as the LLMRoute.
-	// For the sake of simplicity, currently the same backend cannot be referenced by multiple LLMBackend(s).
-	BackendRef gwapiv1.BackendObjectReference `json:"backendRef"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).

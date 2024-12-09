@@ -7,5 +7,5 @@ spec:
   inputSchema:
     # Input must be OpenAI schema at the moment, so this is invalid.
     schema: AWSBedrock
-  targetRefs:
-  backendRefs:
+  httpRouteRef:
+    name: dog-route
