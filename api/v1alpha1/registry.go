@@ -8,6 +8,7 @@ import (
 func init() {
 	SchemeBuilder.Register(&LLMRoute{}, &LLMRouteList{})
 	SchemeBuilder.Register(&LLMBackend{}, &LLMBackendList{})
+	SchemeBuilder.Register(&LLMBackendTrafficPolicy{}, &LLMBackendTrafficPolicyList{})
 }
 
 const GroupName = "aigateway.envoyproxy.io"
