@@ -5,7 +5,7 @@ go 1.23.2
 require (
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/envoyproxy/go-control-plane v0.13.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	k8s.io/apimachinery v0.31.3
 	sigs.k8s.io/controller-runtime v0.19.3
 	sigs.k8s.io/gateway-api v1.2.1

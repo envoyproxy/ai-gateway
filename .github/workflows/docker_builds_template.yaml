@@ -53,6 +53,7 @@ jobs:
       # * Only use the tag if the event is a tag event, otherwise use "latest".
       # * Build for both amd64 and arm64 platforms.
       - name: Build and Push Image
+        if: github.event_name == 'push'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
