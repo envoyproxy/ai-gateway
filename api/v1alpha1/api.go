@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -16,6 +17,10 @@ import (
 // receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
 // on the output schema of the LLMBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
+//
+// LLMRoute references a HTTPRoute resource as a basis for routing the traffic. The AI Gateway controller
+// modifies the HTTPRoute resource to include the necessary filters to achieve the necessary jobs,
+// notably the AI Gateway external processor filter.
 type LLMRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -49,16 +54,21 @@ type LLMRouteSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs"`
-	// BackendRefs lists the LLMBackends that this LLMRoute will route traffic to.
+	// HTTPRouteRef is the name of the HTTPRoute resource that the Gateway will use to route the traffic.
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
-	// +kubebuilder:validation:MaxItems=128
-	BackendRefs []LLMBackendLocalRef `json:"backendRefs,omitempty"`
+	// In the matching configuration of the referenced HTTPRoute, `x-envoy-ai-gateway-llm-model` header
+	// can be used to describe the routing behavior.
+	//
+	// Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
+	//
+	// +kubebuilder:validation:Required
+	HTTPRouteRef HTTPRouteRef `json:"httpRoutRef,omitempty"`
 }
 
-// LLMBackendLocalRef is a reference to a LLMBackend resource in the "local" namespace.
-type LLMBackendLocalRef struct {
-	// Name is the name of the LLMBackend in the same namespace as the LLMRoute.
+// HTTPRouteRef is a reference to a HTTPRoute resource in the "local" namespace.
+type HTTPRouteRef struct {
+	// Name is the name of the HTTPRoute in the same namespace as the LLMRoute.
 	Name string `json:"name"`
 }
 
@@ -91,6 +101,11 @@ type LLMBackendSpec struct {
 	//
 	// This is required to be set.
 	APISchema LLMAPISchema `json:"outputSchema"`
+	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+	//
+	// The backend can be of either k8s Service or [egv1a1.Backend] kind plus the resource must be in the same namespace as the LLMRoute.
+	// For the sake of simplicity, currently the same backend cannot be referenced by multiple LLMBackend(s).
+	BackendRef gwapiv1.BackendObjectReference `json:"backendRef"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
@@ -122,4 +137,10 @@ const (
 	//
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
 	APISchemaAWSBedrock APISchema = "AWSBedrock"
+)
+
+const (
+	// LLMModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
+	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
+	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )

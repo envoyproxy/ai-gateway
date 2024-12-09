@@ -27,6 +27,10 @@ spec:
           receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
           on the output schema of the LLMBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
+
+          LLMRoute references a HTTPRoute resource as a basis for routing the traffic. The AI Gateway controller
+          modifies the HTTPRoute resource to include the necessary filters to achieve the necessary jobs,
+          notably the AI Gateway external processor filter.
         properties:
           apiVersion:
             description: |-
@@ -48,23 +52,23 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              backendRefs:
+              httpRoutRef:
                 description: |-
-                  BackendRefs lists the LLMBackends that this LLMRoute will route traffic to.
+                  HTTPRouteRef is the name of the HTTPRoute resource that the Gateway will use to route the traffic.
                   The namespace is "local", i.e. the same namespace as the LLMRoute.
-                items:
-                  description: LLMBackendLocalRef is a reference to a LLMBackend resource
-                    in the "local" namespace.
-                  properties:
-                    name:
-                      description: Name is the name of the LLMBackend in the same
-                        namespace as the LLMRoute.
-                      type: string
-                  required:
-                  - name
-                  type: object
-                maxItems: 128
-                type: array
+
+                  In the matching configuration of the referenced HTTPRoute, `x-envoy-ai-gateway-llm-model` header
+                  can be used to describe the routing behavior.
+
+                  Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
+                properties:
+                  name:
+                    description: Name is the name of the HTTPRoute in the same namespace
+                      as the LLMRoute.
+                    type: string
+                required:
+                - name
+                type: object
               inputSchema:
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
