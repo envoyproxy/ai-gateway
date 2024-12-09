@@ -48,23 +48,6 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              backendRefs:
-                description: |-
-                  BackendRefs lists the LLMBackends that this LLMRoute will route traffic to.
-                  The namespace is "local", i.e. the same namespace as the LLMRoute.
-                items:
-                  description: LLMBackendLocalRef is a reference to a LLMBackend resource
-                    in the "local" namespace.
-                  properties:
-                    name:
-                      description: Name is the name of the LLMBackend in the same
-                        namespace as the LLMRoute.
-                      type: string
-                  required:
-                  - name
-                  type: object
-                maxItems: 128
-                type: array
               inputSchema:
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
@@ -87,6 +70,272 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - rule: self.schema == 'OpenAI'
+              rules:
+                description: Rules are the LLMRouteRules that will be used to route
+                  traffic to the LLMBackends.
+                items:
+                  properties:
+                    backendRefs:
+                      description: |-
+                        BackendRefs lists the LLMBackends that this LLMRouteRule will route traffic to.
+                        The namespace is "local", i.e. the same namespace as the LLMRoute.
+                      items:
+                        description: LLMBackendLocalRef is a reference to a LLMBackend
+                          resource in the "local" namespace.
+                        properties:
+                          name:
+                            description: Name is the name of the LLMBackend in the
+                              same namespace as the LLMRoute.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      maxItems: 128
+                      type: array
+                    matches:
+                      description: |-
+                        Matches are the HTTPRouteMatch that will be used to route traffic to the LLMBackends.
+                        https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
+
+                        The header "envoy-ai-gateway-llm-model" is populated with the model name extracted from the request,
+                        and the value can be used in header matches.
+
+                        Currently, only exact header matches are supported.
+                      items:
+                        description: "HTTPRouteMatch defines the predicate used to
+                          match requests to a given\naction. Multiple match types
+                          are ANDed together, i.e. the match will\nevaluate to true
+                          only if all conditions are satisfied.\n\nFor example, the
+                          match below will match a HTTP request only if its path\nstarts
+                          with `/foo` AND it contains the `version: v1` header:\n\n```\nmatch:\n\n\tpath:\n\t
+                          \ value: \"/foo\"\n\theaders:\n\t- name: \"version\"\n\t
+                          \ value \"v1\"\n\n```"
+                        properties:
+                          headers:
+                            description: |-
+                              Headers specifies HTTP request header matchers. Multiple match values are
+                              ANDed together, meaning, a request must match all the specified headers
+                              to select the route.
+                            items:
+                              description: |-
+                                HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
+                                headers.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                    case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+                                    If multiple entries specify equivalent header names, only the first
+                                    entry with an equivalent name MUST be considered for a match. Subsequent
+                                    entries with an equivalent header name MUST be ignored. Due to the
+                                    case-insensitivity of header names, "foo" and "Foo" are considered
+                                    equivalent.
+
+                                    When a header is repeated in an HTTP request, it is
+                                    implementation-specific behavior as to how this is represented.
+                                    Generally, proxies should follow the guidance from the RFC:
+                                    https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding
+                                    processing a repeated header, with special handling for "Set-Cookie".
+                                  maxLength: 256
+                                  minLength: 1
+                                  pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                  type: string
+                                type:
+                                  default: Exact
+                                  description: |-
+                                    Type specifies how to match against the value of the header.
+
+                                    Support: Core (Exact)
+
+                                    Support: Implementation-specific (RegularExpression)
+
+                                    Since RegularExpression HeaderMatchType has implementation-specific
+                                    conformance, implementations can support POSIX, PCRE or any other dialects
+                                    of regular expressions. Please read the implementation's documentation to
+                                    determine the supported dialect.
+                                  enum:
+                                  - Exact
+                                  - RegularExpression
+                                  type: string
+                                value:
+                                  description: Value is the value of HTTP Header to
+                                    be matched.
+                                  maxLength: 4096
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - name
+                              - value
+                              type: object
+                            maxItems: 16
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          method:
+                            description: |-
+                              Method specifies HTTP method matcher.
+                              When specified, this route will be matched only if the request has the
+                              specified method.
+
+                              Support: Extended
+                            enum:
+                            - GET
+                            - HEAD
+                            - POST
+                            - PUT
+                            - DELETE
+                            - CONNECT
+                            - OPTIONS
+                            - TRACE
+                            - PATCH
+                            type: string
+                          path:
+                            default:
+                              type: PathPrefix
+                              value: /
+                            description: |-
+                              Path specifies a HTTP request path matcher. If this field is not
+                              specified, a default prefix match on the "/" path is provided.
+                            properties:
+                              type:
+                                default: PathPrefix
+                                description: |-
+                                  Type specifies how to match against the path Value.
+
+                                  Support: Core (Exact, PathPrefix)
+
+                                  Support: Implementation-specific (RegularExpression)
+                                enum:
+                                - Exact
+                                - PathPrefix
+                                - RegularExpression
+                                type: string
+                              value:
+                                default: /
+                                description: Value of the HTTP path to match against.
+                                maxLength: 1024
+                                type: string
+                            type: object
+                            x-kubernetes-validations:
+                            - message: value must be an absolute path and start with
+                                '/' when type one of ['Exact', 'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? self.value.startsWith(''/'')
+                                : true'
+                            - message: must not contain '//' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''//'')
+                                : true'
+                            - message: must not contain '/./' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''/./'')
+                                : true'
+                            - message: must not contain '/../' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''/../'')
+                                : true'
+                            - message: must not contain '%2f' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''%2f'')
+                                : true'
+                            - message: must not contain '%2F' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''%2F'')
+                                : true'
+                            - message: must not contain '#' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.contains(''#'')
+                                : true'
+                            - message: must not end with '/..' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.endsWith(''/..'')
+                                : true'
+                            - message: must not end with '/.' when type one of ['Exact',
+                                'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? !self.value.endsWith(''/.'')
+                                : true'
+                            - message: type must be one of ['Exact', 'PathPrefix',
+                                'RegularExpression']
+                              rule: self.type in ['Exact','PathPrefix'] || self.type
+                                == 'RegularExpression'
+                            - message: must only contain valid characters (matching
+                                ^(?:[-A-Za-z0-9/._~!$&'()*+,;=:@]|[%][0-9a-fA-F]{2})+$)
+                                for types ['Exact', 'PathPrefix']
+                              rule: '(self.type in [''Exact'',''PathPrefix'']) ? self.value.matches(r"""^(?:[-A-Za-z0-9/._~!$&''()*+,;=:@]|[%][0-9a-fA-F]{2})+$""")
+                                : true'
+                          queryParams:
+                            description: |-
+                              QueryParams specifies HTTP query parameter matchers. Multiple match
+                              values are ANDed together, meaning, a request must match all the
+                              specified query parameters to select the route.
+
+                              Support: Extended
+                            items:
+                              description: |-
+                                HTTPQueryParamMatch describes how to select a HTTP route by matching HTTP
+                                query parameters.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name is the name of the HTTP query param to be matched. This must be an
+                                    exact string match. (See
+                                    https://tools.ietf.org/html/rfc7230#section-2.7.3).
+
+                                    If multiple entries specify equivalent query param names, only the first
+                                    entry with an equivalent name MUST be considered for a match. Subsequent
+                                    entries with an equivalent query param name MUST be ignored.
+
+                                    If a query param is repeated in an HTTP request, the behavior is
+                                    purposely left undefined, since different data planes have different
+                                    capabilities. However, it is *recommended* that implementations should
+                                    match against the first value of the param if the data plane supports it,
+                                    as this behavior is expected in other load balancing contexts outside of
+                                    the Gateway API.
+
+                                    Users SHOULD NOT route traffic based on repeated query params to guard
+                                    themselves against potential differences in the implementations.
+                                  maxLength: 256
+                                  minLength: 1
+                                  pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                  type: string
+                                type:
+                                  default: Exact
+                                  description: |-
+                                    Type specifies how to match against the value of the query parameter.
+
+                                    Support: Extended (Exact)
+
+                                    Support: Implementation-specific (RegularExpression)
+
+                                    Since RegularExpression QueryParamMatchType has Implementation-specific
+                                    conformance, implementations can support POSIX, PCRE or any other
+                                    dialects of regular expressions. Please read the implementation's
+                                    documentation to determine the supported dialect.
+                                  enum:
+                                  - Exact
+                                  - RegularExpression
+                                  type: string
+                                value:
+                                  description: Value is the value of HTTP query param
+                                    to be matched.
+                                  maxLength: 1024
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - name
+                              - value
+                              type: object
+                            maxItems: 16
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                        type: object
+                      type: array
+                  type: object
+                maxItems: 128
+                type: array
               targetRefs:
                 description: |-
                   TargetRefs are the names of the Gateway resources this policy is being attached to.

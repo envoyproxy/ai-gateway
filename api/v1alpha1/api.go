@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -49,17 +50,38 @@ type LLMRouteSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs"`
-	// BackendRefs lists the LLMBackends that this LLMRoute will route traffic to.
+
+	// Rules are the LLMRouteRules that will be used to route traffic to the LLMBackends.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	Rules []LLMRouteRule `json:"rules,omitempty"`
+}
+
+// LLMRouteRule is a rule that defines how traffic should be routed to the LLMBackends.
+type LLMRouteRule struct {
+	// BackendRefs lists the LLMBackends that this LLMRouteRule will route traffic to.
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
 	// +kubebuilder:validation:MaxItems=128
 	BackendRefs []LLMBackendLocalRef `json:"backendRefs,omitempty"`
+
+	// Matches are the HTTPRouteMatch that will be used to route traffic to the LLMBackends.
+	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
+	//
+	// The header "envoy-ai-gateway-llm-model" is populated with the model name extracted from the request,
+	// and the value can be used in header matches.
+	//
+	// Currently, only exact header matches are supported.
+	Matches []gwapiv1.HTTPRouteMatch `json:"matches,omitempty"`
 }
 
 // LLMBackendLocalRef is a reference to a LLMBackend resource in the "local" namespace.
 type LLMBackendLocalRef struct {
 	// Name is the name of the LLMBackend in the same namespace as the LLMRoute.
 	Name string `json:"name"`
+
+	// TODO: weight.
 }
 
 // +kubebuilder:object:root=true
@@ -122,4 +144,10 @@ const (
 	//
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
 	APISchemaAWSBedrock APISchema = "AWSBedrock"
+)
+
+const (
+	// LLMModelNameHeaderKey is the header key extracted from the request that contains the model name.
+	// The header can be used in header matches in the LLMRouteRule.
+	LLMModelNameHeaderKey = "envoy-ai-gateway-llm-model"
 )
