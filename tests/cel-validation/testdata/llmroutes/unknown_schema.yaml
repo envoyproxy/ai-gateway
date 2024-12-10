@@ -7,5 +7,6 @@ spec:
   inputSchema:
     # Schema must be OpenAI schema at the moment, so this is invalid.
     schema: SomeRandomVendor
-  targetRefs:
-  backendRefs:
+  httpRoute:
+    hostnames:
+      - my.example.com
