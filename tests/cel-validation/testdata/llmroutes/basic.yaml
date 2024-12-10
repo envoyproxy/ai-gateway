@@ -6,5 +6,6 @@ metadata:
 spec:
   inputSchema:
     schema: OpenAI
-  httpRouteRef:
-    name: dog-route
+  httpRoute:
+    hostnames:
+      - my.example.com

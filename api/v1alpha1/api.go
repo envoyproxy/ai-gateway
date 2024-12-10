@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // +kubebuilder:object:root=true
@@ -16,9 +17,8 @@ import (
 // on the output schema of the LLMBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
-// LLMRoute references a HTTPRoute resource as a basis for routing the traffic. The AI Gateway controller
-// modifies the HTTPRoute resource to include the necessary filters to achieve the necessary jobs,
-// notably the AI Gateway external processor filter.
+// LLMRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
+// The generated HTTPRoute has the owner reference set to this LLMRoute.
 type LLMRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -46,8 +46,10 @@ type LLMRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
 	APISchema LLMAPISchema `json:"inputSchema"`
-	// HTTPRouteRef is the name of the HTTPRoute resource that the Gateway will use to route the traffic.
-	// The namespace is "local", i.e. the same namespace as the LLMRoute.
+	// HTTPRoute is the base HTTPRouteSpec (https://gateway-api.sigs.k8s.io/api-types/httproute/) in
+	// the Gateway API that this LLMRoute implemented upon. AI Gateway controller will generate a HTTPRoute based
+	// on the configuration given here with the additional modifications to achieve the necessary jobs,
+	// notably inserting the AI Gateway external processor filter.
 	//
 	// In the matching configuration of the referenced HTTPRoute, `x-envoy-ai-gateway-llm-model` header
 	// can be used to describe the routing behavior.
@@ -55,13 +57,7 @@ type LLMRouteSpec struct {
 	// Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
 	//
 	// +kubebuilder:validation:Required
-	HTTPRouteRef HTTPRouteRef `json:"httpRouteRef,omitempty"`
-}
-
-// HTTPRouteRef is a reference to a HTTPRoute resource in the "local" namespace.
-type HTTPRouteRef struct {
-	// Name is the name of the HTTPRoute in the same namespace as the LLMRoute.
-	Name string `json:"name"`
+	HTTPRoute gwapiv1.HTTPRouteSpec `json:"httpRoute"`
 }
 
 // +kubebuilder:object:root=true

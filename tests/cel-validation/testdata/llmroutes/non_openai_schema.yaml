@@ -7,5 +7,6 @@ spec:
   inputSchema:
     # Input must be OpenAI schema at the moment, so this is invalid.
     schema: AWSBedrock
-  httpRouteRef:
-    name: dog-route
+  httpRoute:
+    hostnames:
+      - my.example.com
