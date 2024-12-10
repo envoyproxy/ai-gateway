@@ -58,7 +58,7 @@ spec:
                   on the configuration given here with the additional modifications to achieve the necessary jobs,
                   notably inserting the AI Gateway external processor filter.
 
-                  In the matching configuration of the referenced HTTPRoute, `x-envoy-ai-gateway-llm-model` header
+                  In the matching rules in the HTTPRoute here, `x-envoy-ai-gateway-llm-model` header
                   can be used to describe the routing behavior.
 
                   Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
