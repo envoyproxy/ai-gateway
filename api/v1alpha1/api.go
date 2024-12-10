@@ -45,9 +45,9 @@ type LLMRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema LLMAPISchema `json:"inputSchema"`
+	APISchema LLMAPISchema `json:"inputSchema"` //
 	// HTTPRoute is the base HTTPRouteSpec (https://gateway-api.sigs.k8s.io/api-types/httproute/) in
-	// the Gateway API that this LLMRoute implemented upon. AI Gateway controller will generate a HTTPRoute based
+	// the Gateway API on which this LLMRoute will be implemented. AI Gateway controller will generate a HTTPRoute based
 	// on the configuration given here with the additional modifications to achieve the necessary jobs,
 	// notably inserting the AI Gateway external processor filter.
 	//
