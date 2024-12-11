@@ -1,12 +1,12 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: LLMBackend
 metadata:
-  name: dog-backend
+  name: eg-backend
   namespace: default
 spec:
   outputSchema:
     schema: AWSBedrock
   backendRef:
-    name: dog-service
-    kind: Service
-    port: 80
+    name: eg-backend
+    kind: Backend
+    group: gateway.envoyproxy.io

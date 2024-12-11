@@ -6,6 +6,7 @@ replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.16
 
 require (
 	github.com/aws/aws-sdk-go v1.55.5
+	github.com/envoyproxy/gateway v1.2.3
 	github.com/envoyproxy/go-control-plane v0.13.1
 	github.com/stretchr/testify v1.10.0
 	k8s.io/apimachinery v0.31.3
