@@ -65,6 +65,12 @@ type LLMRouteSpec struct {
 
 // LLMBackend is a resource that represents a single backend for LLMRoute.
 // A backend is a service that handles traffic with a concrete API specification.
+//
+// A LLMBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+//
+// When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
+// HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
+// the backend specific logic in the final HTTPRoute.
 type LLMBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -74,12 +80,7 @@ type LLMBackend struct {
 
 // +kubebuilder:object:root=true
 
-// LLMBackendList contains a list of LLMBackends. A LLMBackend is "attached" to a Backend, that is either
-// a k8s Service or a Backend resource of the Envoy Gateway.
-//
-// When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
-// HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
-// the backend specific logic in the final HTTPRoute.
+// LLMBackendList contains a list of LLMBackends.
 type LLMBackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
