@@ -2,4 +2,3 @@
 .bin
 out/
 /site/node_modules/.cache
-/site/node_modules
