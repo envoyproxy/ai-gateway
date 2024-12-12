@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -123,3 +124,71 @@ const (
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
 	APISchemaAWSBedrock APISchema = "AWSBedrock"
 )
+
+// LLMProviderType specifies the type of the LLMProviderPolicy.
+type LLMProviderType string
+
+const (
+	LLMProviderTypeAPIKey LLMProviderType = "APIKey"
+)
+
+// +kubebuilder:object:root=true
+
+// LLMProviderPolicy specifies the provider specific configuration.
+//
+// This is a provider specific-configuration, e.g.AWS Bedrock, Azure etc.
+type LLMProviderPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// BackendRefs lists the LLMBackends that this provider policy will apply
+	// The namespace is "local", i.e. the same namespace as the LLMRoute.
+	//
+	BackendRefs []LLMBackendLocalRef `json:"backendRef,omitempty"`
+
+	// Type specifies the type of the provider. Currently, only "APIKey" and "AWSBedrock" are supported.
+	//
+	// +kubebuilder:validation:Enum=APIKey;AWSBedrock
+	Type LLMProviderType `json:"type"`
+
+	// APIKey specific configuration. The API key will be injected into the Authorization header.
+	// +optional
+	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// LLMProviderPolicyList contains a list of LLMProviderPolicy
+type LLMProviderPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []LLMProviderPolicy `json:"items"`
+}
+
+// LLMProviderAPIKey specifies the API key.
+type LLMProviderAPIKey struct {
+	// Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+	// This defaults to "SecretRef".
+	//
+	// +kubebuilder:validation:Enum=SecretRef;Inline
+	// +kubebuilder:default=SecretRef
+	Type LLMProviderAPIKeyType `json:"type"`
+
+	// SecretRef is the reference to the secret containing the API key.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of the secret should be "apiKey".
+	//
+	// +optional
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+
+	// Inline specifies the inline API key.
+	//
+	// +optional
+	Inline *string `json:"inline,omitempty"`
+
+	// BackendRefs lists the LLMBackends that this API Key will apply
+	//
+	BackendRefs []LLMBackendLocalRef `json:"backendRefs"`
+}
+
+// LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
+type LLMProviderAPIKeyType string

@@ -1,0 +1,148 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: llmproviderpolicies.aigateway.envoyproxy.io
+spec:
+  group: aigateway.envoyproxy.io
+  names:
+    kind: LLMProviderPolicy
+    listKind: LLMProviderPolicyList
+    plural: llmproviderpolicies
+    singular: llmproviderpolicy
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LLMProviderPolicy specifies the provider specific configuration.
+
+          This is a provider specific-configuration, e.g.AWS Bedrock, Azure etc.
+        properties:
+          apiKey:
+            description: APIKey specific configuration. The API key will be injected
+              into the Authorization header.
+            properties:
+              backendRefs:
+                description: BackendRefs lists the LLMBackends that this API Key will
+                  apply
+                items:
+                  description: LLMBackendLocalRef is a reference to a LLMBackend resource
+                    in the "local" namespace.
+                  properties:
+                    name:
+                      description: Name is the name of the LLMBackend in the same
+                        namespace as the LLMRoute.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              inline:
+                description: Inline specifies the inline API key.
+                type: string
+              secretRef:
+                description: |-
+                  SecretRef is the reference to the secret containing the API key.
+                  ai-gateway must be given the permission to read this secret.
+                  The key of the secret should be "apiKey".
+                properties:
+                  group:
+                    default: ""
+                    description: |-
+                      Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                      When unspecified or empty string, core API group is inferred.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  kind:
+                    default: Secret
+                    description: Kind is kind of the referent. For example "Secret".
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                    type: string
+                  name:
+                    description: Name is the name of the referent.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace is the namespace of the referenced object. When unspecified, the local
+                      namespace is inferred.
+
+                      Note that when a namespace different than the local namespace is specified,
+                      a ReferenceGrant object is required in the referent namespace to allow that
+                      namespace's owner to accept the reference. See the ReferenceGrant
+                      documentation for details.
+
+                      Support: Core
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              type:
+                default: SecretRef
+                description: |-
+                  Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+                  This defaults to "SecretRef".
+                enum:
+                - SecretRef
+                - Inline
+                type: string
+            required:
+            - backendRefs
+            - type
+            type: object
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          backendRef:
+            description: |-
+              BackendRefs lists the LLMBackends that this provider policy will apply
+              The namespace is "local", i.e. the same namespace as the LLMRoute.
+            items:
+              description: LLMBackendLocalRef is a reference to a LLMBackend resource
+                in the "local" namespace.
+              properties:
+                name:
+                  description: Name is the name of the LLMBackend in the same namespace
+                    as the LLMRoute.
+                  type: string
+              required:
+              - name
+              type: object
+            type: array
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          type:
+            description: Type specifies the type of the provider. Currently, only
+              "APIKey" and "AWSBedrock" are supported.
+            enum:
+            - APIKey
+            - AWSBedrock
+            type: string
+        required:
+        - type
+        type: object
+    served: true
+    storage: true

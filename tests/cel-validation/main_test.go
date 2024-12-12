@@ -133,3 +133,35 @@ func TestLLMBackends(t *testing.T) {
 		})
 	}
 }
+
+func TestLLMProviderPolicy(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
+	defer cancel()
+
+	for _, tc := range []struct {
+		name   string
+		expErr string
+	}{
+		{name: "basic.yaml"},
+		{
+			name:   "unknow_provider.yaml",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSBedrock\"",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := tests.ReadFile(path.Join("testdata/llmproviderpolicy", tc.name))
+			require.NoError(t, err)
+
+			llmRoute := &aigv1a1.LLMRoute{}
+			err = yaml.UnmarshalStrict(data, llmRoute)
+			require.NoError(t, err)
+
+			if tc.expErr != "" {
+				require.ErrorContains(t, c.Create(ctx, llmRoute), tc.expErr)
+			} else {
+				require.NoError(t, c.Create(ctx, llmRoute))
+				require.NoError(t, c.Delete(ctx, llmRoute))
+			}
+		})
+	}
+}
