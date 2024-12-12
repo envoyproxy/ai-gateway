@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -67,6 +68,12 @@ type LLMBackendLocalRef struct {
 
 // LLMBackend is a resource that represents a single backend for LLMRoute.
 // A backend is a service that handles traffic with a concrete API specification.
+//
+// A LLMBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+//
+// When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
+// HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
+// the backend specific logic in the final HTTPRoute.
 type LLMBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -91,7 +98,17 @@ type LLMBackendSpec struct {
 	// the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
 	//
 	// This is required to be set.
+	//
+	// +kubebuilder:validation:Required
 	APISchema LLMAPISchema `json:"outputSchema"`
+	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+	//
+	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
+	//
+	// This is required to be set.
+	//
+	// +kubebuilder:validation:Required
+	BackendRef egv1a1.BackendRef `json:"backendRef"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).

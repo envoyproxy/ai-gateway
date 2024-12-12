@@ -111,6 +111,7 @@ func TestLLMBackends(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
+		{name: "basic-eg-backend.yaml"},
 		{
 			name:   "unknown_schema.yaml",
 			expErr: "spec.outputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
