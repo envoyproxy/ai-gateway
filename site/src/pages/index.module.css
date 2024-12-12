@@ -1,0 +1,46 @@
+/**
+ * CSS files with the .module.css suffix will be treated as CSS modules
+ * and scoped locally.
+ */
+ @import url('https://fonts.googleapis.com/css?family=Nunito:400,700,800');
+
+.heroBanner {
+  font-family: "Nunito", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding: 2rem 0rem 10rem 0rem;
+  /* max-height: 50vh; */
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background-color: #6c1899;
+  background-image: linear-gradient(0deg, #ff51e8, #b923ff);
+  clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%);
+  /* line-height: 1; */
+}
+
+.heroImage{
+  max-height: 30vh;
+}
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem 0rem 10rem 0rem;
+    align-items: start;
+    clip-path: polygon(0 0, 100% 0, 100% 87%, 0 100%);
+  }
+}
+
+@media screen and (max-width: 500px) {
+  .heroBanner {
+    padding: 2rem 0rem 5rem 0rem;
+    align-items: start;
+    clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%);
+  }
+  .heroImage{
+    max-height: 15vh;
+  }
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
