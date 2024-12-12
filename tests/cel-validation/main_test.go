@@ -144,7 +144,7 @@ func TestLLMProviderPolicy(t *testing.T) {
 	}{
 		{name: "basic.yaml"},
 		{
-			name:   "unknow_provider.yaml",
+			name:   "unknown_provider.yaml",
 			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSBedrock\"",
 		},
 	} {

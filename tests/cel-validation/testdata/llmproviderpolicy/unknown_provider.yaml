@@ -3,5 +3,4 @@ kind: LLMProviderPolicy
 metadata:
   name: dog-provider-policy
   namespace: default
-spec:
-  Type: UnknownType
+type: UnknownType
