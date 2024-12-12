@@ -3,4 +3,5 @@ kind: LLMProviderPolicy
 metadata:
   name: dog-provider-policy
   namespace: default
-type: AWSBedrock
+spec:
+  type: AWSBedrock

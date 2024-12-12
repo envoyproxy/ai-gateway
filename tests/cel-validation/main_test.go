@@ -153,7 +153,7 @@ func TestLLMProviderPolicy(t *testing.T) {
 			data, err := tests.ReadFile(path.Join("testdata/llmproviderpolicy", tc.name))
 			require.NoError(t, err)
 
-			llmRoute := &aigv1a1.LLMRoute{}
+			llmRoute := &aigv1a1.LLMProviderPolicy{}
 			err = yaml.UnmarshalStrict(data, llmRoute)
 			require.NoError(t, err)
 

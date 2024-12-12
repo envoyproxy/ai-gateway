@@ -152,11 +152,14 @@ const (
 // +kubebuilder:object:root=true
 
 // LLMProviderPolicy specifies the provider specific configuration.
-//
-// This is a provider specific-configuration, e.g.AWS Bedrock, Azure etc.
 type LLMProviderPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              LLMProviderPolicySpec `json:"spec,omitempty"`
+}
+
+// LLMProviderPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
+type LLMProviderPolicySpec struct {
 	// BackendRefs lists the LLMBackends that this provider policy will apply
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
