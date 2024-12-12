@@ -37,7 +37,7 @@ func runTest(m *testing.M) int {
 	for _, crd := range []string{
 		"aigateway.envoyproxy.io_llmroutes.yaml",
 		"aigateway.envoyproxy.io_llmbackends.yaml",
-		"aigateway.envoyproxy.io_llmproviderpolicy.yaml",
+		"aigateway.envoyproxy.io_llmproviderpolicies.yaml",
 	} {
 		crds = append(crds, filepath.Join(base, crd))
 	}
@@ -151,18 +151,18 @@ func TestLLMProviderPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tests.ReadFile(path.Join("testdata/llmproviderpolicy", tc.name))
+			data, err := tests.ReadFile(path.Join("testdata/llmproviderpolicies", tc.name))
 			require.NoError(t, err)
 
-			llmRoute := &aigv1a1.LLMProviderPolicy{}
-			err = yaml.UnmarshalStrict(data, llmRoute)
+			llmProviderPolicy := &aigv1a1.LLMProviderPolicy{}
+			err = yaml.UnmarshalStrict(data, llmProviderPolicy)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, llmRoute), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, llmProviderPolicy), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, llmRoute))
-				require.NoError(t, c.Delete(ctx, llmRoute))
+				require.NoError(t, c.Create(ctx, llmProviderPolicy))
+				require.NoError(t, c.Delete(ctx, llmProviderPolicy))
 			}
 		})
 	}

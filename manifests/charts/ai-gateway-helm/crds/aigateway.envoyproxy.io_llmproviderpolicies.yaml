@@ -17,90 +17,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          LLMProviderPolicy specifies the provider specific configuration.
-
-          This is a provider specific-configuration, e.g.AWS Bedrock, Azure etc.
+        description: LLMProviderPolicy specifies the provider specific configuration.
         properties:
-          apiKey:
-            description: APIKey specific configuration. The API key will be injected
-              into the Authorization header.
-            properties:
-              backendRefs:
-                description: BackendRefs lists the LLMBackends that this API Key will
-                  apply
-                items:
-                  description: LLMBackendLocalRef is a reference to a LLMBackend resource
-                    in the "local" namespace.
-                  properties:
-                    name:
-                      description: Name is the name of the LLMBackend in the same
-                        namespace as the LLMRoute.
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
-              inline:
-                description: Inline specifies the inline API key.
-                type: string
-              secretRef:
-                description: |-
-                  SecretRef is the reference to the secret containing the API key.
-                  ai-gateway must be given the permission to read this secret.
-                  The key of the secret should be "apiKey".
-                properties:
-                  group:
-                    default: ""
-                    description: |-
-                      Group is the group of the referent. For example, "gateway.networking.k8s.io".
-                      When unspecified or empty string, core API group is inferred.
-                    maxLength: 253
-                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                    type: string
-                  kind:
-                    default: Secret
-                    description: Kind is kind of the referent. For example "Secret".
-                    maxLength: 63
-                    minLength: 1
-                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
-                    type: string
-                  name:
-                    description: Name is the name of the referent.
-                    maxLength: 253
-                    minLength: 1
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace is the namespace of the referenced object. When unspecified, the local
-                      namespace is inferred.
-
-                      Note that when a namespace different than the local namespace is specified,
-                      a ReferenceGrant object is required in the referent namespace to allow that
-                      namespace's owner to accept the reference. See the ReferenceGrant
-                      documentation for details.
-
-                      Support: Core
-                    maxLength: 63
-                    minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-                    type: string
-                required:
-                - name
-                type: object
-              type:
-                default: SecretRef
-                description: |-
-                  Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
-                  This defaults to "SecretRef".
-                enum:
-                - SecretRef
-                - Inline
-                type: string
-            required:
-            - backendRefs
-            - type
-            type: object
           apiVersion:
             description: |-
               APIVersion defines the versioned schema of this representation of an object.
@@ -108,22 +26,6 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
-          backendRef:
-            description: |-
-              BackendRefs lists the LLMBackends that this provider policy will apply
-              The namespace is "local", i.e. the same namespace as the LLMRoute.
-            items:
-              description: LLMBackendLocalRef is a reference to a LLMBackend resource
-                in the "local" namespace.
-              properties:
-                name:
-                  description: Name is the name of the LLMBackend in the same namespace
-                    as the LLMRoute.
-                  type: string
-              required:
-              - name
-              type: object
-            type: array
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
@@ -134,15 +36,253 @@ spec:
             type: string
           metadata:
             type: object
-          type:
-            description: Type specifies the type of the provider. Currently, only
-              "APIKey" and "AWSBedrock" are supported.
-            enum:
-            - APIKey
-            - AWSBedrock
-            type: string
-        required:
-        - type
+          spec:
+            description: LLMProviderPolicySpec specifies a provider (e.g.AWS Bedrock,
+              Azure etc.) specific-configuration like auth
+            properties:
+              apiKey:
+                description: APIKey specific configuration. The API key will be injected
+                  into the Authorization header.
+                properties:
+                  backendRefs:
+                    description: BackendRefs lists the LLMBackends that this API Key
+                      will apply
+                    items:
+                      description: BackendRef defines how an ObjectReference that
+                        is specific to BackendRef.
+                      properties:
+                        fallback:
+                          description: |-
+                            Fallback indicates whether the backend is designated as a fallback.
+                            Multiple fallback backends can be configured.
+                            It is highly recommended to configure active or passive health checks to ensure that failover can be detected
+                            when the active backends become unhealthy and to automatically readjust once the primary backends are healthy again.
+                            The overprovisioning factor is set to 1.4, meaning the fallback backends will only start receiving traffic when
+                            the health of the active backends falls below 72%.
+                          type: boolean
+                        group:
+                          default: ""
+                          description: |-
+                            Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                            When unspecified or empty string, core API group is inferred.
+                          maxLength: 253
+                          pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                          type: string
+                        kind:
+                          default: Service
+                          description: |-
+                            Kind is the Kubernetes resource kind of the referent. For example
+                            "Service".
+
+                            Defaults to "Service" when not specified.
+
+                            ExternalName services can refer to CNAME DNS records that may live
+                            outside of the cluster and as such are difficult to reason about in
+                            terms of conformance. They also may not be safe to forward to (see
+                            CVE-2021-25740 for more information). Implementations SHOULD NOT
+                            support ExternalName Services.
+
+                            Support: Core (Services with a type other than ExternalName)
+
+                            Support: Implementation-specific (Services with type ExternalName)
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                          type: string
+                        name:
+                          description: Name is the name of the referent.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the backend. When unspecified, the local
+                            namespace is inferred.
+
+                            Note that when a namespace different than the local namespace is specified,
+                            a ReferenceGrant object is required in the referent namespace to allow that
+                            namespace's owner to accept the reference. See the ReferenceGrant
+                            documentation for details.
+
+                            Support: Core
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        port:
+                          description: |-
+                            Port specifies the destination port number to use for this resource.
+                            Port is required when the referent is a Kubernetes Service. In this
+                            case, the port number is the service port number, not the target port.
+                            For other resources, destination port might be derived from the referent
+                            resource or this field.
+                          format: int32
+                          maximum: 65535
+                          minimum: 1
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                      x-kubernetes-validations:
+                      - message: Must have port for Service reference
+                        rule: '(size(self.group) == 0 && self.kind == ''Service'')
+                          ? has(self.port) : true'
+                    type: array
+                  inline:
+                    description: Inline specifies the inline API key.
+                    type: string
+                  secretRef:
+                    description: |-
+                      SecretRef is the reference to the secret containing the API key.
+                      ai-gateway must be given the permission to read this secret.
+                      The key of the secret should be "apiKey".
+                    properties:
+                      group:
+                        default: ""
+                        description: |-
+                          Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                          When unspecified or empty string, core API group is inferred.
+                        maxLength: 253
+                        pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                      kind:
+                        default: Secret
+                        description: Kind is kind of the referent. For example "Secret".
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                        type: string
+                      name:
+                        description: Name is the name of the referent.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the referenced object. When unspecified, the local
+                          namespace is inferred.
+
+                          Note that when a namespace different than the local namespace is specified,
+                          a ReferenceGrant object is required in the referent namespace to allow that
+                          namespace's owner to accept the reference. See the ReferenceGrant
+                          documentation for details.
+
+                          Support: Core
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type:
+                    default: SecretRef
+                    description: |-
+                      Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+                      This defaults to "SecretRef".
+                    enum:
+                    - SecretRef
+                    - Inline
+                    type: string
+                required:
+                - backendRefs
+                - type
+                type: object
+              backendRefs:
+                description: |-
+                  BackendRefs lists the LLMBackends that this provider policy will apply
+                  The namespace is "local", i.e. the same namespace as the LLMRoute.
+                items:
+                  description: BackendRef defines how an ObjectReference that is specific
+                    to BackendRef.
+                  properties:
+                    fallback:
+                      description: |-
+                        Fallback indicates whether the backend is designated as a fallback.
+                        Multiple fallback backends can be configured.
+                        It is highly recommended to configure active or passive health checks to ensure that failover can be detected
+                        when the active backends become unhealthy and to automatically readjust once the primary backends are healthy again.
+                        The overprovisioning factor is set to 1.4, meaning the fallback backends will only start receiving traffic when
+                        the health of the active backends falls below 72%.
+                      type: boolean
+                    group:
+                      default: ""
+                      description: |-
+                        Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                        When unspecified or empty string, core API group is inferred.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    kind:
+                      default: Service
+                      description: |-
+                        Kind is the Kubernetes resource kind of the referent. For example
+                        "Service".
+
+                        Defaults to "Service" when not specified.
+
+                        ExternalName services can refer to CNAME DNS records that may live
+                        outside of the cluster and as such are difficult to reason about in
+                        terms of conformance. They also may not be safe to forward to (see
+                        CVE-2021-25740 for more information). Implementations SHOULD NOT
+                        support ExternalName Services.
+
+                        Support: Core (Services with a type other than ExternalName)
+
+                        Support: Implementation-specific (Services with type ExternalName)
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                      type: string
+                    name:
+                      description: Name is the name of the referent.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace is the namespace of the backend. When unspecified, the local
+                        namespace is inferred.
+
+                        Note that when a namespace different than the local namespace is specified,
+                        a ReferenceGrant object is required in the referent namespace to allow that
+                        namespace's owner to accept the reference. See the ReferenceGrant
+                        documentation for details.
+
+                        Support: Core
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                    port:
+                      description: |-
+                        Port specifies the destination port number to use for this resource.
+                        Port is required when the referent is a Kubernetes Service. In this
+                        case, the port number is the service port number, not the target port.
+                        For other resources, destination port might be derived from the referent
+                        resource or this field.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                  required:
+                  - name
+                  type: object
+                  x-kubernetes-validations:
+                  - message: Must have port for Service reference
+                    rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
+                      : true'
+                type: array
+              type:
+                description: Type specifies the type of the provider. Currently, only
+                  "APIKey" and "AWSBedrock" are supported.
+                enum:
+                - APIKey
+                - AWSBedrock
+                type: string
+            required:
+            - type
+            type: object
         type: object
     served: true
     storage: true
