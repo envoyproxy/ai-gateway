@@ -37,6 +37,7 @@ func runTest(m *testing.M) int {
 	for _, crd := range []string{
 		"aigateway.envoyproxy.io_llmroutes.yaml",
 		"aigateway.envoyproxy.io_llmbackends.yaml",
+		"aigateway.envoyproxy.io_llmproviderpolicy.yaml",
 	} {
 		crds = append(crds, filepath.Join(base, crd))
 	}
