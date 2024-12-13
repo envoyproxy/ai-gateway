@@ -106,6 +106,10 @@ type LLMBackendSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
+
+	// LLMSecurityPolicyName list the LLMSecurityPolicy that this backend will depend on
+	//
+	LLMSecurityPolicyName *string `json:"llmSecurityPolicyName,omitempty"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
@@ -163,11 +167,6 @@ type LLMSecurityPolicy struct {
 
 // LLMSecurityPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
 type LLMSecurityPolicySpec struct {
-	// BackendRefs lists the LLMBackends that this provider policy will apply
-	// The namespace is "local", i.e. the same namespace as the LLMRoute.
-	//
-	BackendRefs []egv1a1.BackendRef `json:"backendRefs,omitempty"`
-
 	// Type specifies the type of the provider. Currently, only "APIKey" and "AWSBedrock" are supported.
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWSBedrock
