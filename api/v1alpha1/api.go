@@ -145,7 +145,7 @@ const (
 	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )
 
-// LLMProviderType specifies the type of the LLMProviderPolicy.
+// LLMProviderType specifies the type of the LLMSecurityPolicy.
 type LLMProviderType string
 
 const (
@@ -154,15 +154,15 @@ const (
 
 // +kubebuilder:object:root=true
 
-// LLMProviderPolicy specifies the provider specific configuration.
-type LLMProviderPolicy struct {
+// LLMSecurityPolicy specifies the provider specific configuration.
+type LLMSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              LLMProviderPolicySpec `json:"spec,omitempty"`
+	Spec              LLMSecurityPolicySpec `json:"spec,omitempty"`
 }
 
-// LLMProviderPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
-type LLMProviderPolicySpec struct {
+// LLMSecurityPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
+type LLMSecurityPolicySpec struct {
 	// BackendRefs lists the LLMBackends that this provider policy will apply
 	// The namespace is "local", i.e. the same namespace as the LLMRoute.
 	//
@@ -180,11 +180,11 @@ type LLMProviderPolicySpec struct {
 
 // +kubebuilder:object:root=true
 
-// LLMProviderPolicyList contains a list of LLMProviderPolicy
-type LLMProviderPolicyList struct {
+// LLMSecurityPolicyList contains a list of LLMSecurityPolicy
+type LLMSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LLMProviderPolicy `json:"items"`
+	Items           []LLMSecurityPolicy `json:"items"`
 }
 
 // LLMProviderAPIKey specifies the API key.
@@ -207,10 +207,6 @@ type LLMProviderAPIKey struct {
 	//
 	// +optional
 	Inline *string `json:"inline,omitempty"`
-
-	// BackendRefs lists the LLMBackends that this API Key will apply
-	//
-	BackendRefs []egv1a1.BackendRef `json:"backendRefs"`
 }
 
 // LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.

@@ -37,7 +37,7 @@ func runTest(m *testing.M) int {
 	for _, crd := range []string{
 		"aigateway.envoyproxy.io_llmroutes.yaml",
 		"aigateway.envoyproxy.io_llmbackends.yaml",
-		"aigateway.envoyproxy.io_llmproviderpolicies.yaml",
+		"aigateway.envoyproxy.io_llmsecuritypolicies.yaml",
 	} {
 		crds = append(crds, filepath.Join(base, crd))
 	}
@@ -136,7 +136,7 @@ func TestLLMBackends(t *testing.T) {
 	}
 }
 
-func TestLLMProviderPolicy(t *testing.T) {
+func TestLLMSecurityPolicies(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
@@ -151,18 +151,18 @@ func TestLLMProviderPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tests.ReadFile(path.Join("testdata/llmproviderpolicies", tc.name))
+			data, err := tests.ReadFile(path.Join("testdata/llmsecuritypolicies", tc.name))
 			require.NoError(t, err)
 
-			llmProviderPolicy := &aigv1a1.LLMProviderPolicy{}
-			err = yaml.UnmarshalStrict(data, llmProviderPolicy)
+			llmSecurityPolicy := &aigv1a1.LLMSecurityPolicy{}
+			err = yaml.UnmarshalStrict(data, llmSecurityPolicy)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, llmProviderPolicy), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, llmSecurityPolicy), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, llmProviderPolicy))
-				require.NoError(t, c.Delete(ctx, llmProviderPolicy))
+				require.NoError(t, c.Create(ctx, llmSecurityPolicy))
+				require.NoError(t, c.Delete(ctx, llmSecurityPolicy))
 			}
 		})
 	}
