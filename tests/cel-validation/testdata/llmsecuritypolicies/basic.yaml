@@ -1,5 +1,5 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMProviderPolicy
+kind: LLMSecurityPolicy
 metadata:
   name: dog-provider-policy
   namespace: default
