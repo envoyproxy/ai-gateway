@@ -131,10 +131,6 @@ spec:
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
-              llmSecurityPolicyName:
-                description: LLMSecurityPolicyName list the LLMSecurityPolicy that
-                  this backend will depend on
-                type: string
               outputSchema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
@@ -156,6 +152,12 @@ spec:
                 required:
                 - schema
                 type: object
+              securityPolicyName:
+                description: |-
+                  SecurityPolicyName list the LLMSecurityPolicy that this backend will depend on.
+
+                  A SecurityPolicy specifies authentication, JWT, and API Key.
+                type: string
             required:
             - backendRef
             - outputSchema

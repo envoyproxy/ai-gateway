@@ -17,7 +17,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: LLMSecurityPolicy specifies the provider specific configuration.
+        description: LLMSecurityPolicy specifies the provider specific configuration
+          like authorization, JWT, and API Key.
         properties:
           apiVersion:
             description: |-

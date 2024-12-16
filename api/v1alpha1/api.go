@@ -107,9 +107,11 @@ type LLMBackendSpec struct {
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
 
-	// LLMSecurityPolicyName list the LLMSecurityPolicy that this backend will depend on
+	// SecurityPolicyName list the LLMSecurityPolicy that this backend will depend on.
 	//
-	LLMSecurityPolicyName *string `json:"llmSecurityPolicyName,omitempty"`
+	// A SecurityPolicy specifies authentication, JWT, and API Key.
+	//
+	SecurityPolicyName *string `json:"securityPolicyName,omitempty"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
@@ -158,7 +160,7 @@ const (
 
 // +kubebuilder:object:root=true
 
-// LLMSecurityPolicy specifies the provider specific configuration.
+// LLMSecurityPolicy specifies the provider specific configuration like authorization, JWT, and API Key.
 type LLMSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

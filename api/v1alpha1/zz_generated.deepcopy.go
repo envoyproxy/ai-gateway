@@ -87,8 +87,8 @@ func (in *LLMBackendSpec) DeepCopyInto(out *LLMBackendSpec) {
 	*out = *in
 	out.APISchema = in.APISchema
 	in.BackendRef.DeepCopyInto(&out.BackendRef)
-	if in.LLMSecurityPolicyName != nil {
-		in, out := &in.LLMSecurityPolicyName, &out.LLMSecurityPolicyName
+	if in.SecurityPolicyName != nil {
+		in, out := &in.SecurityPolicyName, &out.SecurityPolicyName
 		*out = new(string)
 		**out = **in
 	}
