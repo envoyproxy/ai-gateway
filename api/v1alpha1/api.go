@@ -169,9 +169,9 @@ type LLMSecurityPolicy struct {
 
 // LLMSecurityPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
 type LLMSecurityPolicySpec struct {
-	// Type specifies the type of the provider. Currently, only "APIKey" and "AWSBedrock" are supported.
+	// Type specifies the type of the provider. Currently, only "APIKey" and "AWS_IAM" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSBedrock
+	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
 	Type LLMProviderType `json:"type"`
 
 	// APIKey specific configuration. The API key will be injected into the Authorization header.
