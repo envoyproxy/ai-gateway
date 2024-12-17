@@ -18,7 +18,7 @@ const config: Config = {
   // GitHub pages deployment config.
 
   organizationName: 'envoyproxy',
-  projectName: 'ai-gateway', 
+  projectName: 'ai-gateway',
 
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
