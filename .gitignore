@@ -1,4 +1,6 @@
 *.kube
 .bin
 out/
-/site/node_modules/.cache
+.DS_Store
+site/node_modules/
+*.pack
