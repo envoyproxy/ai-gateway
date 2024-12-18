@@ -23,10 +23,12 @@ lint: golangci-lint
 	@echo "lint => ./..."
 	@$(GOLANGCI_LINT) run --build-tags==celvalidation ./...
 
-.PHONY: spell
-spell: codespell
+.PHONY: spell-check
+CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
+CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
+spell-check: codespell
 	@echo "spell => ./..."
-	@$(CODESPELL)
+	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
@@ -53,7 +55,7 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy spell apigen format lint
+precommit: tidy spell-check apigen format lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
