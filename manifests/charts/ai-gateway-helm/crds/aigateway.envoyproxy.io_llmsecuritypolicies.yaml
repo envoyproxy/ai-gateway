@@ -106,10 +106,10 @@ spec:
                 type: object
               type:
                 description: Type specifies the type of the provider. Currently, only
-                  "APIKey" and "AWSBedrock" are supported.
+                  "APIKey" and "AWS_IAM" are supported.
                 enum:
                 - APIKey
-                - AWSBedrock
+                - AWS_IAM
                 type: string
             required:
             - type
