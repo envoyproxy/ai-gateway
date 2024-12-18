@@ -13,7 +13,7 @@ import (
 // This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple LLM backends.
 //
-// The `inputSchema` is used to determine the structure of the requests that the Gateway will
+// The inputSchema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
 // on the output schema of the LLMBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
