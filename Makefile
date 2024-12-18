@@ -86,14 +86,14 @@ test-cel: envtest apigen format
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
-# - `make build.controler`: will build the internal/cmd/controller directory.
+# - `make build.controller`: will build the internal/cmd/controller directory.
 # - `make build.extproc`: will build the internal/cmd/extproc directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
 # Example:
-# - `make build.controler GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
+# - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%
