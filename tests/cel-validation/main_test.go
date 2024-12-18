@@ -147,7 +147,7 @@ func TestLLMSecurityPolicies(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "unknown_provider.yaml",
-			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSBedrock\"",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWS_IAM\", \"OIDC\"",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

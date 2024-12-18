@@ -4,4 +4,4 @@ metadata:
   name: dog-provider-policy
   namespace: default
 spec:
-  type: AWSBedrock
+  type: AWS_IAM
