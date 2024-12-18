@@ -78,7 +78,7 @@ type LLMRouteRule struct {
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	Matches []LLMRouteMatch `json:"matches,omitempty"`
+	Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
 }
 
 // LLMRouteRuleBackendRef is a reference to a LLMBackend with a weight.
@@ -98,7 +98,7 @@ type LLMRouteRuleBackendRef struct {
 	Weight int `json:"weight"`
 }
 
-type LLMRouteMatch struct {
+type LLMRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
