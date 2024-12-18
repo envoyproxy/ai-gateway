@@ -9,7 +9,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 GO_FUMPT = $(LOCALBIN)/gofumpt
 GCI = $(LOCALBIN)/gci
 EDITORCONFIG_CHECKER = $(LOCALBIN)/editorconfig-checker
-CODESPELL = $(LOCALBIN)/.venv/codespell/bin/codespell
+CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
 
 ## Tool versions.
 CONTROLLER_TOOLS_VERSION ?= v0.16.2
@@ -52,11 +52,9 @@ $(ENVTEST): $(LOCALBIN)
 .bin/.venv/%:
 	mkdir -p $(@D)
 	python3 -m venv $@
-	$@/bin/pip3 install $*
+	$@/bin/pip3 install $$(echo $* | sed 's/@/==/')
 
-.PHONY: codespell
-codespell: $(CODESPELL)
-$(CODESPELL): .bin/.venv/codespell
+$(CODESPELL): .bin/.venv/codespell@v2.3.0
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
