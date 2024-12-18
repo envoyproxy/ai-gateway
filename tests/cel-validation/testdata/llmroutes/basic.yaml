@@ -6,6 +6,14 @@ metadata:
 spec:
   inputSchema:
     schema: OpenAI
-  httpRoute:
-    hostnames:
-      - my.example.com
+  rules:
+    - matches:
+      - headers:
+        - type: Exact
+          name: x-envoy-ai-gateway-llm-model
+          value: llama3-70b
+      backendRefs:
+        - name: kserve
+          weight: 20
+        - name: aws-bedrock
+          weight: 80
