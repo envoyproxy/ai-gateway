@@ -152,6 +152,12 @@ spec:
                 required:
                 - schema
                 type: object
+              securityPolicyName:
+                description: |-
+                  SecurityPolicyName list the LLMSecurityPolicy that this backend will depend on.
+
+                  A SecurityPolicy specifies authentication, JWT, and API Key.
+                type: string
             required:
             - backendRef
             - outputSchema

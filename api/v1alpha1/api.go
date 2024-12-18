@@ -106,6 +106,12 @@ type LLMBackendSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
+
+	// SecurityPolicyName list the LLMSecurityPolicy that this backend will depend on.
+	//
+	// A SecurityPolicy specifies authentication, JWT, and API Key.
+	//
+	SecurityPolicyName *string `json:"securityPolicyName,omitempty"`
 }
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
@@ -144,3 +150,67 @@ const (
 	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
 	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )
+
+// LLMProviderAuthenticationType specifies the type of auth mechanism used to access a Provider.
+type LLMProviderAuthenticationType string
+
+const (
+	LLMProviderAuthenticationTypeAPIKey LLMProviderAuthenticationType = "APIKey"
+)
+
+// +kubebuilder:object:root=true
+
+// LLMSecurityPolicy specifies the provider specific configuration like authorization, JWT, and API Key.
+type LLMSecurityPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              LLMSecurityPolicySpec `json:"spec,omitempty"`
+}
+
+// LLMSecurityPolicySpec specifies authentication and authorization rules on access the provider from the Gatewayc
+type LLMSecurityPolicySpec struct {
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWS_IAM", AND "OIDC" are supported.
+	//
+	// +kubebuilder:validation:Enum=APIKey;AWS_IAM;OIDC
+	Type LLMProviderAuthenticationType `json:"type"`
+
+	// APIKey specific configuration. The API key will be injected into the Authorization header.
+	// +optional
+	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
+
+	OIDC *egv1a1.OIDC `json:"oidc,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// LLMSecurityPolicyList contains a list of LLMSecurityPolicy
+type LLMSecurityPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []LLMSecurityPolicy `json:"items"`
+}
+
+// LLMProviderAPIKey specifies the API key.
+type LLMProviderAPIKey struct {
+	// Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+	// This defaults to "SecretRef".
+	//
+	// +kubebuilder:validation:Enum=SecretRef;Inline
+	// +kubebuilder:default=SecretRef
+	Type LLMProviderAPIKeyType `json:"type"`
+
+	// SecretRef is the reference to the secret containing the API key.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of the secret should be "apiKey".
+	//
+	// +optional
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+
+	// Inline specifies the inline API key.
+	//
+	// +optional
+	Inline *string `json:"inline,omitempty"`
+}
+
+// LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
+type LLMProviderAPIKeyType string
