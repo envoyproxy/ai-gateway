@@ -167,16 +167,18 @@ type LLMSecurityPolicy struct {
 	Spec              LLMSecurityPolicySpec `json:"spec,omitempty"`
 }
 
-// LLMSecurityPolicySpec specifies a provider (e.g.AWS Bedrock, Azure etc.) specific-configuration like auth
+// LLMSecurityPolicySpec specifies authentication and authorization rules on access the provider from the Gatewayc
 type LLMSecurityPolicySpec struct {
-	// Type specifies the type of the provider. Currently, only "APIKey" and "AWS_IAM" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWS_IAM", AND "OIDC" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
+	// +kubebuilder:validation:Enum=APIKey;AWS_IAM;OIDC
 	Type LLMProviderAuthenticationType `json:"type"`
 
 	// APIKey specific configuration. The API key will be injected into the Authorization header.
 	// +optional
 	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
+
+	OIDC *egv1a1.OIDC `json:"oidc,omitempty"`
 }
 
 // +kubebuilder:object:root=true

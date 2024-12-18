@@ -5,6 +5,7 @@
 package v1alpha1
 
 import (
+	apiv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -268,6 +269,11 @@ func (in *LLMSecurityPolicySpec) DeepCopyInto(out *LLMSecurityPolicySpec) {
 	if in.APIKey != nil {
 		in, out := &in.APIKey, &out.APIKey
 		*out = new(LLMProviderAPIKey)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.OIDC != nil {
+		in, out := &in.OIDC, &out.OIDC
+		*out = new(apiv1alpha1.OIDC)
 		(*in).DeepCopyInto(*out)
 	}
 }
