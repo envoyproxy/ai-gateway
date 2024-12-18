@@ -1,3 +1,6 @@
 *.kube
 .bin
 out/
+site/node_modules/
+.DS_Store
+site/build/
