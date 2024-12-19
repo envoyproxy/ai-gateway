@@ -1,6 +1,7 @@
 *.kube
 .bin
 out/
+.DS_Store
 
 # Files and directories to ignore in the site directory
 # dependencies
@@ -23,3 +24,5 @@ site/.env.production.local
 site/npm-debug.log*
 site/yarn-debug.log*
 site/yarn-error.log*
+site/static/.DS_Store
+site/temp
