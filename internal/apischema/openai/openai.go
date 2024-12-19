@@ -1,4 +1,4 @@
-// Package openai contains the followings are the OpenAI API schema definitions.
+// Package openai contains the following are the OpenAI API schema definitions.
 // Note that we intentionally do not use the code generation tools like OpenAPI Generator not only to keep the code simple
 // but also because the OpenAI's OpenAPI definition is not compliant with the spec and the existing tools do not work well.
 package openai

@@ -23,6 +23,13 @@ lint: golangci-lint
 	@echo "lint => ./..."
 	@$(GOLANGCI_LINT) run --build-tags==celvalidation ./...
 
+.PHONY: codespell
+CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
+CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
+codespell: $(CODESPELL)
+	@echo "spell => ./..."
+	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
+
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
 format: gci gofumpt
@@ -48,7 +55,7 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy apigen format lint
+precommit: tidy codespell apigen format lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
@@ -81,14 +88,14 @@ test-cel: envtest apigen format
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
-# - `make build.controler`: will build the internal/cmd/controller directory.
+# - `make build.controller`: will build the internal/cmd/controller directory.
 # - `make build.extproc`: will build the internal/cmd/extproc directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
 # Example:
-# - `make build.controler GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
+# - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%
