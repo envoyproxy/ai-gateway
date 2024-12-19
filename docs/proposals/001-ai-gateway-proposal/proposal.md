@@ -90,18 +90,38 @@ type LLMRouteSpec struct {
 // +kubebuilder:validation:Required
 // +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
 APISchema LLMAPISchema `json:"inputSchema"`
-// HTTPRoute is the base HTTPRouteSpec (https://gateway-api.sigs.k8s.io/api-types/httproute/) in
-// the Gateway API on which this LLMRoute will be implemented. AI Gateway controller will generate a HTTPRoute based
-// on the configuration given here with the additional modifications to achieve the necessary jobs,
-// notably inserting the AI Gateway external processor filter.
+// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
+// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 //
-// In the matching rules in the HTTPRoute here, `x-envoy-ai-gateway-llm-model` header
-// can be used to describe the routing behavior.
+// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
+// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
 //
-// Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
+// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-llm-model` header
+// can be used to describe the routing behavior in the HTTPRoute.
 //
 // +kubebuilder:validation:Required
-HTTPRoute gwapiv1.HTTPRouteSpec `json:"httpRoute"`
+// +kubebuilder:validation:MaxItems=128
+Rules []LLMRouteRule `json:"rules"`
+}
+
+// LLMRouteRule is a rule that defines the routing behavior of the LLMRoute.
+type LLMRouteRule struct {
+// BackendRefs is the list of LLMBackend that this rule will route the traffic to.
+// Each backend can have a weight that determines the traffic distribution.
+//
+// The namespace of each backend is "local", i.e. the same namespace as the LLMRoute.
+//
+// +optional
+// +kubebuilder:validation:MaxItems=128
+BackendRefs []LLMRouteRuleBackendRef `json:"backendRefs,omitempty"`
+
+// Matches is the list of LLMRouteMatch that this rule will match the traffic to.
+// This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
+// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
+//
+// +optional
+// +kubebuilder:validation:MaxItems=128
+Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
 }
 ```
 
@@ -271,6 +291,8 @@ Envoy AI Gateway extends Envoy Gateway using an Extension Server. Envoy Gateway 
 the xDS configuration before it is sent to Envoy Proxy. The Envoy Gateway extension Server provides a mechanism where Envoy Gateway tracks
 custom resources and then calls a set of hooks that allow the generated xDS configuration to be modified before it is sent to Envoy Proxy.
 
+![Data Plane](./control_plane.png)
+
 AI Gateway ExtProc controller watches the `LLMRoute` resource and perform the follow steps:
 - Reconciles the envoy gateway ext proc deployment and creates the extension policy.
 - Reconciles the envoy proxy deployment and attach the AWS credential if the provider is AWS.
@@ -287,6 +309,7 @@ Much of this is better explained visually:
 
 Below is a detailed view how an inference request works on envoy AI gateway
 
+![Data Plane](./data_plane.png)
 
 This diagram lightly follows the example request for routing to Anthropic claude 3.5 sonnet model on AWS Bedrock.
 The flow can be described as:
