@@ -4,21 +4,22 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.2
-  name: llmsecuritypolicies.aigateway.envoyproxy.io
+  name: backendsecuritypolicies.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
   names:
-    kind: LLMSecurityPolicy
-    listKind: LLMSecurityPolicyList
-    plural: llmsecuritypolicies
-    singular: llmsecuritypolicy
+    kind: BackendSecurityPolicy
+    listKind: BackendSecurityPolicyList
+    plural: backendsecuritypolicies
+    singular: backendsecuritypolicy
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: LLMSecurityPolicy specifies the provider specific configuration
-          like authorization, JWT, and API Key.
+        description: |-
+          BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
+          exiting the gateway to the backend.
         properties:
           apiVersion:
             description: |-
@@ -38,8 +39,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: LLMSecurityPolicySpec specifies authentication and authorization
-              rules on access the provider from the Gatewayc
+            description: BackendSecurityPolicySpec specifies authentication and authorization
+              rules on access the provider from the Gateway.
             properties:
               apiKey:
                 description: APIKey specific configuration. The API key will be injected
@@ -105,8 +106,8 @@ spec:
                 - type
                 type: object
               oidc:
-                description: OIDC defines the configuration for the OpenID Connect
-                  (OIDC) authentication.
+                description: OIDC tokens are retrieved from the following configuration.
+                  The token and backend type will determine how Authorization is configured.
                 properties:
                   clientID:
                     description: |-
@@ -1137,12 +1138,67 @@ spec:
                 - clientSecret
                 - provider
                 type: object
+              staticKey:
+                description: StaticKey specific configuration. The Static Key and
+                  backend type will determine how Authorization is handled.
+                properties:
+                  accessKey:
+                    description: AccessKey is the static access key.
+                    type: string
+                  secretRef:
+                    description: |-
+                      SecretRef is the reference to the secret containing the static secret key.
+                      ai-gateway must be given the permission to read this secret.
+                      The key of the secret should be "secretKey".
+                    properties:
+                      group:
+                        default: ""
+                        description: |-
+                          Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                          When unspecified or empty string, core API group is inferred.
+                        maxLength: 253
+                        pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                      kind:
+                        default: Secret
+                        description: Kind is kind of the referent. For example "Secret".
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                        type: string
+                      name:
+                        description: Name is the name of the referent.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the referenced object. When unspecified, the local
+                          namespace is inferred.
+
+                          Note that when a namespace different than the local namespace is specified,
+                          a ReferenceGrant object is required in the referent namespace to allow that
+                          namespace's owner to accept the reference. See the ReferenceGrant
+                          documentation for details.
+
+                          Support: Core
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - secretRef
+                type: object
               type:
                 description: Type specifies the auth mechanism used to access the
-                  provider. Currently, only "APIKey", "AWS_IAM", AND "OIDC" are supported.
+                  provider. Currently, only "APIKey", "StaticKey", AND "OIDC" are
+                  supported.
                 enum:
                 - APIKey
-                - AWS_IAM
+                - StaticKey
                 - OIDC
                 type: string
             required:

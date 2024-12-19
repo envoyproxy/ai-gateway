@@ -37,7 +37,7 @@ func runTest(m *testing.M) int {
 	for _, crd := range []string{
 		"aigateway.envoyproxy.io_llmroutes.yaml",
 		"aigateway.envoyproxy.io_llmbackends.yaml",
-		"aigateway.envoyproxy.io_llmsecuritypolicies.yaml",
+		"aigateway.envoyproxy.io_backendsecuritypolicies.yaml",
 	} {
 		crds = append(crds, filepath.Join(base, crd))
 	}
@@ -136,7 +136,7 @@ func TestLLMBackends(t *testing.T) {
 	}
 }
 
-func TestLLMSecurityPolicies(t *testing.T) {
+func TestBackendSecurityPolicies(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
@@ -147,22 +147,22 @@ func TestLLMSecurityPolicies(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "unknown_provider.yaml",
-			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWS_IAM\", \"OIDC\"",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"StaticKey\", \"OIDC\"",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tests.ReadFile(path.Join("testdata/llmsecuritypolicies", tc.name))
+			data, err := tests.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))
 			require.NoError(t, err)
 
-			llmSecurityPolicy := &aigv1a1.LLMSecurityPolicy{}
-			err = yaml.UnmarshalStrict(data, llmSecurityPolicy)
+			backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
+			err = yaml.UnmarshalStrict(data, backendSecurityPolicy)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, llmSecurityPolicy), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, backendSecurityPolicy), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, llmSecurityPolicy))
-				require.NoError(t, c.Delete(ctx, llmSecurityPolicy))
+				require.NoError(t, c.Create(ctx, backendSecurityPolicy))
+				require.NoError(t, c.Delete(ctx, backendSecurityPolicy))
 			}
 		})
 	}

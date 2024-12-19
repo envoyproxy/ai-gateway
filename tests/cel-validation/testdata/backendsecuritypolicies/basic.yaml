@@ -1,7 +1,7 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMSecurityPolicy
+kind: BackendSecurityPolicy
 metadata:
   name: dog-provider-policy
   namespace: default
 spec:
-  type: AWS_IAM
+  type: APIKey

@@ -131,6 +131,13 @@ spec:
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
+              backendSecurityPolicyName:
+                description: |-
+                  BackendSecurityPolicyName list the BackendSecurityPolicy that this backend will depend on.
+
+                  A BackendSecurityPolicy is for configuring authentication and authorization rules on the traffic
+                  exiting the gateway to the backend.
+                type: string
               outputSchema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
@@ -152,15 +159,18 @@ spec:
                 required:
                 - schema
                 type: object
-              securityPolicyName:
-                description: |-
-                  SecurityPolicyName list the LLMSecurityPolicy that this backend will depend on.
-
-                  A SecurityPolicy specifies authentication, JWT, and API Key.
+              providerType:
+                default: Unspecified
+                description: LLMProviderType is the provider type specifies the provider
+                  associated with the backend.
+                enum:
+                - AWS
+                - Unspecified
                 type: string
             required:
             - backendRef
             - outputSchema
+            - providerType
             type: object
         type: object
     served: true
