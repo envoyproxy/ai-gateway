@@ -186,12 +186,17 @@ type BackendSecurityPolicy struct {
 	Spec              BackendSecurityPolicySpec `json:"spec,omitempty"`
 }
 
-// BackendSecurityPolicySpec specifies authentication and authorization rules on access the provider from the Gateway.
+// BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "StaticKey", AND "OIDC" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "OIDC" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;StaticKey;OIDC
+	// +kubebuilder:validation:Enum=APIKey;OIDC
 	Type LLMProviderAuthenticationType `json:"type"`
+
+	// BackendRefs are refs of the backends that this BackendSecurityPolicy corresponds to.
+	//
+	// +optional
+	BackendRefs []egv1a1.BackendRef `json:"backendSecurityPolicyRefs,omitempty"`
 
 	// APIKey specific configuration. The API key will be injected into the Authorization header.
 	// +optional
@@ -200,10 +205,6 @@ type BackendSecurityPolicySpec struct {
 	// OIDC tokens are retrieved from the following configuration. The token and backend type will determine how Authorization is configured.
 	// +optional
 	OIDC *egv1a1.OIDC `json:"oidc,omitempty"`
-
-	// StaticKey specific configuration. The Static Key and backend type will determine how Authorization is handled.
-	// +optional
-	StaticKey *LLMProviderStaticKey `json:"staticKey,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -217,16 +218,18 @@ type BackendSecurityPolicyList struct {
 
 // LLMProviderAPIKey specifies the API key.
 type LLMProviderAPIKey struct {
-	// Type specifies the type of the API key. Currently, "SecretRef" and "Inline" are supported.
+	// Type specifies the type of the API key. Currently, "SecretRef" is supported.
 	// This defaults to "SecretRef".
 	//
-	// +kubebuilder:validation:Enum=SecretRef;Inline
+	// +kubebuilder:validation:Enum=SecretRef
 	// +kubebuilder:default=SecretRef
 	Type LLMProviderAPIKeyType `json:"type"`
 
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
+	//
+	// For AWS specifically, the access key should be stored as "accessKey" and secret key as "secretKey".
 	//
 	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
@@ -239,14 +242,3 @@ type LLMProviderAPIKey struct {
 
 // LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
 type LLMProviderAPIKeyType string
-
-// LLMProviderStaticKey specifies the static access key and secret key.
-type LLMProviderStaticKey struct {
-	// AccessKey is the static access key.
-	AccessKey *string `json:"accessKey,omitempty"`
-
-	// SecretRef is the reference to the secret containing the static secret key.
-	// ai-gateway must be given the permission to read this secret.
-	// The key of the secret should be "secretKey".
-	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
-}
