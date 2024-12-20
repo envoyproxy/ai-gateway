@@ -233,11 +233,6 @@ type LLMProviderAPIKey struct {
 	//
 	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
-
-	// Inline specifies the inline API key.
-	//
-	// +optional
-	Inline *string `json:"inline,omitempty"`
 }
 
 // LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.

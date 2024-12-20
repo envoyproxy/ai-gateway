@@ -46,9 +46,6 @@ spec:
                 description: APIKey specific configuration. The API key will be injected
                   into the Authorization header.
                 properties:
-                  inline:
-                    description: Inline specifies the inline API key.
-                    type: string
                   secretRef:
                     description: |-
                       SecretRef is the reference to the secret containing the API key.
