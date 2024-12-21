@@ -160,7 +160,29 @@ type LLMBackendSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
+
+	// BackendSecurityPolicyName list the BackendSecurityPolicy that this backend will depend on.
+	//
+	// A BackendSecurityPolicy is for configuring authentication and authorization rules on the traffic
+	// exiting the gateway to the backend.
+	//
+	// +optional
+	BackendSecurityPolicyName *string `json:"backendSecurityPolicyName,omitempty"`
+
+	// LLMProviderType is the provider type specifies the provider associated with the backend.
+	//
+	// +kubebuilder:validation:Enum=AWS;Unspecified
+	// +kubebuilder:default=Unspecified
+	ProviderType *LLMProviderType `json:"providerType"`
 }
+
+// LLMProviderType defines the provider type.
+type LLMProviderType string
+
+const (
+	LLMProviderAWSType         LLMProviderType = "AWS"
+	LLMProviderUnspecifiedType LLMProviderType = "Unspecified"
+)
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
 //
@@ -198,3 +220,74 @@ const (
 	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
 	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )
+
+// LLMProviderAuthenticationType specifies the type of auth mechanism used to access a Provider.
+type LLMProviderAuthenticationType string
+
+const (
+	LLMProviderAuthenticationTypeAPIKey    LLMProviderAuthenticationType = "APIKey"
+	LLMProviderAuthenticationTypeOIDC      LLMProviderAuthenticationType = "OIDC"
+	LLMProviderAuthenticationTypeStaticKey LLMProviderAuthenticationType = "StaticKey"
+)
+
+// +kubebuilder:object:root=true
+
+// BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
+// exiting the gateway to the backend.
+type BackendSecurityPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              BackendSecurityPolicySpec `json:"spec,omitempty"`
+}
+
+// BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
+type BackendSecurityPolicySpec struct {
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "OIDC" are supported.
+	//
+	// +kubebuilder:validation:Enum=APIKey;OIDC
+	Type LLMProviderAuthenticationType `json:"type"`
+
+	// BackendRefs are refs of the backends that this BackendSecurityPolicy corresponds to.
+	//
+	// +optional
+	BackendRefs []egv1a1.BackendRef `json:"backendSecurityPolicyRefs,omitempty"`
+
+	// APIKey specific configuration. The API key will be injected into the Authorization header.
+	// +optional
+	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
+
+	// OIDC tokens are retrieved from the following configuration. The token and backend type will determine how Authorization is configured.
+	// +optional
+	OIDC *egv1a1.OIDC `json:"oidc,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// BackendSecurityPolicyList contains a list of BackendSecurityPolicy
+type BackendSecurityPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []BackendSecurityPolicy `json:"items"`
+}
+
+// LLMProviderAPIKey specifies the API key.
+type LLMProviderAPIKey struct {
+	// Type specifies the type of the API key. Currently, "SecretRef" is supported.
+	// This defaults to "SecretRef".
+	//
+	// +kubebuilder:validation:Enum=SecretRef
+	// +kubebuilder:default=SecretRef
+	Type LLMProviderAPIKeyType `json:"type"`
+
+	// SecretRef is the reference to the secret containing the API key.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of the secret should be "apiKey".
+	//
+	// For AWS specifically, the access key should be stored as "accessKey" and secret key as "secretKey".
+	//
+	// +optional
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+}
+
+// LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
+type LLMProviderAPIKeyType string
