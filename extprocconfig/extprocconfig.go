@@ -10,16 +10,24 @@ import gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 // Config is the configuration for the external processor.
 type Config struct {
-	InputSchema             VersionedAPISchema `json:"inputSchema"`
-	ModelNameHeaderKey      string             `json:"modelNameHeaderKey"`
-	BackendRoutingHeaderKey string             `json:"backendRoutingHeaderKey"`
-	Rules                   []RouteRule        `json:"rules"`
+	// InputSchema specifies the API schema of the input format of requests to the external processor.
+	InputSchema VersionedAPISchema `json:"inputSchema"`
+	// ModelNameHeaderKey is the header key to be populated with the model name by the external processor.
+	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
+	// BackendRoutingHeaderKey is the header key to be populated with the backend name by the external processor
+	// **after** the routing decision is made by the external processor using Rules.
+	BackendRoutingHeaderKey string `json:"backendRoutingHeaderKey"`
+	// Rules is the routing rules to be used by the external processor to make the routing decision.
+	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
+	Rules []RouteRule `json:"rules"`
 }
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
-	Schema  APISchema
-	Version string
+	// Schema is the API schema.
+	Schema APISchema `json:"schema"`
+	// Version is the version of the API schema. Optional.
+	Version string `json:"version,omitempty"`
 }
 
 // APISchema corresponds to APISchema in api/v1alpha1/api.go.
@@ -37,8 +45,11 @@ type HeaderMatch = gwapiv1.HTTPHeaderMatch
 // besides the `Backends` field is modified to abstract the concept of a backend
 // at Envoy Gateway level to a simple name.
 type RouteRule struct {
-	Headers  []HeaderMatch `json:"headers"`
-	Backends []Backend     `json:"backends"`
+	// Headers is the list of headers to match for the routing decision.
+	// Currently, only exact match is supported.
+	Headers []HeaderMatch `json:"headers"`
+	// Backends is the list of backends to which the request should be routed to when the headers match.
+	Backends []Backend `json:"backends"`
 }
 
 // Backend corresponds to LLMRouteRuleBackendRef in api/v1alpha1/api.go
