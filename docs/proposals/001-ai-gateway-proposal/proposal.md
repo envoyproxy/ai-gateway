@@ -16,9 +16,8 @@
     -   [Axioms](#axioms)
     -   [LLMRoute](#llmroute)
     -   [LLMBackend](#llmbackend)
-    -   [Spec](#spec)
+    -   [LLMSecurityPolicy](#llmsecuritypolicy)
     -   [Diagrams](#diagrams)
-    -   [Alternatives](#alternatives)
 - [FAQ](#faq)
 - [Open Questions](#open-questions)
 
@@ -26,12 +25,12 @@
 
 ## Summary
 
-This proposal introduces four new Custom Resource Definitions(CRD) to support the requirements of the Envoy AI Gateway: **LLMRoute**, **LLMBackend** and **LLMTrafficPolicy**.
+This proposal introduces four new Custom Resource Definitions(CRD) to support the requirements of the Envoy AI Gateway: **LLMRoute**, **LLMBackend**, **LLMSecurityPolicy** and **LLMTrafficPolicy**.
 
 * The `LLMRoute` specifies the schema for the user requests and routing rules associated with a list of `LLMBackend`.
-* The `LLMBackend` defines the request schema for various LLM providers. This resource is managed by the Inference Platform Admin persona.
-* The `LLMTrafficPolicy` defines the traffic management policies, including rate limiting for token usage.
-* The `LLMProviderPolicy` defines the authentication policy for LLM provider using the API token or OIDC federation.
+* The `LLMBackend` defines the request schema and security policy for various LLM providers. This resource is managed by the Inference Platform Admin persona.
+* The `LLMTrafficPolicy` defines the traffic management policies, including rate limiting for LLM token usage.
+* The `LLMSecurityPolicy` defines the authentication policy for LLM provider using the API token or OIDC federation.
 
 ## Goals
 
@@ -71,12 +70,13 @@ The API design is based on these axioms:
 
 ### LLMRoute
 
-`LLMRoute` defines the unified user request schema and the routing rules to a list of supported `LLMBackend`s.
+`LLMRoute` defines the unified user request schema and the routing rules to a list of supported `LLMBackend`s such as AWS Bedrock, GCP AI Studio, Azure OpenAI and KServe for self-hosted LLMs.
 
-- LLMRoute serves as a way to define the unified AI Gateway API which allows downstream clients to use a single schema API to interact with multiple `LLMBackend`s.
-- The `HTTPRoute` spec is embed to allow defining the routing rules based on HTTP routing headers which can either be sent by user or determined by the ai gateway.
+- `LLMRoute` serves as a way to define the unified AI Gateway API which allows downstream clients to use a single schema API to interact with multiple `LLMBackend`s.
+- The `LLMRouteRule`s are defined to route to the `LLMBackend`s based on the HTTP header matching. For some features like traffic splitting, the rules are matched in the external proc as the backend needs to be determined before
+the request body transformation is backend dependent.
+-`LLMTrafficPolicy` is referenced to perform other necessary jobs for upstream authentication and rate limiting.
 
-#### Spec
 
 ```golang
 // LLMRouteSpec details the LLMRoute configuration.
@@ -131,7 +131,7 @@ Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
 `LLMBackend` defines the LLM provider API schema and a reference to the envoy gateway backend
 
 - The Gateway routes the traffic to the appropriate `LLMBackend` by converting the unified API schema to the LLM provider API schema.
-- The LLMBackend is attached with the upstream provider security policy and traffic policies to perform other necessary jobs for upstream authentication and rate limiting.
+- The LLMBackend is attached with the `BackendSecurityPolicy` to perform the upstream authentication.
 
 ```golang
 // LLMBackendSpec details the LLMBackend configuration.
@@ -217,9 +217,8 @@ Limits []LLMPolicyRateLimitValue `json:"limits"`
 
 ### Yaml Examples
 
-#### LLMRoutes(s)
-`LLMRoute` embeds the `HTTPRoute` spec and users can configure the routing rules in a standardized way via `HTTPRoute` while
-leveraging the LLM specific information e.g `x-envoy-ai-gateway-llm-model` HTTP header. The routing calculation in the `ExtProc`
+#### LLMRoute
+The routing calculation in the `ExtProc`
 is done by analyzing the match rules on `HTTPRoute` spec to emulate the behavior in order to perform the request/response transformation,
 because the routing decision is made at the very end of the filter chain.
 
@@ -227,10 +226,11 @@ because the routing decision is made at the very end of the filter chain.
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: LLMRoute
 metadata:
-  name: llama-3-route
+  name: gateway-route
 spec:
-  inputSchema: OpenAI
-  httpRoute:
+  inputSchema:
+    schema: OpenAI
+  rules:
     matches:
       - headers:
           key: x-envoy-ai-gateway-llm-model
@@ -242,7 +242,7 @@ spec:
           weight: 80
 ```
 
-`LLMBackend`
+#### LLMBackend
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: LLMBackend
@@ -251,7 +251,7 @@ metadata:
 spec:
   outputSchema: OpenAI
   backendRef: kserve-backend
-  trafficPolicy: llama-ratelimit
+  backendSecurityPolicyName: jwt
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: LLMBackend
@@ -260,7 +260,7 @@ metadata:
 spec:
   outputSchema: AWSBedrock
   backendRef: aws-bedrock-backend
-  trafficPolicy: claude-ratelimit
+  backendSecurityPolicyName: aws-oidc
 ```
 
 #### LLMTrafficPolicy
@@ -286,6 +286,7 @@ spec:
               expr: "$response_body.usage.total_tokens | tonumber"
 ```
 
+## Diagrams
 ### Control Plane
 Envoy AI Gateway extends Envoy Gateway using an Extension Server. Envoy Gateway can be configured to call an external server over gRPC with
 the xDS configuration before it is sent to Envoy Proxy. The Envoy Gateway extension Server provides a mechanism where Envoy Gateway tracks
