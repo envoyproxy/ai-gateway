@@ -30,8 +30,8 @@ func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*process
 	return srv, nil
 }
 
-// SetConfig  updates the configuration of the external processor.
-func (s *Server[P]) SetConfig(config *extprocconfig.Config) error {
+// LoadConfig updates the configuration of the external processor.
+func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 	bodyParser, err := router.NewRequestBodyParser(config.InputSchema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)

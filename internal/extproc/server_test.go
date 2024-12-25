@@ -25,10 +25,10 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 	return s
 }
 
-func TestServer_SetConfig(t *testing.T) {
+func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		err := s.SetConfig(&extprocconfig.Config{
+		err := s.LoadConfig(&extprocconfig.Config{
 			InputSchema: extprocconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
 		})
 		require.Error(t, err)
@@ -66,7 +66,7 @@ func TestServer_SetConfig(t *testing.T) {
 			},
 		}
 		s := requireNewServerWithMockProcessor(t)
-		err := s.SetConfig(config)
+		err := s.LoadConfig(config)
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
