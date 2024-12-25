@@ -30,11 +30,14 @@ type Config struct {
 	Rules                   []RouteRule
 }
 
+// HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
+type HeaderMatch = gwapiv1.HTTPHeaderMatch
+
 // RouteRule corresponds to LLMRouteRule in api/v1alpha1/api.go
 // besides the `Backends` field is modified to abstract the concept of a backend
 // at Envoy Gateway level to a simple name.
 type RouteRule struct {
-	Headers  []gwapiv1.HTTPHeaderMatch
+	Headers  []HeaderMatch
 	Backends []Backend
 }
 

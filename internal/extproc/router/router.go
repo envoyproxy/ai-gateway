@@ -5,9 +5,7 @@ import (
 )
 
 type Router interface {
-	Calculate(
-		headers map[string]string,
-	) (backendName string, outputSchema extprocconfig.VersionedAPISchema, err error)
+	Calculate(headers map[string]string) (backendName string, outputSchema extprocconfig.VersionedAPISchema, err error)
 }
 
 type router struct{}

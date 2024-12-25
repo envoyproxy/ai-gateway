@@ -1,11 +1,14 @@
 package extproc
 
 import (
+	"context"
 	"testing"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/envoyproxy/ai-gateway/extprocconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -13,9 +16,47 @@ import (
 )
 
 var (
+	_ ProcessorIface        = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
 	_ router.Router         = &mockRouter{}
 )
+
+func newMockProcessor(_ *processorConfig) *mockProcessor {
+	return &mockProcessor{}
+}
+
+// mockProcessor implements [Processor] for testing.
+type mockProcessor struct {
+	t                     *testing.T
+	expHeaderMap          *corev3.HeaderMap
+	expBody               *extprocv3.HttpBody
+	retProcessingResponse *extprocv3.ProcessingResponse
+	retErr                error
+}
+
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (m mockProcessor) ProcessRequestHeaders(_ context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	require.Equal(m.t, m.expHeaderMap, headerMap)
+	return m.retProcessingResponse, m.retErr
+}
+
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (m mockProcessor) ProcessRequestBody(_ context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	require.Equal(m.t, m.expBody, body)
+	return m.retProcessingResponse, m.retErr
+}
+
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
+func (m mockProcessor) ProcessResponseHeaders(_ context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	require.Equal(m.t, m.expHeaderMap, headerMap)
+	return m.retProcessingResponse, m.retErr
+}
+
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
+func (m mockProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	require.Equal(m.t, m.expBody, body)
+	return m.retProcessingResponse, m.retErr
+}
 
 // mockTranslator implements [translator.Translator] for testing.
 type mockTranslator struct {
@@ -92,3 +133,45 @@ func (m mockTranslatorFactory) impl(path string) (translator.Translator, error) 
 	require.Equal(m.t, m.expPath, path)
 	return m.retTranslator, m.retErr
 }
+
+// mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.
+type mockExternalProcessingStream struct {
+	t                 *testing.T
+	ctx               context.Context
+	expResponseOnSend *extprocv3.ProcessingResponse
+	retRecv           *extprocv3.ProcessingRequest
+	retErr            error
+}
+
+// Context implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) Context() context.Context {
+	return m.ctx
+}
+
+// Send implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) Send(response *extprocv3.ProcessingResponse) error {
+	require.Equal(m.t, m.expResponseOnSend, response)
+	return m.retErr
+}
+
+// Recv implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) Recv() (*extprocv3.ProcessingRequest, error) {
+	return m.retRecv, m.retErr
+}
+
+// SetHeader implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) SetHeader(md metadata.MD) error { panic("TODO") }
+
+// SendHeader implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) SendHeader(metadata.MD) error { panic("TODO") }
+
+// SetTrailer implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) SetTrailer(metadata.MD) { panic("TODO") }
+
+// SendMsg implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) SendMsg(any) error { panic("TODO") }
+
+// RecvMsg implements [extprocv3.ExternalProcessor_ProcessServer].
+func (m mockExternalProcessingStream) RecvMsg(any) error { panic("TODO") }
+
+var _ extprocv3.ExternalProcessor_ProcessServer = &mockExternalProcessingStream{}

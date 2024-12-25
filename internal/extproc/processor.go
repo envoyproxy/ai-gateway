@@ -20,15 +20,33 @@ type processorConfig struct {
 	factories                                   map[extprocconfig.VersionedAPISchema]translator.Factory
 }
 
-// processor handles the processing of the request and response messages for a single stream.
-type processor struct {
+// ProcessorIface is the interface for the processor.
+// This decouples the processor implementation detail from the server implementation.
+type ProcessorIface interface {
+	// ProcessRequestHeaders processes the request headers message.
+	ProcessRequestHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
+	// ProcessRequestBody processes the request body message.
+	ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
+	// ProcessResponseHeaders processes the response headers message.
+	ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
+	// ProcessResponseBody processes the response body message.
+	ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
+}
+
+// NewProcessor creates a new processor.
+func NewProcessor(config *processorConfig) *Processor {
+	return &Processor{config: config}
+}
+
+// Processor handles the processing of the request and response messages for a single stream.
+type Processor struct {
 	config         *processorConfig
 	requestHeaders map[string]string
 	translator     translator.Translator
 }
 
-// processRequestHeaders processes the request headers message.
-func (p *processor) processRequestHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (p *Processor) ProcessRequestHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	p.requestHeaders = headersToMap(headers)
 	resp := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{},
@@ -36,8 +54,8 @@ func (p *processor) processRequestHeaders(_ context.Context, headers *corev3.Hea
 	return resp, nil
 }
 
-// processRequestBody processes the request body message.
-func (p *processor) processRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	path := p.requestHeaders[":path"]
 	model, body, err := p.config.bodyParser(path, rawBody)
 	if err != nil {
@@ -88,8 +106,8 @@ func (p *processor) processRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	return resp, nil
 }
 
-// processResponseHeaders processes the response headers message.
-func (p *processor) processResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
+func (p *Processor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	headerMutation, err := p.translator.ResponseHeaders(headersToMap(headers))
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
@@ -101,8 +119,8 @@ func (p *processor) processResponseHeaders(_ context.Context, headers *corev3.He
 	}}, nil
 }
 
-// processResponseBody processes the response body message.
-func (p *processor) processResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
+func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	headerMutation, bodyMutation, usedToken, err := p.translator.ResponseBody(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
