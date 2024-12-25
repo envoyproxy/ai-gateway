@@ -9,6 +9,7 @@ require (
 	github.com/envoyproxy/gateway v1.2.4
 	github.com/envoyproxy/go-control-plane v0.13.1
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	google.golang.org/grpc v1.67.1
 	k8s.io/apimachinery v0.32.0
 	sigs.k8s.io/controller-runtime v0.19.3
@@ -56,7 +57,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // indirect
 	golang.org/x/net v0.31.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
