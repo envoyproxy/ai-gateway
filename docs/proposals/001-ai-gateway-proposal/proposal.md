@@ -12,11 +12,10 @@
 -   [Non-Goals](#non-goals)
 -   [Proposal](#proposal)
     -   [Personas](#personas)
-        -   [Inference Platform Admin](#inference-platform-admin)
     -   [Axioms](#axioms)
     -   [LLMRoute](#llmroute)
     -   [LLMBackend](#llmbackend)
-    -   [LLMSecurityPolicy](#llmsecuritypolicy)
+    -   [Token Usage based Rate Limiting](#llmsecuritypolicy)
     -   [Diagrams](#diagrams)
 - [FAQ](#faq)
 - [Open Questions](#open-questions)
@@ -24,17 +23,24 @@
 <!-- /toc -->
 
 ## Summary
+The AI Gateway project is to act as a centralized access point for managing and controlling access to various AI models within an organization.
+It provides a single interface for developers to interact with different AI providers while ensuring security, governance and observability over AI traffic.
 
-This proposal introduces four new Custom Resource Definitions(CRD) to support the requirements of the Envoy AI Gateway: **LLMRoute**, **LLMBackend**, **LLMSecurityPolicy** and **LLMTrafficPolicy**.
+This proposal introduces four new Custom Resource Definitions(CRD) to support the requirements of the Envoy AI Gateway: **LLMRoute**, **LLMBackend**, **LLMSecurityPolicy**.
 
 * The `LLMRoute` specifies the schema for the user requests and routing rules associated with a list of `LLMBackend`.
-* The `LLMBackend` defines the request schema and security policy for various LLM providers. This resource is managed by the Inference Platform Admin persona.
-* The `LLMTrafficPolicy` defines the traffic management policies, including rate limiting for LLM token usage.
-* The `LLMSecurityPolicy` defines the authentication policy for LLM provider using the API token or OIDC federation.
+* The `LLMBackend` defines the request schema and security policy for various AI providers. This resource is managed by the Inference Platform Admin persona.
+* The `LLMSecurityPolicy` defines the authentication policy for AI provider using the API token or OIDC federation.
+* For Token Rate Limiting we plan to extend envoy gateway to support generic usage based rate limiting.
 
 ## Goals
 
 - Drive the consensus on the Envoy AI Gateway API for the MVP features
+  - Model Upstream Access: Support accessing models from an initial list of AI Providers: AWS Bedrock, Google AI Studio, Azure OpenAI.
+  - Unified Client Access: Support a unified AI gateway API across AI providers.
+  - Traffic Management: Monitor and regulate AI usage, including rate limiting and cost optimization by tracking API calls and model usage.
+  - Observability: Provide detailed insights into usage patterns, performance and potential issues through logging and metrics collection.
+  - Policy Enforcement: Allow organizations to set specific rules and guidelines for how AI models can be accessed and used.
 - Documentation of API decisions for posterity
 
 ## Non-Goals
@@ -58,6 +64,10 @@ The Inference Platform Admin manages the gateway infrastructure necessary to rou
 #### Payment Team
 
 - Reports the per user/tenant LLM token usage for billing purpose.
+
+#### Security Team
+
+- Security team to control the ACL for accessing the models from AI providers.
 
 ### Axioms
 
@@ -172,54 +182,72 @@ APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
 }
 ```
 
-### LLMTrafficPolicy
+### Token Usage Rate Limiting
 
-`LLMTrafficPolicy` defines the rate limiting rules to track the token usage, the token usage can be specified at the per-model, per-user or `user-model` combinations.
+AI Gateway project plan to extend the envoy gateway `BackendTrafficPolicy` with a generic usage based rate limiting in [#4957](https://github.com/envoyproxy/gateway/pull/4957).
+For supporting token usage based rate limiting, we configure `hits_addend` in the response path to allow reducing the counter based on the response content that affects the subsequent requests.
+The token usages are extracted from the standard token usage fields according to then OpenAI schema in the ext proc `processResponseBody` handler.
 
-
-```go
-// LLMBackendTrafficPolicy controls the flow of traffic to the backend.
-type LLMBackendTrafficPolicy struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the LLMBackend traffic policy.
-	Spec LLMBackendTrafficPolicySpec `json:"spec,omitempty"`
-}
-
-// LLMBackendTrafficPolicySpec defines the details of llm backend traffic policy
-// like rateLimit, timeout etc.
-type LLMBackendTrafficPolicySpec struct {
-    // BackendRefs lists the LLMBackends that this traffic policy will apply
-    // The namespace is "local", i.e. the same namespace as the LLMRoute.
-    //
-    BackendRef LLMBackendLocalRef `json:"backendRef,omitempty"`
-    // RateLimit defines the rate limit policy.
-    RateLimit *LLMTrafficPolicyRateLimit `json:"rateLimit,omitempty"`
-}
-```
+The AI gateway ext proc includes an envoy rate limiting service client to reduce the counter based on the LLM inference responses. The rate limiting server configuration is updated dynamically via xDS
+whenever the rate limiting rules are changed.
 
 ```go
-type LLMTrafficPolicyRateLimit struct {
-    // Rules defines the rate limit rules.
-    Rules []LLMTrafficPolicyRateLimitRule `json:"rules,omitempty"`
-}
-
-// LLMTrafficPolicyRateLimitRule defines the details of the rate limit policy.
-type LLMTrafficPolicyRateLimitRule struct {
-// Headers is a list of request headers to match. Multiple header values are ANDed together,
-// meaning, a request MUST match all the specified headers.
-// At least one of headers or sourceCIDR condition must be specified.
-Headers []LLMPolicyRateLimitHeaderMatch `json:"headers,omitempty"`
-// +kubebuilder:validation:MinItems=1
-Limits []LLMPolicyRateLimitValue `json:"limits"`
-}
+/// RateLimitRule defines the semantics for matching attributes
+// from the incoming requests, and setting limits for them.
+type RateLimitRule struct {
+// ClientSelectors holds the list of select conditions to select
+// specific clients using attributes from the traffic flow.
+// All individual select conditions must hold True for this rule
+// and its limit to be applied.
+//
+// If no client selectors are specified, the rule applies to all traffic of
+// the targeted Route.
+//
+// If the policy targets a Gateway, the rule applies to each Route of the Gateway.
+// Please note that each Route has its own rate limit counters. For example,
+// if a Gateway has two Routes, and the policy has a rule with limit 10rps,
+// each Route will have its own 10rps limit.
+//
+// +optional
+// +kubebuilder:validation:MaxItems=8
+ClientSelectors []RateLimitSelectCondition `json:"clientSelectors,omitempty"`
+// Limit holds the rate limit values.
+// This limit is applied for traffic flows when the selectors
+// compute to True, causing the request to be counted towards the limit.
+// The limit is enforced and the request is ratelimited, i.e. a response with
+// 429 HTTP status code is sent back to the client when
+// the selected requests have reached the limit.
+Limit RateLimitValue `json:"limit"`
+// RequestHitsAddend specifies the number to reduce the rate limit counters
+// on the request path. If the addend is not specified, the default behavior
+// is to reduce the rate limit counters by 1.
+//
+// When Envoy receives a request that matches the rule, it tries to reduce the
+// rate limit counters by the specified number. If the counter doesn't have
+// enough capacity, the request is rate limited.
+//
+// +optional
+RequestHitsAddend *RateLimitHitsAddend `json:"requestHitsAddend,omitempty"`
+// ResponseHitsAddend specifies the number to reduce the rate limit counters
+// after the response is sent back to the client or the request stream is closed.
+//
+// The addend is used to reduce the rate limit counters for the matching requests.
+// Since the reduction happens after the request stream is complete, the rate limit
+// won't be enforced for the current request, but for the subsequent matching requests.
+//
+// This is optional and if not specified, the rate limit counters are not reduced
+// on the response path.
+//
+// Currently, this is only supported for HTTP Global Rate Limits.
+//
+// +optional
+ResponseHitsAddend *RateLimitHitsAddend `json:"responseHitsAddend,omitempty"`
 ```
 
 ### Yaml Examples
 
 #### LLMRoute
-The routing calculation in the `ExtProc`
-is done by analyzing the match rules on `HTTPRoute` spec to emulate the behavior in order to perform the request/response transformation,
+The routing calculation in done in the `ExtProc` by analyzing the match rules on `LLMRoute` spec to emulate the behavior in order to perform the provider specific request/response transformation,
 because the routing decision is made at the very end of the filter chain.
 
 ```yaml
@@ -263,27 +291,30 @@ spec:
   backendSecurityPolicyName: aws-oidc
 ```
 
-#### LLMTrafficPolicy
+#### BackendTrafficPolicy
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMTrafficPolicy
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
 metadata:
   name: llama-ratelimit
 spec:
   rateLimit:
-    rules:
-      - headers:
+    type: Global
+    global:
+      rules:
+      - clientSelectors:
           - name: x-ai-gateway-llm-model-name
             type: exact
             value: llama-3.3-70b-instruction
           - name: x-user-id
             type: Distinct
-        limits:
-          - type: token
-            quantity: 10
-            tokenUsageExpression:
-              expr: "$response_body.usage.total_tokens | tonumber"
+        limit:
+          requests: 1000
+          unit: Minute
+        responseHitsAdded:
+          format: "%DYNAMIC_METADATA(llm.ratelimit.ai_gateway_filter:token_usage)%"
+
 ```
 
 ## Diagrams
@@ -297,12 +328,10 @@ custom resources and then calls a set of hooks that allow the generated xDS conf
 AI Gateway ExtProc controller watches the `LLMRoute` resource and perform the follow steps:
 - Reconciles the envoy gateway ext proc deployment and creates the extension policy.
 - Reconciles the envoy proxy deployment and attach the AWS credential if the provider is AWS.
-- Reconciles `LLMRoute` to configure the routing rules via `HTTPRoute` spec.
+- Reconciles `LLMRoute` to calculate the routing rules and generates the `HTTPRoute` resource applying the extension filter.
 
-When envoy gateway starts it builds the HTTP filter chain:
-- Rate limit filter
-- AWS signing filter
-- AI Gateway ExtProc filter
+AI Gateway extension server also watches the `LLMRoute`, `LLMSecurityPolicy` and `BackendTrafficPolicy` to dynamically update the xDS
+configuration for the rate limiting filter and aws signing filter.
 
 ### Data Plane
 
@@ -314,15 +343,18 @@ Below is a detailed view how an inference request works on envoy AI gateway
 
 This diagram lightly follows the example request for routing to Anthropic claude 3.5 sonnet model on AWS Bedrock.
 The flow can be described as:
-- The request comes in to envoy AI gateway(Ext-Proc)
-- Ext Authorization filter is applied for checking if the user or account is authorized to access the model
-- ExtProc looks up the model name claude-3.5-sonnet from the request and inject the request header `x-ai-gateway-llm-model-name`
-- ExtProc extracts the request header for the LLM backend `x-ai-gateway-llm-backend`
-- ExtProc translates the user inference request (OpenAI) to the data schema according to the LLM provider
-- ExtProc injects the API key or refreshes the AWS credential for upstream provider authentication
-- Rate limiting is applied for request based usage tracking
-- AWS signing filter is applied for authenticating with AWS Bedrock service if the backend is targeted to AWS
+- The request comes in to envoy AI gateway(Ext-Proc).
+- Ext Authorization filter is applied for checking if the user or account is authorized to access the model.
+- ExtProc looks up the model name claude-3.5-sonnet from the request and inject the request header `x-ai-gateway-llm-model-name`.
+- ExtProc extracts the request header `x-ai-gateway-llm-backend` or calculate the rules to determine the backend.
+- ExtProc translates the user inference request (OpenAI) to the data schema according to the AI provider.
+- Rate limiting is applied for request based usage tracking.
+- Provider authentication policy is applied based on the AI provider
+  - API key is injected to the request headers for the provider supporting API keys.
+  - AWS signing filter is applied for authenticating with AWS Bedrock service if the backend is targeted to AWS
 - Routing rule is applied to route the request to the specified or calculated destination.
+- Upon receiving the response from AI provider, the token usage is reduced by extracting the usage fields according to OpenAI schema.
+  - the rate limit is enforced on the subsequent request.
 
 
 ## FAQ
