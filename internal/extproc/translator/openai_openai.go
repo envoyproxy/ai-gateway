@@ -4,18 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // newOpenAIToOpenAITranslator implements [TranslatorFactory] for OpenAI to OpenAI translation.
-func newOpenAIToOpenAITranslator(path string, l *slog.Logger) (Translator, error) {
+func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
-		return &openAIToOpenAITranslatorV1ChatCompletion{l: l}, nil
+		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
 	} else {
 		return nil, fmt.Errorf("unsupported path: %s", path)
 	}
@@ -24,21 +24,19 @@ func newOpenAIToOpenAITranslator(path string, l *slog.Logger) (Translator, error
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
 	defaultTranslator
-	l             *slog.Logger
 	stream        bool
 	buffered      []byte
 	bufferingDone bool
 }
 
 // RequestBody implements [RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body *extprocv3.HttpBody) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, modelName string, err error,
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
-	var req openai.ChatCompletionRequest
-	if err := json.Unmarshal(body.Body, &req); err != nil {
-		return nil, nil, nil, "", fmt.Errorf("failed to unmarshal body: %w", err)
+	req, ok := body.(*openai.ChatCompletionRequest)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("unexpected body type: %T", body)
 	}
-
 	if req.Stream {
 		o.stream = true
 		override = &extprocv3http.ProcessingMode{
@@ -46,7 +44,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body *extprocv3.H
 			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
 		}
 	}
-	return nil, nil, override, req.Model, nil
+	return nil, nil, override, nil
 }
 
 // ResponseBody implements [Translator.ResponseBody].
@@ -85,7 +83,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 		}
 		var event openai.ChatCompletionResponseChunk
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), &event); err != nil {
-			o.l.Warn("failed to unmarshal the event", slog.Any("error", err))
 			continue
 		}
 		if usage := event.Usage; usage != nil {

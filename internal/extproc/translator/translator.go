@@ -2,29 +2,29 @@ package translator
 
 import (
 	"fmt"
-	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // Factory creates a [Translator] for the given API schema combination and request path.
 //
 //   - `path`: the path of the request.
 //   - `l`: the logger.
-type Factory func(path string, l *slog.Logger) (Translator, error)
+type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out aigv1a1.LLMAPISchema) (Factory, error) {
-	if in.Schema == aigv1a1.APISchemaOpenAI {
+func NewFactory(in, out extprocconfig.VersionedAPISchema) (Factory, error) {
+	if in.Schema == extprocconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
 		switch out.Schema {
-		case aigv1a1.APISchemaOpenAI:
+		case extprocconfig.APISchemaOpenAI:
 			return newOpenAIToOpenAITranslator, nil
-		case aigv1a1.APISchemaAWSBedrock:
+		case extprocconfig.APISchemaAWSBedrock:
 			return newOpenAIToAWSBedrockTranslator, nil
 		}
 	}
@@ -38,24 +38,14 @@ func NewFactory(in, out aigv1a1.LLMAPISchema) (Factory, error) {
 //
 // This is created per request and is not thread-safe.
 type Translator interface {
-	// RequestHeaders translates the request headers.
-	//	- `headers` is the request headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
-	RequestHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
-		err error,
-	)
-
 	// RequestBody translates the request body.
-	// 	- `body` is the request body either chunk or the entire body, depending on the context.
+	// 	- `body` is the request body already parsed by [router.RequestBodyParser]. The concrete type is specific to the schema and the path.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `override` that to change the processing mode. This is used to process streaming requests properly.
-	// 	- This returns `modelName` that is extracted from the body.
-	RequestBody(body *extprocv3.HttpBody) (
+	RequestBody(body router.RequestBody) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		override *extprocv3http.ProcessingMode,
-		modelName string,
 		err error,
 	)
 
@@ -81,11 +71,6 @@ type Translator interface {
 
 // defaultTranslator is a no-op translator that implements [Translator].
 type defaultTranslator struct{}
-
-// RequestHeaders implements [Translator.RequestHeaders].
-func (d *defaultTranslator) RequestHeaders(map[string]string) (*extprocv3.HeaderMutation, error) {
-	return nil, nil
-}
 
 // RequestBody implements [Translator.RequestBody].
 func (d *defaultTranslator) RequestBody(*extprocv3.HttpBody) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, *extprocv3http.ProcessingMode, string, error) {
