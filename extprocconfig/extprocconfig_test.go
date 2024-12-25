@@ -2,16 +2,15 @@ package extprocconfig
 
 import (
 	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestUnmarshalConfigYaml(t *testing.T) {
-	tmp := t.TempDir()
-	t.Run("ok", func(t *testing.T) {
-		path := tmp + "/config.yaml"
-		const config = `
+	configPath := path.Join(t.TempDir(), "config.yaml")
+	const config = `
 inputSchema:
   schema: OpenAI
 backendRoutingHeaderKey: x-backend-name
@@ -37,19 +36,18 @@ rules:
   - name: x-model-name
     value: gpt4.4444
 `
-		require.NoError(t, os.WriteFile(path, []byte(config), 0o600))
-		cfg, err := UnmarshalConfigYaml(path)
-		require.NoError(t, err)
-		require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
-		require.Equal(t, "x-backend-name", cfg.BackendRoutingHeaderKey)
-		require.Equal(t, "x-model-name", cfg.ModelNameHeaderKey)
-		require.Len(t, cfg.Rules, 2)
-		require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
-		require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
-		require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
-		require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
-		require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].OutputSchema.Schema))
-		require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-		require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].OutputSchema.Schema))
-	})
+	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
+	cfg, err := UnmarshalConfigYaml(configPath)
+	require.NoError(t, err)
+	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
+	require.Equal(t, "x-backend-name", cfg.BackendRoutingHeaderKey)
+	require.Equal(t, "x-model-name", cfg.ModelNameHeaderKey)
+	require.Len(t, cfg.Rules, 2)
+	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
+	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
+	require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
+	require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
+	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].OutputSchema.Schema))
+	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
+	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].OutputSchema.Schema))
 }
