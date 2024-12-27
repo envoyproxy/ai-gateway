@@ -88,8 +88,8 @@ test-cel: envtest apigen format
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
-# - `make build.controller`: will build the internal/cmd/controller directory.
-# - `make build.extproc`: will build the internal/cmd/extproc directory.
+# - `make build.controller`: will build the cmd/controller directory.
+# - `make build.extproc`: will build the cmd/extproc directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
@@ -106,7 +106,7 @@ build.%:
 		for goarch in $(GOARCH_LIST); do \
 			echo "-> Building $(COMMAND_NAME) for $$goos/$$goarch"; \
 			CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -ldflags "$(GO_LDFLAGS)" \
-				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./internal/cmd/$(COMMAND_NAME); \
+				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./cmd/$(COMMAND_NAME); \
 			echo "<- Built $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch"; \
 		done; \
 	done
