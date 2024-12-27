@@ -2,6 +2,7 @@
 .bin
 out/
 .DS_Store
+.terraform
 
 # Files and directories to ignore in the site directory
 # dependencies
