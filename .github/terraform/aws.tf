@@ -7,7 +7,7 @@ resource "aws_iam_user" "envoy_ai_gateway_ci_user" {
 }
 
 resource "aws_iam_policy" "bedrock_invoke_policy" {
-  name        = "bedrock_invoke_policy"
+  name        = "envoy_ai_gateway_bedrock_invoke_policy"
   description = "Allows invoking AWS Bedrock models"
 
   policy = jsonencode({
