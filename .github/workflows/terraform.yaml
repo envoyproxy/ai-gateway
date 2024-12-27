@@ -30,5 +30,6 @@ jobs:
       - name: Terraform Plan
         run: terraform plan
       - name: Terraform Apply
-        # if: github.event_name == 'push'
+        # Only run terraform apply on push to the main branch
+        if: github.event_name == 'push'
         run: terraform apply -auto-approve -input=false
