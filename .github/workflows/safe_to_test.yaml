@@ -1,0 +1,31 @@
+name: Tests using Secrets
+
+on:
+  push:
+    branches:
+      - main
+  # TODO: allows the PR to run this test when a specific label like "safe-to-test" is added by a maintainer.
+
+jobs:
+  extproc_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Run unit tests
+        env:
+          # These credentials and info are managed by Terraform in test/e2e/terraform directory.
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+        run: make test-extproc-e2e

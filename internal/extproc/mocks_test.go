@@ -2,6 +2,7 @@ package extproc
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -83,8 +84,12 @@ func (m mockTranslator) ResponseHeaders(headers map[string]string) (headerMutati
 }
 
 // ResponseBody implements [translator.Translator.ResponseBody].
-func (m mockTranslator) ResponseBody(body *extprocv3.HttpBody) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error) {
-	require.Equal(m.t, m.expResponseBody, body)
+func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error) {
+	if m.expResponseBody != nil {
+		buf, err := io.ReadAll(body)
+		require.NoError(m.t, err)
+		require.Equal(m.t, m.expResponseBody.Body, buf)
+	}
 	return m.retHeaderMutation, m.retBodyMutation, usedToken, m.retErr
 }
 

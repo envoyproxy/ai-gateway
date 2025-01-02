@@ -38,6 +38,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		require.Error(t, err)
 	})
 	t.Run("valid body", func(t *testing.T) {
+		contentify := func(msg string) any {
+			return []any{map[string]any{"text": msg}}
+		}
 		for _, stream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
@@ -45,10 +48,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					Stream: stream,
 					Model:  "gpt-4o",
 					Messages: []openai.ChatCompletionRequestMessage{
-						{Content: "from-system", Role: "system"},
-						{Content: "from-user", Role: "user"},
-						{Content: "part1", Role: "user"},
-						{Content: "part2", Role: "user"},
+						{Content: contentify("from-system"), Role: "system"},
+						{Content: contentify("from-user"), Role: "user"},
+						{Content: contentify("part1"), Role: "user"},
+						{Content: contentify("part2"), Role: "user"},
 					},
 				}
 
@@ -125,7 +128,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte{buf[i]}, EndOfStream: i == len(buf)-1})
+			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -161,7 +164,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+			_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -186,7 +189,7 @@ data: [DONE]
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: body})
+			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)

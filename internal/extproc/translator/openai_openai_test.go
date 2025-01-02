@@ -1,6 +1,7 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -96,7 +97,7 @@ data: [DONE]
 		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
 		var usedToken uint32
 		for i := 0; i < len(wholeBody); i++ {
-			hm, bm, _usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: wholeBody[i : i+1]})
+			hm, bm, _usedToken, err := o.ResponseBody(bytes.NewReader(wholeBody[i:i+1]), false)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
@@ -114,7 +115,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+			_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -123,7 +124,7 @@ data: [DONE]
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: body})
+			_, _, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.Equal(t, uint32(42), usedToken)
 		})

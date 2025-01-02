@@ -29,7 +29,7 @@ type ChatCompletionRequest struct {
 type ChatCompletionRequestMessage struct {
 	// Role is the role of the message. The role of the message (whether it represents the user or the AI).
 	Role string `json:"role,omitempty"`
-	// Content is the content of the message. Mainly this is a string, but it can be more complex.
+	// Content is the content of the message.
 	Content any `json:"content,omitempty"`
 }
 

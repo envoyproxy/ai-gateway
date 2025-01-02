@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/aws/aws-sdk-go/private/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -75,14 +76,28 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 			return nil, nil, nil, fmt.Errorf("unexpected role: %s", msg.Role)
 		}
 
-		text, ok := msg.Content.(string)
-		if ok {
+		contents, ok := msg.Content.([]any)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("unexpected content: %[1]T:%[1]v", msg.Content)
+		}
+		for _, contentAny := range contents {
+			content, ok := contentAny.(map[string]any)
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("unexpected content: %[1]T:%[1]v", contentAny)
+			}
+			textAny, ok := content["text"]
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("missing text in content: %v", contents)
+			}
+
+			text, ok := textAny.(string)
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("unexpected text: %[1]T:%[1]v", textAny)
+			}
 			awsReq.Messages = append(awsReq.Messages, awsbedrock.Message{
 				Role:    role,
 				Content: []awsbedrock.ContentBlock{{Text: text}},
 			})
-		} else {
-			return nil, nil, nil, fmt.Errorf("unexpected content: %v", msg.Content)
 		}
 	}
 
@@ -117,12 +132,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 }
 
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body *extprocv3.HttpBody) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
 ) {
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
-		o.bufferedBody = append(o.bufferedBody, body.Body...)
+		buf, err := io.ReadAll(body)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+		}
+		o.bufferedBody = append(o.bufferedBody, buf...)
 		o.extractAmazonEventStreamEvents()
 
 		for i := range o.events {
@@ -144,14 +163,20 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body *extpro
 			mut.Body = append(mut.Body, []byte("\n\n")...)
 		}
 
-		if body.EndOfStream {
+		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
 		}
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, usedToken, nil
 	}
 
+	buf, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+	}
+	fmt.Println(string(buf))
+
 	var awsResp awsbedrock.ConverseResponse
-	if err := json.Unmarshal(body.Body, &awsResp); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(buf)).Decode(&awsResp); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 

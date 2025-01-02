@@ -2,6 +2,7 @@ package translator
 
 import (
 	"fmt"
+	"io"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -61,7 +62,7 @@ type Translator interface {
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `usedToken` that is extracted from the body and will be used to do token rate limiting.
-	ResponseBody(body *extprocv3.HttpBody) (
+	ResponseBody(body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		usedToken uint32,
@@ -83,7 +84,7 @@ func (d *defaultTranslator) ResponseHeaders(map[string]string) (*extprocv3.Heade
 }
 
 // ResponseBody implements [Translator.ResponseBody].
-func (d *defaultTranslator) ResponseBody(*extprocv3.HttpBody) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, uint32, error) {
+func (d *defaultTranslator) ResponseBody(io.Reader, bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, uint32, error) {
 	return nil, nil, 0, nil
 }
 

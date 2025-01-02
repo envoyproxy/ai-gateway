@@ -72,7 +72,7 @@ check: editorconfig-checker
 .PHONY: test
 test:
 	@echo "test => ./..."
-	@go test -v $(shell go list ./... | grep -v e2e)
+	@go test -v ./...
 
 
 # This runs the integration tests of CEL validation rules in API definitions.
@@ -84,6 +84,12 @@ test-cel: envtest apigen format
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
                  go test ./tests/cel-validation --tags celvalidation -count=1; \
     done
+# This runs the end-to-end tests for extproc without controller or k8s at all.
+# It is useful for the fast iteration of the extproc code.
+.PHONY: test-extproc-e2e # This requires the extproc binary to be built.
+test-extproc-e2e: build.extproc
+	@echo "test ./tests/extproc/..."
+	@go test ./tests/extproc/... -tags extproc_e2e -v -count=1
 
 # This builds a binary for the given command under the internal/cmd directory.
 #

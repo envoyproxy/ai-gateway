@@ -8,12 +8,14 @@ require (
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/envoyproxy/gateway v1.2.4
 	github.com/envoyproxy/go-control-plane/envoy v1.32.2
+	github.com/openai/openai-go v0.1.0-alpha.41
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	google.golang.org/grpc v1.69.2
 	k8s.io/apimachinery v0.32.0
 	sigs.k8s.io/controller-runtime v0.19.3
 	sigs.k8s.io/gateway-api v1.2.1
+	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -54,6 +56,10 @@ require (
 	github.com/prometheus/common v0.60.1 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -76,5 +82,4 @@ require (
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.3 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )

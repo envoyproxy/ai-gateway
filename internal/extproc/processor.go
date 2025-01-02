@@ -1,8 +1,11 @@
 package extproc
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -40,9 +43,10 @@ func NewProcessor(config *processorConfig) *Processor {
 
 // Processor handles the processing of the request and response messages for a single stream.
 type Processor struct {
-	config         *processorConfig
-	requestHeaders map[string]string
-	translator     translator.Translator
+	config           *processorConfig
+	requestHeaders   map[string]string
+	responseEncoding string
+	translator       translator.Translator
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -62,6 +66,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
+	p.requestHeaders[p.config.ModelNameHeaderKey] = model
 	backendName, outputSchema, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
@@ -96,8 +101,9 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
+					HeaderMutation:  headerMutation,
+					BodyMutation:    bodyMutation,
+					ClearRouteCache: true,
 				},
 			},
 		},
@@ -108,7 +114,11 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (p *Processor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	headerMutation, err := p.translator.ResponseHeaders(headersToMap(headers))
+	hs := headersToMap(headers)
+	if enc := hs["content-encoding"]; enc != "" {
+		p.responseEncoding = enc
+	}
+	headerMutation, err := p.translator.ResponseHeaders(hs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -121,7 +131,17 @@ func (p *Processor) ProcessResponseHeaders(_ context.Context, headers *corev3.He
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	headerMutation, bodyMutation, usedToken, err := p.translator.ResponseBody(body)
+	var br io.Reader
+	switch p.responseEncoding {
+	case "gzip":
+		br, err = gzip.NewReader(bytes.NewReader(body.Body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode gzip: %w", err)
+		}
+	default:
+		br = bytes.NewReader(body.Body)
+	}
+	headerMutation, bodyMutation, usedToken, err := p.translator.ResponseBody(br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

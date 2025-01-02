@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -48,18 +49,22 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 }
 
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body *extprocv3.HttpBody) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
 ) {
 	if o.stream {
 		if !o.bufferingDone {
-			o.buffered = append(o.buffered, body.Body...)
+			buf, err := io.ReadAll(body)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+			}
+			o.buffered = append(o.buffered, buf...)
 			usedToken = o.extractUsageFromBufferEvent()
 		}
 		return
 	}
 	var resp openai.ChatCompletionResponse
-	if err := json.Unmarshal(body.Body, &resp); err != nil {
+	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	usedToken = uint32(resp.Usage.TotalTokens)

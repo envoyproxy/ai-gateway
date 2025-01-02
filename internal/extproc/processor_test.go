@@ -52,11 +52,11 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		mt := &mockTranslator{t: t}
 		p := &Processor{translator: mt}
 		mt.retErr = errors.New("test error")
-		_, err := p.ProcessResponseBody(context.Background(), nil)
+		_, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
-		inBody := &extprocv3.HttpBody{}
+		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
 		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut}
