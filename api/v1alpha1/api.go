@@ -120,6 +120,12 @@ type LLMBackendSpec struct {
 	// +kubebuilder:validation:Enum=AWS;Unspecified
 	// +kubebuilder:default=Unspecified
 	ProviderType *LLMProviderType `json:"providerType"`
+
+	// TargetRef is the names of the BackendSecurityPolicy resources this backend
+	// is being attached to.
+	//
+	// +optional
+	TargetRef gwapiv1.LocalObjectReference `json:"targetRef,omitempty"`
 }
 
 // LLMProviderType defines the provider type.
@@ -171,9 +177,8 @@ const (
 type LLMProviderAuthenticationType string
 
 const (
-	LLMProviderAuthenticationTypeAPIKey    LLMProviderAuthenticationType = "APIKey"
-	LLMProviderAuthenticationTypeOIDC      LLMProviderAuthenticationType = "OIDC"
-	LLMProviderAuthenticationTypeStaticKey LLMProviderAuthenticationType = "StaticKey"
+	LLMProviderAuthenticationTypeAPIKey LLMProviderAuthenticationType = "APIKey"
+	LLMProviderAuthenticationTypeAWSIAM LLMProviderAuthenticationType = "AWS_IAM"
 )
 
 // +kubebuilder:object:root=true
@@ -192,11 +197,6 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
 	Type LLMProviderAuthenticationType `json:"type"`
-
-	// BackendRefs are refs of the backends that this BackendSecurityPolicy corresponds to.
-	//
-	// +optional
-	BackendRefs []egv1a1.BackendRef `json:"backendSecurityPolicyRefs,omitempty"`
 
 	// APIKey specific configuration. The API key will be injected into the Authorization header.
 	// +optional
