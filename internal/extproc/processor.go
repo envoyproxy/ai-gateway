@@ -12,15 +12,19 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
 
+// processorConfig is the configuration for the processor.
+// This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	bodyParser                                  router.RequestBodyParser
 	router                                      router.Router
 	ModelNameHeaderKey, backendRoutingHeaderKey string
 	factories                                   map[extprocconfig.VersionedAPISchema]translator.Factory
+	backendAuthHandlers                         map[string]backendauth.Handler
 }
 
 // ProcessorIface is the interface for the processor.
@@ -97,6 +101,13 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: p.config.backendRoutingHeaderKey, RawValue: []byte(backendName)},
 	})
+
+	if authHandler, ok := p.config.backendAuthHandlers[backendName]; ok {
+		if err := authHandler.Do(p.requestHeaders, headerMutation, bodyMutation); err != nil {
+			return nil, fmt.Errorf("failed to do auth request: %w", err)
+		}
+	}
+
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{

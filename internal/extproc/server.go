@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
@@ -42,6 +43,7 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 	}
 
 	factories := make(map[extprocconfig.VersionedAPISchema]translator.Factory)
+	backendAuthHandlers := make(map[string]backendauth.Handler)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
 			if _, ok := factories[b.OutputSchema]; !ok {
@@ -49,6 +51,14 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 				if err != nil {
 					return fmt.Errorf("cannot create translator factory: %w", err)
 				}
+			}
+
+			if b.Auth != nil {
+				h, err := backendauth.NewHandler(b.Auth)
+				if err != nil {
+					return fmt.Errorf("cannot create backend auth handler: %w", err)
+				}
+				backendAuthHandlers[b.Name] = h
 			}
 		}
 	}
@@ -58,6 +68,7 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 		backendRoutingHeaderKey: config.BackendRoutingHeaderKey,
 		ModelNameHeaderKey:      config.ModelNameHeaderKey,
 		factories:               factories,
+		backendAuthHandlers:     backendAuthHandlers,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

@@ -53,55 +53,69 @@ func TestE2E(t *testing.T) {
 				Headers:  []extprocconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
-				Backends: []extprocconfig.Backend{{Name: "aws-bedrock", OutputSchema: awsBedrockSchema}},
-				Headers:  []extprocconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
+				Backends: []extprocconfig.Backend{
+					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &extprocconfig.BackendAuth{AWSAuth: &extprocconfig.AWSAuth{}}},
+				},
+				Headers: []extprocconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
 		},
 	})
 	requireExtProc(t, configPath)
 
-	client := openai.NewClient(option.WithBaseURL("http://localhost:1062/v1/"))
-	for _, modelName := range []string{
-		"gpt-4o-mini", // This will go to "openai"
-		// TODO: enable after we migrate to sign requests in extproc.
-		//"us.meta.llama3-2-1b-instruct-v1:0", // This will go to "aws-bedrock".
-	} {
-		t.Run(modelName, func(t *testing.T) {
-			require.Eventually(t, func() bool {
-				chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
-					Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-						openai.UserMessage("Say this is a test"),
-					}),
-					Model: openai.F(modelName),
-				})
-				if err != nil {
-					t.Logf("error: %v", err)
-					return false
-				}
-				for _, choice := range chatCompletion.Choices {
-					t.Logf("choice: %s", choice.Message.Content)
-				}
-				return true
-			}, 10*time.Second, 1*time.Second)
-		})
-	}
+	t.Run("health-checking", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL("http://localhost:1062/v1/"))
+		for _, tc := range []struct {
+			testCaseName,
+			modelName string
+		}{
+			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				require.Eventually(t, func() bool {
+					chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage("Say this is a test"),
+						}),
+						Model: openai.F(tc.modelName),
+					})
+					if err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+					for _, choice := range chatCompletion.Choices {
+						t.Logf("choice: %s", choice.Message.Content)
+					}
+					return true
+				}, 10*time.Second, 1*time.Second)
+			})
+		}
+	})
+
+	// TODO: add streaming endpoints.
+	// TODO: add more tests like updating the config, signal handling, etc.
 }
 
 // requireExtProc starts the external processor with the provided configPath.
 // The config must be in YAML format specified in [extprocconfig.Config] type.
 func requireExtProc(t *testing.T, configPath string) {
+	awsAccessKeyID := requireEnvVar(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := requireEnvVar(t, "TEST_AWS_SECRET_ACCESS_KEY")
+
 	cmd := exec.Command(extProcBinaryPath()) // #nosec G204
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
+		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
+	)
 	require.NoError(t, cmd.Start())
 	t.Cleanup(func() { _ = cmd.Process.Signal(os.Interrupt) })
 }
 
 // requireRunEnvoy starts the Envoy proxy with the provided configuration.
 func requireRunEnvoy(t *testing.T) {
-	awsAccessKeyID := requireEnvVar(t, "TEST_AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := requireEnvVar(t, "TEST_AWS_SECRET_ACCESS_KEY")
 	openAIAPIKey := requireEnvVar(t, "TEST_OPENAI_API_KEY")
 
 	tmpDir := t.TempDir()
@@ -119,10 +133,6 @@ func requireRunEnvoy(t *testing.T) {
 	)
 	envoyCmd.Stdout = os.Stdout
 	envoyCmd.Stderr = os.Stderr
-	envoyCmd.Env = append(os.Environ(),
-		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
-		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
-	)
 	require.NoError(t, envoyCmd.Start())
 	t.Cleanup(func() { _ = envoyCmd.Process.Signal(os.Interrupt) })
 }

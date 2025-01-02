@@ -24,6 +24,7 @@ static_resources:
                                 string_match:
                                   exact: aws-bedrock
                           route:
+                            host_rewrite_literal: bedrock-runtime.us-east-1.amazonaws.com
                             cluster: aws_bedrock
                         - match:
                             prefix: "/"
@@ -64,7 +65,14 @@ static_resources:
       connect_timeout: 0.25s
       type: STATIC
       lb_policy: ROUND_ROBIN
-      http2_protocol_options: {}
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options:
+              connection_keepalive:
+                interval: 30s
+                timeout: 5s
       load_assignment:
         cluster_name: extproc_cluster
         endpoints:
@@ -90,7 +98,6 @@ static_resources:
         name: envoy.transport_sockets.tls
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          sni: bedrock-runtime.us-east-1.amazonaws.com
     - name: openai
       connect_timeout: 30s
       type: STRICT_DNS

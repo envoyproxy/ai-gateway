@@ -105,7 +105,18 @@ type Backend struct {
 	OutputSchema VersionedAPISchema `yaml:"outputSchema"`
 	// Weight is the weight of the backend in the routing decision.
 	Weight int `yaml:"weight"`
+	// Auth is the authn/z configuration for the backend. Optional.
+	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
+	Auth *BackendAuth `yaml:"auth,omitempty"`
 }
+
+// BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
+type BackendAuth struct {
+	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
+}
+
+// AWSAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
+type AWSAuth struct{}
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, error) {
