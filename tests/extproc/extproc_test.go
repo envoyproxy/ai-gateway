@@ -114,7 +114,7 @@ func requireRunEnvoy(t *testing.T) {
 	// Starts the Envoy proxy.
 	envoyCmd := exec.Command("envoy",
 		"-c", envoyYamlPath,
-		"--component-log-level", "aws:debug,router:trace,ext_proc:trace",
+		"--log-level", "warn",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 	)
 	envoyCmd.Stdout = os.Stdout
