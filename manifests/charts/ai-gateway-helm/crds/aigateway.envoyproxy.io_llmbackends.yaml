@@ -131,13 +131,35 @@ spec:
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
-              backendSecurityPolicyName:
+              backendSecurityPolicyRef:
                 description: |-
-                  BackendSecurityPolicyName list the BackendSecurityPolicy that this backend will depend on.
-
-                  A BackendSecurityPolicy is for configuring authentication and authorization rules on the traffic
-                  exiting the gateway to the backend.
-                type: string
+                  BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
+                  is being attached to.
+                properties:
+                  group:
+                    description: |-
+                      Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                      When unspecified or empty string, core API group is inferred.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  kind:
+                    description: Kind is kind of the referent. For example "HTTPRoute"
+                      or "Service".
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                    type: string
+                  name:
+                    description: Name is the name of the referent.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - group
+                - kind
+                - name
+                type: object
               outputSchema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
@@ -167,35 +189,6 @@ spec:
                 - AWS
                 - Unspecified
                 type: string
-              targetRef:
-                description: |-
-                  TargetRef is the names of the BackendSecurityPolicy resources this backend
-                  is being attached to.
-                properties:
-                  group:
-                    description: |-
-                      Group is the group of the referent. For example, "gateway.networking.k8s.io".
-                      When unspecified or empty string, core API group is inferred.
-                    maxLength: 253
-                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                    type: string
-                  kind:
-                    description: Kind is kind of the referent. For example "HTTPRoute"
-                      or "Service".
-                    maxLength: 63
-                    minLength: 1
-                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
-                    type: string
-                  name:
-                    description: Name is the name of the referent.
-                    maxLength: 253
-                    minLength: 1
-                    type: string
-                required:
-                - group
-                - kind
-                - name
-                type: object
             required:
             - backendRef
             - outputSchema

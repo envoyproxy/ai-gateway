@@ -107,25 +107,17 @@ type LLMBackendSpec struct {
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
 
-	// BackendSecurityPolicyName list the BackendSecurityPolicy that this backend will depend on.
-	//
-	// A BackendSecurityPolicy is for configuring authentication and authorization rules on the traffic
-	// exiting the gateway to the backend.
-	//
-	// +optional
-	BackendSecurityPolicyName *string `json:"backendSecurityPolicyName,omitempty"`
-
 	// LLMProviderType is the provider type specifies the provider associated with the backend.
 	//
 	// +kubebuilder:validation:Enum=AWS;Unspecified
 	// +kubebuilder:default=Unspecified
 	ProviderType *LLMProviderType `json:"providerType"`
 
-	// TargetRef is the names of the BackendSecurityPolicy resources this backend
+	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
 	// is being attached to.
 	//
 	// +optional
-	TargetRef gwapiv1.LocalObjectReference `json:"targetRef,omitempty"`
+	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
 // LLMProviderType defines the provider type.
