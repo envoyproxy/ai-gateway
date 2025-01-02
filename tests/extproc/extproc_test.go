@@ -127,19 +127,17 @@ func requireRunEnvoy(t *testing.T) {
 	t.Cleanup(func() { _ = envoyCmd.Process.Signal(os.Interrupt) })
 }
 
-// requireBinaries requires Envoy to be present in the PATH as well as the Extproc binary in the out directory,
-// otherwise skips the test.
+// requireBinaries requires Envoy to be present in the PATH as well as the Extproc binary in the out directory.
 func requireBinaries(t *testing.T) {
 	_, err := exec.LookPath("envoy")
 	if err != nil {
-		// Skip the test if the binary is not found
-		t.Skipf("Envoy not found in PATH")
+		t.Fatalf("envoy binary not found in PATH")
 	}
 
 	// Check if the Extproc binary is present in the root of the repository
 	_, err = os.Stat(extProcBinaryPath())
 	if err != nil {
-		t.Skipf("%s binary not found in the root of the repository", extProcBinaryPath())
+		t.Fatalf("%s binary not found in the root of the repository", extProcBinaryPath())
 	}
 }
 
