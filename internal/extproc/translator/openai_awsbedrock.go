@@ -169,14 +169,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, usedToken, nil
 	}
 
-	buf, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
-	}
-	fmt.Println(string(buf))
-
 	var awsResp awsbedrock.ConverseResponse
-	if err := json.NewDecoder(bytes.NewReader(buf)).Decode(&awsResp); err != nil {
+	if err := json.NewDecoder(body).Decode(&awsResp); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
