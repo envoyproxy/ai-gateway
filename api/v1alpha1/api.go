@@ -266,7 +266,7 @@ type LLMProviderAWSCredentialsFile struct {
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file
 type LLMProviderAWSOIDCCredential struct {
-	// OIDC stores the generic oidc details
+	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
 	OIDC egv1a1.OIDC `json:"oidc"`
 
 	// CredentialFileName is the name of the configmap that will store the temporary credentials
