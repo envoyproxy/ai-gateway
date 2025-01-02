@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/private/protocol/eventstream"
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
@@ -225,7 +225,7 @@ const base64RealStreamingEvents = "AAAAnwAAAFKzEV9wCzpldmVudC10eXBlBwAMbWVzc2FnZ
 
 func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	e := eventstream.NewEncoder(buf)
+	e := eventstream.NewEncoder()
 	var offsets []int
 	for _, data := range []awsbedrock.ConverseStreamEvent{
 		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "1"}},
@@ -235,7 +235,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		offsets = append(offsets, buf.Len())
 		eventPayload, err := json.Marshal(data)
 		require.NoError(t, err)
-		err = e.Encode(eventstream.Message{
+		err = e.Encode(buf, eventstream.Message{
 			Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
 			Payload: eventPayload,
 		})
