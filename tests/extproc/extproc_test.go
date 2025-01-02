@@ -141,11 +141,11 @@ func requireBinaries(t *testing.T) {
 	}
 }
 
-// requireEnvVar requires an environment variable to be set, otherwise skips the test.
+// requireEnvVar requires an environment variable to be set.
 func requireEnvVar(t *testing.T, envVar string) string {
 	value := os.Getenv(envVar)
 	if value == "" {
-		t.Skipf("Environment variable %s is not set", envVar)
+		t.Fatalf("Environment variable %s is not set", envVar)
 	}
 	return value
 }
