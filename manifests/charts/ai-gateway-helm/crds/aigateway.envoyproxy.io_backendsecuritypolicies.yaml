@@ -1210,6 +1210,12 @@ spec:
                     - credentialFileName
                     - oidc
                     type: object
+                  region:
+                    description: Region specifies the AWS region associated with the
+                      policy
+                    type: string
+                required:
+                - region
                 type: object
               backendSecurityPolicyRefs:
                 description: BackendRefs are refs of the backends that this BackendSecurityPolicy

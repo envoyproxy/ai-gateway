@@ -239,6 +239,9 @@ type LLMProviderAPIKeyType string
 
 // AWSSecurityPolicy contains the supported authentication mechanisms to access aws
 type AWSSecurityPolicy struct {
+	// Region specifies the AWS region associated with the policy
+	Region string `json:"region"`
+
 	// CredentialsFile specifies the credentials file to use for the AWS provider.
 	// +optional
 	CredentialsFile *LLMProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
