@@ -188,9 +188,9 @@ type BackendSecurityPolicy struct {
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "OIDC" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;OIDC
+	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
 	Type LLMProviderAuthenticationType `json:"type"`
 
 	// BackendRefs are refs of the backends that this BackendSecurityPolicy corresponds to.
@@ -202,9 +202,8 @@ type BackendSecurityPolicySpec struct {
 	// +optional
 	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
 
-	// OIDC tokens are retrieved from the following configuration. The token and backend type will determine how Authorization is configured.
-	// +optional
-	OIDC *egv1a1.OIDC `json:"oidc,omitempty"`
+	// AwsSecurityPolicy specifies configuration to access aws via credential file and OIDC.
+	AwsSecurityPolicy *AWSSecurityPolicy `json:"awsSecurityPolicy,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -237,3 +236,63 @@ type LLMProviderAPIKey struct {
 
 // LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
 type LLMProviderAPIKeyType string
+
+// AWSSecurityPolicy contains the supported authentication mechanisms to access aws
+type AWSSecurityPolicy struct {
+	// CredentialsFile specifies the credentials file to use for the AWS provider.
+	// +optional
+	CredentialsFile *LLMProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
+
+	// OIDCCredential specifies the oidc and credentials to use for the AWS provider.
+	// +optional
+	OIDCCredential *LLMProviderAWSOIDCCredential `json:"OIDCCredential,omitempty"`
+}
+
+// LLMProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
+// Envoy reads the credentials from the file pointed by the Path field, and the profile to use is specified by the Profile field.
+type LLMProviderAWSCredentialsFile struct {
+	// Path is the path to the credentials file.
+	//
+	// +kubebuilder:default=~/.aws/credentials
+	Path string `json:"path,omitempty"`
+
+	// Profile is the profile to use in the credentials file.
+	//
+	// +kubebuilder:default=default
+	Profile string `json:"profile,omitempty"`
+}
+
+// LLMProviderAWSOIDCCredential specifies credentials to obtain oidc token from a sso server.
+// For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
+// and store them in a temporary credentials file
+type LLMProviderAWSOIDCCredential struct {
+	// OIDC stores the generic oidc details
+	OIDC egv1a1.OIDC `json:"oidc"`
+
+	// CredentialFileName is the name of the configmap that will store the temporary credentials
+	// file for the actual credentials will be `credentials`
+	CredentialFileName string `json:"credentialFileName"`
+
+	// GrantType is the method application gets access token
+	//
+	// +optional
+	GrantType string `json:"grantType,omitempty"`
+
+	// Aud defines the resource the application can access
+	//
+	// +optional
+	Aud string `json:"aud,omitempty"`
+
+	// AwsRoleArn is the identifier for which role the user can access
+	//
+	// +optional
+	AwsRoleArn string `json:"awsRoleArn,omitempty"`
+
+	// AuthBearToken is an optional authorization token that can be passed with OIDC request
+	AuthBearToken string `json:"authBearToken,omitempty"`
+
+	// SSORequestMethod specifies the expected http method for an SSO server
+	//
+	// +kubebuilder:default=POST
+	SSORequestMethod string `json:"ssoRequestMethod,omitempty"`
+}
