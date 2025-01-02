@@ -149,6 +149,8 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "unknown_provider.yaml",
 			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWS_IAM\"",
 		},
+		{name: "aws_credential_file.yaml"},
+		{name: "aws_oidc.yaml"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := tests.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))

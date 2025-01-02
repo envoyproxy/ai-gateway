@@ -107,7 +107,21 @@ spec:
                 description: AwsSecurityPolicy specifies configuration to access aws
                   via credential file and OIDC.
                 properties:
-                  OIDCCredential:
+                  credentialsFile:
+                    description: CredentialsFile specifies the credentials file to
+                      use for the AWS provider.
+                    properties:
+                      path:
+                        default: ~/.aws/credentials
+                        description: Path is the path to the credentials file.
+                        type: string
+                      profile:
+                        default: default
+                        description: Profile is the profile to use in the credentials
+                          file.
+                        type: string
+                    type: object
+                  oidcCredential:
                     description: OIDCCredential specifies the oidc and credentials
                       to use for the AWS provider.
                     properties:
@@ -133,7 +147,9 @@ spec:
                           token
                         type: string
                       oidc:
-                        description: OIDC stores the generic oidc details
+                        description: OIDC is used to obtain oidc tokens via an SSO
+                          server which will be used to exchange for temporary AWS
+                          credentials
                         properties:
                           clientID:
                             description: |-
@@ -1193,20 +1209,6 @@ spec:
                     required:
                     - credentialFileName
                     - oidc
-                    type: object
-                  credentialsFile:
-                    description: CredentialsFile specifies the credentials file to
-                      use for the AWS provider.
-                    properties:
-                      path:
-                        default: ~/.aws/credentials
-                        description: Path is the path to the credentials file.
-                        type: string
-                      profile:
-                        default: default
-                        description: Profile is the profile to use in the credentials
-                          file.
-                        type: string
                     type: object
                 type: object
               backendSecurityPolicyRefs:

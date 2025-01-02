@@ -245,7 +245,7 @@ type AWSSecurityPolicy struct {
 
 	// OIDCCredential specifies the oidc and credentials to use for the AWS provider.
 	// +optional
-	OIDCCredential *LLMProviderAWSOIDCCredential `json:"OIDCCredential,omitempty"`
+	OIDCCredential *LLMProviderAWSOIDCCredential `json:"oidcCredential,omitempty"`
 }
 
 // LLMProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
