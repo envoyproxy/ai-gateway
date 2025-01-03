@@ -252,7 +252,7 @@ type ProviderAWSOIDCFederation struct {
 	// +optional
 	Aud string `json:"aud,omitempty"`
 
-	// AwsRoleArn is the identifier for which role the user can access
+	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
 	//
 	// +optional
 	AwsRoleArn string `json:"awsRoleArn,omitempty"`
