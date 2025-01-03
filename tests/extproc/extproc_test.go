@@ -109,7 +109,7 @@ func TestE2E(t *testing.T) {
 			require.NoError(t, err)
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
-				UsedToken string `json:"used_token"`
+				UsedToken any `json:"used_token"`
 			}
 			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
 			for scanner.Scan() {
@@ -119,16 +119,17 @@ func TestE2E(t *testing.T) {
 					t.Logf("error unmarshalling line: %v", err)
 					continue
 				}
-				if l.UsedToken != "" {
-					num, err := strconv.Atoi(l.UsedToken)
-					if err != nil {
-						t.Logf("error converting used token to int: %v", err)
-						continue
-					}
-					if num > 0 {
+				t.Logf("line: %s", line)
+				// The access formatter somehow changed its behavior sometimes between 1.31 and the latest Envoy,
+				// so we need to check for both float64 and string.
+				if num, ok := l.UsedToken.(float64); ok && num > 0 {
+					return true
+				} else if str, ok := l.UsedToken.(string); ok {
+					if num, err := strconv.Atoi(str); err == nil && num > 0 {
 						return true
 					}
 				}
+				t.Log("cannot find used token in line")
 			}
 			return false
 		}, 10*time.Second, 1*time.Second)
