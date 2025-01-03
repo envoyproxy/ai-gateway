@@ -119,8 +119,8 @@ spec:
                           file.
                         type: string
                     type: object
-                  oidcCredential:
-                    description: OIDCCredential specifies the oidc and credentials
+                  oidcFederation:
+                    description: OIDCFederation specifies the oidc and credentials
                       to use for the AWS provider.
                     properties:
                       aud:

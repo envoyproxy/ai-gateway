@@ -7,7 +7,7 @@ spec:
   type: AWS_IAM
   awsSecurityPolicy:
     region: us-east-1
-    oidcCredential:
+    oidcFederation:
       oidc:
         provider:
           issuer: placeholder

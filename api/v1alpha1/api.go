@@ -222,9 +222,9 @@ type AWSSecurityPolicy struct {
 	// +optional
 	CredentialsFile *ProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
 
-	// OIDCCredential specifies the oidc and credentials to use for the AWS provider.
+	// OIDCFederation specifies the oidc and credentials to use for the AWS provider.
 	// +optional
-	OIDCCredential *ProviderAWSOIDCCredential `json:"oidcCredential,omitempty"`
+	OIDCFederation *ProviderAWSOIDCFederation `json:"oidcFederation,omitempty"`
 }
 
 // ProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
@@ -241,10 +241,10 @@ type ProviderAWSCredentialsFile struct {
 	Profile string `json:"profile,omitempty"`
 }
 
-// ProviderAWSOIDCCredential specifies credentials to obtain oidc token from a sso server.
+// ProviderAWSOIDCFederation specifies credentials to obtain oidc token from a sso server.
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file
-type ProviderAWSOIDCCredential struct {
+type ProviderAWSOIDCFederation struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
 	OIDC egv1a1.OIDC `json:"oidc"`
 
