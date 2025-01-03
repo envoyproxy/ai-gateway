@@ -195,11 +195,6 @@ func (in *LLMBackendSpec) DeepCopyInto(out *LLMBackendSpec) {
 	*out = *in
 	out.APISchema = in.APISchema
 	in.BackendRef.DeepCopyInto(&out.BackendRef)
-	if in.ProviderType != nil {
-		in, out := &in.ProviderType, &out.ProviderType
-		*out = new(LLMProviderType)
-		**out = **in
-	}
 	if in.BackendSecurityPolicyRef != nil {
 		in, out := &in.BackendSecurityPolicyRef, &out.BackendSecurityPolicyRef
 		*out = new(v1.LocalObjectReference)

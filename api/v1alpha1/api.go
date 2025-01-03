@@ -107,26 +107,12 @@ type LLMBackendSpec struct {
 	// +kubebuilder:validation:Required
 	BackendRef egv1a1.BackendRef `json:"backendRef"`
 
-	// LLMProviderType is the provider type specifies the provider associated with the backend.
-	//
-	// +kubebuilder:validation:Enum=AWS;Unspecified
-	// +kubebuilder:default=Unspecified
-	ProviderType *LLMProviderType `json:"providerType"`
-
 	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
 	// is being attached to.
 	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
-
-// LLMProviderType defines the provider type.
-type LLMProviderType string
-
-const (
-	LLMProviderAWSType         LLMProviderType = "AWS"
-	LLMProviderUnspecifiedType LLMProviderType = "Unspecified"
-)
 
 // LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
 //

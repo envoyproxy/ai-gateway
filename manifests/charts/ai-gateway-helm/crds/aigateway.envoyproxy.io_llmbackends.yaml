@@ -181,18 +181,9 @@ spec:
                 required:
                 - schema
                 type: object
-              providerType:
-                default: Unspecified
-                description: LLMProviderType is the provider type specifies the provider
-                  associated with the backend.
-                enum:
-                - AWS
-                - Unspecified
-                type: string
             required:
             - backendRef
             - outputSchema
-            - providerType
             type: object
         type: object
     served: true
