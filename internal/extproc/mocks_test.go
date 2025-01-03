@@ -68,6 +68,7 @@ type mockTranslator struct {
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
 	retOverride       *extprocv3http.ProcessingMode
+	retUsedToken      uint32
 	retErr            error
 }
 
@@ -90,7 +91,7 @@ func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *ex
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
-	return m.retHeaderMutation, m.retBodyMutation, usedToken, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
 }
 
 // mockRouter implements [router.Router] for testing.

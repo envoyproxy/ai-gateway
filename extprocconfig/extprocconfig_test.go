@@ -15,6 +15,9 @@ inputSchema:
   schema: OpenAI
 backendRoutingHeaderKey: x-backend-name
 modelNameHeaderKey: x-model-name
+tokenUsageMetadata:
+  namespace: ai_gateway_llm_ns
+  key: token_usage_key
 rules:
 - backends:
   - name: kserve
@@ -39,6 +42,8 @@ rules:
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 	cfg, err := UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
+	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
+	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
 	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
 	require.Equal(t, "x-backend-name", cfg.BackendRoutingHeaderKey)
 	require.Equal(t, "x-model-name", cfg.ModelNameHeaderKey)

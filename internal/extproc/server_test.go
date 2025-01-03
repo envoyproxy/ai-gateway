@@ -36,6 +36,7 @@ func TestServer_LoadConfig(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		config := &extprocconfig.Config{
+			TokenUsageMetadata:      &extprocconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
 			InputSchema:             extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI},
 			BackendRoutingHeaderKey: "x-backend-name",
 			ModelNameHeaderKey:      "x-model-name",
@@ -70,6 +71,9 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
+		require.NotNil(t, s.config.tokenUsageMetadata)
+		require.Equal(t, "ns", s.config.tokenUsageMetadata.Namespace)
+		require.Equal(t, "key", s.config.tokenUsageMetadata.Key)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
 		require.Equal(t, "x-backend-name", s.config.backendRoutingHeaderKey)

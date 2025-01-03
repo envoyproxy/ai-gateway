@@ -10,6 +10,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/extprocconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
@@ -25,6 +26,7 @@ type processorConfig struct {
 	ModelNameHeaderKey, backendRoutingHeaderKey string
 	factories                                   map[extprocconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                         map[string]backendauth.Handler
+	tokenUsageMetadata                          *extprocconfig.TokenUsageMetadata
 }
 
 // ProcessorIface is the interface for the processor.
@@ -157,9 +159,6 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
-	// TODO: set the used token in metadata.
-	_ = usedToken
-
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{
@@ -170,7 +169,26 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
+	if p.config.tokenUsageMetadata != nil {
+		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(p.config.tokenUsageMetadata, usedToken)
+	}
 	return resp, nil
+}
+
+func buildTokenUsageDynamicMetadata(md *extprocconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			md.Namespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							md.Key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // headersToMap converts a [corev3.HeaderMap] to a Go map for easier processing.

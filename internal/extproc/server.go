@@ -69,6 +69,7 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 		ModelNameHeaderKey:      config.ModelNameHeaderKey,
 		factories:               factories,
 		backendAuthHandlers:     backendAuthHandlers,
+		tokenUsageMetadata:      config.TokenUsageMetadata,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
