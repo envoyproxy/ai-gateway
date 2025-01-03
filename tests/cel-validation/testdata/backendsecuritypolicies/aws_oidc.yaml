@@ -5,13 +5,16 @@ metadata:
   namespace: default
 spec:
   type: AWS_IAM
-  awsSecurityPolicy:
-    region: us-east-1
-    oidcFederation:
-      oidc:
-        provider:
-          issuer: placeholder
-        clientID: placeholder
-        clientSecret:
-          name: placeholder
-      credentialFileName: placeholder
+  cloudProviderCredentials:
+    awsCredentials:
+      region: us-east-1
+      oidcFederation:
+        oidc:
+          provider:
+            issuer: placeholder
+          clientID: placeholder
+          clientSecret:
+            name: placeholder
+      credentialsFile:
+        path: ~/aws/placeholder
+        profile: default

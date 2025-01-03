@@ -151,12 +151,12 @@ const (
 	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )
 
-// ProviderAuthenticationType specifies the type of auth mechanism used to access a Provider.
-type ProviderAuthenticationType string
+// BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.
+type BackendSecurityPolicyType string
 
 const (
-	ProviderAuthenticationTypeAPIKey ProviderAuthenticationType = "APIKey"
-	ProviderAuthenticationTypeAWSIAM ProviderAuthenticationType = "AWS_IAM"
+	BackendSecurityPolicyTypeAPIKey BackendSecurityPolicyType = "APIKey"
+	BackendSecurityPolicyTypeAWSIAM BackendSecurityPolicyType = "AWS_IAM"
 )
 
 // +kubebuilder:object:root=true
@@ -174,14 +174,17 @@ type BackendSecurityPolicySpec struct {
 	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
-	Type ProviderAuthenticationType `json:"type"`
+	Type BackendSecurityPolicyType `json:"type"`
 
-	// APIKey specific configuration. The API key will be injected into the Authorization header.
+	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
+	//
 	// +optional
-	APIKey *ProviderAPIKey `json:"apiKey,omitempty"`
+	APIKey *AuthenticationAPIKey `json:"apiKey,omitempty"`
 
-	// AwsSecurityPolicy specifies configuration to access aws via credential file and OIDC.
-	AwsSecurityPolicy *AWSSecurityPolicy `json:"awsSecurityPolicy,omitempty"`
+	// CloudProviderCredentials is a mechanism to access a backend(s). Cloud provider specific logic will be applied.
+	//
+	// +optional
+	CloudProviderCredentials *AuthenticationCloudProviderCredentials `json:"cloudProviderCredentials,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -193,8 +196,8 @@ type BackendSecurityPolicyList struct {
 	Items           []BackendSecurityPolicy `json:"items"`
 }
 
-// ProviderAPIKey specifies the API key.
-type ProviderAPIKey struct {
+// AuthenticationAPIKey specifies the API key.
+type AuthenticationAPIKey struct {
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
@@ -203,23 +206,33 @@ type ProviderAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// AWSSecurityPolicy contains the supported authentication mechanisms to access aws
-type AWSSecurityPolicy struct {
+// AuthenticationCloudProviderCredentials specifies supported cloud provider authentication methods
+type AuthenticationCloudProviderCredentials struct {
+	AWSCredentials AWSCredentials `json:"awsCredentials"`
+}
+
+// AWSCredentials contains the supported authentication mechanisms to access aws
+type AWSCredentials struct {
 	// Region specifies the AWS region associated with the policy
+	//
+	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
 
 	// CredentialsFile specifies the credentials file to use for the AWS provider.
+	//
 	// +optional
-	CredentialsFile *ProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
+	CredentialsFile *AWSCredentialsFile `json:"credentialsFile,omitempty"`
 
-	// OIDCFederation specifies the oidc and credentials to use for the AWS provider.
+	// OIDCFederation specifies the oidc configurations used to obtain an oidc token.
+	// CredentialsFile must be defined when using OIDCFederation.
+	//
 	// +optional
-	OIDCFederation *ProviderAWSOIDCFederation `json:"oidcFederation,omitempty"`
+	OIDCFederation *AWSOIDCFederation `json:"oidcFederation,omitempty"`
 }
 
-// ProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
+// AWSCredentialsFile specifies the credentials file to use for the AWS provider.
 // Envoy reads the credentials from the file pointed by the Path field, and the profile to use is specified by the Profile field.
-type ProviderAWSCredentialsFile struct {
+type AWSCredentialsFile struct {
 	// Path is the path to the credentials file.
 	//
 	// +kubebuilder:default=~/.aws/credentials
@@ -231,16 +244,12 @@ type ProviderAWSCredentialsFile struct {
 	Profile string `json:"profile,omitempty"`
 }
 
-// ProviderAWSOIDCFederation specifies credentials to obtain oidc token from a sso server.
+// AWSOIDCFederation specifies credentials to obtain oidc token from a sso server.
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file
-type ProviderAWSOIDCFederation struct {
+type AWSOIDCFederation struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
 	OIDC egv1a1.OIDC `json:"oidc"`
-
-	// CredentialFileName is the name of the configmap that will store the temporary credentials
-	// file for the actual credentials will be `credentials`
-	CredentialFileName string `json:"credentialFileName"`
 
 	// GrantType is the method application gets access token
 	//
