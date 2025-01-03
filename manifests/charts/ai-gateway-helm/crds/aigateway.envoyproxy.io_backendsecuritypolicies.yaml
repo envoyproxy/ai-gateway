@@ -117,10 +117,6 @@ spec:
                         description: Aud defines the resource the application can
                           access
                         type: string
-                      authBearToken:
-                        description: AuthBearToken is an optional authorization token
-                          that can be passed with OIDC request
-                        type: string
                       awsRoleArn:
                         description: AwsRoleArn is the identifier for which role the
                           user can access

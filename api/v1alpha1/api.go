@@ -256,7 +256,4 @@ type ProviderAWSOIDCFederation struct {
 	//
 	// +optional
 	AwsRoleArn string `json:"awsRoleArn,omitempty"`
-
-	// AuthBearToken is an optional authorization token that can be passed with OIDC request
-	AuthBearToken string `json:"authBearToken,omitempty"`
 }
