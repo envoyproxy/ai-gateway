@@ -51,8 +51,6 @@ spec:
                       SecretRef is the reference to the secret containing the API key.
                       ai-gateway must be given the permission to read this secret.
                       The key of the secret should be "apiKey".
-
-                      For AWS specifically, the access key should be stored as "accessKey" and secret key as "secretKey".
                     properties:
                       group:
                         default: ""

@@ -165,12 +165,12 @@ const (
 	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
 )
 
-// LLMProviderAuthenticationType specifies the type of auth mechanism used to access a Provider.
-type LLMProviderAuthenticationType string
+// ProviderAuthenticationType specifies the type of auth mechanism used to access a Provider.
+type ProviderAuthenticationType string
 
 const (
-	LLMProviderAuthenticationTypeAPIKey LLMProviderAuthenticationType = "APIKey"
-	LLMProviderAuthenticationTypeAWSIAM LLMProviderAuthenticationType = "AWS_IAM"
+	ProviderAuthenticationTypeAPIKey ProviderAuthenticationType = "APIKey"
+	ProviderAuthenticationTypeAWSIAM ProviderAuthenticationType = "AWS_IAM"
 )
 
 // +kubebuilder:object:root=true
@@ -188,11 +188,11 @@ type BackendSecurityPolicySpec struct {
 	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
-	Type LLMProviderAuthenticationType `json:"type"`
+	Type ProviderAuthenticationType `json:"type"`
 
 	// APIKey specific configuration. The API key will be injected into the Authorization header.
 	// +optional
-	APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
+	APIKey *ProviderAPIKey `json:"apiKey,omitempty"`
 
 	// AwsSecurityPolicy specifies configuration to access aws via credential file and OIDC.
 	AwsSecurityPolicy *AWSSecurityPolicy `json:"awsSecurityPolicy,omitempty"`
@@ -207,27 +207,25 @@ type BackendSecurityPolicyList struct {
 	Items           []BackendSecurityPolicy `json:"items"`
 }
 
-// LLMProviderAPIKey specifies the API key.
-type LLMProviderAPIKey struct {
+// ProviderAPIKey specifies the API key.
+type ProviderAPIKey struct {
 	// Type specifies the type of the API key. Currently, "SecretRef" is supported.
 	// This defaults to "SecretRef".
 	//
 	// +kubebuilder:validation:Enum=SecretRef
 	// +kubebuilder:default=SecretRef
-	Type LLMProviderAPIKeyType `json:"type"`
+	Type ProviderAPIKeyType `json:"type"`
 
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
 	//
-	// For AWS specifically, the access key should be stored as "accessKey" and secret key as "secretKey".
-	//
 	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// LLMProviderAPIKeyType specifies the type of LLMProviderAPIKey.
-type LLMProviderAPIKeyType string
+// ProviderAPIKeyType specifies the type of ProviderAPIKey.
+type ProviderAPIKeyType string
 
 // AWSSecurityPolicy contains the supported authentication mechanisms to access aws
 type AWSSecurityPolicy struct {
@@ -236,16 +234,16 @@ type AWSSecurityPolicy struct {
 
 	// CredentialsFile specifies the credentials file to use for the AWS provider.
 	// +optional
-	CredentialsFile *LLMProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
+	CredentialsFile *ProviderAWSCredentialsFile `json:"credentialsFile,omitempty"`
 
 	// OIDCCredential specifies the oidc and credentials to use for the AWS provider.
 	// +optional
-	OIDCCredential *LLMProviderAWSOIDCCredential `json:"oidcCredential,omitempty"`
+	OIDCCredential *ProviderAWSOIDCCredential `json:"oidcCredential,omitempty"`
 }
 
-// LLMProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
+// ProviderAWSCredentialsFile specifies the credentials file to use for the AWS provider.
 // Envoy reads the credentials from the file pointed by the Path field, and the profile to use is specified by the Profile field.
-type LLMProviderAWSCredentialsFile struct {
+type ProviderAWSCredentialsFile struct {
 	// Path is the path to the credentials file.
 	//
 	// +kubebuilder:default=~/.aws/credentials
@@ -257,10 +255,10 @@ type LLMProviderAWSCredentialsFile struct {
 	Profile string `json:"profile,omitempty"`
 }
 
-// LLMProviderAWSOIDCCredential specifies credentials to obtain oidc token from a sso server.
+// ProviderAWSOIDCCredential specifies credentials to obtain oidc token from a sso server.
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file
-type LLMProviderAWSOIDCCredential struct {
+type ProviderAWSOIDCCredential struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
 	OIDC egv1a1.OIDC `json:"oidc"`
 
