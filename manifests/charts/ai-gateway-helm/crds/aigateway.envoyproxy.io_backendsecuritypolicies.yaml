@@ -113,9 +113,10 @@ spec:
                               file.
                             type: string
                         type: object
-                      oidcFederation:
+                      oidcExchangeToken:
                         description: |-
-                          OIDCFederation specifies the oidc configurations used to obtain an oidc token.
+                          OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
+                          used to obtain temporary credentials to access AWS
                           CredentialsFile must be defined when using OIDCFederation.
                         properties:
                           aud:
