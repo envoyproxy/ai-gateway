@@ -3,7 +3,8 @@
 // depending on the Envoy Gateway as well as it can be used outside the Envoy AI Gateway.
 //
 // This configuration must be decoupled from the Envoy Gateway types as well as its implementation
-// details.
+// details. Also, the configuration must not be tied with k8s so it can be tested and iterated
+// without the need for the k8s cluster.
 package extprocconfig
 
 import (

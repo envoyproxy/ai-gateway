@@ -84,6 +84,7 @@ test-cel: envtest apigen format
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
                  go test ./tests/cel-validation --tags celvalidation -count=1; \
     done
+
 # This runs the end-to-end tests for extproc without controller or k8s at all.
 # It is useful for the fast iteration of the extproc code.
 .PHONY: test-extproc-e2e # This requires the extproc binary to be built.

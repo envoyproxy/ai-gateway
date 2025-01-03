@@ -40,7 +40,7 @@ var (
 //   - TEST_AWS_SECRET_ACCESS_KEY
 //   - TEST_OPENAI_API_KEY
 //
-// The test will be skipped if any of these are not set.
+// The test will fail if any of these are not set.
 func TestE2E(t *testing.T) {
 	requireBinaries(t)
 	accessLogPath := t.TempDir() + "/access.log"
