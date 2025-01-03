@@ -116,27 +116,25 @@ spec:
                       oidcExchangeToken:
                         description: |-
                           OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
-                          used to obtain temporary credentials to access AWS
-                          CredentialsFile must be defined when using OIDCFederation.
+                          used to obtain temporary credentials to access AWS.
                         properties:
                           aud:
                             description: Aud defines the resource the application
-                              can access
+                              can access.
                             type: string
                           awsRoleArn:
-                            description: AwsRoleArn is the AWS IAM Role with the permission
-                              to use specific resources in AWS account which maps
-                              to the temporary AWS security credentials exchanged
-                              using the authentication token issued by OIDC provider.
+                            description: |-
+                              AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
+                              which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
                             type: string
                           grantType:
                             description: GrantType is the method application gets
-                              access token
+                              access token.
                             type: string
                           oidc:
                             description: OIDC is used to obtain oidc tokens via an
                               SSO server which will be used to exchange for temporary
-                              AWS credentials
+                              AWS credentials.
                             properties:
                               clientID:
                                 description: |-
@@ -1204,7 +1202,7 @@ spec:
                         type: object
                       region:
                         description: Region specifies the AWS region associated with
-                          the policy
+                          the policy.
                         minLength: 1
                         type: string
                     required:

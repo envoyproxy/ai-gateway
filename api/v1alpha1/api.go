@@ -213,7 +213,7 @@ type AuthenticationCloudProviderCredentials struct {
 
 // AWSCredentials contains the supported authentication mechanisms to access aws
 type AWSCredentials struct {
-	// Region specifies the AWS region associated with the policy
+	// Region specifies the AWS region associated with the policy.
 	//
 	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
@@ -224,8 +224,7 @@ type AWSCredentials struct {
 	CredentialsFile *AWSCredentialsFile `json:"credentialsFile,omitempty"`
 
 	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
-	// used to obtain temporary credentials to access AWS
-	// CredentialsFile must be defined when using OIDCFederation.
+	// used to obtain temporary credentials to access AWS.
 	//
 	// +optional
 	OIDCExchangeToken *AWSOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
@@ -247,22 +246,23 @@ type AWSCredentialsFile struct {
 
 // AWSOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
-// and store them in a temporary credentials file
+// and store them in a temporary credentials file.
 type AWSOIDCExchangeToken struct {
-	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
+	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
 	OIDC egv1a1.OIDC `json:"oidc"`
 
-	// GrantType is the method application gets access token
+	// GrantType is the method application gets access token.
 	//
 	// +optional
 	GrantType string `json:"grantType,omitempty"`
 
-	// Aud defines the resource the application can access
+	// Aud defines the resource the application can access.
 	//
 	// +optional
 	Aud string `json:"aud,omitempty"`
 
-	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
+	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
+	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
 	//
 	// +optional
 	AwsRoleArn string `json:"awsRoleArn,omitempty"`
