@@ -90,16 +90,6 @@ spec:
                     required:
                     - name
                     type: object
-                  type:
-                    default: SecretRef
-                    description: |-
-                      Type specifies the type of the API key. Currently, "SecretRef" is supported.
-                      This defaults to "SecretRef".
-                    enum:
-                    - SecretRef
-                    type: string
-                required:
-                - type
                 type: object
               awsSecurityPolicy:
                 description: AwsSecurityPolicy specifies configuration to access aws
@@ -1199,11 +1189,6 @@ spec:
                         - clientSecret
                         - provider
                         type: object
-                      ssoRequestMethod:
-                        default: POST
-                        description: SSORequestMethod specifies the expected http
-                          method for an SSO server
-                        type: string
                     required:
                     - credentialFileName
                     - oidc

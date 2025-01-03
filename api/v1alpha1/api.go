@@ -195,13 +195,6 @@ type BackendSecurityPolicyList struct {
 
 // ProviderAPIKey specifies the API key.
 type ProviderAPIKey struct {
-	// Type specifies the type of the API key. Currently, "SecretRef" is supported.
-	// This defaults to "SecretRef".
-	//
-	// +kubebuilder:validation:Enum=SecretRef
-	// +kubebuilder:default=SecretRef
-	Type ProviderAPIKeyType `json:"type"`
-
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
@@ -209,9 +202,6 @@ type ProviderAPIKey struct {
 	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
-
-// ProviderAPIKeyType specifies the type of ProviderAPIKey.
-type ProviderAPIKeyType string
 
 // AWSSecurityPolicy contains the supported authentication mechanisms to access aws
 type AWSSecurityPolicy struct {
@@ -269,9 +259,4 @@ type ProviderAWSOIDCFederation struct {
 
 	// AuthBearToken is an optional authorization token that can be passed with OIDC request
 	AuthBearToken string `json:"authBearToken,omitempty"`
-
-	// SSORequestMethod specifies the expected http method for an SSO server
-	//
-	// +kubebuilder:default=POST
-	SSORequestMethod string `json:"ssoRequestMethod,omitempty"`
 }
