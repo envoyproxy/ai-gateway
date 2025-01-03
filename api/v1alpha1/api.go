@@ -223,11 +223,12 @@ type AWSCredentials struct {
 	// +optional
 	CredentialsFile *AWSCredentialsFile `json:"credentialsFile,omitempty"`
 
-	// OIDCFederation specifies the oidc configurations used to obtain an oidc token.
+	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
+	// used to obtain temporary credentials to access AWS
 	// CredentialsFile must be defined when using OIDCFederation.
 	//
 	// +optional
-	OIDCFederation *AWSOIDCFederation `json:"oidcFederation,omitempty"`
+	OIDCExchangeToken *AWSOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
 }
 
 // AWSCredentialsFile specifies the credentials file to use for the AWS provider.
@@ -244,10 +245,10 @@ type AWSCredentialsFile struct {
 	Profile string `json:"profile,omitempty"`
 }
 
-// AWSOIDCFederation specifies credentials to obtain oidc token from a sso server.
+// AWSOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file
-type AWSOIDCFederation struct {
+type AWSOIDCExchangeToken struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials
 	OIDC egv1a1.OIDC `json:"oidc"`
 

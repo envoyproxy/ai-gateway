@@ -8,7 +8,7 @@ spec:
   cloudProviderCredentials:
     awsCredentials:
       region: us-east-1
-      oidcFederation:
+      oidcExchangeToken:
         oidc:
           provider:
             issuer: placeholder
