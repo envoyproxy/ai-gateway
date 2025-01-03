@@ -112,6 +112,7 @@ type LLMRouteRuleMatch struct {
 	// +listMapKey=name
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="self.all(match, match.type != 'RegularExpression')", message="currently only exact match is supported"
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 

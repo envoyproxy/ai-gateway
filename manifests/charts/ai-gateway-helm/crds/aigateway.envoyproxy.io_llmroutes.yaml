@@ -188,6 +188,9 @@ spec:
                             x-kubernetes-list-map-keys:
                             - name
                             x-kubernetes-list-type: map
+                            x-kubernetes-validations:
+                            - message: currently only exact match is supported
+                              rule: self.all(match, match.type != 'RegularExpression')
                         type: object
                       maxItems: 128
                       type: array
