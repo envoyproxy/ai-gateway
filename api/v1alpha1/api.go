@@ -201,9 +201,7 @@ type BackendSecurityPolicyAPIKey struct {
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
-	//
-	// +optional
-	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef,omitempty"`
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
 // AuthenticationCloudProviderCredentials specifies supported cloud provider authentication methods
