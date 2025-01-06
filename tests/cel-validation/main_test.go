@@ -149,6 +149,14 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "unknown_provider.yaml",
 			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWS_IAM\"",
 		},
+		{
+			name:   "missing_type.yaml",
+			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWS_IAM\"",
+		},
+		{
+			name:   "multiple_security_policies.yaml",
+			expErr: "Too many: 3: must have at most 2 items",
+		},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 	} {

@@ -170,6 +170,9 @@ type BackendSecurityPolicy struct {
 }
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
+//
+// Only one type of BackendSecurityPolicy can be defined.
+// +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
 	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
 	//
@@ -179,12 +182,12 @@ type BackendSecurityPolicySpec struct {
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
 	//
 	// +optional
-	APIKey *AuthenticationAPIKey `json:"apiKey,omitempty"`
+	APIKey *BackendSecurityPolicyAPIKey `json:"apiKey,omitempty"`
 
 	// CloudProviderCredentials is a mechanism to access a backend(s). Cloud provider specific logic will be applied.
 	//
 	// +optional
-	CloudProviderCredentials *AuthenticationCloudProviderCredentials `json:"cloudProviderCredentials,omitempty"`
+	CloudProviderCredentials *BackendSecurityPolicyCloudProviderCredentials `json:"cloudProviderCredentials,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -196,7 +199,7 @@ type BackendSecurityPolicyList struct {
 	Items           []BackendSecurityPolicy `json:"items"`
 }
 
-// AuthenticationAPIKey specifies the API key.
+// BackendSecurityPolicyAPIKey specifies the API key.
 type BackendSecurityPolicyAPIKey struct {
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
@@ -204,7 +207,7 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// AuthenticationCloudProviderCredentials specifies supported cloud provider authentication methods
+// BackendSecurityPolicyCloudProviderCredentials specifies supported cloud provider authentication methods
 type BackendSecurityPolicyCloudProviderCredentials struct {
 	AWSCredentials *AWSCredentials `json:"awsCredentials,omitempty"`
 }

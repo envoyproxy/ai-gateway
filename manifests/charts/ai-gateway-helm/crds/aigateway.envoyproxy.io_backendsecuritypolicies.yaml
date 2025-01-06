@@ -39,8 +39,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackendSecurityPolicySpec specifies authentication rules
-              on access the provider from the Gateway.
+            description: |-
+              BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
+
+              Only one type of BackendSecurityPolicy can be defined.
+            maxProperties: 2
             properties:
               apiKey:
                 description: APIKey is a mechanism to access a backend(s). The API
@@ -90,6 +93,8 @@ spec:
                     required:
                     - name
                     type: object
+                required:
+                - secretRef
                 type: object
               cloudProviderCredentials:
                 description: CloudProviderCredentials is a mechanism to access a backend(s).
@@ -1208,8 +1213,6 @@ spec:
                     required:
                     - region
                     type: object
-                required:
-                - awsCredentials
                 type: object
               type:
                 description: Type specifies the auth mechanism used to access the
