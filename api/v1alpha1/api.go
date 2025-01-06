@@ -205,7 +205,7 @@ type BackendSecurityPolicyAPIKey struct {
 }
 
 // AuthenticationCloudProviderCredentials specifies supported cloud provider authentication methods
-type AuthenticationCloudProviderCredentials struct {
+type BackendSecurityPolicyCloudProviderCredentials struct {
 	AWSCredentials AWSCredentials `json:"awsCredentials"`
 }
 
