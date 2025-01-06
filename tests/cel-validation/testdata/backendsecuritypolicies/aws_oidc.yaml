@@ -16,5 +16,6 @@ spec:
           clientSecret:
             name: placeholder
       credentialsFile:
-        path: ~/aws/placeholder
+        secretRef:
+          name: placeholder
         profile: default

@@ -232,12 +232,10 @@ type AWSCredentials struct {
 }
 
 // AWSCredentialsFile specifies the credentials file to use for the AWS provider.
-// Envoy reads the credentials from the file pointed by the Path field, and the profile to use is specified by the Profile field.
+// Envoy reads the secret file, and the profile to use is specified by the Profile field.
 type AWSCredentialsFile struct {
-	// Path is the path to the credentials file.
-	//
-	// +kubebuilder:default=~/.aws/credentials
-	Path string `json:"path,omitempty"`
+	// SecretRef is the reference to the credential file
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 
 	// Profile is the profile to use in the credentials file.
 	//
@@ -264,7 +262,5 @@ type AWSOIDCExchangeToken struct {
 
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
-	//
-	// +optional
-	AwsRoleArn string `json:"awsRoleArn,omitempty"`
+	AwsRoleArn string `json:"awsRoleArn"`
 }

@@ -108,15 +108,56 @@ spec:
                         description: CredentialsFile specifies the credentials file
                           to use for the AWS provider.
                         properties:
-                          path:
-                            default: ~/.aws/credentials
-                            description: Path is the path to the credentials file.
-                            type: string
                           profile:
                             default: default
                             description: Profile is the profile to use in the credentials
                               file.
                             type: string
+                          secretRef:
+                            description: SecretRef is the reference to the credential
+                              file
+                            properties:
+                              group:
+                                default: ""
+                                description: |-
+                                  Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                                  When unspecified or empty string, core API group is inferred.
+                                maxLength: 253
+                                pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                type: string
+                              kind:
+                                default: Secret
+                                description: Kind is kind of the referent. For example
+                                  "Secret".
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                                type: string
+                              name:
+                                description: Name is the name of the referent.
+                                maxLength: 253
+                                minLength: 1
+                                type: string
+                              namespace:
+                                description: |-
+                                  Namespace is the namespace of the referenced object. When unspecified, the local
+                                  namespace is inferred.
+
+                                  Note that when a namespace different than the local namespace is specified,
+                                  a ReferenceGrant object is required in the referent namespace to allow that
+                                  namespace's owner to accept the reference. See the ReferenceGrant
+                                  documentation for details.
+
+                                  Support: Core
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
                         type: object
                       oidcExchangeToken:
                         description: |-
@@ -1203,6 +1244,7 @@ spec:
                             - provider
                             type: object
                         required:
+                        - awsRoleArn
                         - oidc
                         type: object
                       region:
