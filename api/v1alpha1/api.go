@@ -4,6 +4,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // +kubebuilder:object:root=true
@@ -38,6 +39,11 @@ type LLMRouteList struct {
 
 // LLMRouteSpec details the LLMRoute configuration.
 type LLMRouteSpec struct {
+	// TargetRefs are the names of the Gateway resources this LLMRoute is being attached to.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected LLMBackend during the routing process.
