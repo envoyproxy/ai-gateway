@@ -7,6 +7,14 @@ spec:
   inputSchema:
     # Input must be OpenAI schema at the moment, so this is invalid.
     schema: AWSBedrock
-  httpRoute:
-    hostnames:
-      - my.example.com
+  rules:
+    - matches:
+      - headers:
+        - type: Exact
+          name: x-envoy-ai-gateway-llm-model
+          value: llama3-70b
+      backendRefs:
+        - name: kserve
+          weight: 20
+        - name: aws-bedrock
+          weight: 80

@@ -1,9 +1,9 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"testing"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -11,15 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 func TestNewOpenAIToOpenAITranslator(t *testing.T) {
 	t.Run("unsupported path", func(t *testing.T) {
-		_, err := newOpenAIToOpenAITranslator("/v1/foo/bar", slog.Default())
+		_, err := newOpenAIToOpenAITranslator("/v1/foo/bar")
 		require.Error(t, err)
 	})
 	t.Run("/v1/chat/completions", func(t *testing.T) {
-		translator, err := newOpenAIToOpenAITranslator("/v1/chat/completions", slog.Default())
+		translator, err := newOpenAIToOpenAITranslator("/v1/chat/completions")
 		require.NoError(t, err)
 		require.NotNil(t, translator)
 	})
@@ -28,21 +29,18 @@ func TestNewOpenAIToOpenAITranslator(t *testing.T) {
 func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
-		_, _, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+		_, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
 		require.Error(t, err)
 	})
 	t.Run("valid body", func(t *testing.T) {
 		for _, stream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
-				originalReq := openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
-				body, err := json.Marshal(originalReq)
-				require.NoError(t, err)
+				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToOpenAITranslatorV1ChatCompletion{}
-				hm, bm, mode, modelName, err := o.RequestBody(&extprocv3.HttpBody{Body: body})
+				hm, bm, mode, err := o.RequestBody(router.RequestBody(originalReq))
 				require.Nil(t, bm)
 				require.NoError(t, err)
-				require.Equal(t, "foo-bar-ai", modelName)
 				require.Equal(t, stream, o.stream)
 				if stream {
 					require.NotNil(t, mode)
@@ -96,10 +94,10 @@ data: [DONE]
 
 `)
 
-		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true, l: slog.Default()}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
 		var usedToken uint32
 		for i := 0; i < len(wholeBody); i++ {
-			hm, bm, _usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: wholeBody[i : i+1]})
+			hm, bm, _usedToken, err := o.ResponseBody(bytes.NewReader(wholeBody[i:i+1]), false)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
@@ -117,7 +115,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+			_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -126,7 +124,7 @@ data: [DONE]
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: body})
+			_, _, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.Equal(t, uint32(42), usedToken)
 		})
@@ -134,10 +132,8 @@ data: [DONE]
 }
 
 func TestExtractUsageFromBufferEvent(t *testing.T) {
-	logger := slog.Default()
-
 	t.Run("valid usage data", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{l: logger}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent()
 		require.Equal(t, uint32(42), usedToken)
@@ -146,7 +142,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 	})
 
 	t.Run("valid usage data after invalid", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{l: logger}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\ndata: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent()
 		require.Equal(t, uint32(42), usedToken)
@@ -155,7 +151,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 	})
 
 	t.Run("no usage data and then become valid", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{l: logger}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {}\n\ndata: ")
 		usedToken := o.extractUsageFromBufferEvent()
 		require.Equal(t, uint32(0), usedToken)
@@ -170,7 +166,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{l: logger}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\n")
 		usedToken := o.extractUsageFromBufferEvent()
 		require.Equal(t, uint32(0), usedToken)

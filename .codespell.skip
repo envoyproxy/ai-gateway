@@ -1,0 +1,3 @@
+./manifests/charts/ai-gateway-helm/crds/*
+./site/package-lock.json
+./site/package.json

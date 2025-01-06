@@ -1,3 +1,29 @@
 *.kube
 .bin
 out/
+.DS_Store
+.terraform
+
+# Files and directories to ignore in the site directory
+# dependencies
+site/node_modules
+
+# production
+site/build
+
+# generated files
+site/.docusaurus
+site/.cache-loader
+
+# misc
+site/.DS_Store
+site/.env.local
+site/.env.development.local
+site/.env.test.local
+site/.env.production.local
+
+site/npm-debug.log*
+site/yarn-debug.log*
+site/yarn-error.log*
+site/static/.DS_Store
+site/temp

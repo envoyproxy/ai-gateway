@@ -84,6 +84,10 @@ func TestLLMRoutes(t *testing.T) {
 			name:   "unknown_schema.yaml",
 			expErr: "spec.inputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
+		{
+			name:   "unsupported_match.yaml",
+			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := tests.ReadFile(path.Join("testdata/llmroutes", tc.name))

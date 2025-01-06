@@ -5,27 +5,27 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/private/protocol/eventstream"
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 func TestNewOpenAIToAWSBedrockTranslator(t *testing.T) {
 	t.Run("unsupported path", func(t *testing.T) {
-		_, err := newOpenAIToAWSBedrockTranslator("unsupported-path", slog.Default())
+		_, err := newOpenAIToAWSBedrockTranslator("unsupported-path")
 		require.Error(t, err)
 	})
 	t.Run("v1/chat/completions", func(t *testing.T) {
-		translator, err := newOpenAIToAWSBedrockTranslator("/v1/chat/completions", slog.Default())
+		translator, err := newOpenAIToAWSBedrockTranslator("/v1/chat/completions")
 		require.NoError(t, err)
 		require.NotNil(t, translator)
 	})
@@ -34,10 +34,13 @@ func TestNewOpenAIToAWSBedrockTranslator(t *testing.T) {
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+		_, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
 		require.Error(t, err)
 	})
 	t.Run("valid body", func(t *testing.T) {
+		contentify := func(msg string) any {
+			return []any{map[string]any{"text": msg}}
+		}
 		for _, stream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
@@ -45,17 +48,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					Stream: stream,
 					Model:  "gpt-4o",
 					Messages: []openai.ChatCompletionRequestMessage{
-						{Content: "from-system", Role: "system"},
-						{Content: "from-user", Role: "user"},
-						{Content: "part1", Role: "user"},
-						{Content: "part2", Role: "user"},
+						{Content: contentify("from-system"), Role: "system"},
+						{Content: contentify("from-user"), Role: "user"},
+						{Content: contentify("part1"), Role: "user"},
+						{Content: contentify("part2"), Role: "user"},
 					},
 				}
 
-				body, err := json.Marshal(originalReq)
-				require.NoError(t, err)
-
-				hm, bm, mode, modelName, err := o.RequestBody(&extprocv3.HttpBody{Body: body})
+				hm, bm, mode, err := o.RequestBody(router.RequestBody(&originalReq))
 				var expPath string
 				if stream {
 					expPath = "/model/gpt-4o/converse-stream"
@@ -69,7 +69,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					require.Nil(t, mode)
 				}
 				require.NoError(t, err)
-				require.Equal(t, "gpt-4o", modelName)
 				require.NotNil(t, hm)
 				require.NotNil(t, hm.SetHeaders)
 				require.Len(t, hm.SetHeaders, 2)
@@ -123,13 +122,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, l: slog.Default()}
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
 		buf, err := base64.StdEncoding.DecodeString(base64RealStreamingEvents)
 		require.NoError(t, err)
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte{buf[i]}, EndOfStream: i == len(buf)-1})
+			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -165,7 +164,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(&extprocv3.HttpBody{Body: []byte("invalid")})
+			_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -190,7 +189,7 @@ data: [DONE]
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(&extprocv3.HttpBody{Body: body})
+			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)
@@ -226,7 +225,7 @@ const base64RealStreamingEvents = "AAAAnwAAAFKzEV9wCzpldmVudC10eXBlBwAMbWVzc2FnZ
 
 func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	e := eventstream.NewEncoder(buf)
+	e := eventstream.NewEncoder()
 	var offsets []int
 	for _, data := range []awsbedrock.ConverseStreamEvent{
 		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "1"}},
@@ -236,7 +235,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		offsets = append(offsets, buf.Len())
 		eventPayload, err := json.Marshal(data)
 		require.NoError(t, err)
-		err = e.Encode(eventstream.Message{
+		err = e.Encode(buf, eventstream.Message{
 			Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
 			Payload: eventPayload,
 		})
@@ -276,7 +275,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 	})
 
 	t.Run("real events", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{l: slog.Default()}
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 		var err error
 		o.bufferedBody, err = base64.StdEncoding.DecodeString(base64RealStreamingEvents)
 		require.NoError(t, err)

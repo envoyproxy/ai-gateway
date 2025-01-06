@@ -4,6 +4,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // +kubebuilder:object:root=true
@@ -13,7 +14,7 @@ import (
 // This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple LLM backends.
 //
-// The InputSchema is used to determine the structure of the requests that the Gateway will
+// The inputSchema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
 // on the output schema of the LLMBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
@@ -38,6 +39,11 @@ type LLMRouteList struct {
 
 // LLMRouteSpec details the LLMRoute configuration.
 type LLMRouteSpec struct {
+	// TargetRefs are the names of the Gateway resources this LLMRoute is being attached to.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected LLMBackend during the routing process.
@@ -47,18 +53,73 @@ type LLMRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
 	APISchema LLMAPISchema `json:"inputSchema"`
-	// HTTPRoute is the base HTTPRouteSpec (https://gateway-api.sigs.k8s.io/api-types/httproute/) in
-	// the Gateway API on which this LLMRoute will be implemented. AI Gateway controller will generate a HTTPRoute based
-	// on the configuration given here with the additional modifications to achieve the necessary jobs,
-	// notably inserting the AI Gateway external processor filter.
+	// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
+	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
-	// In the matching rules in the HTTPRoute here, `x-envoy-ai-gateway-llm-model` header
-	// can be used to describe the routing behavior.
+	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
+	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
 	//
-	// Currently, only the exact header matching is supported, otherwise the configuration will be rejected.
+	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-llm-model` header is available
+	// if we want to describe the routing behavior based on the model name. The model name is extracted
+	// from the request content before the routing decision.
+	//
+	// How multiple rules are matched is the same as the Gateway API. See for the details:
+	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
 	//
 	// +kubebuilder:validation:Required
-	HTTPRoute gwapiv1.HTTPRouteSpec `json:"httpRoute"`
+	// +kubebuilder:validation:MaxItems=128
+	Rules []LLMRouteRule `json:"rules"`
+}
+
+// LLMRouteRule is a rule that defines the routing behavior of the LLMRoute.
+type LLMRouteRule struct {
+	// BackendRefs is the list of LLMBackend that this rule will route the traffic to.
+	// Each backend can have a weight that determines the traffic distribution.
+	//
+	// The namespace of each backend is "local", i.e. the same namespace as the LLMRoute.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	BackendRefs []LLMRouteRuleBackendRef `json:"backendRefs,omitempty"`
+
+	// Matches is the list of LLMRouteMatch that this rule will match the traffic to.
+	// This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
+	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
+}
+
+// LLMRouteRuleBackendRef is a reference to a LLMBackend with a weight.
+type LLMRouteRuleBackendRef struct {
+	// Name is the name of the LLMBackend.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Weight is the weight of the LLMBackend. This is exactly the same as the weight in
+	// the BackendRef in the Gateway API. See for the details:
+	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum=0
+	Weight int `json:"weight"`
+}
+
+type LLMRouteRuleMatch struct {
+	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
+	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
+	//
+	// Currently, only the exact header matching is supported.
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="self.all(match, match.type != 'RegularExpression')", message="currently only exact match is supported"
+	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 
 // +kubebuilder:object:root=true

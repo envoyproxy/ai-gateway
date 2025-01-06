@@ -1,0 +1,19 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: LLMRoute
+metadata:
+  name: apple
+  namespace: default
+spec:
+  inputSchema:
+    schema: OpenAI
+  rules:
+    - matches:
+      - headers:
+        - type: RegularExpression
+          name: x-envoy-ai-gateway-llm-model
+          value: llama3-70b
+      backendRefs:
+        - name: kserve
+          weight: 20
+        - name: aws-bedrock
+          weight: 80

@@ -4,21 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"io"
 
-	"github.com/aws/aws-sdk-go/private/protocol/eventstream"
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // newOpenAIToAWSBedrockTranslator implements [TranslatorFactory] for OpenAI to AWS Bedrock translation.
-func newOpenAIToAWSBedrockTranslator(path string, l *slog.Logger) (Translator, error) {
+func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
-		return &openAIToAWSBedrockTranslatorV1ChatCompletion{l: l}, nil
+		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
 	} else {
 		return nil, fmt.Errorf("unsupported path: %s", path)
 	}
@@ -26,20 +27,18 @@ func newOpenAIToAWSBedrockTranslator(path string, l *slog.Logger) (Translator, e
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
 type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
-	defaultTranslator
-	l            *slog.Logger
 	stream       bool
 	bufferedBody []byte
 	events       []awsbedrock.ConverseStreamEvent
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body *extprocv3.HttpBody) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, modelName string, err error,
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
-	var openAIReq openai.ChatCompletionRequest
-	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
-		return nil, nil, nil, "", fmt.Errorf("failed to unmarshal body: %w", err)
+	openAIReq, ok := body.(*openai.ChatCompletionRequest)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("unexpected body type: %T", body)
 	}
 
 	var pathTemplate string
@@ -74,28 +73,42 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body *extproc
 		case "system":
 			role = "assistant"
 		default:
-			return nil, nil, nil, "", fmt.Errorf("unexpected role: %s", msg.Role)
+			return nil, nil, nil, fmt.Errorf("unexpected role: %s", msg.Role)
 		}
 
-		text, ok := msg.Content.(string)
-		if ok {
+		contents, ok := msg.Content.([]any)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("unexpected content: %[1]T:%[1]v", msg.Content)
+		}
+		for _, contentAny := range contents {
+			content, ok := contentAny.(map[string]any)
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("unexpected content: %[1]T:%[1]v", contentAny)
+			}
+			textAny, ok := content["text"]
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("missing text in content: %v", contents)
+			}
+
+			text, ok := textAny.(string)
+			if !ok {
+				return nil, nil, nil, fmt.Errorf("unexpected text: %[1]T:%[1]v", textAny)
+			}
 			awsReq.Messages = append(awsReq.Messages, awsbedrock.Message{
 				Role:    role,
 				Content: []awsbedrock.ContentBlock{{Text: text}},
 			})
-		} else {
-			return nil, nil, nil, "", fmt.Errorf("unexpected content: %v", msg.Content)
 		}
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
 	if body, err := json.Marshal(awsReq); err != nil {
-		return nil, nil, nil, "", fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to marshal body: %w", err)
 	} else {
 		mut.Body = body
 	}
 	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, openAIReq.Model, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
 }
 
 // ResponseHeaders implements [Translator.ResponseHeaders].
@@ -119,17 +132,20 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 }
 
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body *extprocv3.HttpBody) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
 ) {
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
-		o.bufferedBody = append(o.bufferedBody, body.Body...)
+		buf, err := io.ReadAll(body)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+		}
+		o.bufferedBody = append(o.bufferedBody, buf...)
 		o.extractAmazonEventStreamEvents()
 
 		for i := range o.events {
 			event := &o.events[i]
-			o.l.Debug("processing event", slog.Any("event", event))
 			if usage := event.Usage; usage != nil {
 				usedToken = uint32(usage.TotalTokens)
 			}
@@ -147,14 +163,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body *extpro
 			mut.Body = append(mut.Body, []byte("\n\n")...)
 		}
 
-		if body.EndOfStream {
+		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
 		}
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, usedToken, nil
 	}
 
 	var awsResp awsbedrock.ConverseResponse
-	if err := json.Unmarshal(body.Body, &awsResp); err != nil {
+	if err := json.NewDecoder(body).Decode(&awsResp); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
@@ -193,11 +209,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body *extpro
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) extractAmazonEventStreamEvents() {
 	// TODO: Maybe reuse the reader and decoder.
 	r := bytes.NewReader(o.bufferedBody)
-	dec := eventstream.NewDecoder(r)
+	dec := eventstream.NewDecoder()
 	o.events = o.events[:0]
 	var lastRead int64
 	for {
-		msg, err := dec.Decode(nil)
+		msg, err := dec.Decode(r, nil)
 		if err != nil {
 			// When failed, we stop processing the events.
 			// Copy the unread bytes to the beginning of the buffer.
@@ -206,10 +222,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) extractAmazonEventStreamE
 			return
 		}
 		var event awsbedrock.ConverseStreamEvent
-		if err := json.Unmarshal(msg.Payload, &event); err != nil {
-			// When failed to parse the event, we skip it while logging the error.
-			o.l.Error("failed to parse event: %v", slog.Any("event", msg))
-		} else {
+		if err := json.Unmarshal(msg.Payload, &event); err == nil {
 			o.events = append(o.events, event)
 		}
 		lastRead = r.Size() - int64(r.Len())

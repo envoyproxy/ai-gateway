@@ -1,4 +1,4 @@
-// Package openai contains the followings are the OpenAI API schema definitions.
+// Package openai contains the following are the OpenAI API schema definitions.
 // Note that we intentionally do not use the code generation tools like OpenAPI Generator not only to keep the code simple
 // but also because the OpenAI's OpenAPI definition is not compliant with the spec and the existing tools do not work well.
 package openai
@@ -29,7 +29,7 @@ type ChatCompletionRequest struct {
 type ChatCompletionRequestMessage struct {
 	// Role is the role of the message. The role of the message (whether it represents the user or the AI).
 	Role string `json:"role,omitempty"`
-	// Content is the content of the message. Mainly this is a string, but it can be more complex.
+	// Content is the content of the message.
 	Content any `json:"content,omitempty"`
 }
 
