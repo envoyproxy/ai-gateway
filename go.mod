@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
 	github.com/envoyproxy/gateway v1.2.4
 	github.com/envoyproxy/go-control-plane/envoy v1.32.2
-	github.com/openai/openai-go v0.1.0-alpha.41
+	github.com/openai/openai-go v0.1.0-alpha.43
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	google.golang.org/grpc v1.69.2
