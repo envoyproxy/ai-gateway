@@ -197,7 +197,7 @@ type BackendSecurityPolicyList struct {
 }
 
 // AuthenticationAPIKey specifies the API key.
-type AuthenticationAPIKey struct {
+type BackendSecurityPolicyAPIKey struct {
 	// SecretRef is the reference to the secret containing the API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
