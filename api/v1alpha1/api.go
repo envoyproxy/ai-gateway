@@ -203,7 +203,7 @@ type BackendSecurityPolicyAPIKey struct {
 	// The key of the secret should be "apiKey".
 	//
 	// +optional
-	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef,omitempty"`
 }
 
 // AuthenticationCloudProviderCredentials specifies supported cloud provider authentication methods
