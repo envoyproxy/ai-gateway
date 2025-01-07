@@ -316,7 +316,7 @@ type AWSOIDCExchangeToken struct {
 	// +optional
 	GrantType string `json:"grantType,omitempty"`
 
-	// Aud defines the resource the application can access.
+	// Aud defines the audience that this ID Token is intended for.
 	//
 	// +optional
 	Aud string `json:"aud,omitempty"`

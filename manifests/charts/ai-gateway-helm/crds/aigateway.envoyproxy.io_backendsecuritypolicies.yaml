@@ -165,8 +165,8 @@ spec:
                           used to obtain temporary credentials to access AWS.
                         properties:
                           aud:
-                            description: Aud defines the resource the application
-                              can access.
+                            description: Aud defines the audience that this ID Token
+                              is intended for.
                             type: string
                           awsRoleArn:
                             description: |-
