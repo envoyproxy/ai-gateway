@@ -157,11 +157,6 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 		return
 	}
 
-	// Print rules.
-	for i, rule := range httpRoute.Spec.Rules {
-		c.logger.Info("rule", "rule", i, "backendRefs", rule.BackendRefs)
-	}
-
 	if existingRoute {
 		if err := c.client.Update(context.Background(), httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "httpRoute", httpRoute)
@@ -260,7 +255,6 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 
 // newHTTPRoute updates the HTTPRoute with the new LLMRoute.
 func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, llmRoute *aigv1a1.LLMRoute) error {
-	// Update the HTTPRoute with the new LLMRoute.
 	var backends []*aigv1a1.LLMBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range llmRoute.Spec.Rules {
