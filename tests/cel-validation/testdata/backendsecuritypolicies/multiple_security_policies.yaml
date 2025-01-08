@@ -8,6 +8,5 @@ spec:
   apiKey:
     secretRef:
       name: placeholder
-  cloudProviderCredentials:
-    awsCredentials:
-      region: us-east-1
+  awsCredentials:
+    region: us-east-1

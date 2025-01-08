@@ -4,19 +4,17 @@ metadata:
   name: dog-provider-policy
   namespace: default
 spec:
-  type: CloudProvider
-  cloudProviderCredentials:
-    type: AWS_IAM
-    awsCredentials:
-      region: us-east-1
-      oidcExchangeToken:
-        oidc:
-          provider:
-            issuer: placeholder
-          clientID: placeholder
-          clientSecret:
-            name: placeholder
-      credentialsFile:
-        secretRef:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    oidcExchangeToken:
+      oidc:
+        provider:
+          issuer: placeholder
+        clientID: placeholder
+        clientSecret:
           name: placeholder
-        profile: default
+    credentialsFile:
+      secretRef:
+        name: placeholder
+      profile: default

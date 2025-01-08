@@ -4,6 +4,5 @@ metadata:
   name: dog-provider-policy
   namespace: default
 spec:
-  cloudProviderCredentials:
-    awsCredentials:
-      region: us-east-1å
+  awsCredentials:
+    region: us-east-1å

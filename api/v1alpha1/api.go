@@ -216,8 +216,8 @@ const (
 type BackendSecurityPolicyType string
 
 const (
-	BackendSecurityPolicyTypeAPIKey        BackendSecurityPolicyType = "APIKey"
-	BackendSecurityPolicyTypeCloudProvider BackendSecurityPolicyType = "CloudProvider"
+	BackendSecurityPolicyTypeAPIKey         BackendSecurityPolicyType = "APIKey"
+	BackendSecurityPolicyTypeAWSCredentials BackendSecurityPolicyType = "AWSCredentials"
 )
 
 // +kubebuilder:object:root=true
@@ -231,13 +231,14 @@ type BackendSecurityPolicy struct {
 }
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
+// Only one mechanism to access a backend(s) can be specified.
 //
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "CloudProvider" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWSCredentials" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;CloudProvider
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -245,10 +246,10 @@ type BackendSecurityPolicySpec struct {
 	// +optional
 	APIKey *BackendSecurityPolicyAPIKey `json:"apiKey,omitempty"`
 
-	// CloudProviderCredentials is a mechanism to access a backend(s). Cloud provider specific logic will be applied.
+	// AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied.
 	//
 	// +optional
-	CloudProviderCredentials *BackendSecurityPolicyCloudProviderCredentials `json:"cloudProviderCredentials,omitempty"`
+	AWSCredentials *BackendSecurityPolicyAWSCredentials `json:"awsCredentials,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -268,24 +269,8 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-type CloudProviderCredentialsType string
-
-const (
-	CloudProviderCredentialsTypeAWS CloudProviderCredentialsType = "AWS_IAM"
-)
-
-// BackendSecurityPolicyCloudProviderCredentials specifies supported cloud provider authentication methods
-// +kubebuilder:validation:MaxProperties=2
-type BackendSecurityPolicyCloudProviderCredentials struct {
-	// Type specifies the cloud provider credentials being used. Currently, only "AWS_IAM" is supported.
-	//
-	// +kubebuilder:validation:Enum=AWS_IAM
-	Type           CloudProviderCredentialsType `json:"type"`
-	AWSCredentials *AWSCredentials              `json:"awsCredentials,omitempty"`
-}
-
-// AWSCredentials contains the supported authentication mechanisms to access aws
-type AWSCredentials struct {
+// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
 	//
 	// +kubebuilder:validation:MinLength=1
