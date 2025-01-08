@@ -65,11 +65,11 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 
 	newConfig := &processorConfig{
 		bodyParser: bodyParser, router: rt,
-		backendRoutingHeaderKey: config.BackendRoutingHeaderKey,
-		ModelNameHeaderKey:      config.ModelNameHeaderKey,
-		factories:               factories,
-		backendAuthHandlers:     backendAuthHandlers,
-		tokenUsageMetadata:      config.TokenUsageMetadata,
+		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
+		ModelNameHeaderKey:       config.ModelNameHeaderKey,
+		factories:                factories,
+		backendAuthHandlers:      backendAuthHandlers,
+		tokenUsageMetadata:       config.TokenUsageMetadata,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

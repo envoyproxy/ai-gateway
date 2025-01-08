@@ -21,12 +21,12 @@ import (
 // processorConfig is the configuration for the processor.
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
-	bodyParser                                  router.RequestBodyParser
-	router                                      router.Router
-	ModelNameHeaderKey, backendRoutingHeaderKey string
-	factories                                   map[extprocconfig.VersionedAPISchema]translator.Factory
-	backendAuthHandlers                         map[string]backendauth.Handler
-	tokenUsageMetadata                          *extprocconfig.TokenUsageMetadata
+	bodyParser                                   router.RequestBodyParser
+	router                                       router.Router
+	ModelNameHeaderKey, selectedBackendHeaderKey string
+	factories                                    map[extprocconfig.VersionedAPISchema]translator.Factory
+	backendAuthHandlers                          map[string]backendauth.Handler
+	tokenUsageMetadata                           *extprocconfig.TokenUsageMetadata
 }
 
 // ProcessorIface is the interface for the processor.
@@ -101,7 +101,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: p.config.ModelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.backendRoutingHeaderKey, RawValue: []byte(backendName)},
+		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(backendName)},
 	})
 
 	if authHandler, ok := p.config.backendAuthHandlers[backendName]; ok {

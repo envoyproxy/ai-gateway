@@ -1,20 +1,38 @@
-package extprocconfig
+package extprocconfig_test
 
 import (
+	"log/slog"
 	"os"
 	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/util/yaml"
+
+	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/internal/extproc"
 )
+
+func TestDefaultConfig(t *testing.T) {
+	server, err := extproc.NewServer(slog.Default(), extproc.NewProcessor)
+	require.NoError(t, err)
+	require.NotNil(t, server)
+
+	var cfg extprocconfig.Config
+	err = yaml.Unmarshal([]byte(extprocconfig.DefaultConfig), &cfg)
+	require.NoError(t, err)
+
+	err = server.LoadConfig(&cfg)
+	require.NoError(t, err)
+}
 
 func TestUnmarshalConfigYaml(t *testing.T) {
 	configPath := path.Join(t.TempDir(), "config.yaml")
 	const config = `
 inputSchema:
   schema: OpenAI
-backendRoutingHeaderKey: x-backend-name
-modelNameHeaderKey: x-model-name
+selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+modelNameHeaderKey: x-envoy-ai-gateway-llm-model
 tokenUsageMetadata:
   namespace: ai_gateway_llm_ns
   key: token_usage_key
@@ -29,24 +47,24 @@ rules:
     outputSchema:
       schema: AWSBedrock
   headers:
-  - name: x-model-name
+  - name: x-envoy-ai-gateway-llm-model
     value: llama3.3333
 - backends:
   - name: openai
     outputSchema:
       schema: OpenAI
   headers:
-  - name: x-model-name
+  - name: x-envoy-ai-gateway-llm-model
     value: gpt4.4444
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
-	cfg, err := UnmarshalConfigYaml(configPath)
+	cfg, err := extprocconfig.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
 	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
 	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
 	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
-	require.Equal(t, "x-backend-name", cfg.BackendRoutingHeaderKey)
-	require.Equal(t, "x-model-name", cfg.ModelNameHeaderKey)
+	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
+	require.Equal(t, "x-envoy-ai-gateway-llm-model", cfg.ModelNameHeaderKey)
 	require.Len(t, cfg.Rules, 2)
 	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)

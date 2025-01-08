@@ -14,6 +14,15 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+// DefaultConfig is the default configuration for the external processor
+// that can be used as a fallback when the configuration is not explicitly provided.
+const DefaultConfig = `
+inputSchema:
+  schema: OpenAI
+selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+modelNameHeaderKey: x-envoy-ai-gateway-llm-model
+`
+
 // Config is the configuration for the external processor.
 //
 // The configuration is loaded from a file path specified via the command line flag -configPath to the external processor.
@@ -22,8 +31,8 @@ import (
 //
 //	inputSchema:
 //	  schema: OpenAI
-//	backendRoutingHeaderKey: x-backend-name
-//	modelNameHeaderKey: x-model-name
+//	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+//	modelNameHeaderKey: x-envoy-ai-gateway-llm-model
 //	tokenUsageMetadata:
 //	  namespace: ai_gateway_llm_ns
 //	  key: token_usage_key
@@ -38,24 +47,24 @@ import (
 //	    outputSchema:
 //	      schema: AWSBedrock
 //	  headers:
-//	  - name: x-model-name
+//	  - name: x-envoy-ai-gateway-llm-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
 //	    outputSchema:
 //	      schema: OpenAI
 //	  headers:
-//	  - name: x-model-name
+//	  - name: x-envoy-ai-gateway-llm-model
 //	    value: gpt4.4444
 //
-// where the input of the external processor is in the OpenAI schema, the model name is populated in the header x-model-name,
-// The model name header `x-model-name` is used in the header matching to make the routing decision. **After** the routing decision is made,
-// the selected backend name is populated in the header `x-backend-name`. For example, when the model name is `llama3.3333`,
+// where the input of the external processor is in the OpenAI schema, the model name is populated in the header x-envoy-ai-gateway-llm-model,
+// The model name header `x-envoy-ai-gateway-llm-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
+// the selected backend name is populated in the header `x-envoy-ai-gateway-selected-backend`. For example, when the model name is `llama3.3333`,
 // the request is routed to either backends `kserve` or `awsbedrock` with weights 1 and 10 respectively, and the selected
-// backend, say `awsbedrock`, is populated in the header `x-backend-name`.
+// backend, say `awsbedrock`, is populated in the header `x-envoy-ai-gateway-selected-backend`.
 //
-// From Envoy configuration perspective, configuring the header matching based on `x-backend-name` is enough to route the request to the selected backend.
-// That is because the matching decision is made by the external processor and the selected backend is populated in the header `x-backend-name`.
+// From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
+// That is because the matching decision is made by the external processor and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
 type Config struct {
 	// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token, optional.
 	// If this is provided, the external processor will populate the usage token in the filter metadata at the end of the
@@ -65,9 +74,9 @@ type Config struct {
 	InputSchema VersionedAPISchema `yaml:"inputSchema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the external processor.
 	ModelNameHeaderKey string `yaml:"modelNameHeaderKey"`
-	// BackendRoutingHeaderKey is the header key to be populated with the backend name by the external processor
+	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the external processor
 	// **after** the routing decision is made by the external processor using Rules.
-	BackendRoutingHeaderKey string `yaml:"backendRoutingHeaderKey"`
+	SelectedBackendHeaderKey string `yaml:"selectedBackendHeaderKey"`
 	// Rules is the routing rules to be used by the external processor to make the routing decision.
 	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
 	Rules []RouteRule `yaml:"rules"`

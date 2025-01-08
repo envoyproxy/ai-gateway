@@ -155,8 +155,8 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			factories: map[extprocconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
-			backendRoutingHeaderKey: "x-ai-gateway-backend-key",
-			ModelNameHeaderKey:      "x-ai-gateway-model-key",
+			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
+			ModelNameHeaderKey:       "x-ai-gateway-model-key",
 		}, requestHeaders: headers}
 		resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.NoError(t, err)

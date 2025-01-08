@@ -36,10 +36,10 @@ func TestServer_LoadConfig(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		config := &extprocconfig.Config{
-			TokenUsageMetadata:      &extprocconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			InputSchema:             extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI},
-			BackendRoutingHeaderKey: "x-backend-name",
-			ModelNameHeaderKey:      "x-model-name",
+			TokenUsageMetadata:       &extprocconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
+			InputSchema:              extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI},
+			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
+			ModelNameHeaderKey:       "x-model-name",
 			Rules: []extprocconfig.RouteRule{
 				{
 					Backends: []extprocconfig.Backend{
@@ -76,7 +76,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "key", s.config.tokenUsageMetadata.Key)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
-		require.Equal(t, "x-backend-name", s.config.backendRoutingHeaderKey)
+		require.Equal(t, "x-envoy-ai-gateway-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
 		require.NotNil(t, s.config.factories[extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}])

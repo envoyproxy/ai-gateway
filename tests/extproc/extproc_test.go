@@ -53,8 +53,8 @@ func TestE2E(t *testing.T) {
 		},
 		InputSchema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		BackendRoutingHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:      "x-model-name",
+		SelectedBackendHeaderKey: "x-selected-backend-name",
+		ModelNameHeaderKey:       "x-model-name",
 		Rules: []extprocconfig.RouteRule{
 			{
 				Backends: []extprocconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
