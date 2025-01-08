@@ -151,11 +151,11 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "unknown_provider.yaml",
-			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWS_IAM\"",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"CloudProvider\"",
 		},
 		{
 			name:   "missing_type.yaml",
-			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWS_IAM\"",
+			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"CloudProvider\"",
 		},
 		{
 			name:   "multiple_security_policies.yaml",
@@ -163,6 +163,10 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
+		{
+			name:   "missing_cloud_provider_type.yaml",
+			expErr: "spec.cloudProviderCredentials.type: Unsupported value: \"\": supported values: \"AWS_IAM\"",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := tests.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))

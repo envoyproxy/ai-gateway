@@ -6,17 +6,8 @@ metadata:
 spec:
   type: CloudProvider
   cloudProviderCredentials:
-    type: AWS_IAM
     awsCredentials:
       region: us-east-1
-      oidcExchangeToken:
-        oidc:
-          provider:
-            issuer: placeholder
-          clientID: placeholder
-          clientSecret:
-            name: placeholder
       credentialsFile:
         secretRef:
           name: placeholder
-        profile: default

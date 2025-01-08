@@ -99,6 +99,7 @@ spec:
               cloudProviderCredentials:
                 description: CloudProviderCredentials is a mechanism to access a backend(s).
                   Cloud provider specific logic will be applied.
+                maxProperties: 2
                 properties:
                   awsCredentials:
                     description: AWSCredentials contains the supported authentication
@@ -1255,13 +1256,21 @@ spec:
                     required:
                     - region
                     type: object
+                  type:
+                    description: Type specifies the cloud provider credentials being
+                      used. Currently, only "AWS_IAM" is supported.
+                    enum:
+                    - AWS_IAM
+                    type: string
+                required:
+                - type
                 type: object
               type:
                 description: Type specifies the auth mechanism used to access the
-                  provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
+                  provider. Currently, only "APIKey", AND "CloudProvider" are supported.
                 enum:
                 - APIKey
-                - AWS_IAM
+                - CloudProvider
                 type: string
             required:
             - type

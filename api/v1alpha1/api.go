@@ -216,8 +216,8 @@ const (
 type BackendSecurityPolicyType string
 
 const (
-	BackendSecurityPolicyTypeAPIKey BackendSecurityPolicyType = "APIKey"
-	BackendSecurityPolicyTypeAWSIAM BackendSecurityPolicyType = "AWS_IAM"
+	BackendSecurityPolicyTypeAPIKey        BackendSecurityPolicyType = "APIKey"
+	BackendSecurityPolicyTypeCloudProvider BackendSecurityPolicyType = "CloudProvider"
 )
 
 // +kubebuilder:object:root=true
@@ -235,9 +235,9 @@ type BackendSecurityPolicy struct {
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWS_IAM" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "CloudProvider" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWS_IAM
+	// +kubebuilder:validation:Enum=APIKey;CloudProvider
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -268,9 +268,20 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
+type CloudProviderCredentialsType string
+
+const (
+	CloudProviderCredentialsTypeAWS CloudProviderCredentialsType = "AWS_IAM"
+)
+
 // BackendSecurityPolicyCloudProviderCredentials specifies supported cloud provider authentication methods
+// +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicyCloudProviderCredentials struct {
-	AWSCredentials *AWSCredentials `json:"awsCredentials,omitempty"`
+	// Type specifies the cloud provider credentials being used. Currently, only "AWS_IAM" is supported.
+	//
+	// +kubebuilder:validation:Enum=AWS_IAM
+	Type           CloudProviderCredentialsType `json:"type"`
+	AWSCredentials *AWSCredentials              `json:"awsCredentials,omitempty"`
 }
 
 // AWSCredentials contains the supported authentication mechanisms to access aws
