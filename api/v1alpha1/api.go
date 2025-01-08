@@ -59,7 +59,7 @@ type LLMRouteSpec struct {
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
 	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
 	//
-	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-llm-model` header is available
+	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
 	// from the request content before the routing decision.
 	//
@@ -203,5 +203,5 @@ const (
 const (
 	// LLMModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
 	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
-	LLMModelHeaderKey = "x-envoy-ai-gateway-llm-model"
+	LLMModelHeaderKey = "x-envoy-ai-gateway-model"
 )

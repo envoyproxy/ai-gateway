@@ -20,7 +20,7 @@ const DefaultConfig = `
 inputSchema:
   schema: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
-modelNameHeaderKey: x-envoy-ai-gateway-llm-model
+modelNameHeaderKey: x-envoy-ai-gateway-model
 `
 
 // Config is the configuration for the external processor.
@@ -32,7 +32,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-llm-model
 //	inputSchema:
 //	  schema: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
-//	modelNameHeaderKey: x-envoy-ai-gateway-llm-model
+//	modelNameHeaderKey: x-envoy-ai-gateway-model
 //	tokenUsageMetadata:
 //	  namespace: ai_gateway_llm_ns
 //	  key: token_usage_key
@@ -47,18 +47,18 @@ modelNameHeaderKey: x-envoy-ai-gateway-llm-model
 //	    outputSchema:
 //	      schema: AWSBedrock
 //	  headers:
-//	  - name: x-envoy-ai-gateway-llm-model
+//	  - name: x-envoy-ai-gateway-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
 //	    outputSchema:
 //	      schema: OpenAI
 //	  headers:
-//	  - name: x-envoy-ai-gateway-llm-model
+//	  - name: x-envoy-ai-gateway-model
 //	    value: gpt4.4444
 //
-// where the input of the external processor is in the OpenAI schema, the model name is populated in the header x-envoy-ai-gateway-llm-model,
-// The model name header `x-envoy-ai-gateway-llm-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
+// where the input of the external processor is in the OpenAI schema, the model name is populated in the header x-envoy-ai-gateway-model,
+// The model name header `x-envoy-ai-gateway-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
 // the selected backend name is populated in the header `x-envoy-ai-gateway-selected-backend`. For example, when the model name is `llama3.3333`,
 // the request is routed to either backends `kserve` or `awsbedrock` with weights 1 and 10 respectively, and the selected
 // backend, say `awsbedrock`, is populated in the header `x-envoy-ai-gateway-selected-backend`.

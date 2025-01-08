@@ -10,7 +10,7 @@ spec:
     - matches:
       - headers:
         - type: RegularExpression
-          name: x-envoy-ai-gateway-llm-model
+          name: x-envoy-ai-gateway-model
           value: llama3-70b
       backendRefs:
         - name: kserve
