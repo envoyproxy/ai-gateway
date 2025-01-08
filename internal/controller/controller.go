@@ -32,6 +32,7 @@ func init() {
 }
 
 func newClients(config *rest.Config) (kubeClient client.Client, kube kubernetes.Interface, err error) {
+	// TODO: cache options, especially HTTPRoutes managed by the AI Gateway.
 	kubeClient, err = client.New(config, client.Options{Scheme: scheme})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create new client: %w", err)

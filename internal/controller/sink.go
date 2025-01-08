@@ -37,7 +37,6 @@ type configSink struct {
 	logger logr.Logger
 
 	eventChan                   chan configSinkEvent
-	httpRoutes                  map[string]*gwapiv1.HTTPRoute
 	llmRoutes                   map[string]*aigv1a1.LLMRoute
 	backends                    map[string]*aigv1a1.LLMBackend
 	backendsToReferencingRoutes map[string]map[*aigv1a1.LLMRoute]struct{}
@@ -53,7 +52,6 @@ func newConfigSink(
 		client:                      kubeClient,
 		kube:                        kube,
 		logger:                      logger,
-		httpRoutes:                  make(map[string]*gwapiv1.HTTPRoute),
 		backends:                    make(map[string]*aigv1a1.LLMBackend),
 		llmRoutes:                   make(map[string]*aigv1a1.LLMRoute),
 		backendsToReferencingRoutes: make(map[string]map[*aigv1a1.LLMRoute]struct{}),
@@ -96,15 +94,6 @@ func (c *configSink) init(ctx context.Context) error {
 		}
 	}
 
-	var httpRoutes gwapiv1.HTTPRouteList
-	if err := c.client.List(ctx, &httpRoutes, client.MatchingLabels{managedByLabel: "envoy-ai-gateway"}); err != nil {
-		return fmt.Errorf("failed to list HTTPRoutes: %w", err)
-	}
-	for i := range httpRoutes.Items {
-		httpRoute := &httpRoutes.Items[i]
-		c.httpRoutes[fmt.Sprintf("%s.%s", httpRoute.Name, httpRoute.Namespace)] = httpRoute
-	}
-
 	go func() {
 		for {
 			select {
@@ -138,10 +127,16 @@ func (c *configSink) handleEvent(event configSinkEvent) {
 func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 	// Check if the HTTPRoute exists.
 	key := fmt.Sprintf("%s.%s", llmRoute.Name, llmRoute.Namespace)
-	httpRoute, existingRoute := c.httpRoutes[key]
+	var httpRoute gwapiv1.HTTPRoute
+	err := c.client.Get(context.Background(), client.ObjectKey{Name: llmRoute.Name, Namespace: llmRoute.Namespace}, &httpRoute)
+	existingRoute := err == nil
+	if client.IgnoreNotFound(err) != nil {
+		c.logger.Error(err, "failed to get HTTPRoute", "llmRoute", llmRoute)
+		return
+	}
 	if !existingRoute {
 		// This means that this LLMRoute is a new one.
-		httpRoute = &gwapiv1.HTTPRoute{
+		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            llmRoute.Name,
 				Namespace:       llmRoute.Namespace,
@@ -152,18 +147,18 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 	}
 
 	// Update the HTTPRoute with the new LLMRoute.
-	if err := c.newHTTPRoute(httpRoute, llmRoute); err != nil {
+	if err := c.newHTTPRoute(&httpRoute, llmRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with LLMRoute", "llmRoute", llmRoute)
 		return
 	}
 
 	if existingRoute {
-		if err := c.client.Update(context.Background(), httpRoute); err != nil {
+		if err := c.client.Update(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "httpRoute", httpRoute)
 			return
 		}
 	} else {
-		if err := c.client.Create(context.Background(), httpRoute); err != nil {
+		if err := c.client.Create(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "httpRoute", httpRoute)
 			return
 		}
@@ -185,7 +180,6 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 			c.backendsToReferencingRoutes[key][llmRoute] = struct{}{}
 		}
 	}
-	c.httpRoutes[key] = httpRoute
 	c.llmRoutes[key] = llmRoute
 }
 
@@ -200,7 +194,6 @@ func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 func (c *configSink) deleteLLMRoute(event configSinkEventLLMRouteDeleted) {
 	key := fmt.Sprintf("%s.%s", event.name, event.namespace)
 	delete(c.llmRoutes, key)
-	delete(c.httpRoutes, key)
 }
 
 func (c *configSink) deleteLLMBackend(event configSinkEventLLMBackendDeleted) {

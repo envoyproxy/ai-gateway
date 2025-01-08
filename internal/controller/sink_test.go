@@ -137,11 +137,6 @@ func TestConfigSink_init(t *testing.T) {
 	err := s.init(ctx)
 	require.NoError(t, err)
 
-	t.Run("httpRoutes", func(t *testing.T) {
-		require.Len(t, s.httpRoutes, 2)
-		require.NotNil(t, s.httpRoutes["route1.ns1"])
-		require.NotNil(t, s.httpRoutes["route2.ns2"])
-	})
 	t.Run("llmRoutes", func(t *testing.T) {
 		require.Len(t, s.llmRoutes, 2)
 		require.NotNil(t, s.llmRoutes["route1.ns1"])
@@ -228,7 +223,6 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 		}
 		err = fakeClient.Create(context.Background(), httpRoute, &client.CreateOptions{})
 		require.NoError(t, err)
-		s.httpRoutes = map[string]*gwapiv1.HTTPRoute{"route1.ns1": httpRoute}
 
 		// Create the initial configmap.
 		_, err = kube.CoreV1().ConfigMaps(route.Namespace).Create(context.Background(), &corev1.ConfigMap{
@@ -239,7 +233,6 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 		// Then sync.
 		s.syncLLMRoute(route)
 		require.NotNil(t, s.llmRoutes["route1.ns1"])
-		require.NotNil(t, s.httpRoutes["route1.ns1"])
 		// Referencing backends should be updated.
 		require.Contains(t, s.backendsToReferencingRoutes["apple.ns1"], route)
 		require.Contains(t, s.backendsToReferencingRoutes["orange.ns1"], route)
@@ -267,11 +260,9 @@ func TestConfigSink_syncLLMBackend(t *testing.T) {
 func TestConfigSink_deleteLLMRoute(t *testing.T) {
 	eventChan := make(chan configSinkEvent)
 	s := newConfigSink(nil, nil, logr.Discard(), eventChan)
-	s.httpRoutes = map[string]*gwapiv1.HTTPRoute{"route1.ns1": {}}
 	s.llmRoutes = map[string]*aigv1a1.LLMRoute{"route1.ns1": {}}
 
 	s.deleteLLMRoute(configSinkEventLLMRouteDeleted{namespace: "ns1", name: "route1"})
-	require.Empty(t, s.httpRoutes)
 	require.Empty(t, s.llmRoutes)
 }
 
