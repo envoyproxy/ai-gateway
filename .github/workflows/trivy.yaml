@@ -14,34 +14,25 @@ jobs:
   image-scan:
     permissions:
       contents: read  # Required for actions/checkout to fetch code
-    name: Image Scan
+    name: Scan ${{ matrix.target.command_name }} Image
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target:
+          - command_name: "controller"
+          - command_name: "extproc"
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
-      - name: Build Controller Docker image
+      - name: Build ${{ matrix.target.command_name }} Docker image
         run: |
-          make docker-build.controller TAG=${{ github.sha }}
+          make docker-build.${{ matrix.target.command_name }} TAG=${{ github.sha }}
 
-      - name: Build Ext-Proc Docker image
-        run: |
-          make docker-build.extproc TAG=${{ github.sha }}
-
-      - name: Run Trivy vulnerability scanner for Controller
+      - name: Run Trivy vulnerability scanner for ${{ matrix.target.command_name }}
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/envoyproxy/ai-gateway/controller:${{ github.sha }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          vuln-type: 'os,library'
-          exit-code: '1'  # Fail workflow on detected vulnerabilities
-          ignore-unfixed: true  # Ignore unfixed vulnerabilities
-
-      - name: Run Trivy vulnerability scanner for Ext-Proc
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/envoyproxy/ai-gateway/extproc:${{ github.sha }}
+          image-ref: ghcr.io/envoyproxy/ai-gateway/${{ matrix.target.command_name }}:${{ github.sha }}
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           vuln-type: 'os,library'
