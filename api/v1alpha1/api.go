@@ -9,57 +9,57 @@ import (
 
 // +kubebuilder:object:root=true
 
-// LLMRoute combines multiple LLMBackends and attaching them to Gateway(s) resources.
+// AIRoute combines multiple AIBackends and attaching them to Gateway(s) resources.
 //
-// This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
-// clients to use a single schema API to interact with multiple LLM backends.
+// This serves as a way to define a "unified" AI API for a Gateway which allows downstream
+// clients to use a single schema API to interact with multiple AI backends.
 //
 // The inputSchema field is used to determine the structure of the requests that the Gateway will
-// receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
-// on the output schema of the LLMBackend while doing the other necessary jobs like
+// receive. And then the Gateway will route the traffic to the appropriate AIBackend based
+// on the output schema of the AIBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
-// LLMRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
-// The generated HTTPRoute has the owner reference set to this LLMRoute.
-type LLMRoute struct {
+// AIRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
+// The generated HTTPRoute has the owner reference set to this AIRoute.
+type AIRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the LLM policy.
-	Spec LLMRouteSpec `json:"spec,omitempty"`
+	// Spec defines the details of the AIRoute.
+	Spec AIRouteSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LLMRouteList contains a list of LLMTrafficPolicy
-type LLMRouteList struct {
+// AIRouteList contains a list of AIRoute.
+type AIRouteList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LLMRoute `json:"items"`
+	Items           []AIRoute `json:"items"`
 }
 
-// LLMRouteSpec details the LLMRoute configuration.
-type LLMRouteSpec struct {
-	// TargetRefs are the names of the Gateway resources this LLMRoute is being attached to.
+// AIRouteSpec details the AIRoute configuration.
+type AIRouteSpec struct {
+	// TargetRefs are the names of the Gateway resources this AIRoute is being attached to.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
-	// output schema specified in the selected LLMBackend during the routing process.
+	// output schema specified in the selected AIBackend during the routing process.
 	//
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema LLMAPISchema `json:"inputSchema"`
-	// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
+	APISchema VersionedAPISchema `json:"inputSchema"`
+	// Rules is the list of AIRouteRule that this AIRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
 	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
 	//
-	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-model` header is available
+	// In the matching conditions in the AIRouteRule, `x-envoy-ai-gateway-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
 	// from the request content before the routing decision.
 	//
@@ -68,38 +68,38 @@ type LLMRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=128
-	Rules []LLMRouteRule `json:"rules"`
+	Rules []AIRouteRule `json:"rules"`
 }
 
-// LLMRouteRule is a rule that defines the routing behavior of the LLMRoute.
-type LLMRouteRule struct {
-	// BackendRefs is the list of LLMBackend that this rule will route the traffic to.
+// AIRouteRule is a rule that defines the routing behavior of the AIRoute.
+type AIRouteRule struct {
+	// BackendRefs is the list of AIBackend that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
-	// The namespace of each backend is "local", i.e. the same namespace as the LLMRoute.
+	// The namespace of each backend is "local", i.e. the same namespace as the AIRoute.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	BackendRefs []LLMRouteRuleBackendRef `json:"backendRefs,omitempty"`
+	BackendRefs []AIRouteRuleBackendRef `json:"backendRefs,omitempty"`
 
-	// Matches is the list of LLMRouteMatch that this rule will match the traffic to.
+	// Matches is the list of AIRouteMatch that this rule will match the traffic to.
 	// This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
+	Matches []AIRouteRuleMatch `json:"matches,omitempty"`
 }
 
-// LLMRouteRuleBackendRef is a reference to a LLMBackend with a weight.
-type LLMRouteRuleBackendRef struct {
-	// Name is the name of the LLMBackend.
+// AIRouteRuleBackendRef is a reference to a AIBackend with a weight.
+type AIRouteRuleBackendRef struct {
+	// Name is the name of the AIBackend.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
-	// Weight is the weight of the LLMBackend. This is exactly the same as the weight in
+	// Weight is the weight of the AIBackend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 	//
@@ -108,7 +108,7 @@ type LLMRouteRuleBackendRef struct {
 	Weight int `json:"weight"`
 }
 
-type LLMRouteRuleMatch struct {
+type AIRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
@@ -124,42 +124,42 @@ type LLMRouteRuleMatch struct {
 
 // +kubebuilder:object:root=true
 
-// LLMBackend is a resource that represents a single backend for LLMRoute.
+// AIBackend is a resource that represents a single backend for AIRoute.
 // A backend is a service that handles traffic with a concrete API specification.
 //
-// A LLMBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+// A AIBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 //
-// When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
-// HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
+// When a backend with an attached AIBackend is used as a routing target in the AIRoute (more precisely, the
+// HTTPRouteSpec defined in the AIRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
-type LLMBackend struct {
+type AIBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the LLM policy.
-	Spec LLMBackendSpec `json:"spec,omitempty"`
+	// Spec defines the details of AIBackend.
+	Spec AIBackendSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LLMBackendList contains a list of LLMBackends.
-type LLMBackendList struct {
+// AIBackendList contains a list of AIBackends.
+type AIBackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LLMBackend `json:"items"`
+	Items           []AIBackend `json:"items"`
 }
 
-// LLMBackendSpec details the LLMBackend configuration.
-type LLMBackendSpec struct {
+// AIBackendSpec details the AIBackend configuration.
+type AIBackendSpec struct {
 	// APISchema specifies the API schema of the output format of requests from
-	// Envoy that this LLMBackend can accept as incoming requests.
+	// Envoy that this AIBackend can accept as incoming requests.
 	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
+	// the pair of AIRouteSpec.APISchema and AIBackendSpec.APISchema.
 	//
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema LLMAPISchema `json:"outputSchema"`
-	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+	APISchema VersionedAPISchema `json:"outputSchema"`
+	// BackendRef is the reference to the Backend resource that this AIBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
 	//
@@ -175,15 +175,15 @@ type LLMBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
-// LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
+// VersionedAPISchema defines the API schema of either AIRoute (the input) or AIBackend (the output).
 //
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
-type LLMAPISchema struct {
-	// Schema is the API schema of the LLMRoute or LLMBackend.
+type VersionedAPISchema struct {
+	// Schema is the API schema of the AIRoute or AIBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
 	Schema APISchema `json:"schema"`
@@ -207,9 +207,9 @@ const (
 )
 
 const (
-	// LLMModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
-	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
-	LLMModelHeaderKey = "x-envoy-ai-gateway-model"
+	// AIModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
+	// This can be used to describe the routing behavior in HTTPRoute referenced by AIRoute.
+	AIModelHeaderKey = "x-envoy-ai-gateway-model"
 )
 
 // BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.
