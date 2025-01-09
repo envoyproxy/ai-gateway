@@ -20,9 +20,14 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
+func init() { MustInitializeScheme(scheme) }
+
+// scheme contains the necessary schemas for the AI Gateway.
 var scheme = runtime.NewScheme()
 
-func init() {
+// MustInitializeScheme initializes the scheme with the necessary schemas for the AI Gateway.
+// This is exported for the testing purposes.
+func MustInitializeScheme(scheme *runtime.Scheme) {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(aigv1a1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
@@ -47,12 +52,16 @@ func newClients(config *rest.Config) (kubeClient client.Client, kube kubernetes.
 
 // StartControllers starts the controllers for the AI Gateway.
 // This blocks until the manager is stopped.
-func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, logLevel string, extProcImage string) error {
-	mgr, err := ctrl.NewManager(config, ctrl.Options{
+//
+// Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
+func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, logLevel string, extProcImage string, leaderElection bool) error {
+	opt := ctrl.Options{
 		Scheme:           scheme,
-		LeaderElection:   true,
+		LeaderElection:   leaderElection,
 		LeaderElectionID: "envoy-ai-gateway-controller",
-	})
+	}
+
+	mgr, err := ctrl.NewManager(config, opt)
 	if err != nil {
 		return fmt.Errorf("failed to create new controller manager: %w", err)
 	}
@@ -89,14 +98,19 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	sink := newConfigSink(clientForConfigSink, kubeForConfigSink, logger, sinkChan)
 
-	// Wait for the manager to become the leader before starting the controllers.
-	<-mgr.Elected()
+	if leaderElection {
+		logger.Info("Waiting to become the leader")
+		<-mgr.Elected()
+		logger.Info("Became the leader")
+	}
 
 	// Before starting the manager, initialize the config sink to sync all LLMBackend and LLMRoute objects in the cluster.
+	logger.Info("Initializing config sink")
 	if err = sink.init(ctx); err != nil {
 		return fmt.Errorf("failed to initialize config sink: %w", err)
 	}
 
+	logger.Info("Starting controller manager")
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
 		return fmt.Errorf("failed to start controller manager: %w", err)
 	}

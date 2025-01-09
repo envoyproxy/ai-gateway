@@ -21,7 +21,7 @@ ENABLE_MULTI_PLATFORMS ?= false
 .PHONY: lint
 lint: golangci-lint
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==celvalidation ./...
+	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -74,23 +74,36 @@ test:
 	@echo "test => ./..."
 	@go test -v ./...
 
+ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 
 # This runs the integration tests of CEL validation rules in API definitions.
-ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
+#
+# This requires the EnvTest binary to be built.
 .PHONY: test-cel
-test-cel: envtest apigen format
+test-cel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/cel-validation --tags celvalidation -count=1; \
+                 go test ./tests/cel-validation --tags test_cel_validation -v -count=1; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
 # It is useful for the fast iteration of the extproc code.
-.PHONY: test-extproc-e2e # This requires the extproc binary to be built.
-test-extproc-e2e: build.extproc
-	@echo "test ./tests/extproc/..."
-	@go test ./tests/extproc/... -tags extproc_e2e -v -count=1
+#
+# This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
+.PHONY: test-extproc # This requires the extproc binary to be built.
+test-extproc: build.extproc
+	@echo "Run ExtProc test"
+	@go test ./tests/extproc/... -tags test_extproc -v -count=1
+
+# This runs the end-to-end tests for the controller with EnvTest.
+.PHONY: test-controller
+test-controller: envtest apigen
+	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
+  		echo "Run Controller tests on k8s $$k8sVersion"; \
+        KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
+                 go test ./tests/controller --tags test_controller -v -count=1; \
+    done
 
 # This builds a binary for the given command under the internal/cmd directory.
 #

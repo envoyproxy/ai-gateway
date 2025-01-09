@@ -70,7 +70,16 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 		return ctrl.Result{}, err
 	}
 
+	// https://github.com/kubernetes-sigs/controller-runtime/issues/1517#issuecomment-844703142
+	gvks, unversioned, err := c.client.Scheme().ObjectKinds(&llmRoute)
+	if err != nil {
+		panic(err)
+	}
+	if !unversioned && len(gvks) == 1 {
+		llmRoute.SetGroupVersionKind(gvks[0])
+	}
 	ownerRef := ownerReferenceForLLMRoute(&llmRoute)
+
 	if err := c.ensuresExtProcConfigMapExists(ctx, &llmRoute, ownerRef); err != nil {
 		return ctrl.Result{}, err
 	}

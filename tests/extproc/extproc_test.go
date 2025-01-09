@@ -1,4 +1,4 @@
-//go:build extproc_e2e
+//go:build test_extproc
 
 package extproc
 

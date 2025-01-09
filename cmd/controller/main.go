@@ -48,7 +48,7 @@ func main() {
 
 	// TODO: starts the extension server?
 
-	if err := controller.StartControllers(ctx, k8sConfig, l, *logLevel, *extProcImage); err != nil {
+	if err := controller.StartControllers(ctx, k8sConfig, l, *logLevel, *extProcImage, true); err != nil {
 		log.Fatalf("failed to start controller: %v", err)
 	}
 }
