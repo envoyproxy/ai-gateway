@@ -80,16 +80,16 @@ func (c *configSink) init(ctx context.Context) error {
 
 	for i := range llmRoutes.Items {
 		llmRoute := &llmRoutes.Items[i]
-		namspacedLLMRouteName := fmt.Sprintf("%s.%s", llmRoute.Name, llmRoute.Namespace)
-		c.llmRoutes[namspacedLLMRouteName] = llmRoute
+		llmRouteKey := fmt.Sprintf("%s.%s", llmRoute.Name, llmRoute.Namespace)
+		c.llmRoutes[llmRouteKey] = llmRoute
 
 		for _, rule := range llmRoute.Spec.Rules {
 			for _, backend := range rule.BackendRefs {
-				namspacedBackendName := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
-				if _, ok := c.backendsToReferencingRoutes[namspacedBackendName]; !ok {
-					c.backendsToReferencingRoutes[namspacedBackendName] = make(map[*aigv1a1.LLMRoute]struct{})
+				backendKey := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
+				if _, ok := c.backendsToReferencingRoutes[backendKey]; !ok {
+					c.backendsToReferencingRoutes[backendKey] = make(map[*aigv1a1.LLMRoute]struct{})
 				}
-				c.backendsToReferencingRoutes[namspacedBackendName][llmRoute] = struct{}{}
+				c.backendsToReferencingRoutes[backendKey][llmRoute] = struct{}{}
 			}
 		}
 	}
