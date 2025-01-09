@@ -118,13 +118,12 @@ func TestStartControllers(t *testing.T) {
 				require.Equal(t, "backend1", llmRoute.Spec.Rules[0].BackendRefs[0].Name)
 				require.Equal(t, "backend2", llmRoute.Spec.Rules[0].BackendRefs[1].Name)
 
-				// Verify that the deployment, service and extension policy are created.
+				// Verify that the deployment, service, extension policy, and configmap are created.
 				deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName(route), metav1.GetOptions{})
 				if err != nil {
 					t.Logf("failed to get deployment %s: %v", extProcName(route), err)
 					return false
 				}
-				// Check the image of the deployment and the owner reference.
 				require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
 				require.Len(t, deployment.OwnerReferences, 1)
 				require.Equal(t, llmRoute.Name, deployment.OwnerReferences[0].Name)
@@ -147,9 +146,17 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get extension policy %s: %v", extProcName(route), err)
 					return false
 				}
-
 				require.Len(t, extPolicy.OwnerReferences, 1)
 				require.Equal(t, llmRoute.Name, extPolicy.OwnerReferences[0].Name)
+
+				configMap, err := k.CoreV1().ConfigMaps("default").Get(ctx, extProcName(route), metav1.GetOptions{})
+				if err != nil {
+					t.Logf("failed to get configmap %s: %v", extProcName(route), err)
+					return false
+				}
+				require.Len(t, configMap.OwnerReferences, 1)
+				require.Equal(t, llmRoute.Name, configMap.OwnerReferences[0].Name)
+				require.Contains(t, configMap.Data, "extproc-config.yaml")
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
