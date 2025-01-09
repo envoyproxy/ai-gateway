@@ -185,12 +185,74 @@ APIKey *LLMProviderAPIKey `json:"apiKey,omitempty"`
 
 ### Token Usage Rate Limiting
 
-AI Gateway project plan to extend the envoy gateway `BackendTrafficPolicy` with a generic usage based rate limiting in [#4957](https://github.com/envoyproxy/gateway/pull/4957).
+AI Gateway project extended the envoy gateway `BackendTrafficPolicy` with a generic usage based rate limiting in [#4957](https://github.com/envoyproxy/gateway/pull/4957).
 For supporting token usage based rate limiting, we configure `hits_addend` in the response path to allow reducing the counter based on the response content that affects the subsequent requests.
 The token usages are extracted from the standard token usage fields according to then OpenAI schema in the ext proc `processResponseBody` handler.
 
 The AI gateway ext proc includes an envoy rate limiting service client to reduce the counter based on the LLM inference responses. The rate limiting server configuration is updated dynamically via xDS
 whenever the rate limiting rules are changed.
+
+```go
+type RateLimitCost struct {
+	// Request specifies the number to reduce the rate limit counters
+	// on the request path. If this is not specified, the default behavior
+	// is to reduce the rate limit counters by 1.
+	//
+	// When Envoy receives a request that matches the rule, it tries to reduce the
+	// rate limit counters by the specified number. If the counter doesn't have
+	// enough capacity, the request is rate limited.
+	//
+	// +optional
+	// +notImplementedHide
+	Request *RateLimitCostSpecifier `json:"request,omitempty"`
+	// Response specifies the number to reduce the rate limit counters
+	// after the response is sent back to the client or the request stream is closed.
+	//
+	// The cost is used to reduce the rate limit counters for the matching requests.
+	// Since the reduction happens after the request stream is complete, the rate limit
+	// won't be enforced for the current request, but for the subsequent matching requests.
+	//
+	// This is optional and if not specified, the rate limit counters are not reduced
+	// on the response path.
+	//
+	// Currently, this is only supported for HTTP Global Rate Limits.
+	//
+	// +optional
+	// +notImplementedHide
+	Response *RateLimitCostSpecifier `json:"response,omitempty"`
+}
+// RateLimitCostSpecifier specifies where the Envoy retrieves the number to reduce the rate limit counters.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.number) && has(self.metadata))",message="only one of number or metadata can be specified"
+type RateLimitCostSpecifier struct {
+// From specifies where to get the rate limit cost. Currently, only "Number" and "Metadata" are supported.
+//
+// +kubebuilder:validation:Required
+From RateLimitCostFrom `json:"from"`
+// Number specifies the fixed usage number to reduce the rate limit counters.
+// Using zero can be used to only check the rate limit counters without reducing them.
+//
+// +optional
+// +notImplementedHide
+Number *uint64 `json:"number,omitempty"`
+// Metadata specifies the per-request metadata to retrieve the usage number from.
+//
+// +optional
+// +notImplementedHide
+Metadata *RateLimitCostMetadata `json:"metadata,omitempty"`
+}
+// RateLimitCostMetadata specifies the filter metadata to retrieve the usage number from.
+type RateLimitCostMetadata struct {
+// Namespace is the namespace of the dynamic metadata.
+//
+// +kubebuilder:validation:Required
+Namespace string `json:"namespace"`
+// Key is the key to retrieve the usage number from the filter metadata.
+//
+// +kubebuilder:validation:Required
+Key string `json:"key"`
+}
+```
 
 ```go
 /// RateLimitRule defines the semantics for matching attributes
@@ -215,34 +277,18 @@ ClientSelectors []RateLimitSelectCondition `json:"clientSelectors,omitempty"`
 // Limit holds the rate limit values.
 // This limit is applied for traffic flows when the selectors
 // compute to True, causing the request to be counted towards the limit.
-// The limit is enforced and the request is ratelimited, i.e. a response with
+// The limit is enforced and the request is rate limited, i.e. a response with
 // 429 HTTP status code is sent back to the client when
 // the selected requests have reached the limit.
 Limit RateLimitValue `json:"limit"`
-// RequestHitsAddend specifies the number to reduce the rate limit counters
-// on the request path. If the addend is not specified, the default behavior
-// is to reduce the rate limit counters by 1.
+// Cost specifies the cost of requests and responses for the rule.
 //
-// When Envoy receives a request that matches the rule, it tries to reduce the
-// rate limit counters by the specified number. If the counter doesn't have
-// enough capacity, the request is rate limited.
+// This is optional and if not specified, the default behavior is to reduce the rate limit counters by 1 on
+// the request path and do not reduce the rate limit counters on the response path.
 //
 // +optional
-RequestHitsAddend *RateLimitHitsAddend `json:"requestHitsAddend,omitempty"`
-// ResponseHitsAddend specifies the number to reduce the rate limit counters
-// after the response is sent back to the client or the request stream is closed.
-//
-// The addend is used to reduce the rate limit counters for the matching requests.
-// Since the reduction happens after the request stream is complete, the rate limit
-// won't be enforced for the current request, but for the subsequent matching requests.
-//
-// This is optional and if not specified, the rate limit counters are not reduced
-// on the response path.
-//
-// Currently, this is only supported for HTTP Global Rate Limits.
-//
-// +optional
-ResponseHitsAddend *RateLimitHitsAddend `json:"responseHitsAddend,omitempty"`
+// +notImplementedHide
+Cost *RateLimitCost `json:"cost,omitempty"`
 ```
 
 ### Yaml Examples
@@ -313,8 +359,11 @@ spec:
         limit:
           requests: 1000
           unit: Minute
-        responseHitsAdded:
-          format: "%DYNAMIC_METADATA(llm.ratelimit.ai_gateway_filter:token_usage)%"
+        cost:
+          response:
+            metadata:
+              namespace: "llm.ratelimit"
+              key: "ai_gateway_filter.token_usage"
 
 ```
 
