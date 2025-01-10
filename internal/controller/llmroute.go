@@ -34,13 +34,14 @@ type llmRouteController struct {
 	logger       logr.Logger
 	logLevel     string
 	extProcImage string
-	eventChan    chan configSinkEvent
+	eventChan    chan ConfigSinkEvent
 }
 
-func newLLMRouteController(
+// NewLLMRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the LLMRoute resource.
+func NewLLMRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	logLevel, extProcImage string, ch chan configSinkEvent,
-) *llmRouteController {
+	logLevel, extProcImage string, ch chan ConfigSinkEvent,
+) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmRouteController{
 		client:       client,
 		kube:         kube,
@@ -62,7 +63,7 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	var llmRoute aigv1a1.LLMRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.eventChan <- configSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
+			c.eventChan <- ConfigSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
 			ctrl.Log.Info("Deleting LLMRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil

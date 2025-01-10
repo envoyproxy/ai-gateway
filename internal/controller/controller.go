@@ -71,8 +71,8 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new clients: %w", err)
 	}
 
-	sinkChan := make(chan configSinkEvent, 100)
-	routeC := newLLMRouteController(clientForRouteC, kubeForRouteC, logger, logLevel, extProcImage, sinkChan)
+	sinkChan := make(chan ConfigSinkEvent, 100)
+	routeC := NewLLMRouteController(clientForRouteC, kubeForRouteC, logger, logLevel, extProcImage, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.LLMRoute{}).
 		Complete(routeC); err != nil {
@@ -84,7 +84,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new clients: %w", err)
 	}
 
-	backendC := newLLMBackendController(clientForBackendC, kubeForBackendC, logger, sinkChan)
+	backendC := NewLLMBackendController(clientForBackendC, kubeForBackendC, logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.LLMBackend{}).
 		Complete(backendC); err != nil {

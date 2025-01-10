@@ -17,11 +17,11 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -30,23 +30,16 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests"
 )
 
-var (
-	c             client.Client
-	cfg           *rest.Config
-	k             kubernetes.Interface
-	defaultSchema = aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
-)
+var defaultSchema = aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(llmRouteName string) string {
 	return fmt.Sprintf("ai-gateway-llm-route-extproc-%s", llmRouteName)
 }
 
-func TestMain(m *testing.M) {
-	tests.RunEnvTest(m, &c, &cfg, &k)
-}
-
 // TestStartControllers tests the [controller.StartControllers] function.
 func TestStartControllers(t *testing.T) {
+	c, cfg, k := tests.NewEnvTest(t)
+
 	l := logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))
 	klog.SetLogger(l)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
@@ -177,14 +170,146 @@ func TestStartControllers(t *testing.T) {
 			}, 30*time.Second, 200*time.Millisecond)
 		})
 	}
+
+	for _, route := range []string{"route1", "route2"} {
+		t.Run("verify http route "+route, func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				var httpRoute gwapiv1.HTTPRoute
+				err := c.Get(ctx, client.ObjectKey{Name: route, Namespace: "default"}, &httpRoute)
+				if err != nil {
+					t.Logf("failed to get http route %s: %v", route, err)
+					return false
+				}
+				require.Len(t, httpRoute.Spec.Rules, 2)
+				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
+				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
+				require.Equal(t, "x-envoy-ai-gateway-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, "backend1.default", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
+				require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
+				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
+				require.Equal(t, "x-envoy-ai-gateway-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
+				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+				return true
+			}, 30*time.Second, 200*time.Millisecond)
+		})
+	}
 }
 
-// TestLLMRouteController tests [controller.LLMRouteController.Reconcile].
-func TestLLMRouterController(t *testing.T) {
-	t.Skip("TODO")
+func TestLLMRouteController(t *testing.T) {
+	c, cfg, k := tests.NewEnvTest(t)
+
+	ch := make(chan controller.ConfigSinkEvent)
+	rc := controller.NewLLMRouteController(c, k, logr.Discard(), "info", "foo", ch)
+
+	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
+	mgr, err := ctrl.NewManager(cfg, opt)
+	require.NoError(t, err)
+
+	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.LLMRoute{}).Complete(rc)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
+	defer cancel()
+	go func() {
+		err := mgr.Start(ctx)
+		require.NoError(t, err)
+	}()
+
+	t.Run("create route", func(t *testing.T) {
+		origin := &aigv1a1.LLMRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.LLMRouteSpec{
+				APISchema: defaultSchema,
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					{
+						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+							Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
+						},
+					},
+				},
+				Rules: []aigv1a1.LLMRouteRule{
+					{
+						Matches: []aigv1a1.LLMRouteRuleMatch{},
+						BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+							{Name: "backend1", Weight: 1},
+							{Name: "backend2", Weight: 1},
+						},
+					},
+				},
+			},
+		}
+		err := c.Create(ctx, origin)
+		require.NoError(t, err)
+
+		item, ok := <-ch
+		require.True(t, ok)
+		require.IsType(t, &aigv1a1.LLMRoute{}, item)
+
+		// Verify that they are the same.
+		created := item.(*aigv1a1.LLMRoute)
+		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
+		require.Equal(t, origin, created)
+	})
+
+	t.Run("delete route", func(t *testing.T) {
+		err := c.Delete(ctx, &aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+		require.NoError(t, err)
+		item, ok := <-ch
+		require.True(t, ok)
+		require.IsType(t, controller.ConfigSinkEventLLMRouteDeleted{}, item)
+		require.Equal(t, "myroute.default", item.(controller.ConfigSinkEventLLMRouteDeleted).String())
+	})
 }
 
-// TestLLMRouteController tests [controller.LLMBackend.Reconcile].
 func TestLLMBackendController(t *testing.T) {
-	t.Skip("TODO")
+	c, cfg, k := tests.NewEnvTest(t)
+
+	ch := make(chan controller.ConfigSinkEvent)
+	bc := controller.NewLLMBackendController(c, k, logr.Discard(), ch)
+
+	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
+	mgr, err := ctrl.NewManager(cfg, opt)
+	require.NoError(t, err)
+
+	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.LLMBackend{}).Complete(bc)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
+	defer cancel()
+	go func() {
+		err := mgr.Start(ctx)
+		require.NoError(t, err)
+	}()
+
+	t.Run("create backend", func(t *testing.T) {
+		origin := &aigv1a1.LLMBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"},
+			Spec: aigv1a1.LLMBackendSpec{
+				APISchema: defaultSchema,
+				BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{
+					Name: gwapiv1.ObjectName("mybackend"),
+					Port: ptr.To[gwapiv1.PortNumber](8080),
+				}},
+			},
+		}
+		err := c.Create(ctx, origin)
+		require.NoError(t, err)
+
+		item, ok := <-ch
+		require.True(t, ok)
+		require.IsType(t, &aigv1a1.LLMBackend{}, item)
+
+		// Verify that they are the same.
+		created := item.(*aigv1a1.LLMBackend)
+		require.Equal(t, origin, created)
+	})
+
+	t.Run("delete backend", func(t *testing.T) {
+		err := c.Delete(ctx, &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+		require.NoError(t, err)
+		item, ok := <-ch
+		require.True(t, ok)
+		require.IsType(t, controller.ConfigSinkEventLLMBackendDeleted{}, item)
+		require.Equal(t, "mybackend.default", item.(controller.ConfigSinkEventLLMBackendDeleted).String())
+	})
 }

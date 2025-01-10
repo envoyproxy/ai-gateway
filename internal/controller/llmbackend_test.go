@@ -16,20 +16,21 @@ import (
 )
 
 func TestLlmBackendController_Reconcile(t *testing.T) {
-	ch := make(chan configSinkEvent, 100)
-	c := newLLMBackendController(fake.NewClientBuilder().WithScheme(scheme).Build(), fake2.NewClientset(), ctrl.Log, ch)
+	ch := make(chan ConfigSinkEvent, 100)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := NewLLMBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
 	// Deleted case.
 	_, err := c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 	item, ok := <-ch
 	require.True(t, ok)
-	require.IsType(t, configSinkEventLLMBackendDeleted{}, item)
-	require.Equal(t, "default", item.(configSinkEventLLMBackendDeleted).namespace)
-	require.Equal(t, "mybackend", item.(configSinkEventLLMBackendDeleted).name)
+	require.IsType(t, ConfigSinkEventLLMBackendDeleted{}, item)
+	require.Equal(t, "default", item.(ConfigSinkEventLLMBackendDeleted).namespace)
+	require.Equal(t, "mybackend", item.(ConfigSinkEventLLMBackendDeleted).name)
 
 	// Updated case.
-	err = c.client.Create(context.Background(), &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err = cl.Create(context.Background(), &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)

@@ -17,15 +17,29 @@ import (
 
 const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
 
-// configSinkEvent is the interface for the events that the configSink can handle.
+// ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an LLMBackend, an LLMRoute, or a deletion event.
-type configSinkEvent any
+//
+// Exported for internal testing purposes.
+type ConfigSinkEvent any
 
-// configSinkEventLLMBackendDeleted is an event to notify the configSink that an LLMBackend has been deleted.
-type configSinkEventLLMBackendDeleted struct{ namespace, name string }
+// ConfigSinkEventLLMBackendDeleted is an event to notify the configSink that an LLMBackend has been deleted.
+//
+// Exported for internal testing purposes.
+type ConfigSinkEventLLMBackendDeleted struct{ namespace, name string }
 
-// configSinkEventLLMRouteDeleted is an event to notify the configSink that an LLMRoute has been deleted.
-type configSinkEventLLMRouteDeleted struct{ namespace, name string }
+// String implements fmt.Stringer for testing purposes.
+func (c ConfigSinkEventLLMBackendDeleted) String() string {
+	return fmt.Sprintf("%s.%s", c.name, c.namespace)
+}
+
+// ConfigSinkEventLLMRouteDeleted is an event to notify the configSink that an LLMRoute has been deleted.
+type ConfigSinkEventLLMRouteDeleted struct{ namespace, name string }
+
+// String implements fmt.Stringer for testing purposes.
+func (c ConfigSinkEventLLMRouteDeleted) String() string {
+	return fmt.Sprintf("%s.%s", c.name, c.namespace)
+}
 
 // configSink centralizes the LLMRoute and LLMBackend objects handling
 // which requires to be done in a single goroutine since we need to
@@ -36,7 +50,7 @@ type configSink struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	eventChan                   chan configSinkEvent
+	eventChan                   chan ConfigSinkEvent
 	llmRoutes                   map[string]*aigv1a1.LLMRoute
 	backends                    map[string]*aigv1a1.LLMBackend
 	backendsToReferencingRoutes map[string]map[*aigv1a1.LLMRoute]struct{}
@@ -46,7 +60,7 @@ func newConfigSink(
 	kubeClient client.Client,
 	kube kubernetes.Interface,
 	logger logr.Logger,
-	eventChan chan configSinkEvent,
+	eventChan chan ConfigSinkEvent,
 ) *configSink {
 	c := &configSink{
 		client:                      kubeClient,
@@ -109,15 +123,15 @@ func (c *configSink) init(ctx context.Context) error {
 }
 
 // handleEvent handles the event received from the controllers in a single goroutine.
-func (c *configSink) handleEvent(event configSinkEvent) {
+func (c *configSink) handleEvent(event ConfigSinkEvent) {
 	switch e := event.(type) {
 	case *aigv1a1.LLMBackend:
 		c.syncLLMBackend(e)
-	case configSinkEventLLMBackendDeleted:
+	case ConfigSinkEventLLMBackendDeleted:
 		c.deleteLLMBackend(e)
 	case *aigv1a1.LLMRoute:
 		c.syncLLMRoute(e)
-	case configSinkEventLLMRouteDeleted:
+	case ConfigSinkEventLLMRouteDeleted:
 		c.deleteLLMRoute(e)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
@@ -191,12 +205,12 @@ func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 	}
 }
 
-func (c *configSink) deleteLLMRoute(event configSinkEventLLMRouteDeleted) {
+func (c *configSink) deleteLLMRoute(event ConfigSinkEventLLMRouteDeleted) {
 	key := fmt.Sprintf("%s.%s", event.name, event.namespace)
 	delete(c.llmRoutes, key)
 }
 
-func (c *configSink) deleteLLMBackend(event configSinkEventLLMBackendDeleted) {
+func (c *configSink) deleteLLMBackend(event ConfigSinkEventLLMBackendDeleted) {
 	key := fmt.Sprintf("%s.%s", event.name, event.namespace)
 	delete(c.backends, key)
 	delete(c.backendsToReferencingRoutes, key)

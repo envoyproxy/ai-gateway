@@ -19,10 +19,11 @@ type llmBackendController struct {
 	client    client.Client
 	kube      kubernetes.Interface
 	logger    logr.Logger
-	eventChan chan configSinkEvent
+	eventChan chan ConfigSinkEvent
 }
 
-func newLLMBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan configSinkEvent) *llmBackendController {
+// NewLLMBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.LLMBackend].
+func NewLLMBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmBackendController{
 		client:    client,
 		kube:      kube,
@@ -36,7 +37,7 @@ func (l *llmBackendController) Reconcile(ctx context.Context, req reconcile.Requ
 	var llmBackend aigv1a1.LLMBackend
 	if err := l.client.Get(ctx, req.NamespacedName, &llmBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			l.eventChan <- configSinkEventLLMBackendDeleted{namespace: req.Namespace, name: req.Name}
+			l.eventChan <- ConfigSinkEventLLMBackendDeleted{namespace: req.Namespace, name: req.Name}
 			ctrl.Log.Info("Deleting LLMBackend",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil

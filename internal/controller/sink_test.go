@@ -28,7 +28,7 @@ func TestConfigSink_init(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	kube := fake2.NewClientset()
 
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan)
 	require.NotNil(t, s)
 
@@ -177,7 +177,7 @@ func TestConfigSink_init(t *testing.T) {
 	})
 
 	// Until the context is cancelled, the event channel should be open, otherwise this should panic.
-	eventChan <- configSinkEventLLMBackendDeleted{namespace: "ns1", name: "apple"}
+	eventChan <- ConfigSinkEventLLMBackendDeleted{namespace: "ns1", name: "apple"}
 	time.Sleep(200 * time.Millisecond)
 	require.NotContains(t, s.backends, "apple.ns1")
 	cancel()
@@ -190,7 +190,7 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	kube := fake2.NewClientset()
 
-	eventChan := make(chan configSinkEvent, 10)
+	eventChan := make(chan ConfigSinkEvent, 10)
 	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan)
 	require.NotNil(t, s)
 
@@ -250,7 +250,7 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 }
 
 func TestConfigSink_syncLLMBackend(t *testing.T) {
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(nil, nil, logr.Discard(), eventChan)
 	s.syncLLMBackend(&aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 	require.Len(t, s.backends, 1)
@@ -258,29 +258,29 @@ func TestConfigSink_syncLLMBackend(t *testing.T) {
 }
 
 func TestConfigSink_deleteLLMRoute(t *testing.T) {
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(nil, nil, logr.Discard(), eventChan)
 	s.llmRoutes = map[string]*aigv1a1.LLMRoute{"route1.ns1": {}}
 
-	s.deleteLLMRoute(configSinkEventLLMRouteDeleted{namespace: "ns1", name: "route1"})
+	s.deleteLLMRoute(ConfigSinkEventLLMRouteDeleted{namespace: "ns1", name: "route1"})
 	require.Empty(t, s.llmRoutes)
 }
 
 func TestConfigSink_deleteLLMBackend(t *testing.T) {
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(nil, nil, logr.Discard(), eventChan)
 	s.backends = map[string]*aigv1a1.LLMBackend{"apple.ns1": {}}
 	s.backendsToReferencingRoutes = map[string]map[*aigv1a1.LLMRoute]struct{}{
 		"apple.ns1": {&aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"}}: {}},
 	}
 
-	s.deleteLLMBackend(configSinkEventLLMBackendDeleted{namespace: "ns1", name: "apple"})
+	s.deleteLLMBackend(ConfigSinkEventLLMBackendDeleted{namespace: "ns1", name: "apple"})
 	require.Empty(t, s.backends)
 	require.Empty(t, s.backendsToReferencingRoutes)
 }
 
 func Test_newHTTPRoute(t *testing.T) {
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(nil, nil, logr.Discard(), eventChan)
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
@@ -382,7 +382,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	kube := fake2.NewClientset()
 
-	eventChan := make(chan configSinkEvent)
+	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan)
 	require.NotNil(t, s)
 
