@@ -206,12 +206,11 @@ func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 }
 
 func (c *configSink) deleteLLMRoute(event ConfigSinkEventLLMRouteDeleted) {
-	key := fmt.Sprintf("%s.%s", event.name, event.namespace)
-	delete(c.llmRoutes, key)
+	delete(c.llmRoutes, event.String())
 }
 
 func (c *configSink) deleteLLMBackend(event ConfigSinkEventLLMBackendDeleted) {
-	key := fmt.Sprintf("%s.%s", event.name, event.namespace)
+	key := event.String()
 	delete(c.backends, key)
 	delete(c.backendsToReferencingRoutes, key)
 }

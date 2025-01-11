@@ -96,7 +96,7 @@ func TestStartControllers(t *testing.T) {
 	})
 
 	for _, route := range []string{"route1", "route2"} {
-		t.Run("verify route "+route, func(t *testing.T) {
+		t.Run("verify llm route "+route, func(t *testing.T) {
 			require.Eventually(t, func() bool {
 				var llmRoute aigv1a1.LLMRoute
 				err := c.Get(ctx, client.ObjectKey{Name: route, Namespace: "default"}, &llmRoute)
