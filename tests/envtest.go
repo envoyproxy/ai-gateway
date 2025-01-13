@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,24 +38,17 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
 	cfg, err := env.Start()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to start testenv: %v", err))
-	}
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := env.Stop(); err != nil {
+			panic(fmt.Sprintf("Failed to stop testenv: %v", err))
+		}
+	})
 
 	c, err = client.New(cfg, client.Options{})
-	if err != nil {
-		panic(fmt.Sprintf("Error initializing client: %v", err))
-	}
-	k = kubernetes.NewForConfigOrDie(cfg)
+	require.NoError(t, err)
 
 	controller.MustInitializeScheme(c.Scheme())
-	t.Cleanup(func() {
-		defer func() {
-			if err := env.Stop(); err != nil {
-				panic(fmt.Sprintf("Failed to stop testenv: %v", err))
-			}
-		}()
-	})
 	return c, cfg, k
 }
 
