@@ -98,7 +98,7 @@ jobs:
 
   push_helm:
     name: Push Helm chart
-    # Push the Helm chart to the GitHub Container Registry on the main branch.
+    # Only push the Helm chart to the GHR when merged into the main branch.
     if: github.event_name == 'push'
     needs: [docker_builds]
     runs-on: ubuntu-latest
