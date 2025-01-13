@@ -9,7 +9,7 @@ import (
 
 // +kubebuilder:object:root=true
 
-// AIRoute combines multiple AIBackends and attaching them to Gateway(s) resources.
+// AIGatewayRoute combines multiple AIBackends and attaching them to Gateway(s) resources.
 //
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple AI backends.
@@ -19,27 +19,27 @@ import (
 // on the output schema of the AIBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
-// AIRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
-// The generated HTTPRoute has the owner reference set to this AIRoute.
-type AIRoute struct {
+// AIGatewayRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
+// The generated HTTPRoute has the owner reference set to this AIGatewayRoute.
+type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the AIRoute.
-	Spec AIRouteSpec `json:"spec,omitempty"`
+	// Spec defines the details of the AIGatewayRoute.
+	Spec AIGatewayRouteSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// AIRouteList contains a list of AIRoute.
-type AIRouteList struct {
+// AIGatewayRouteList contains a list of AIGatewayRoute.
+type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []AIRoute `json:"items"`
+	Items           []AIGatewayRoute `json:"items"`
 }
 
-// AIRouteSpec details the AIRoute configuration.
-type AIRouteSpec struct {
-	// TargetRefs are the names of the Gateway resources this AIRoute is being attached to.
+// AIGatewayRouteSpec details the AIGatewayRoute configuration.
+type AIGatewayRouteSpec struct {
+	// TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
@@ -53,13 +53,13 @@ type AIRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
 	APISchema VersionedAPISchema `json:"inputSchema"`
-	// Rules is the list of AIRouteRule that this AIRoute will match the traffic to.
+	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
 	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
 	//
-	// In the matching conditions in the AIRouteRule, `x-envoy-ai-gateway-model` header is available
+	// In the matching conditions in the AIGatewayRouteRule, `x-envoy-ai-gateway-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
 	// from the request content before the routing decision.
 	//
@@ -68,31 +68,31 @@ type AIRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=128
-	Rules []AIRouteRule `json:"rules"`
+	Rules []AIGatewayRouteRule `json:"rules"`
 }
 
-// AIRouteRule is a rule that defines the routing behavior of the AIRoute.
-type AIRouteRule struct {
+// AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
+type AIGatewayRouteRule struct {
 	// BackendRefs is the list of AIBackend that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
-	// The namespace of each backend is "local", i.e. the same namespace as the AIRoute.
+	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	BackendRefs []AIRouteRuleBackendRef `json:"backendRefs,omitempty"`
+	BackendRefs []AIGatewayRouteRuleBackendRef `json:"backendRefs,omitempty"`
 
-	// Matches is the list of AIRouteMatch that this rule will match the traffic to.
+	// Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
 	// This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	Matches []AIRouteRuleMatch `json:"matches,omitempty"`
+	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
 }
 
-// AIRouteRuleBackendRef is a reference to a AIBackend with a weight.
-type AIRouteRuleBackendRef struct {
+// AIGatewayRouteRuleBackendRef is a reference to a AIBackend with a weight.
+type AIGatewayRouteRuleBackendRef struct {
 	// Name is the name of the AIBackend.
 	//
 	// +kubebuilder:validation:Required
@@ -108,7 +108,7 @@ type AIRouteRuleBackendRef struct {
 	Weight int `json:"weight"`
 }
 
-type AIRouteRuleMatch struct {
+type AIGatewayRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
@@ -124,13 +124,13 @@ type AIRouteRuleMatch struct {
 
 // +kubebuilder:object:root=true
 
-// AIBackend is a resource that represents a single backend for AIRoute.
+// AIBackend is a resource that represents a single backend for AIGatewayRoute.
 // A backend is a service that handles traffic with a concrete API specification.
 //
 // A AIBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 //
-// When a backend with an attached AIBackend is used as a routing target in the AIRoute (more precisely, the
-// HTTPRouteSpec defined in the AIRoute), the ai-gateway will generate the necessary configuration to do
+// When a backend with an attached AIBackend is used as a routing target in the AIGatewayRoute (more precisely, the
+// HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
 type AIBackend struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -153,7 +153,7 @@ type AIBackendSpec struct {
 	// APISchema specifies the API schema of the output format of requests from
 	// Envoy that this AIBackend can accept as incoming requests.
 	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of AIRouteSpec.APISchema and AIBackendSpec.APISchema.
+	// the pair of AIGatewayRouteSpec.APISchema and AIBackendSpec.APISchema.
 	//
 	// This is required to be set.
 	//
@@ -175,7 +175,7 @@ type AIBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
-// VersionedAPISchema defines the API schema of either AIRoute (the input) or AIBackend (the output).
+// VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIBackend (the output).
 //
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
@@ -183,7 +183,7 @@ type AIBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type VersionedAPISchema struct {
-	// Schema is the API schema of the AIRoute or AIBackend.
+	// Schema is the API schema of the AIGatewayRoute or AIBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
 	Schema APISchema `json:"schema"`
@@ -208,7 +208,7 @@ const (
 
 const (
 	// AIModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
-	// This can be used to describe the routing behavior in HTTPRoute referenced by AIRoute.
+	// This can be used to describe the routing behavior in HTTPRoute referenced by AIGatewayRoute.
 	AIModelHeaderKey = "x-envoy-ai-gateway-model"
 )
 
