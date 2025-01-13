@@ -49,6 +49,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	require.NoError(t, err)
 
 	controller.MustInitializeScheme(c.Scheme())
+	k = kubernetes.NewForConfigOrDie(cfg)
 	return c, cfg, k
 }
 
