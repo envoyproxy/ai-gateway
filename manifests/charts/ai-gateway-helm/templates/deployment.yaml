@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-gateway-helm.controller.fullname" . }}
+  labels:
+    {{- include "ai-gateway-helm.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.controller.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ai-gateway-helm.controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.controller.securityContext | nindent 12 }}
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          ports:
+            - containerPort: 1063
+            - containerPort: 9090
+          args:
+            - --logLevel={{ .Values.controller.logLevel }}
+            - --extprocImage={{ .Values.extProcImage.repository }}:{{ .Values.extProcImage.tag | default .Chart.AppVersion }}
+            - --extprocImagePullPolicy={{ .Values.extProcImage.pullPolicy }}
+          livenessProbe:
+            grpc:
+              port: 1063
+            initialDelaySeconds: 5
+            periodSeconds: 2
+          readinessProbe:
+            grpc:
+              port: 1063
+            initialDelaySeconds: 5
+            periodSeconds: 2
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

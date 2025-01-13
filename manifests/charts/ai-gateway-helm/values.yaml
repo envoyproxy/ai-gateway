@@ -1,0 +1,57 @@
+# Default values for ai-gateway-helm.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# ExtProc resource will be configured at CRD level, so we only need to specify the image here.
+# TODO: this also might be moved to a CRD level later.
+extProcImage:
+  repository: ghcr.io/envoyproxy/ai-gateway-extproc
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+controller:
+  logLevel: info
+  nameOverride: ""
+  fullnameOverride: "ai-gateway-controller"
+
+  # -- Service Account --
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""
+
+  # -- Deployment configs --
+  image:
+    repository: ghcr.io/envoyproxy/ai-gateway-controller
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "latest"
+  replicaCount: 1
+  imagePullSecrets: []
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  service:
+    type: ClusterIP
+    ports:
+      - name: grpc
+        protocol: TCP
+        port: 1063
+        appProtocol: grpc
+        targetPort: 1063
+      - name: http-metrics
+        protocol: TCP
+        appProtocol: http
+        port: 9090
+        targetPort: 9090
+
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+

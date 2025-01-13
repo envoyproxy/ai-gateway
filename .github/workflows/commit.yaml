@@ -93,5 +93,23 @@ jobs:
 
   docker_builds:
     name: Docker Build and/or Push
-    needs: [unittest, test_cel_validation, test_controller]
+    needs: [style, unittest, test_cel_validation, test_controller]
     uses: ./.github/workflows/docker_builds_template.yaml
+
+  push_helm:
+    name: Push Helm chart
+    # Push the Helm chart to the GitHub Container Registry on the main branch.
+    if: github.event_name == 'push'
+    needs: [docker_builds]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login into GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push Helm chart
+        run: |
+          make helm-push
