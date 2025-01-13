@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
@@ -223,16 +223,16 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(llmRoute), err))
 	}
 
-	ec := &extprocconfig.Config{}
+	ec := &filterconfig.Config{}
 	spec := &llmRoute.Spec
 
-	ec.InputSchema.Schema = extprocconfig.APISchema(spec.APISchema.Schema)
+	ec.InputSchema.Schema = filterconfig.APISchema(spec.APISchema.Schema)
 	ec.InputSchema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.LLMModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
-	ec.Rules = make([]extprocconfig.RouteRule, len(spec.Rules))
+	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
 	for i, rule := range spec.Rules {
-		ec.Rules[i].Backends = make([]extprocconfig.Backend, len(rule.BackendRefs))
+		ec.Rules[i].Backends = make([]filterconfig.Backend, len(rule.BackendRefs))
 		for j, backend := range rule.BackendRefs {
 			key := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
 			ec.Rules[i].Backends[j].Name = key
@@ -242,11 +242,11 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 				err = fmt.Errorf("backend %s not found", key)
 				return err
 			} else {
-				ec.Rules[i].Backends[j].OutputSchema.Schema = extprocconfig.APISchema(backendObj.Spec.APISchema.Schema)
+				ec.Rules[i].Backends[j].OutputSchema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
 				ec.Rules[i].Backends[j].OutputSchema.Version = backendObj.Spec.APISchema.Version
 			}
 		}
-		ec.Rules[i].Headers = make([]extprocconfig.HeaderMatch, len(rule.Matches))
+		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value

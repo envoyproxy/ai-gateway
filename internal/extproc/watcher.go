@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
-// ConfigReceiver is an interface that can receive *extprocconfig.Config updates.
+// ConfigReceiver is an interface that can receive *filterconfig.Config updates.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(config *extprocconfig.Config) error
+	LoadConfig(config *filterconfig.Config) error
 }
 
 type configWatcher struct {
@@ -66,7 +66,7 @@ func (cw *configWatcher) loadConfig() error {
 	}
 	cw.lastMod = stat.ModTime()
 	cw.l.Info("loading a new config", slog.String("path", cw.path))
-	cfg, err := extprocconfig.UnmarshalConfigYaml(cw.path)
+	cfg, err := filterconfig.UnmarshalConfigYaml(cw.path)
 	if err != nil {
 		return err
 	}

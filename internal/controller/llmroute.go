@@ -18,7 +18,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 const (
@@ -153,7 +153,7 @@ func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, 
 					Namespace:       llmRoute.Namespace,
 					OwnerReferences: ownerRef,
 				},
-				Data: map[string]string{expProcConfigFileName: extprocconfig.DefaultConfig},
+				Data: map[string]string{expProcConfigFileName: filterconfig.DefaultConfig},
 			}
 			_, err = c.kube.CoreV1().ConfigMaps(llmRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {

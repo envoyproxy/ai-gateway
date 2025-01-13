@@ -21,7 +21,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 func TestConfigSink_init(t *testing.T) {
@@ -418,7 +418,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		route *aigv1a1.LLMRoute
-		exp   *extprocconfig.Config
+		exp   *filterconfig.Config
 	}{
 		{
 			name: "basic",
@@ -445,20 +445,20 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					},
 				},
 			},
-			exp: &extprocconfig.Config{
-				InputSchema:              extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI, Version: "v123"},
+			exp: &filterconfig.Config{
+				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.LLMModelHeaderKey,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
-				Rules: []extprocconfig.RouteRule{
+				Rules: []filterconfig.RouteRule{
 					{
-						Backends: []extprocconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+						Backends: []filterconfig.Backend{
+							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
-						Headers: []extprocconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}},
+						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}},
 					},
 					{
-						Backends: []extprocconfig.Backend{{Name: "cat.ns", Weight: 1}},
-						Headers:  []extprocconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "another-ai"}},
+						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1}},
+						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "another-ai"}},
 					},
 				},
 			},
@@ -478,7 +478,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			require.NotNil(t, cm)
 
 			data := cm.Data[expProcConfigFileName]
-			var actual extprocconfig.Config
+			var actual filterconfig.Config
 			require.NoError(t, yaml.Unmarshal([]byte(data), &actual))
 			require.Equal(t, tc.exp, &actual)
 		})

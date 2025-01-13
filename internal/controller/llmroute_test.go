@@ -13,7 +13,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 func Test_extProcName(t *testing.T) {
@@ -40,7 +40,7 @@ func TestLLMRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	require.Equal(t, extProcName(llmRoute), configMap.Name)
 	require.Equal(t, "default", configMap.Namespace)
 	require.Equal(t, ownerRef, configMap.OwnerReferences)
-	require.Equal(t, extprocconfig.DefaultConfig, configMap.Data[expProcConfigFileName])
+	require.Equal(t, filterconfig.DefaultConfig, configMap.Data[expProcConfigFileName])
 
 	// Doing it again should not fail.
 	err = c.ensuresExtProcConfigMapExists(context.Background(), llmRoute, ownerRef)
