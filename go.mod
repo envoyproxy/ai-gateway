@@ -12,7 +12,7 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/go-logr/logr v1.4.2
 	github.com/google/go-cmp v0.6.0
-	github.com/openai/openai-go v0.1.0-alpha.43
+	github.com/openai/openai-go v0.1.0-alpha.45
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	google.golang.org/grpc v1.69.4
