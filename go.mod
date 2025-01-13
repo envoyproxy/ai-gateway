@@ -15,7 +15,7 @@ require (
 	github.com/openai/openai-go v0.1.0-alpha.43
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
-	google.golang.org/grpc v1.69.2
+	google.golang.org/grpc v1.69.4
 	google.golang.org/protobuf v1.36.1
 	k8s.io/api v0.31.2
 	k8s.io/apiextensions-apiserver v0.31.2
