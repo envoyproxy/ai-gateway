@@ -33,8 +33,8 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 		extensionPolicyURL = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.4/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_envoyextensionpolicies.yaml"
 		httpRouteURL       = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml"
 	)
-	crds = append(crds, ensureThirdPartyCRDDownloaded("envoyextensionpolicies_crd_for_tests.yaml", extensionPolicyURL))
-	crds = append(crds, ensureThirdPartyCRDDownloaded("httproutes_crd_for_tests.yaml", httpRouteURL))
+	crds = append(crds, requireThirdPartyCRDDownloaded(t, "envoyextensionpolicies_crd_for_tests.yaml", extensionPolicyURL))
+	crds = append(crds, requireThirdPartyCRDDownloaded(t, "httproutes_crd_for_tests.yaml", httpRouteURL))
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
 	cfg, err := env.Start()
@@ -53,24 +53,19 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	return c, cfg, k
 }
 
-// ensureThirdPartyCRDDownloaded downloads the CRD from the given URL if it does not exist at the given path.
+// requireThirdPartyCRDDownloaded downloads the CRD from the given URL if it does not exist at the given path.
 // It returns the path to the CRD as-is to make it easier to use in the caller.
-func ensureThirdPartyCRDDownloaded(path, url string) string {
+func requireThirdPartyCRDDownloaded(t *testing.T, path, url string) string {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		crd, err := http.DefaultClient.Get(url)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to download CRD: %v", err))
-		}
+		require.NoError(t, err)
 		body, err := os.Create(path)
 		defer func() {
 			_ = crd.Body.Close()
 		}()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to create CRD file: %v", err))
-		}
-		if _, err := body.ReadFrom(crd.Body); err != nil {
-			panic(fmt.Sprintf("Failed to write CRD file: %v", err))
-		}
+		require.NoError(t, err)
+		_, err = body.ReadFrom(crd.Body)
+		require.NoError(t, err)
 	} else if err != nil {
 		panic(fmt.Sprintf("Failed to check if CRD exists: %v", err))
 	}
