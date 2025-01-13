@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
 	github.com/envoyproxy/gateway v1.2.4
-	github.com/envoyproxy/go-control-plane/envoy v1.32.2
+	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/go-logr/logr v1.4.2
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.43

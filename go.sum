@@ -40,8 +40,8 @@ github.com/emicklei/go-restful/v3 v3.12.1 h1:PJMDIM/ak7btuL8Ex0iYET9hxM3CI2sjZtz
 github.com/emicklei/go-restful/v3 v3.12.1/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
 github.com/envoyproxy/gateway v1.2.4 h1:6xYaWSPBydI+VZz8s5BxI268UX4f/29L6XUz8Q8tSyg=
 github.com/envoyproxy/gateway v1.2.4/go.mod h1:lDELg4TDh0CdlGHnWR4XJL1+O36KxSm68tT6zD2gTDQ=
-github.com/envoyproxy/go-control-plane/envoy v1.32.2 h1:zidqwmijfcbyKqVxjQDFx042PgX+p9U+/fu/f9VtSk8=
-github.com/envoyproxy/go-control-plane/envoy v1.32.2/go.mod h1:eR2SOX2IedqlPvmiKjUH7Wu//S602JKI7HPC/L3SRq8=
+github.com/envoyproxy/go-control-plane/envoy v1.32.3 h1:hVEaommgvzTjTd4xCaFd+kEQ2iYBtGxP6luyLrx6uOk=
+github.com/envoyproxy/go-control-plane/envoy v1.32.3/go.mod h1:F6hWupPfh75TBXGKA++MCT/CZHFq5r9/uwt/kQYkZfE=
 github.com/envoyproxy/protoc-gen-validate v1.1.0 h1:tntQDh69XqOCOZsDz0lVJQez/2L6Uu2PdjCQwWCJ3bM=
 github.com/envoyproxy/protoc-gen-validate v1.1.0/go.mod h1:sXRDRVmzEbkM7CVcM06s9shE/m23dg3wzjl0UWqJ2q4=
 github.com/evanphx/json-patch v5.9.0+incompatible h1:fBXyNpNMuTTDdquAq/uisOr2lShz4oaXpDTX2bLe7ls=
