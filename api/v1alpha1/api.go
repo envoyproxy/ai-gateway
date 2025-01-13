@@ -9,14 +9,14 @@ import (
 
 // +kubebuilder:object:root=true
 
-// AIGatewayRoute combines multiple AIBackends and attaching them to Gateway(s) resources.
+// AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 //
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple AI backends.
 //
 // The inputSchema field is used to determine the structure of the requests that the Gateway will
-// receive. And then the Gateway will route the traffic to the appropriate AIBackend based
-// on the output schema of the AIBackend while doing the other necessary jobs like
+// receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
+// on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
 // AIGatewayRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
@@ -46,7 +46,7 @@ type AIGatewayRouteSpec struct {
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
-	// output schema specified in the selected AIBackend during the routing process.
+	// output schema specified in the selected AIServiceBackend during the routing process.
 	//
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
@@ -73,7 +73,7 @@ type AIGatewayRouteSpec struct {
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
 type AIGatewayRouteRule struct {
-	// BackendRefs is the list of AIBackend that this rule will route the traffic to.
+	// BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
 	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
@@ -91,15 +91,15 @@ type AIGatewayRouteRule struct {
 	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
 }
 
-// AIGatewayRouteRuleBackendRef is a reference to a AIBackend with a weight.
+// AIGatewayRouteRuleBackendRef is a reference to a AIServiceBackend with a weight.
 type AIGatewayRouteRuleBackendRef struct {
-	// Name is the name of the AIBackend.
+	// Name is the name of the AIServiceBackend.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
-	// Weight is the weight of the AIBackend. This is exactly the same as the weight in
+	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 	//
@@ -124,42 +124,42 @@ type AIGatewayRouteRuleMatch struct {
 
 // +kubebuilder:object:root=true
 
-// AIBackend is a resource that represents a single backend for AIGatewayRoute.
+// AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
 // A backend is a service that handles traffic with a concrete API specification.
 //
-// A AIBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+// A AIServiceBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 //
-// When a backend with an attached AIBackend is used as a routing target in the AIGatewayRoute (more precisely, the
+// When a backend with an attached AIServiceBackend is used as a routing target in the AIGatewayRoute (more precisely, the
 // HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
-type AIBackend struct {
+type AIServiceBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of AIBackend.
-	Spec AIBackendSpec `json:"spec,omitempty"`
+	// Spec defines the details of AIServiceBackend.
+	Spec AIServiceBackendSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// AIBackendList contains a list of AIBackends.
-type AIBackendList struct {
+// AIServiceBackendList contains a list of AIServiceBackends.
+type AIServiceBackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []AIBackend `json:"items"`
+	Items           []AIServiceBackend `json:"items"`
 }
 
-// AIBackendSpec details the AIBackend configuration.
-type AIBackendSpec struct {
+// AIServiceBackendSpec details the AIServiceBackend configuration.
+type AIServiceBackendSpec struct {
 	// APISchema specifies the API schema of the output format of requests from
-	// Envoy that this AIBackend can accept as incoming requests.
+	// Envoy that this AIServiceBackend can accept as incoming requests.
 	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of AIGatewayRouteSpec.APISchema and AIBackendSpec.APISchema.
+	// the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.
 	//
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
 	APISchema VersionedAPISchema `json:"outputSchema"`
-	// BackendRef is the reference to the Backend resource that this AIBackend corresponds to.
+	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
 	//
@@ -175,7 +175,7 @@ type AIBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
-// VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIBackend (the output).
+// VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
 //
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
@@ -183,7 +183,7 @@ type AIBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type VersionedAPISchema struct {
-	// Schema is the API schema of the AIGatewayRoute or AIBackend.
+	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
 	Schema APISchema `json:"schema"`
