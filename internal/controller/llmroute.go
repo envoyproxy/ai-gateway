@@ -106,6 +106,7 @@ func (c *llmRouteController) reconcileExtProcExtensionPolicy(ctx context.Context
 	} else if client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("failed to get extension policy: %w", err)
 	}
+
 	pm := egv1a1.BufferedExtProcBodyProcessingMode
 	port := gwapiv1.PortNumber(1063)
 	objNs := gwapiv1.Namespace(llmRoute.Namespace)
@@ -167,6 +168,25 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 	deployment, err := c.kube.AppsV1().Deployments(llmRoute.Namespace).Get(ctx, extProcName(llmRoute), metav1.GetOptions{})
 	if err != nil {
 		if client.IgnoreNotFound(err) == nil {
+			var backendSecurityPolicySecrets corev1.Secret
+			bspSecretName := fmt.Sprintf("backend-security-policy-%s", llmRoute.Name)
+			if err := c.client.Get(ctx, client.ObjectKey{Name: bspSecretName}, &backendSecurityPolicySecrets); err != nil {
+				if client.IgnoreNotFound(err) == nil {
+					backendSecurityPolicySecrets = corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      bspSecretName,
+							Namespace: llmRoute.Namespace,
+						},
+					}
+					err := c.client.Create(ctx, &backendSecurityPolicySecrets)
+					if err != nil {
+						return fmt.Errorf("failed to create backend security policy secrets: %w", err)
+					}
+				} else {
+					return fmt.Errorf("failed to get backend security policy secrets: %w", err)
+				}
+			}
+
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            name,
@@ -191,6 +211,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
+										{Name: "backendSecurityPolicySecrets", MountPath: MountedExtProcSecretPath},
 									},
 								},
 							},
@@ -200,6 +221,14 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(llmRoute)},
+										},
+									},
+								},
+								{
+									Name: "backendSecurityPolicySecrets",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "backend-security-policy-secrets",
 										},
 									},
 								},
