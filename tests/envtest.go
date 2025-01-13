@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,7 +9,6 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,9 +17,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-// RunEnvTest runs the tests under the testenv.
-// This seets the client, config, and kubernetes interfaces to the given pointers.
-func RunEnvTest(m *testing.M, c *client.Client, cfg **rest.Config, k *kubernetes.Interface) {
+// NewEnvTest creates a new environment for testing the controller package.
+func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.Interface) {
 	log.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
 	var crds []string
 	for _, crd := range []string{
@@ -39,33 +36,26 @@ func RunEnvTest(m *testing.M, c *client.Client, cfg **rest.Config, k *kubernetes
 	crds = append(crds, ensureThirdPartyCRDDownloaded("httproutes_crd_for_tests.yaml", httpRouteURL))
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
-	_cfg, err := env.Start()
+	cfg, err := env.Start()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to start testenv: %v", err))
 	}
 
-	_, cancel := context.WithCancel(ctrl.SetupSignalHandler())
-	defer func() {
-		exit := m.Run()
-		cancel()
-		if err := env.Stop(); err != nil {
-			panic(fmt.Sprintf("Failed to stop testenv: %v", err))
-		}
-		os.Exit(exit)
-	}()
-
-	*c, err = client.New(_cfg, client.Options{})
+	c, err = client.New(cfg, client.Options{})
 	if err != nil {
 		panic(fmt.Sprintf("Error initializing client: %v", err))
 	}
-	if cfg != nil {
-		*cfg = _cfg
-	}
-	if k != nil {
-		*k = kubernetes.NewForConfigOrDie(_cfg)
-	}
+	k = kubernetes.NewForConfigOrDie(cfg)
 
-	controller.MustInitializeScheme((*c).Scheme())
+	controller.MustInitializeScheme(c.Scheme())
+	t.Cleanup(func() {
+		defer func() {
+			if err := env.Stop(); err != nil {
+				panic(fmt.Sprintf("Failed to stop testenv: %v", err))
+			}
+		}()
+	})
+	return c, cfg, k
 }
 
 // ensureThirdPartyCRDDownloaded downloads the CRD from the given URL if it does not exist at the given path.

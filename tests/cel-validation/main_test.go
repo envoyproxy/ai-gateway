@@ -11,22 +11,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/tests"
 )
 
-var c client.Client
-
-func TestMain(m *testing.M) {
-	tests.RunEnvTest(m, &c, nil, nil)
-}
-
 //go:embed testdata
 var testdata embed.FS
 
 func TestLLMRoutes(t *testing.T) {
+	c, _, _ := tests.NewEnvTest(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
@@ -67,6 +61,8 @@ func TestLLMRoutes(t *testing.T) {
 }
 
 func TestLLMBackends(t *testing.T) {
+	c, _, _ := tests.NewEnvTest(t)
+
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
@@ -100,6 +96,8 @@ func TestLLMBackends(t *testing.T) {
 }
 
 func TestBackendSecurityPolicies(t *testing.T) {
+	c, _, _ := tests.NewEnvTest(t)
+
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
