@@ -24,7 +24,6 @@ help:
 	@echo ""
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
-	@echo "  check           	 Run precommit and check for any differences in the codebase."
 	@echo "  test            	 Run the unit tests for the codebase."
 	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
 	@echo "                  	 This will be needed when changing API definitions."
