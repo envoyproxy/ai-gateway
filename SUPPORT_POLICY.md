@@ -1,6 +1,6 @@
 # Support Policy
 
-This document focuses on compatibility concerns of those using Envoy AI Gateway. 
+This document focuses on compatibility concerns of those using Envoy AI Gateway.
 It is important to note that the support policy is subject to change at any time. The support policy is as follows:
 
 First of all, there are four areas of compatibility that we are concerned with:
@@ -22,15 +22,15 @@ notes.
 
 The Custom Resource Definitions (CRDs) are defined in api/${version}/*.go files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
 **For alpha versions**, we simply employ the same deprecation policy as the Go package. In other words, the APIs will be marked as
-deprecated in the version N and will be removed in the version N+2 but without any guarantee of migration path. 
+deprecated in the version N and will be removed in the version N+2 but without any guarantee of migration path.
 **For beta versions**, For beta versions, it is the same as the alpha versions, but we will provide a migration path in the release notes.
-**For stable versions**, we will never break the APIs unless there is a critical security issue. 
+**For stable versions**, we will never break the APIs unless there is a critical security issue.
 We will provide a migration path in the release notes in case we need to break the APIs.
 
 # Upgrading the Envoy AI Gateway controller
 
 We guarantee that simply upgrading the controller will not break the existing configuration assuming there's
-no _un-migrated_ resources including breaking change left in the k8s API server. In other words, after the 
+no _un-migrated_ resources including breaking change left in the k8s API server. In other words, after the
 proper use of the API and migration path described above, the user should be able to upgrade the controller
 without any issue. However, this does mean that we do NOT guarantee that the existing configuration will work
 across more than one version of the controller. For example if you are using the version N of the controller,
