@@ -6,8 +6,12 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -52,7 +56,23 @@ func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
 	c.kube = fake2.NewClientset()
 
 	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-	llmRoute := &aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}}
+	llmRoute := &aigv1a1.LLMRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.LLMRouteSpec{
+			FilterConfig: &aigv1a1.LLMRouteFilterConfig{
+				Type: aigv1a1.LLMRouteFilterConfigTypeExternalProcess,
+				ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+					Replicas: ptr.To[int32](123),
+					Resources: &corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("200m"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+					},
+				},
+			},
+		},
+	}
 
 	err := c.reconcileExtProcDeployment(context.Background(), llmRoute, ownerRef)
 	require.NoError(t, err)
@@ -60,14 +80,26 @@ func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
 	deployment, err := c.kube.AppsV1().Deployments("default").Get(context.Background(), extProcName(llmRoute), metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, extProcName(llmRoute), deployment.Name)
-
+	require.Equal(t, int32(123), *deployment.Spec.Replicas)
+	require.Equal(t, ownerRef, deployment.OwnerReferences)
+	require.Equal(t, corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("100Mi"),
+		},
+	}, deployment.Spec.Template.Spec.Containers[0].Resources)
 	service, err := c.kube.CoreV1().Services("default").Get(context.Background(), extProcName(llmRoute), metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, extProcName(llmRoute), service.Name)
 
-	// Doing it again should not fail.
+	// Doing it again should not fail and update the deployment.
+	llmRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
 	err = c.reconcileExtProcDeployment(context.Background(), llmRoute, ownerRef)
 	require.NoError(t, err)
+	// Check the deployment is updated.
+	deployment, err = c.kube.AppsV1().Deployments("default").Get(context.Background(), extProcName(llmRoute), metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int32(456), *deployment.Spec.Replicas)
 }
 
 func TestLLMRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
@@ -112,4 +144,40 @@ func TestLLMRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	for i, target := range extPolicy.Spec.TargetRefs {
 		require.Equal(t, llmRoute.Spec.TargetRefs[i].Name, target.Name)
 	}
+}
+
+func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
+	dep := &appsv1.DeploymentSpec{
+		Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{}},
+			},
+		},
+	}
+	t.Run("not panic", func(t *testing.T) {
+		applyExtProcDeploymentConfigUpdate(dep, nil)
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{})
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
+			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{},
+		})
+	})
+	t.Run("update", func(t *testing.T) {
+		req := corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+			},
+		}
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
+			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+				Resources: &req,
+				Replicas:  ptr.To[int32](123),
+				Image:     "some-image",
+			},
+		},
+		)
+		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
+		require.Equal(t, int32(123), *dep.Replicas)
+		require.Equal(t, "some-image", dep.Template.Spec.Containers[0].Image)
+	})
 }
