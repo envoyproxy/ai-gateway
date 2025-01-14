@@ -30,12 +30,12 @@ const (
 //
 // This handles the LLMRoute resource and creates the necessary resources for the external process.
 type llmRouteController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	logLevel     string
-	extProcImage string
-	eventChan    chan ConfigSinkEvent
+	client              client.Client
+	kube                kubernetes.Interface
+	logger              logr.Logger
+	logLevel            string
+	defaultExtProcImage string
+	eventChan           chan ConfigSinkEvent
 }
 
 // NewLLMRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the LLMRoute resource.
@@ -44,11 +44,11 @@ func NewLLMRouteController(
 	options Options, ch chan ConfigSinkEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmRouteController{
-		client:       client,
-		kube:         kube,
-		logger:       logger.WithName("llmroute-controller"),
-		extProcImage: options.ExtProcImage,
-		eventChan:    ch,
+		client:              client,
+		kube:                kube,
+		logger:              logger.WithName("llmroute-controller"),
+		defaultExtProcImage: options.ExtProcImage,
+		eventChan:           ch,
 	}
 }
 
@@ -187,7 +187,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           c.extProcImage,
+									Image:           c.defaultExtProcImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
@@ -278,5 +278,8 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	}
 	if replica := extProc.Replicas; replica != nil {
 		d.Replicas = replica
+	}
+	if image := extProc.Image; image != "" {
+		d.Template.Spec.Containers[0].Image = image
 	}
 }

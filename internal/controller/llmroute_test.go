@@ -161,15 +161,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{},
 		})
 	})
-	t.Run("update replicas", func(t *testing.T) {
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
-			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
-				Replicas: ptr.To[int32](123),
-			},
-		})
-		require.Equal(t, int32(123), *dep.Replicas)
-	})
-	t.Run("update resources", func(t *testing.T) {
+	t.Run("update", func(t *testing.T) {
 		req := corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -179,9 +171,13 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
 			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
 				Resources: &req,
+				Replicas:  ptr.To[int32](123),
+				Image:     "some-image",
 			},
 		},
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
+		require.Equal(t, int32(123), *dep.Replicas)
+		require.Equal(t, "some-image", dep.Template.Spec.Containers[0].Image)
 	})
 }
