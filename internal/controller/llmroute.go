@@ -213,7 +213,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 					},
 				},
 			}
-			extProcDeploymentUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
+			applyExtProcDeploymentConfigUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
@@ -223,7 +223,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
 	} else {
-		extProcDeploymentUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
+		applyExtProcDeploymentConfigUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
 		if _, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update deployment: %w", err)
 		}
@@ -268,7 +268,7 @@ func ownerReferenceForLLMRoute(llmRoute *aigv1a1.LLMRoute) []metav1.OwnerReferen
 	}}
 }
 
-func extProcDeploymentUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.LLMRouteFilterConfig) {
+func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.LLMRouteFilterConfig) {
 	if filterConfig == nil || filterConfig.ExternalProcess == nil {
 		return
 	}

@@ -6,6 +6,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -143,4 +144,44 @@ func TestLLMRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	for i, target := range extPolicy.Spec.TargetRefs {
 		require.Equal(t, llmRoute.Spec.TargetRefs[i].Name, target.Name)
 	}
+}
+
+func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
+	dep := &appsv1.DeploymentSpec{
+		Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{}},
+			},
+		},
+	}
+	t.Run("not panic", func(t *testing.T) {
+		applyExtProcDeploymentConfigUpdate(dep, nil)
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{})
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
+			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{},
+		})
+	})
+	t.Run("update replicas", func(t *testing.T) {
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
+			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+				Replicas: ptr.To[int32](123),
+			},
+		})
+		require.Equal(t, int32(123), *dep.Replicas)
+	})
+	t.Run("update resources", func(t *testing.T) {
+		req := corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+			},
+		}
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
+			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+				Resources: &req,
+			},
+		},
+		)
+		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
+	})
 }
