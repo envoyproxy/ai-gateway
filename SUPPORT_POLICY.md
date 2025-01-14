@@ -16,7 +16,7 @@ in a custom control plane, etc., we assume that any consumer of the project shou
 source code depending on the project. This allows us to declare deprecation and introduce the breaking changes
 in the version after the next one. For example, any public API will be marked as deprecated in the version N and will be
 removed in the version N+2. We guarantee that how users should migrate to the new API will be documented in the release
-notes.
+notes if applicable, but we do not guarantee that the migration path will be provided.
 
 # Custom Resource Definitions
 
