@@ -169,7 +169,7 @@ type LLMRouteFilterConfigExternalProcess struct {
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 	// Image is the image of the external process container.
 	//
-	// This defaults to the ghcr.io/tetratelabs/ai-gateway-extproc:${VERSION} image where
+	// This defaults to the ghcr.io/envoyproxy/ai-gateway/extproc:${VERSION} image where
 	// ${VERSION} is the version of the Envoy AI Gateway controller.
 	//
 	// +optional
