@@ -24,6 +24,7 @@ path will be provided.
 The Custom Resource Definitions (CRDs) are defined in api/${version}/*.go files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
 **For alpha versions**, we simply employ the same deprecation policy as the Go package. In other words, the APIs will be marked as
 deprecated in the version N and will be removed in the version N+2 but without any guarantee of migration path.
+Migration paths for alpha versions will be the best effort and will be documented in the release notes.
 **For beta versions**, For beta versions, it is the same as the alpha versions, but we will provide a migration path in the release notes.
 **For stable versions**, we will never break the APIs unless there is a critical security issue.
 We will provide a migration path in the release notes in case we need to break the APIs.
