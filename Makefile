@@ -60,8 +60,7 @@ precommit: tidy codespell apigen format lint editorconfig-checker helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
-check:
-	@$(MAKE) precommit
+check: precommit
 	@echo "running editorconfig-checker"
 	@$(EDITORCONFIG_CHECKER)
 	@if [ ! -z "`git status -s`" ]; then \
