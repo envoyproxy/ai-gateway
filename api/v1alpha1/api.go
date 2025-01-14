@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -57,7 +58,8 @@ type LLMRouteSpec struct {
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
-	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
+	// modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
+	// the transformation of the request and response, etc.
 	//
 	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
@@ -69,6 +71,14 @@ type LLMRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=128
 	Rules []LLMRouteRule `json:"rules"`
+	// FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
+	//
+	// An AI Gateway filter is responsible for the transformation of the request and response
+	// as well as the routing behavior based on the model name extracted from the request content, etc.
+	//
+	// Currently, the filter is only implemented as an external process filter, which might be
+	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
+	FilterConfig *LLMRouteFilterConfig `json:"filterConfig,omitempty"`
 }
 
 // LLMRouteRule is a rule that defines the routing behavior of the LLMRoute.
@@ -120,6 +130,45 @@ type LLMRouteRuleMatch struct {
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(match, match.type != 'RegularExpression')", message="currently only exact match is supported"
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
+}
+
+type LLMRouteFilterConfig struct {
+	// Type specifies the type of the filter configuration.
+	//
+	// Currently, only ExternalProcess is supported, and default is ExternalProcess.
+	//
+	// +kubebuilder:default=ExternalProcess
+	Type LLMRouteFilterConfigType `json:"type"`
+
+	// ExternalProcess is the configuration for the external process filter.
+	// This is optional, and if not set, the default values of Deployment spec will be used.
+	//
+	// +optional
+	ExternalProcess *LLMRouteFilterConfigExternalProcess `json:"externalProcess,omitempty"`
+}
+
+// LLMRouteFilterConfigType specifies the type of the filter configuration.
+//
+// +kubebuilder:validation:Enum=ExternalProcess;DynamicModule
+type LLMRouteFilterConfigType string
+
+const (
+	LLMRouteFilterConfigTypeExternalProcess LLMRouteFilterConfigType = "ExternalProcess"
+	LLMRouteFilterConfigTypeDynamicModule   LLMRouteFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
+)
+
+type LLMRouteFilterConfigExternalProcess struct {
+	// Replicas is the number of desired pods of the external process deployment.
+	//
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+	// Resources required by the external process container.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+	//
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	// TODO: maybe adding the option not to deploy the external process filter and let the user deploy it manually?
+	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
 // +kubebuilder:object:root=true

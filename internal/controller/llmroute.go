@@ -213,6 +213,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 					},
 				},
 			}
+			extProcDeploymentUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
@@ -221,10 +222,12 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 		} else {
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
+	} else {
+		extProcDeploymentUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
+		if _, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update deployment: %w", err)
+		}
 	}
-
-	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
-	_ = deployment
 
 	// This is static, so we don't need to update it.
 	service := &corev1.Service{
@@ -263,4 +266,17 @@ func ownerReferenceForLLMRoute(llmRoute *aigv1a1.LLMRoute) []metav1.OwnerReferen
 		Name:       llmRoute.Name,
 		UID:        llmRoute.UID,
 	}}
+}
+
+func extProcDeploymentUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.LLMRouteFilterConfig) {
+	if filterConfig == nil || filterConfig.ExternalProcess == nil {
+		return
+	}
+	extProc := filterConfig.ExternalProcess
+	if resource := extProc.Resources; resource != nil {
+		d.Template.Spec.Containers[0].Resources = *resource
+	}
+	if replica := extProc.Replicas; replica != nil {
+		d.Replicas = replica
+	}
 }
