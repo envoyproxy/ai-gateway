@@ -19,6 +19,7 @@ ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
 
 # This will print out the help message for contributing to the project.
+.PHONY: help
 help:
 	@echo "Usage: make <target>"
 	@echo ""
