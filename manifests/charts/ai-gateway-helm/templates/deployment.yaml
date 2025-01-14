@@ -34,9 +34,7 @@ spec:
             - containerPort: 1063
             - containerPort: 9090
           args:
-            - --logLevel={{ .Values.controller.logLevel }}
-            - --extprocImage={{ .Values.extProcImage.repository }}:{{ .Values.extProcImage.tag | default .Chart.AppVersion }}
-            - --extprocImagePullPolicy={{ .Values.extProcImage.pullPolicy }}
+            - -zap-log-level={{ .Values.controller.logLevel }}
           livenessProbe:
             grpc:
               port: 1063

@@ -27,7 +27,7 @@ func NewLLMBackendController(client client.Client, kube kubernetes.Interface, lo
 	return &llmBackendController{
 		client:    client,
 		kube:      kube,
-		logger:    logger,
+		logger:    logger.WithName("llmbackend-controller"),
 		eventChan: ch,
 	}
 }
@@ -38,7 +38,7 @@ func (l *llmBackendController) Reconcile(ctx context.Context, req reconcile.Requ
 	if err := l.client.Get(ctx, req.NamespacedName, &llmBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			l.eventChan <- ConfigSinkEventLLMBackendDeleted{namespace: req.Namespace, name: req.Name}
-			ctrl.Log.Info("Deleting LLMBackend",
+			l.logger.Info("Deleting LLMBackend",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}

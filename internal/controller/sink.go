@@ -65,7 +65,7 @@ func newConfigSink(
 	c := &configSink{
 		client:                      kubeClient,
 		kube:                        kube,
-		logger:                      logger,
+		logger:                      logger.WithName("config-sink"),
 		backends:                    make(map[string]*aigv1a1.LLMBackend),
 		llmRoutes:                   make(map[string]*aigv1a1.LLMRoute),
 		backendsToReferencingRoutes: make(map[string]map[*aigv1a1.LLMRoute]struct{}),

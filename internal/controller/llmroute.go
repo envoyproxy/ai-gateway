@@ -46,7 +46,7 @@ func NewLLMRouteController(
 	return &llmRouteController{
 		client:       client,
 		kube:         kube,
-		logger:       logger,
+		logger:       logger.WithName("llmroute-controller"),
 		extProcImage: options.ExtProcImage,
 		eventChan:    ch,
 	}
@@ -65,7 +65,7 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			c.eventChan <- ConfigSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
-			ctrl.Log.Info("Deleting LLMRoute",
+			c.logger.Info("Deleting LLMRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -217,7 +217,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
 			}
-			ctrl.Log.Info("Created deployment", "name", name)
+			c.logger.Info("Created deployment", "name", name)
 		} else {
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
