@@ -35,7 +35,7 @@ We guarantee that simply upgrading the controller will not break the existing co
 no _un-migrated_ resources including breaking change left in the k8s API server. In other words, after the
 proper use of the API and migration path described above, the user should be able to upgrade the controller
 without any issue. However, this does mean that we do NOT guarantee that the existing configuration will work
-across more than one version of the controller. For example if you are using the version N of the controller,
+across more than two version of the controller. For example if you are using the version N of the controller,
 and you want to upgrade to the version N+2, you should first upgrade to the version N+1 while following the
 migration path if applicable, and then upgrade to the version N+2.
 
