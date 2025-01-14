@@ -18,6 +18,23 @@ TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
 
+# This will print out the help message for contributing to the project.
+help:
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "All core targets needed for contributing:"
+	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
+	@echo "  check           	 Run precommit and check for any differences in the codebase."
+	@echo "  test            	 Run the unit tests for the codebase."
+	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
+	@echo "                  	 This will be needed when changing API definitions."
+	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
+	@echo "                  	 Note that this requires some credentials."
+	@echo "  test-controller	 Run the integration tests for the controller with envtest."
+	@echo ""
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc."
+	@echo ""
+
 # This runs the linter, formatter, and tidy on the codebase.
 .PHONY: lint
 lint: golangci-lint
@@ -200,20 +217,3 @@ helm-package: helm-lint
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
 	@helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
-
-
-help:
-	@echo "Usage: make <target>"
-	@echo ""
-	@echo "All core targets needed for contributing:"
-	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
-	@echo "  check           	 Run precommit and check for any differences in the codebase."
-	@echo "  test            	 Run the unit tests for the codebase."
-	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
-	@echo "                  	 This will be needed when changing API definitions."
-	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
-	@echo "                  	 Note that this requires some credentials."
-	@echo "  test-controller	 Run the integration tests for the controller with envtest."
-	@echo ""
-	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc."
-	@echo ""
