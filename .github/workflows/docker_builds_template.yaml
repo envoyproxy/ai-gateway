@@ -43,17 +43,10 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Do not build and push images for pull requests. Just build them to ensure the build is successful.
-      - name: Build Image
-        if: github.event_name != 'push'
-        run: |
-          make docker-build.${{ matrix.target.command_name }}
-
       # Push images for the push events, e.g. when a new tag is pushed as well as PR merges.
       # * Only use the tag if the event is a tag event, otherwise use "latest".
       # * Build for both amd64 and arm64 platforms.
       - name: Build and Push Image
-        if: github.event_name == 'push'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"

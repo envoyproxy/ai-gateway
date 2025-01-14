@@ -125,6 +125,14 @@ test-controller: envtest apigen
                  go test ./tests/controller --tags test_controller -v -count=1; \
     done
 
+# This runs the end-to-end tests for the controller and extproc with a local k8s cluster.
+#
+# This requires the docker images to be built as well as the local k8s cluster to be running.
+.PHONY: test-e2e
+test-e2e: docker-build
+	@echo "Run E2E tests"
+	@go test ./tests/e2e/... -tags test_e2e -v -count=1
+
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
