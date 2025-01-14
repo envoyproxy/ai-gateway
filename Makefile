@@ -73,17 +73,20 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen format lint editorconfig-checker helm-lint
+precommit: tidy codespell apigen format lint editorconfig helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
 check: precommit
-	@echo "running editorconfig-checker"
-	@$(EDITORCONFIG_CHECKER)
 	@if [ ! -z "`git status -s`" ]; then \
 		echo "The following differences will fail CI until committed:"; \
 		git diff --exit-code; \
 	fi
+
+# This runs the editorconfig-checker on the codebase.
+editorconfig: editorconfig-checker
+	@echo "running editorconfig-checker"
+	@$(EDITORCONFIG_CHECKER)
 
 # This runs the unit tests for the codebase.
 .PHONY: test
