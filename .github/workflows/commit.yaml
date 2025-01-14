@@ -171,7 +171,7 @@ jobs:
         run: make test-e2e
 
   docker_push:
-    # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
+    # Docker  builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
     needs: [style, unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
