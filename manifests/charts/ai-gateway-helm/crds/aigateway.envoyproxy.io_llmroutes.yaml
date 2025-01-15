@@ -253,8 +253,8 @@ spec:
                 maxItems: 128
                 type: array
             required:
-            - schema
             - rules
+            - schema
             type: object
         type: object
     served: true
