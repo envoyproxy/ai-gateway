@@ -226,8 +226,8 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 	ec := &filterconfig.Config{}
 	spec := &llmRoute.Spec
 
-	ec.InputSchema.Schema = filterconfig.APISchema(spec.APISchema.Schema)
-	ec.InputSchema.Version = spec.APISchema.Version
+	ec.Schema.Schema = filterconfig.APISchema(spec.APISchema.Schema)
+	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.LLMModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
 	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
@@ -242,8 +242,8 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 				err = fmt.Errorf("backend %s not found", key)
 				return err
 			} else {
-				ec.Rules[i].Backends[j].OutputSchema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
-				ec.Rules[i].Backends[j].OutputSchema.Version = backendObj.Spec.APISchema.Version
+				ec.Rules[i].Backends[j].Schema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
+				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 		}
 		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
