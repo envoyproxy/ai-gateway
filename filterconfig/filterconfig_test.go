@@ -62,7 +62,7 @@ rules:
 	require.NoError(t, err)
 	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
 	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
-	require.Equal(t, "OpenAI", string(cfg.schema.Schema))
+	require.Equal(t, "OpenAI", string(cfg.Schema.Schema))
 	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)
 	require.Len(t, cfg.Rules, 2)

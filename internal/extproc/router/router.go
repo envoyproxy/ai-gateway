@@ -56,14 +56,14 @@ func (r *router) selectBackendFromRule(rule *filterconfig.RouteRule) (backendNam
 		totalWeight += b.Weight
 	}
 	if totalWeight == 0 {
-		return rule.Backends[0].Name, rule.Backends[0].schema
+		return rule.Backends[0].Name, rule.Backends[0].Schema
 	}
 	selected := r.rng.Intn(totalWeight)
 	for _, b := range rule.Backends {
 		if selected < b.Weight {
-			return b.Name, b.schema
+			return b.Name, b.Schema
 		}
 		selected -= b.Weight
 	}
-	return rule.Backends[0].Name, rule.Backends[0].schema
+	return rule.Backends[0].Name, rule.Backends[0].Schema
 }
