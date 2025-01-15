@@ -5,27 +5,27 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 func TestRouter_Calculate(t *testing.T) {
-	outSchema := extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}
-	_r, err := NewRouter(&extprocconfig.Config{
-		Rules: []extprocconfig.RouteRule{
+	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	_r, err := NewRouter(&filterconfig.Config{
+		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []extprocconfig.Backend{
+				Backends: []filterconfig.Backend{
 					{Name: "foo", OutputSchema: outSchema, Weight: 1},
 					{Name: "bar", OutputSchema: outSchema, Weight: 3},
 				},
-				Headers: []extprocconfig.HeaderMatch{
+				Headers: []filterconfig.HeaderMatch{
 					{Name: "x-model-name", Value: "llama3.3333"},
 				},
 			},
 			{
-				Backends: []extprocconfig.Backend{
+				Backends: []filterconfig.Backend{
 					{Name: "openai", OutputSchema: outSchema},
 				},
-				Headers: []extprocconfig.HeaderMatch{
+				Headers: []filterconfig.HeaderMatch{
 					{Name: "x-model-name", Value: "gpt4.4444"},
 				},
 			},
@@ -63,15 +63,15 @@ func TestRouter_Calculate(t *testing.T) {
 }
 
 func TestRouter_selectBackendFromRule(t *testing.T) {
-	_r, err := NewRouter(&extprocconfig.Config{})
+	_r, err := NewRouter(&filterconfig.Config{})
 	require.NoError(t, err)
 	r, ok := _r.(*router)
 	require.True(t, ok)
 
-	outSchema := extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}
+	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
 
-	rule := &extprocconfig.RouteRule{
-		Backends: []extprocconfig.Backend{
+	rule := &filterconfig.RouteRule{
+		Backends: []filterconfig.Backend{
 			{Name: "foo", OutputSchema: outSchema, Weight: 1},
 			{Name: "bar", OutputSchema: outSchema, Weight: 3},
 		},

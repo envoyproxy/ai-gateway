@@ -21,7 +21,7 @@ import (
 
 var (
 	configPath = flag.String("configPath", "", "path to the configuration file. "+
-		"The file must be in YAML format speified in extprocconfig.Config type. The configuration file is watched for changes.")
+		"The file must be in YAML format specified in extprocconfig.Config type. The configuration file is watched for changes.")
 	// TODO: unix domain socket support.
 	extProcPort = flag.String("extProcPort", ":1063", "gRPC port for the external processor")
 	logLevel    = flag.String("logLevel", "info", "log level")

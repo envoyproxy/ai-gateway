@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-gateway-config
+  namespace: "envoy-gateway-system"
+  labels:
+    helm.sh/chart: gateway-helm-v0.0.0-latest
+    app.kubernetes.io/name: gateway-helm
+    app.kubernetes.io/instance: eg
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/managed-by: Helm
+data:
+  envoy-gateway.yaml: |
+    apiVersion: gateway.envoyproxy.io/v1alpha1
+    kind: EnvoyGateway
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    logging:
+      level:
+        default: info
+    provider:
+      kubernetes:
+        rateLimitDeployment:
+          container:
+            image: docker.io/envoyproxy/ratelimit:master
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - imagePullPolicy: IfNotPresent
+                      name: envoy-ratelimit
+      type: Kubernetes
+    extensionApis:
+      enableEnvoyPatchPolicy: true
+      enableBackend: true
+    extensionManager:
+      resources:
+      - group: aigateway.envoyproxy.io
+        version: v1alpha1
+        kind: LLMRoute
+      # Envoy Gateway will watch these resource kinds and use them as extension policies
+      # which can be attached to Gateway resources.
+      policyResources:
+      - group: aigateway.envoyproxy.io
+        version: v1alpha1
+        kind: LLMRoute
+      hooks:
+        # The type of hooks that should be invoked
+        xdsTranslator:
+          post:
+          - HTTPListener
+          - Route
+          - Translation
+      service:
+        # The service that is hosting the extension server
+        fqdn:
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          port: 1063
+---
+

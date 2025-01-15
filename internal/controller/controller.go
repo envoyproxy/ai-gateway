@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -36,6 +37,13 @@ func MustInitializeScheme(scheme *runtime.Scheme) {
 	utilruntime.Must(gwapiv1b1.Install(scheme))
 }
 
+// Options defines the program configurable options that may be passed on the command line.
+type Options struct {
+	ExtProcImage         string
+	EnableLeaderElection bool
+	ZapOptions           zap.Options
+}
+
 func newClients(config *rest.Config) (kubeClient client.Client, kube kubernetes.Interface, err error) {
 	// TODO: cache options, especially HTTPRoutes managed by the AI Gateway.
 	kubeClient, err = client.New(config, client.Options{Scheme: scheme})
@@ -54,10 +62,10 @@ func newClients(config *rest.Config) (kubeClient client.Client, kube kubernetes.
 // This blocks until the manager is stopped.
 //
 // Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
-func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, logLevel string, extProcImage string, leaderElection bool) error {
+func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, options Options) error {
 	opt := ctrl.Options{
 		Scheme:           scheme,
-		LeaderElection:   leaderElection,
+		LeaderElection:   options.EnableLeaderElection,
 		LeaderElectionID: "envoy-ai-gateway-controller",
 	}
 
@@ -71,8 +79,8 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new clients: %w", err)
 	}
 
-	sinkChan := make(chan configSinkEvent, 100)
-	routeC := newLLMRouteController(clientForRouteC, kubeForRouteC, logger, logLevel, extProcImage, sinkChan)
+	sinkChan := make(chan ConfigSinkEvent, 100)
+	routeC := NewLLMRouteController(clientForRouteC, kubeForRouteC, logger, options, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.LLMRoute{}).
 		Complete(routeC); err != nil {
@@ -84,7 +92,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new clients: %w", err)
 	}
 
-	backendC := newLLMBackendController(clientForBackendC, kubeForBackendC, logger, sinkChan)
+	backendC := NewLLMBackendController(clientForBackendC, kubeForBackendC, logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.LLMBackend{}).
 		Complete(backendC); err != nil {
@@ -97,12 +105,6 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sink := newConfigSink(clientForConfigSink, kubeForConfigSink, logger, sinkChan)
-
-	if leaderElection {
-		logger.Info("Waiting to become the leader")
-		<-mgr.Elected()
-		logger.Info("Became the leader")
-	}
 
 	// Before starting the manager, initialize the config sink to sync all LLMBackend and LLMRoute objects in the cluster.
 	logger.Info("Initializing config sink")

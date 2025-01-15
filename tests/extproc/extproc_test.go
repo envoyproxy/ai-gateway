@@ -22,15 +22,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 //go:embed envoy.yaml
 var envoyYamlBase string
 
 var (
-	openAISchema     = extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}
-	awsBedrockSchema = extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaAWSBedrock}
+	openAISchema     = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	awsBedrockSchema = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}
 )
 
 // TestE2E tests the end-to-end flow of the external processor with Envoy.
@@ -46,8 +46,8 @@ func TestE2E(t *testing.T) {
 	accessLogPath := t.TempDir() + "/access.log"
 	requireRunEnvoy(t, accessLogPath)
 	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireWriteExtProcConfig(t, configPath, &extprocconfig.Config{
-		TokenUsageMetadata: &extprocconfig.TokenUsageMetadata{
+	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
+		TokenUsageMetadata: &filterconfig.TokenUsageMetadata{
 			Namespace: "ai_gateway_llm_ns",
 			Key:       "used_token",
 		},
@@ -55,16 +55,16 @@ func TestE2E(t *testing.T) {
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
-		Rules: []extprocconfig.RouteRule{
+		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []extprocconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
-				Headers:  []extprocconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
+				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
-				Backends: []extprocconfig.Backend{
-					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &extprocconfig.BackendAuth{AWSAuth: &extprocconfig.AWSAuth{}}},
+				Backends: []filterconfig.Backend{
+					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
 				},
-				Headers: []extprocconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
+				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
 		},
 	})
@@ -140,7 +140,7 @@ func TestE2E(t *testing.T) {
 }
 
 // requireExtProc starts the external processor with the provided configPath.
-// The config must be in YAML format specified in [extprocconfig.Config] type.
+// The config must be in YAML format specified in [filterconfig.Config] type.
 func requireExtProc(t *testing.T, configPath string) {
 	awsAccessKeyID := requireEnvVar(t, "TEST_AWS_ACCESS_KEY_ID")
 	awsSecretAccessKey := requireEnvVar(t, "TEST_AWS_SECRET_ACCESS_KEY")
@@ -205,7 +205,7 @@ func requireEnvVar(t *testing.T, envVar string) string {
 }
 
 // requireWriteExtProcConfig writes the provided config to the configPath in YAML format.
-func requireWriteExtProcConfig(t *testing.T, configPath string, config *extprocconfig.Config) {
+func requireWriteExtProcConfig(t *testing.T, configPath string, config *filterconfig.Config) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))

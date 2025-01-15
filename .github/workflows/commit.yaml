@@ -6,15 +6,22 @@ on:
   push:
     branches:
       - main
+  # If the PR is coming from a fork, they are not allowed to access secrets by default.
+  # This even is triggered only if the PR gets labeled with 'safe to test' which can only be added by the maintainers.
+  # Jobs do not use secrets in the workflow will ignore this event.
+  pull_request_target:
+    types: [labeled]
+    branches:
+      - main
 
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
-  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   style:
-    # This verifies the code is formatted correctly via `make precommit`.
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Code Style Check
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +42,7 @@ jobs:
         run: make check
 
   unittest:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Unit Test
     runs-on: ubuntu-latest
     steps:
@@ -54,6 +62,7 @@ jobs:
         run: make test
 
   test_cel_validation:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: CEL Validation Test
     runs-on: ubuntu-latest
     steps:
@@ -73,6 +82,7 @@ jobs:
         run: make test-cel
 
   test_controller:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Controller Test
     runs-on: ubuntu-latest
     steps:
@@ -91,7 +101,96 @@ jobs:
       - name: Run unit tests
         run: make test-controller
 
-  docker_builds:
-    name: Docker Build and/or Push
-    needs: [unittest, test_cel_validation, test_controller]
+  test_extproc:
+    name: External Processor Test
+    # Skip the pull_request event from forks as it cannot access secrets even if the PR is labeled with 'safe to test'.
+    if: (github.event.pull_request.head.repo.fork == false) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event.pull_request.head.repo.fork == false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+        if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Install Envoy
+        env:
+          # TODO: use the latest envoy after 1.33 is released.
+          ENVOY_VERSION: envoyproxy/envoy-dev:latest
+        run: |
+          export ENVOY_BIN_DIR=$HOME/envoy/bin
+          mkdir -p $ENVOY_BIN_DIR
+          docker run -v $ENVOY_BIN_DIR:/tmp/coraza -w /tmp/coraza \
+          --entrypoint /bin/cp ${ENVOY_VERSION} /usr/local/bin/envoy .
+          echo $ENVOY_BIN_DIR >> $GITHUB_PATH
+      - name: Run unit tests
+        env:
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+        run: make test-extproc
+
+  test_e2e:
+    # Not all the cases in E2E require secrets, so we run for all the events.
+    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    name: E2E Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Run E2E tests
+        env:
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+        run: make test-e2e
+
+  docker_push:
+    # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
+    if: github.event_name == 'push'
+    name: Push Docker Images
+    needs: [style, unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
+
+  push_helm:
+    name: Push Helm chart
+    # Only push the Helm chart to the GHR when merged into the main branch.
+    if: github.event_name == 'push'
+    needs: [docker_push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login into GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push Helm chart
+        run: |
+          make helm-push

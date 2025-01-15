@@ -12,7 +12,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -24,9 +24,9 @@ type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
 	router                                       router.Router
 	ModelNameHeaderKey, selectedBackendHeaderKey string
-	factories                                    map[extprocconfig.VersionedAPISchema]translator.Factory
+	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	tokenUsageMetadata                           *extprocconfig.TokenUsageMetadata
+	tokenUsageMetadata                           *filterconfig.TokenUsageMetadata
 }
 
 // ProcessorIface is the interface for the processor.
@@ -185,7 +185,7 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	return resp, nil
 }
 
-func buildTokenUsageDynamicMetadata(md *extprocconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
+func buildTokenUsageDynamicMetadata(md *filterconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			md.Namespace: {

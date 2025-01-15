@@ -13,11 +13,12 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 const (
@@ -34,19 +35,19 @@ type llmRouteController struct {
 	logger       logr.Logger
 	logLevel     string
 	extProcImage string
-	eventChan    chan configSinkEvent
+	eventChan    chan ConfigSinkEvent
 }
 
-func newLLMRouteController(
+// NewLLMRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the LLMRoute resource.
+func NewLLMRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	logLevel, extProcImage string, ch chan configSinkEvent,
-) *llmRouteController {
+	options Options, ch chan ConfigSinkEvent,
+) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmRouteController{
 		client:       client,
 		kube:         kube,
-		logger:       logger,
-		logLevel:     logLevel,
-		extProcImage: extProcImage,
+		logger:       logger.WithName("llmroute-controller"),
+		extProcImage: options.ExtProcImage,
 		eventChan:    ch,
 	}
 }
@@ -57,13 +58,14 @@ func newLLMRouteController(
 // The actual HTTPRoute and the extproc configuration will be created in the config sink since we need
 // not only the LLMRoute but also the LLMBackend and other resources to create the full configuration.
 func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	c.logger.Info("Reconciling LLMRoute")
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling LLMRoute", "namespace", req.Namespace, "name", req.Name)
 
 	var llmRoute aigv1a1.LLMRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.eventChan <- configSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
-			ctrl.Log.Info("Deleting LLMRoute",
+			c.eventChan <- ConfigSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
+			c.logger.Info("Deleting LLMRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -81,12 +83,15 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	ownerRef := ownerReferenceForLLMRoute(&llmRoute)
 
 	if err := c.ensuresExtProcConfigMapExists(ctx, &llmRoute, ownerRef); err != nil {
+		logger.Error(err, "Failed to reconcile extProc config map")
 		return ctrl.Result{}, err
 	}
 	if err := c.reconcileExtProcDeployment(ctx, &llmRoute, ownerRef); err != nil {
+		logger.Error(err, "Failed to reconcile extProc deployment")
 		return ctrl.Result{}, err
 	}
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &llmRoute, ownerRef); err != nil {
+		logger.Error(err, "Failed to reconcile extension policy")
 		return ctrl.Result{}, err
 	}
 	// Send a copy to the config sink for a full reconciliation on HTTPRoute as well as the extproc config.
@@ -149,7 +154,7 @@ func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, 
 					Namespace:       llmRoute.Namespace,
 					OwnerReferences: ownerRef,
 				},
-				Data: map[string]string{expProcConfigFileName: extprocconfig.DefaultConfig},
+				Data: map[string]string{expProcConfigFileName: filterconfig.DefaultConfig},
 			}
 			_, err = c.kube.CoreV1().ConfigMaps(llmRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {
@@ -241,7 +246,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
 			}
-			ctrl.Log.Info("Created deployment", "name", name)
+			c.logger.Info("Created deployment", "name", name)
 		} else {
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}

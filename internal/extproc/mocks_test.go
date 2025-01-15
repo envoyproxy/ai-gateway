@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
@@ -99,12 +99,12 @@ type mockRouter struct {
 	t                     *testing.T
 	expHeaders            map[string]string
 	retBackendName        string
-	retVersionedAPISchema extprocconfig.VersionedAPISchema
+	retVersionedAPISchema filterconfig.VersionedAPISchema
 	retErr                error
 }
 
 // Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (string, extprocconfig.VersionedAPISchema, error) {
+func (m mockRouter) Calculate(headers map[string]string) (string, filterconfig.VersionedAPISchema, error) {
 	require.Equal(m.t, m.expHeaders, headers)
 	return m.retBackendName, m.retVersionedAPISchema, m.retErr
 }
