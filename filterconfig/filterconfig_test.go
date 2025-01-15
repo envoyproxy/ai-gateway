@@ -30,7 +30,7 @@ func TestUnmarshalConfigYaml(t *testing.T) {
 	configPath := path.Join(t.TempDir(), "config.yaml")
 	const config = `
 schema:
-  schema: OpenAI
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
 tokenUsageMetadata:
@@ -41,18 +41,18 @@ rules:
   - name: kserve
     weight: 1
     schema:
-      schema: OpenAI
+      name: OpenAI
   - name: awsbedrock
     weight: 10
     schema:
-      schema: AWSBedrock
+      name: AWSBedrock
   headers:
   - name: x-envoy-ai-gateway-model
     value: llama3.3333
 - backends:
   - name: openai
     schema:
-      schema: OpenAI
+      name: OpenAI
   headers:
   - name: x-envoy-ai-gateway-model
     value: gpt4.4444
@@ -62,7 +62,7 @@ rules:
 	require.NoError(t, err)
 	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
 	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
-	require.Equal(t, "OpenAI", string(cfg.Schema.Schema))
+	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
 	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)
 	require.Len(t, cfg.Rules, 2)
@@ -70,7 +70,7 @@ rules:
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
 	require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
 	require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
-	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Schema))
+	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Name))
 	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Schema))
+	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
 }

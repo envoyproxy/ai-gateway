@@ -4,6 +4,7 @@ out/
 .DS_Store
 .terraform
 *for_tests.yaml
+.idea/
 
 # Files and directories to ignore in the site directory
 # dependencies

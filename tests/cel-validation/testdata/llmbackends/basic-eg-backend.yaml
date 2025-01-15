@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   schema:
-    schema: AWSBedrock
+    name: AWSBedrock
   backendRef:
     name: eg-backend
     kind: Backend

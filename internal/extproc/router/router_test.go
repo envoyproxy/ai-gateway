@@ -9,7 +9,7 @@ import (
 )
 
 func TestRouter_Calculate(t *testing.T) {
-	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
 	_r, err := NewRouter(&filterconfig.Config{
 		Rules: []filterconfig.RouteRule{
 			{
@@ -68,7 +68,7 @@ func TestRouter_selectBackendFromRule(t *testing.T) {
 	r, ok := _r.(*router)
 	require.True(t, ok)
 
-	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
 
 	rule := &filterconfig.RouteRule{
 		Backends: []filterconfig.Backend{

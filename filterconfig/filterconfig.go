@@ -20,7 +20,7 @@ import (
 // fallback when the configuration is not explicitly provided.
 const DefaultConfig = `
 schema:
-  schema: OpenAI
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
 `
@@ -30,7 +30,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 // # Example configuration:
 //
 //	schema:
-//	  schema: OpenAI
+//	  name: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
 //	tokenUsageMetadata:
@@ -41,18 +41,18 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	  - name: kserve
 //	    weight: 1
 //	    schema:
-//	      schema: OpenAI
+//	      name: OpenAI
 //	  - name: awsbedrock
 //	    weight: 10
 //	    schema:
-//	      schema: AWSBedrock
+//	      name: AWSBedrock
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
 //	    schema:
-//	      schema: OpenAI
+//	      name: OpenAI
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: gpt4.4444
@@ -96,18 +96,18 @@ type TokenUsageMetadata struct {
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
-	// Schema is the API schema.
-	Schema APISchema `yaml:"schema"`
+	// Name is the name of the API schema.
+	Name APISchemaName `yaml:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `yaml:"version,omitempty"`
 }
 
-// APISchema corresponds to APISchema in api/v1alpha1/api.go.
-type APISchema string
+// APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
+type APISchemaName string
 
 const (
-	APISchemaOpenAI     APISchema = "OpenAI"
-	APISchemaAWSBedrock APISchema = "AWSBedrock"
+	APISchemaOpenAI     APISchemaName = "OpenAI"
+	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 )
 
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.

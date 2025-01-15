@@ -29,7 +29,7 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(&filterconfig.Config{
-			Schema: filterconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
+			Schema: filterconfig.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "cannot create request body parser")
@@ -37,14 +37,14 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
 			TokenUsageMetadata:       &filterconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			Schema:                   filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
+			Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
 			Rules: []filterconfig.RouteRule{
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "kserve", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
-						{Name: "awsbedrock", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}},
+						{Name: "kserve", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
+						{Name: "awsbedrock", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{
@@ -55,7 +55,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				},
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "openai", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
+						{Name: "openai", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{
@@ -79,8 +79,8 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "x-envoy-ai-gateway-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}])
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}])
 	})
 }
 

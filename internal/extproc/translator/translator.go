@@ -20,9 +20,9 @@ type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
 func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
-	if in.Schema == filterconfig.APISchemaOpenAI {
+	if in.Name == filterconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
-		switch out.Schema {
+		switch out.Name {
 		case filterconfig.APISchemaOpenAI:
 			return newOpenAIToOpenAITranslator, nil
 		case filterconfig.APISchemaAWSBedrock:

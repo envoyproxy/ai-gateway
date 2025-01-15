@@ -169,8 +169,9 @@ spec:
 
                   This is required to be set.
                 properties:
-                  schema:
-                    description: Schema is the API schema of the LLMRoute or LLMBackend.
+                  name:
+                    description: Name is the name of the API schema of the LLMRoute
+                      or LLMBackend.
                     enum:
                     - OpenAI
                     - AWSBedrock
@@ -179,7 +180,7 @@ spec:
                     description: Version is the version of the API schema.
                     type: string
                 required:
-                - schema
+                - name
                 type: object
             required:
             - backendRef

@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   schema:
-    schema: OpenAI
+    name: OpenAI
   rules:
     - matches:
       - headers:

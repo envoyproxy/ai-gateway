@@ -51,7 +51,7 @@ type LLMRouteSpec struct {
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
+	// +kubebuilder:validation:XValidation:rule="self.name == 'OpenAI'"
 	APISchema LLMAPISchema `json:"schema"`
 	// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
@@ -183,27 +183,27 @@ type LLMBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type LLMAPISchema struct {
-	// Schema is the API schema of the LLMRoute or LLMBackend.
+	// Name is the name of the API schema of the LLMRoute or LLMBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
-	Schema APISchema `json:"schema"`
+	Name APISchemaName `json:"name"`
 
 	// Version is the version of the API schema.
 	Version string `json:"version,omitempty"`
 }
 
-// APISchema defines the API schema.
-type APISchema string
+// APISchemaName defines the name of the API schema.
+type APISchemaName string
 
 const (
 	// APISchemaOpenAI is the OpenAI schema.
 	//
 	// https://github.com/openai/openai-openapi
-	APISchemaOpenAI APISchema = "OpenAI"
+	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaAWSBedrock is the AWS Bedrock schema.
 	//
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
-	APISchemaAWSBedrock APISchema = "AWSBedrock"
+	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 )
 
 const (

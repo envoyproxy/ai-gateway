@@ -78,7 +78,7 @@ func TestConfigSink_init(t *testing.T) {
 					BackendRef: egv1a1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 					},
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI},
+					APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				},
 			},
 			{
@@ -87,7 +87,7 @@ func TestConfigSink_init(t *testing.T) {
 					BackendRef: egv1a1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 					},
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaAWSBedrock},
+					APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaAWSBedrock},
 				},
 			},
 			{
@@ -96,7 +96,7 @@ func TestConfigSink_init(t *testing.T) {
 					BackendRef: egv1a1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 					},
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI},
+					APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				},
 			},
 			{
@@ -105,7 +105,7 @@ func TestConfigSink_init(t *testing.T) {
 					BackendRef: egv1a1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 					},
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI},
+					APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				},
 			},
 		} {
@@ -212,7 +212,7 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -389,7 +389,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.LLMBackendSpec{
 				APISchema: aigv1a1.LLMAPISchema{
-					Schema: aigv1a1.APISchemaAWSBedrock,
+					Name: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
@@ -425,7 +425,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			route: &aigv1a1.LLMRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
 				Spec: aigv1a1.LLMRouteSpec{
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					APISchema: aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.LLMRouteRule{
 						{
 							BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
@@ -446,13 +446,13 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterconfig.Config{
-				Schema:                   filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.LLMModelHeaderKey,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}},
 					},

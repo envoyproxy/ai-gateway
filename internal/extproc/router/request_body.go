@@ -15,7 +15,7 @@ type RequestBodyParser func(path string, body *extprocv3.HttpBody) (modelName st
 
 // NewRequestBodyParser creates a new RequestBodyParser based on the schema.
 func NewRequestBodyParser(schema filterconfig.VersionedAPISchema) (RequestBodyParser, error) {
-	if schema.Schema == filterconfig.APISchemaOpenAI {
+	if schema.Name == filterconfig.APISchemaOpenAI {
 		return openAIParseBody, nil
 	}
 	return nil, fmt.Errorf("unsupported API schema: %s", schema)

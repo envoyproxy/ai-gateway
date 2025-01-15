@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -29,8 +29,8 @@ import (
 var envoyYamlBase string
 
 var (
-	openAISchema     = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
-	awsBedrockSchema = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}
+	openAISchema     = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
+	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
 )
 
 // TestE2E tests the end-to-end flow of the external processor with Envoy.

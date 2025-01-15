@@ -5,8 +5,8 @@ metadata:
   namespace: default
 spec:
   schema:
-    # Schema must be OpenAI schema at the moment, so this is invalid.
-    schema: SomeRandomVendor
+    # Schema name must be OpenAI schema at the moment, so this is invalid.
+    name: SomeRandomVendor
   rules:
     - matches:
       - headers:

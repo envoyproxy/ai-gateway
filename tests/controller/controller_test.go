@@ -17,7 +17,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,7 +30,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests"
 )
 
-var defaultSchema = aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
+var defaultSchema = aigv1a1.LLMAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(llmRouteName string) string {
 	return fmt.Sprintf("ai-gateway-llm-route-extproc-%s", llmRouteName)
