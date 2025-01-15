@@ -446,7 +446,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterconfig.Config{
-				Schema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.LLMModelHeaderKey,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{

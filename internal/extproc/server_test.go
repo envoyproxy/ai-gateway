@@ -37,7 +37,7 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
 			TokenUsageMetadata:       &filterconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			Schema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
+			Schema:                   filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
 			Rules: []filterconfig.RouteRule{

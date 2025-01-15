@@ -51,28 +51,6 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              schema:
-                description: |-
-                  APISchema specifies the API schema of the input that the target Gateway(s) will receive.
-                  Based on this schema, the ai-gateway will perform the necessary transformation to the
-                  output schema specified in the selected LLMBackend during the routing process.
-
-                  Currently, the only supported schema is OpenAI as the input schema.
-                properties:
-                  schema:
-                    description: Schema is the API schema of the LLMRoute or LLMBackend.
-                    enum:
-                    - OpenAI
-                    - AWSBedrock
-                    type: string
-                  version:
-                    description: Version is the version of the API schema.
-                    type: string
-                required:
-                - schema
-                type: object
-                x-kubernetes-validations:
-                - rule: self.schema == 'OpenAI'
               rules:
                 description: |-
                   Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
@@ -197,6 +175,28 @@ spec:
                   type: object
                 maxItems: 128
                 type: array
+              schema:
+                description: |-
+                  APISchema specifies the API schema of the input that the target Gateway(s) will receive.
+                  Based on this schema, the ai-gateway will perform the necessary transformation to the
+                  output schema specified in the selected LLMBackend during the routing process.
+
+                  Currently, the only supported schema is OpenAI as the input schema.
+                properties:
+                  schema:
+                    description: Schema is the API schema of the LLMRoute or LLMBackend.
+                    enum:
+                    - OpenAI
+                    - AWSBedrock
+                    type: string
+                  version:
+                    description: Version is the version of the API schema.
+                    type: string
+                required:
+                - schema
+                type: object
+                x-kubernetes-validations:
+                - rule: self.schema == 'OpenAI'
               targetRefs:
                 description: TargetRefs are the names of the Gateway resources this
                   LLMRoute is being attached to.
