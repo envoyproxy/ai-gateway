@@ -448,8 +448,8 @@ type Tool struct {
 	ToolSpec *ToolSpecification `json:"toolSpec"`
 }
 
-// ToolInputSchema The schema for the tool. The top level schema type must be an object.
-type ToolInputSchema struct {
+// ToolSchema The schema for the tool. The top level schema type must be an object.
+type ToolSchema struct {
 	JSON any `json:"json"`
 }
 
@@ -458,10 +458,10 @@ type ToolSpecification struct {
 	// The description for the tool.
 	Description *string `json:"description,omitempty"`
 
-	// The input schema for the tool in JSON format.
+	// The schema for the tool in JSON format.
 	//
-	// InputSchema is a required field
-	InputSchema *ToolInputSchema `json:"inputSchema"`
+	// Schema is a required field
+	Schema *ToolSchema `json:"schema"`
 
 	// The name for the tool.
 	//

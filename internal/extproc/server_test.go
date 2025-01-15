@@ -29,7 +29,7 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(&filterconfig.Config{
-			InputSchema: filterconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
+			Schema: filterconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "cannot create request body parser")
@@ -37,14 +37,14 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
 			TokenUsageMetadata:       &filterconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
+			Schema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
 			Rules: []filterconfig.RouteRule{
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "kserve", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
-						{Name: "awsbedrock", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}},
+						{Name: "kserve", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
+						{Name: "awsbedrock", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{
@@ -55,7 +55,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				},
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "openai", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
+						{Name: "openai", Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{

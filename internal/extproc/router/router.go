@@ -13,7 +13,7 @@ import (
 type Router interface {
 	// Calculate determines the backend to route to based on the headers.
 	// Returns the backend name and the output schema.
-	Calculate(headers map[string]string) (backendName string, outputSchema filterconfig.VersionedAPISchema, err error)
+	Calculate(headers map[string]string) (backendName string, schema filterconfig.VersionedAPISchema, err error)
 }
 
 // router implements [Router].
@@ -28,7 +28,7 @@ func NewRouter(config *filterconfig.Config) (Router, error) {
 }
 
 // Calculate implements [Router.Calculate].
-func (r *router) Calculate(headers map[string]string) (backendName string, outputSchema filterconfig.VersionedAPISchema, err error) {
+func (r *router) Calculate(headers map[string]string) (backendName string, schema filterconfig.VersionedAPISchema, err error) {
 	var rule *filterconfig.RouteRule
 	for i := range r.rules {
 		_rule := &r.rules[i]
@@ -44,11 +44,11 @@ func (r *router) Calculate(headers map[string]string) (backendName string, outpu
 	if rule == nil {
 		return "", filterconfig.VersionedAPISchema{}, errors.New("no matching rule found")
 	}
-	backendName, outputSchema = r.selectBackendFromRule(rule)
+	backendName, schema = r.selectBackendFromRule(rule)
 	return
 }
 
-func (r *router) selectBackendFromRule(rule *filterconfig.RouteRule) (backendName string, outputSchema filterconfig.VersionedAPISchema) {
+func (r *router) selectBackendFromRule(rule *filterconfig.RouteRule) (backendName string, schema filterconfig.VersionedAPISchema) {
 	// Each backend has a weight, so we randomly select depending on the weight.
 	// This is a pretty naive implementation and can be buggy, so fix it later.
 	totalWeight := 0
@@ -56,14 +56,14 @@ func (r *router) selectBackendFromRule(rule *filterconfig.RouteRule) (backendNam
 		totalWeight += b.Weight
 	}
 	if totalWeight == 0 {
-		return rule.Backends[0].Name, rule.Backends[0].OutputSchema
+		return rule.Backends[0].Name, rule.Backends[0].schema
 	}
 	selected := r.rng.Intn(totalWeight)
 	for _, b := range rule.Backends {
 		if selected < b.Weight {
-			return b.Name, b.OutputSchema
+			return b.Name, b.schema
 		}
 		selected -= b.Weight
 	}
-	return rule.Backends[0].Name, rule.Backends[0].OutputSchema
+	return rule.Backends[0].Name, rule.Backends[0].schema
 }

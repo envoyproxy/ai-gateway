@@ -51,18 +51,18 @@ func TestE2E(t *testing.T) {
 			Namespace: "ai_gateway_llm_ns",
 			Key:       "used_token",
 		},
-		InputSchema: openAISchema,
+		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
 		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
+				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema}},
 				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},

@@ -23,7 +23,7 @@ spec:
           This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
           clients to use a single schema API to interact with multiple LLM backends.
 
-          The inputSchema field is used to determine the structure of the requests that the Gateway will
+          The schema field is used to determine the structure of the requests that the Gateway will
           receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
           on the output schema of the LLMBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
@@ -51,7 +51,7 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
-              inputSchema:
+              schema:
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
                   Based on this schema, the ai-gateway will perform the necessary transformation to the
@@ -253,7 +253,7 @@ spec:
                 maxItems: 128
                 type: array
             required:
-            - inputSchema
+            - schema
             - rules
             type: object
         type: object

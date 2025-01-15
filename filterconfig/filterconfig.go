@@ -19,7 +19,7 @@ import (
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
 const DefaultConfig = `
-inputSchema:
+schema:
   schema: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
@@ -29,7 +29,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //
 // # Example configuration:
 //
-//	inputSchema:
+//	schema:
 //	  schema: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
@@ -40,18 +40,18 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	- backends:
 //	  - name: kserve
 //	    weight: 1
-//	    outputSchema:
+//	    schema:
 //	      schema: OpenAI
 //	  - name: awsbedrock
 //	    weight: 10
-//	    outputSchema:
+//	    schema:
 //	      schema: AWSBedrock
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
-//	    outputSchema:
+//	    schema:
 //	      schema: OpenAI
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
@@ -70,8 +70,8 @@ type Config struct {
 	// If this is provided, the filter will populate the usage token in the filter metadata at the end of the
 	// response body processing.
 	TokenUsageMetadata *TokenUsageMetadata `yaml:"tokenUsageMetadata,omitempty"`
-	// InputSchema specifies the API schema of the input format of requests to the filter.
-	InputSchema VersionedAPISchema `yaml:"inputSchema"`
+	// Schema specifies the API schema of the input format of requests to the filter.
+	Schema VersionedAPISchema `yaml:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `yaml:"modelNameHeaderKey"`
 	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the filter
@@ -130,8 +130,8 @@ type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
 	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
 	Name string `yaml:"name"`
-	// OutputSchema specifies the API schema of the output format of requests from.
-	OutputSchema VersionedAPISchema `yaml:"outputSchema"`
+	// Schema specifies the API schema of the output format of requests from.
+	Schema VersionedAPISchema `yaml:"schema"`
 	// Weight is the weight of the backend in the routing decision.
 	Weight int `yaml:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.

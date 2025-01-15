@@ -14,7 +14,7 @@ import (
 // This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple LLM backends.
 //
-// The inputSchema field is used to determine the structure of the requests that the Gateway will
+// The schema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
 // on the output schema of the LLMBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
@@ -52,7 +52,7 @@ type LLMRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema LLMAPISchema `json:"inputSchema"`
+	APISchema LLMAPISchema `json:"schema"`
 	// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -158,7 +158,7 @@ type LLMBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema LLMAPISchema `json:"outputSchema"`
+	APISchema LLMAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.

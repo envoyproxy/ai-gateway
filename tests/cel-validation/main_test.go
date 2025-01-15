@@ -31,11 +31,11 @@ func TestLLMRoutes(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "non_openai_schema.yaml",
-			expErr: `spec.inputSchema: Invalid value: "object": failed rule: self.schema == 'OpenAI'`,
+			expErr: `spec.schema: Invalid value: "object": failed rule: self.schema == 'OpenAI'`,
 		},
 		{
 			name:   "unknown_schema.yaml",
-			expErr: "spec.inputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
+			expErr: "spec.schema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 		{
 			name:   "unsupported_match.yaml",
@@ -74,7 +74,7 @@ func TestLLMBackends(t *testing.T) {
 		{name: "basic-eg-backend.yaml"},
 		{
 			name:   "unknown_schema.yaml",
-			expErr: "spec.outputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
+			expErr: "spec.schema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

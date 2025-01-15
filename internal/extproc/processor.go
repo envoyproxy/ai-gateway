@@ -73,14 +73,14 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
-	backendName, outputSchema, err := p.config.router.Calculate(p.requestHeaders)
+	backendName, schema, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
-	factory, ok := p.config.factories[outputSchema]
+	factory, ok := p.config.factories[schema]
 	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", outputSchema)
+		return nil, fmt.Errorf("failed to find factory for output schema %q", schema)
 	}
 
 	t, err := factory(path)

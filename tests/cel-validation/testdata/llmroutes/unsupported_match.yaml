@@ -4,7 +4,7 @@ metadata:
   name: apple
   namespace: default
 spec:
-  inputSchema:
+  schema:
     schema: OpenAI
   rules:
     - matches:

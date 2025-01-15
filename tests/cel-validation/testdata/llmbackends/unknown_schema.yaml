@@ -4,6 +4,6 @@ metadata:
   name: cat-backend
   namespace: default
 spec:
-  outputSchema:
+  schema:
     # Schema must be one of the known schemas, so this is invalid.
     schema: SomeRandomVendor

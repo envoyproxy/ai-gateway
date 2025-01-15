@@ -446,13 +446,13 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterconfig.Config{
-				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.LLMModelHeaderKey,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}},
 					},
