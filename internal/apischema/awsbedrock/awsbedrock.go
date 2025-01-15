@@ -460,8 +460,8 @@ type ToolSpecification struct {
 
 	// The schema for the tool in JSON format.
 	//
-	// Schema is a required field
-	Schema *ToolSchema `json:"schema"`
+	// InputSchema is a required field
+	InputSchema *ToolSchema `json:"inputSchema"`
 
 	// The name for the tool.
 	//
