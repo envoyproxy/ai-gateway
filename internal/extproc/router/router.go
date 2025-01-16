@@ -18,7 +18,7 @@ type router struct {
 
 // NewRouter creates a new [extprocapi.Router] implementation for the given config.
 func NewRouter(config *filterconfig.Config, newCustomFn extprocapi.NewCustomRouterFn) (extprocapi.Router, error) {
-	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))}
+	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))} //nolint:gosec
 	if newCustomFn != nil {
 		customRouter := newCustomFn(r, config)
 		return customRouter, nil
