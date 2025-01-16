@@ -175,7 +175,7 @@ spec:
                 - schema
                 type: object
                 x-kubernetes-validations:
-                - rule: self.schema == 'OpenAI'
+                - rule: self.name == 'OpenAI'
               rules:
                 description: |-
                   Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
