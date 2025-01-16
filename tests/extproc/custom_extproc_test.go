@@ -1,3 +1,5 @@
+//go:build test_extproc
+
 package extproc
 
 import (
