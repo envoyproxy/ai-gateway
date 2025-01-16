@@ -127,7 +127,7 @@ type AIGatewayRouteSpec struct {
 	//	            metadata:
 	//	              namespace: envoy.filters.http.ai_gateway.token_usage
 	//	              key: ai_gateway_route_request_cost
-	RequestCost *RequestCost `json:"captureTokenUsage,omitempty"`
+	RequestCost *RequestCost `json:"requestCost,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.

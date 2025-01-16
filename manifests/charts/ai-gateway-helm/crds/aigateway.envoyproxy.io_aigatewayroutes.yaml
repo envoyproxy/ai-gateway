@@ -51,51 +51,6 @@ spec:
           spec:
             description: Spec defines the details of the AIGatewayRoute.
             properties:
-              captureTokenUsage:
-                description: "RequestCost specifies the cost of the request, notably
-                  the token usage.\nThe AI Gateway filter will capture this information
-                  and store it in the Envoy's dynamic\nmetadata per HTTP request.
-                  The namespaced key is \"envoy.filters.http.ai_gateway.token_usage\",\nand
-                  the key is \"ai_gateway_route_request_cost\".\n\nFor example, with
-                  the following BackendTrafficPolicy of Envoy Gateway,\nthe captured
-                  value is used as the \"token usage rate limiting\":\n\napiVersion:
-                  gateway.envoyproxy.io/v1alpha1\nkind: BackendTrafficPolicy\nmetadata:\n\tname:
-                  some-example-token-rate-limit\n\tnamespace: default\nspec:\n\ttargetRefs:\n\t
-                  \ - group: gateway.networking.k8s.io\n\t    kind: HTTPRoute\n\t
-                  \   name: usage-rate-limit\n\trateLimit:\n\t  type: Global\n\t  global:\n\t
-                  \   rules:\n\t      - clientSelectors:\n\t          # Do the rate
-                  limiting based on the x-user-id header.\n\t          - headers:\n\t
-                  \             - name: x-user-id\n\t                type: Exact\n\t
-                  \               value: one\n\t        limit:\n\t          # Configures
-                  the number of \"tokens\" allowed per hour.\n\t          requests:
-                  10000\n\t          unit: Hour\n\t        cost:\n\t          request:\n\t
-                  \           from: Number\n\t            # Setting the request cost
-                  to zero allows to only check the rate limit budget,\n\t            #
-                  and not consume the budget on the request path.\n\t            number:
-                  0\n\t          # This specifies the cost of the response retrieved
-                  from the dynamic metadata set by the AI Gateway filter.\n\t          #
-                  The extracted value will be used to consume the rate limit budget,
-                  and subsequent requests will be rate limited\n\t          # if the
-                  budget is exhausted.\n\t          response:\n\t            from:
-                  Metadata\n\t            metadata:\n\t              namespace: envoy.filters.http.ai_gateway.token_usage\n\t
-                  \             key: ai_gateway_route_request_cost"
-                properties:
-                  celExpression:
-                    description: |-
-                      CELExpression is the CEL expression to calculate the cost of the request.
-                      The CEL expression must return an integer value. The CEL expression should be
-                      able to access the request headers, model name, backend name, input/output tokens etc.
-                    type: string
-                  type:
-                    description: |-
-                      Type specifies the type of the request cost. The default is "default",
-                      and it uses "output token" as the cost.
-                    enum:
-                    - default
-                    type: string
-                required:
-                - type
-                type: object
               filterConfig:
                 description: |-
                   FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
@@ -221,6 +176,51 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - rule: self.schema == 'OpenAI'
+              requestCost:
+                description: "RequestCost specifies the cost of the request, notably
+                  the token usage.\nThe AI Gateway filter will capture this information
+                  and store it in the Envoy's dynamic\nmetadata per HTTP request.
+                  The namespaced key is \"envoy.filters.http.ai_gateway.token_usage\",\nand
+                  the key is \"ai_gateway_route_request_cost\".\n\nFor example, with
+                  the following BackendTrafficPolicy of Envoy Gateway,\nthe captured
+                  value is used as the \"token usage rate limiting\":\n\napiVersion:
+                  gateway.envoyproxy.io/v1alpha1\nkind: BackendTrafficPolicy\nmetadata:\n\tname:
+                  some-example-token-rate-limit\n\tnamespace: default\nspec:\n\ttargetRefs:\n\t
+                  \ - group: gateway.networking.k8s.io\n\t    kind: HTTPRoute\n\t
+                  \   name: usage-rate-limit\n\trateLimit:\n\t  type: Global\n\t  global:\n\t
+                  \   rules:\n\t      - clientSelectors:\n\t          # Do the rate
+                  limiting based on the x-user-id header.\n\t          - headers:\n\t
+                  \             - name: x-user-id\n\t                type: Exact\n\t
+                  \               value: one\n\t        limit:\n\t          # Configures
+                  the number of \"tokens\" allowed per hour.\n\t          requests:
+                  10000\n\t          unit: Hour\n\t        cost:\n\t          request:\n\t
+                  \           from: Number\n\t            # Setting the request cost
+                  to zero allows to only check the rate limit budget,\n\t            #
+                  and not consume the budget on the request path.\n\t            number:
+                  0\n\t          # This specifies the cost of the response retrieved
+                  from the dynamic metadata set by the AI Gateway filter.\n\t          #
+                  The extracted value will be used to consume the rate limit budget,
+                  and subsequent requests will be rate limited\n\t          # if the
+                  budget is exhausted.\n\t          response:\n\t            from:
+                  Metadata\n\t            metadata:\n\t              namespace: envoy.filters.http.ai_gateway.token_usage\n\t
+                  \             key: ai_gateway_route_request_cost"
+                properties:
+                  celExpression:
+                    description: |-
+                      CELExpression is the CEL expression to calculate the cost of the request.
+                      The CEL expression must return an integer value. The CEL expression should be
+                      able to access the request headers, model name, backend name, input/output tokens etc.
+                    type: string
+                  type:
+                    description: |-
+                      Type specifies the type of the request cost. The default is "default",
+                      and it uses "output token" as the cost.
+                    enum:
+                    - default
+                    type: string
+                required:
+                - type
+                type: object
               rules:
                 description: |-
                   Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
