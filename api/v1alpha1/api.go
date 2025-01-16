@@ -42,9 +42,9 @@ type AIGatewayRouteList struct {
 type AIGatewayRouteSpec struct {
 	// TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
 	//
-	// +optional
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=128
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
+	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected AIServiceBackend during the routing process.
