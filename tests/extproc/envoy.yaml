@@ -46,6 +46,14 @@ static_resources:
                             - header:
                                 key: 'Authorization'
                                 value: 'Bearer TEST_OPENAI_API_KEY'
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-selected-backend-name
+                                string_match:
+                                  exact: testupstream
+                          route:
+                            cluster: testupstream
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
@@ -71,6 +79,19 @@ static_resources:
                       suppressEnvoyHeaders: true
 
   clusters:
+    - name: testupstream
+      connect_timeout: 0.25s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: testupstream
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
     - name: extproc_cluster
       connect_timeout: 0.25s
       type: STATIC

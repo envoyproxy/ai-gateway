@@ -180,23 +180,28 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expectedBody, err := base64.StdEncoding.DecodeString(r.Header.Get(expectedRequestBodyHeaderKey))
-	if err != nil {
-		fmt.Println("failed to decode the expected request body")
-		http.Error(w, "failed to decode the expected request body", http.StatusBadRequest)
-		return
-	}
-	actual, err := io.ReadAll(r.Body)
+	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println("failed to read the request body")
 		http.Error(w, "failed to read the request body", http.StatusInternalServerError)
 		return
 	}
 
-	if string(expectedBody) != string(actual) {
-		fmt.Println("unexpected request body: got", string(actual), "expected", string(expectedBody))
-		http.Error(w, "unexpected request body: got "+string(actual)+", expected "+string(expectedBody), http.StatusBadRequest)
-		return
+	if r.Header.Get(expectedRequestBodyHeaderKey) != "" {
+		expectedBody, err := base64.StdEncoding.DecodeString(r.Header.Get(expectedRequestBodyHeaderKey))
+		if err != nil {
+			fmt.Println("failed to decode the expected request body")
+			http.Error(w, "failed to decode the expected request body", http.StatusBadRequest)
+			return
+		}
+
+		if string(expectedBody) != string(requestBody) {
+			fmt.Println("unexpected request body: got", string(requestBody), "expected", string(expectedBody))
+			http.Error(w, "unexpected request body: got "+string(requestBody)+", expected "+string(expectedBody), http.StatusBadRequest)
+			return
+		}
+	} else {
+		fmt.Println("no expected request body")
 	}
 
 	responseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
