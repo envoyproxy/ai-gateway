@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -180,4 +181,51 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		require.Equal(t, int32(123), *dep.Replicas)
 		require.Equal(t, "some-image", dep.Template.Spec.Containers[0].Image)
 	})
+}
+
+func Test_llmRouteIndexFunc(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, aigv1a1.AddToScheme(scheme))
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithIndex(&aigv1a1.LLMRoute{}, k8sClientIndexBackendToReferencingLLMRoute, llmRouteIndexFunc).
+		Build()
+
+	// Create a LLMRoute.
+	llmRoute := &aigv1a1.LLMRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myroute",
+			Namespace: "default",
+		},
+		Spec: aigv1a1.LLMRouteSpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
+				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
+			},
+			Rules: []aigv1a1.LLMRouteRule{
+				{
+					Matches: []aigv1a1.LLMRouteRuleMatch{},
+					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+						{Name: "backend1", Weight: 1},
+						{Name: "backend2", Weight: 1},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, c.Create(context.Background(), llmRoute))
+
+	var llmRoutes aigv1a1.LLMRouteList
+	err := c.List(context.Background(), &llmRoutes,
+		client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: "backend1.default"})
+	require.NoError(t, err)
+	require.Len(t, llmRoutes.Items, 1)
+	require.Equal(t, llmRoute.Name, llmRoutes.Items[0].Name)
+
+	err = c.List(context.Background(), &llmRoutes,
+		client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: "backend2.default"})
+	require.NoError(t, err)
+	require.Len(t, llmRoutes.Items, 1)
+	require.Equal(t, llmRoute.Name, llmRoutes.Items[0].Name)
 }

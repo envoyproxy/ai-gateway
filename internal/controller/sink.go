@@ -23,24 +23,6 @@ const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
 // Exported for internal testing purposes.
 type ConfigSinkEvent any
 
-// ConfigSinkEventLLMBackendDeleted is an event to notify the configSink that an LLMBackend has been deleted.
-//
-// Exported for internal testing purposes.
-type ConfigSinkEventLLMBackendDeleted struct{ namespace, name string }
-
-// String implements fmt.Stringer for testing purposes.
-func (c ConfigSinkEventLLMBackendDeleted) String() string {
-	return fmt.Sprintf("%s.%s", c.name, c.namespace)
-}
-
-// ConfigSinkEventLLMRouteDeleted is an event to notify the configSink that an LLMRoute has been deleted.
-type ConfigSinkEventLLMRouteDeleted struct{ namespace, name string }
-
-// String implements fmt.Stringer for testing purposes.
-func (c ConfigSinkEventLLMRouteDeleted) String() string {
-	return fmt.Sprintf("%s.%s", c.name, c.namespace)
-}
-
 // configSink centralizes the LLMRoute and LLMBackend objects handling
 // which requires to be done in a single goroutine since we need to
 // consolidate the information from both objects to generate the ExtProcConfig
@@ -50,10 +32,7 @@ type configSink struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	eventChan                   chan ConfigSinkEvent
-	llmRoutes                   map[string]*aigv1a1.LLMRoute
-	backends                    map[string]*aigv1a1.LLMBackend
-	backendsToReferencingRoutes map[string]map[*aigv1a1.LLMRoute]struct{}
+	eventChan chan ConfigSinkEvent
 }
 
 func newConfigSink(
@@ -63,51 +42,25 @@ func newConfigSink(
 	eventChan chan ConfigSinkEvent,
 ) *configSink {
 	c := &configSink{
-		client:                      kubeClient,
-		kube:                        kube,
-		logger:                      logger.WithName("config-sink"),
-		backends:                    make(map[string]*aigv1a1.LLMBackend),
-		llmRoutes:                   make(map[string]*aigv1a1.LLMRoute),
-		backendsToReferencingRoutes: make(map[string]map[*aigv1a1.LLMRoute]struct{}),
-		eventChan:                   eventChan,
+		client:    kubeClient,
+		kube:      kube,
+		logger:    logger.WithName("config-sink"),
+		eventChan: eventChan,
 	}
 	return c
+}
+
+func (c *configSink) backend(namespace, name string) (*aigv1a1.LLMBackend, error) {
+	backend := &aigv1a1.LLMBackend{}
+	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
+		return nil, err
+	}
+	return backend, nil
 }
 
 // init caches all LLMBackend and LLMRoute objects in the cluster after the controller gets the leader election,
 // and starts a goroutine to handle the events from the controllers.
 func (c *configSink) init(ctx context.Context) error {
-	var llmBackends aigv1a1.LLMBackendList
-	if err := c.client.List(ctx, &llmBackends); err != nil {
-		return fmt.Errorf("failed to list LLMBackends: %w", err)
-	}
-
-	for i := range llmBackends.Items {
-		llmBackend := &llmBackends.Items[i]
-		c.backends[fmt.Sprintf("%s.%s", llmBackend.Name, llmBackend.Namespace)] = llmBackend
-	}
-
-	var llmRoutes aigv1a1.LLMRouteList
-	if err := c.client.List(ctx, &llmRoutes); err != nil {
-		return fmt.Errorf("failed to list LLMRoutes: %w", err)
-	}
-
-	for i := range llmRoutes.Items {
-		llmRoute := &llmRoutes.Items[i]
-		llmRouteKey := fmt.Sprintf("%s.%s", llmRoute.Name, llmRoute.Namespace)
-		c.llmRoutes[llmRouteKey] = llmRoute
-
-		for _, rule := range llmRoute.Spec.Rules {
-			for _, backend := range rule.BackendRefs {
-				backendKey := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
-				if _, ok := c.backendsToReferencingRoutes[backendKey]; !ok {
-					c.backendsToReferencingRoutes[backendKey] = make(map[*aigv1a1.LLMRoute]struct{})
-				}
-				c.backendsToReferencingRoutes[backendKey][llmRoute] = struct{}{}
-			}
-		}
-	}
-
 	go func() {
 		for {
 			select {
@@ -127,12 +80,8 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 	switch e := event.(type) {
 	case *aigv1a1.LLMBackend:
 		c.syncLLMBackend(e)
-	case ConfigSinkEventLLMBackendDeleted:
-		c.deleteLLMBackend(e)
 	case *aigv1a1.LLMRoute:
 		c.syncLLMRoute(e)
-	case ConfigSinkEventLLMRouteDeleted:
-		c.deleteLLMRoute(e)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
 	}
@@ -140,7 +89,6 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 
 func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 	// Check if the HTTPRoute exists.
-	key := fmt.Sprintf("%s.%s", llmRoute.Name, llmRoute.Namespace)
 	var httpRoute gwapiv1.HTTPRoute
 	err := c.client.Get(context.Background(), client.ObjectKey{Name: llmRoute.Name, Namespace: llmRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
@@ -183,36 +131,19 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", llmRoute.Namespace, "name", llmRoute.Name)
 		return
 	}
-
-	// Update the referencing map.
-	for _, rule := range llmRoute.Spec.Rules {
-		for _, backend := range rule.BackendRefs {
-			key := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
-			if _, ok := c.backendsToReferencingRoutes[key]; !ok {
-				c.backendsToReferencingRoutes[key] = make(map[*aigv1a1.LLMRoute]struct{})
-			}
-			c.backendsToReferencingRoutes[key][llmRoute] = struct{}{}
-		}
-	}
-	c.llmRoutes[key] = llmRoute
 }
 
 func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 	key := fmt.Sprintf("%s.%s", llmBackend.Name, llmBackend.Namespace)
-	c.backends[key] = llmBackend
-	for referencedLLMRoute := range c.backendsToReferencingRoutes[key] {
-		c.syncLLMRoute(referencedLLMRoute)
+	var llmRoutes aigv1a1.LLMRouteList
+	err := c.client.List(context.Background(), &llmRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: key})
+	if err != nil {
+		c.logger.Error(err, "failed to list LLMRoutes", "backend", key)
+		return
 	}
-}
-
-func (c *configSink) deleteLLMRoute(event ConfigSinkEventLLMRouteDeleted) {
-	delete(c.llmRoutes, event.String())
-}
-
-func (c *configSink) deleteLLMBackend(event ConfigSinkEventLLMBackendDeleted) {
-	key := event.String()
-	delete(c.backends, key)
-	delete(c.backendsToReferencingRoutes, key)
+	for _, llmRoute := range llmRoutes.Items {
+		c.syncLLMRoute(&llmRoute)
+	}
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new LLMRoute.
@@ -237,10 +168,9 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 			key := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
 			ec.Rules[i].Backends[j].Name = key
 			ec.Rules[i].Backends[j].Weight = backend.Weight
-			backendObj, ok := c.backends[key]
-			if !ok {
-				err = fmt.Errorf("backend %s not found", key)
-				return err
+			backendObj, err := c.backend(llmRoute.Namespace, backend.Name)
+			if err != nil {
+				return fmt.Errorf("failed to get LLMBackend %s: %w", key, err)
 			} else {
 				ec.Rules[i].Backends[j].OutputSchema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
 				ec.Rules[i].Backends[j].OutputSchema.Version = backendObj.Spec.APISchema.Version
@@ -278,8 +208,8 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, llmRoute *aigv1a1.LLMR
 				continue
 			}
 			dedup[key] = struct{}{}
-			backend, ok := c.backends[key]
-			if !ok {
+			backend, err := c.backend(llmRoute.Namespace, br.Name)
+			if err != nil {
 				return fmt.Errorf("LLMBackend %s not found", key)
 			}
 			backends = append(backends, backend)

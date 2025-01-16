@@ -22,9 +22,22 @@ import (
 )
 
 const (
-	managedByLabel        = "app.kubernetes.io/managed-by"
-	expProcConfigFileName = "extproc-config.yaml"
+	managedByLabel                             = "app.kubernetes.io/managed-by"
+	expProcConfigFileName                      = "extproc-config.yaml"
+	k8sClientIndexBackendToReferencingLLMRoute = "BackendToReferencingLLMRoute"
 )
+
+func llmRouteIndexFunc(o client.Object) []string {
+	llmRoute := o.(*aigv1a1.LLMRoute)
+	var ret []string
+	for _, rule := range llmRoute.Spec.Rules {
+		for _, backend := range rule.BackendRefs {
+			key := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
+			ret = append(ret, key)
+		}
+	}
+	return ret
+}
 
 // llmRouteController implements [reconcile.TypedReconciler].
 //
@@ -64,7 +77,6 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	var llmRoute aigv1a1.LLMRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.eventChan <- ConfigSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
 			c.logger.Info("Deleting LLMRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
