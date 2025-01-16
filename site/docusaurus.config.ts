@@ -74,12 +74,39 @@ const config: Config = {
         //   position: 'left',
         //   label: 'Tutorial',
         // },
-        {to: '/blog', label: 'Blog', position: 'left'},
+          {
+         label: 'Overview',
+          to: '/docs/overview', // Path to your Overview page
+          position: 'left',
+        },
+        {
+          label: 'Community',
+          position: 'left',
+           items: [
+             {
+              label: 'Join us on Slack',
+              href: 'https://envoyproxy.slack.com/archives/C07Q4N24VAA',
+            },
+             {
+              label: 'Weekly Meeting Notes (Thursdays)',
+              href: 'https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0',
+            },
+            {
+              label: 'GitHub Discussions',
+              href: 'https://github.com/envoyproxy/ai-gateway/issues?q=is%3Aissue+label%3Adiscussion',
+            },
+          ],
+        },
+        {
+          label: 'Blog',
+          to: '/blog',
+          position: 'left',
+        },
         {
           href: 'https://github.com/envoyproxy/ai-gateway',
           label: 'GitHub',
           position: 'right',
-        },
+        }
       ],
     },
     footer: {

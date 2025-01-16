@@ -12,6 +12,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -22,7 +23,7 @@ import (
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
-	router                                       router.Router
+	router                                       extprocapi.Router
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler

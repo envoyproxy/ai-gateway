@@ -5,8 +5,33 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
+
+// dummyCustomRouter implements [extprocapi.Router].
+type dummyCustomRouter struct{ called bool }
+
+func (c *dummyCustomRouter) Calculate(map[string]string) (*filterconfig.Backend, error) {
+	c.called = true
+	return nil, nil
+}
+
+func TestRouter_NewRouter_Custom(t *testing.T) {
+	r, err := NewRouter(&filterconfig.Config{}, func(defaultRouter extprocapi.Router, config *filterconfig.Config) extprocapi.Router {
+		require.NotNil(t, defaultRouter)
+		_, ok := defaultRouter.(*router)
+		require.True(t, ok) // Checking if the default router is correctly passed.
+		return &dummyCustomRouter{}
+	})
+	require.NoError(t, err)
+	_, ok := r.(*dummyCustomRouter)
+	require.True(t, ok)
+
+	_, err = r.Calculate(nil)
+	require.NoError(t, err)
+	require.True(t, r.(*dummyCustomRouter).called)
+}
 
 func TestRouter_Calculate(t *testing.T) {
 	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
@@ -30,7 +55,7 @@ func TestRouter_Calculate(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 	require.NoError(t, err)
 	r, ok := _r.(*router)
 	require.True(t, ok)
@@ -62,7 +87,7 @@ func TestRouter_Calculate(t *testing.T) {
 }
 
 func TestRouter_selectBackendFromRule(t *testing.T) {
-	_r, err := NewRouter(&filterconfig.Config{})
+	_r, err := NewRouter(&filterconfig.Config{}, nil)
 	require.NoError(t, err)
 	r, ok := _r.(*router)
 	require.True(t, ok)

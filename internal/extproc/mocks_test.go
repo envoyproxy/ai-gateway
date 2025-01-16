@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -19,7 +20,7 @@ import (
 var (
 	_ ProcessorIface        = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
-	_ router.Router         = &mockRouter{}
+	_ extprocapi.Router     = &mockRouter{}
 )
 
 func newMockProcessor(_ *processorConfig) *mockProcessor {
