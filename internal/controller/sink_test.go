@@ -95,11 +95,11 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 	})
 }
 
-func TestConfigSink_syncLLMBackend(t *testing.T) {
+func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan)
-	s.syncLLMBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
+	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
@@ -110,7 +110,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
 	}
-	llmRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec: aigv1a1.AIGatewayRouteSpec{
 			Rules: []aigv1a1.AIGatewayRouteRule{
@@ -167,7 +167,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		err := s.client.Create(context.Background(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-	err := s.newHTTPRoute(httpRoute, llmRoute)
+	err := s.newHTTPRoute(httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expRules := []gwapiv1.HTTPRouteRule{

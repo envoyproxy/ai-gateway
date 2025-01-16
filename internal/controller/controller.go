@@ -67,23 +67,23 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sinkChan := make(chan ConfigSinkEvent, 100)
-	routeC := NewLLMRouteController(c, kubernetes.NewForConfigOrDie(config), logger, options, sinkChan)
+	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger, options, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIGatewayRoute{}).
 		Complete(routeC); err != nil {
-		return fmt.Errorf("failed to create controller for LLMRoute: %w", err)
+		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
 	}
 
-	backendC := NewLLMBackendController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIServiceBackend{}).
 		Complete(backendC); err != nil {
-		return fmt.Errorf("failed to create controller for LLMBackend: %w", err)
+		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 
-	// Before starting the manager, initialize the config sink to sync all LLMBackend and LLMRoute objects in the cluster.
+	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and LLMRoute objects in the cluster.
 	logger.Info("Initializing config sink")
 	if err = sink.init(ctx); err != nil {
 		return fmt.Errorf("failed to initialize config sink: %w", err)
@@ -98,7 +98,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 func applyIndexing(indexer client.FieldIndexer) error {
 	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
-		k8sClientIndexBackendToReferencingLLMRoute, llmRouteIndexFunc)
+		k8sClientIndexBackendToReferencingLLMRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for LLMRoute: %w", err)
 	}

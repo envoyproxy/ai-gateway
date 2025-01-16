@@ -34,8 +34,8 @@ import (
 
 var defaultSchema = aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
-func extProcName(llmRouteName string) string {
-	return fmt.Sprintf("ai-gateway-llm-route-extproc-%s", llmRouteName)
+func extProcName(aiGatewayRouteName string) string {
+	return fmt.Sprintf("ai-gateway-ai-gateway-route-extproc-%s", aiGatewayRouteName)
 }
 
 // TestStartControllers tests the [controller.StartControllers] function.
@@ -116,20 +116,20 @@ func TestStartControllers(t *testing.T) {
 	})
 
 	for _, route := range []string{"route1", "route2"} {
-		t.Run("verify llm route "+route, func(t *testing.T) {
+		t.Run("verify ai gateway route "+route, func(t *testing.T) {
 			require.Eventually(t, func() bool {
-				var llmRoute aigv1a1.AIGatewayRoute
-				err := c.Get(ctx, client.ObjectKey{Name: route, Namespace: "default"}, &llmRoute)
+				var aiGatewayRoute aigv1a1.AIGatewayRoute
+				err := c.Get(ctx, client.ObjectKey{Name: route, Namespace: "default"}, &aiGatewayRoute)
 				if err != nil {
 					t.Logf("failed to get route %s: %v", route, err)
 					return false
 				}
 
-				require.Len(t, llmRoute.Spec.Rules, 1)
-				require.Len(t, llmRoute.Spec.Rules[0].BackendRefs, 2)
+				require.Len(t, aiGatewayRoute.Spec.Rules, 1)
+				require.Len(t, aiGatewayRoute.Spec.Rules[0].BackendRefs, 2)
 
-				require.Equal(t, "backend1", llmRoute.Spec.Rules[0].BackendRefs[0].Name)
-				require.Equal(t, "backend2", llmRoute.Spec.Rules[0].BackendRefs[1].Name)
+				require.Equal(t, "backend1", aiGatewayRoute.Spec.Rules[0].BackendRefs[0].Name)
+				require.Equal(t, "backend2", aiGatewayRoute.Spec.Rules[0].BackendRefs[1].Name)
 
 				// Verify that the deployment, service, extension policy, and configmap are created.
 				deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName(route), metav1.GetOptions{})
@@ -139,8 +139,8 @@ func TestStartControllers(t *testing.T) {
 				}
 				require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
 				require.Len(t, deployment.OwnerReferences, 1)
-				require.Equal(t, llmRoute.Name, deployment.OwnerReferences[0].Name)
-				require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+				require.Equal(t, aiGatewayRoute.Name, deployment.OwnerReferences[0].Name)
+				require.Equal(t, "AIGatewayRoute", deployment.OwnerReferences[0].Kind)
 				require.Equal(t, int32(5), *deployment.Spec.Replicas)
 				require.Equal(t, resourceReq, &deployment.Spec.Template.Spec.Containers[0].Resources)
 
@@ -152,8 +152,8 @@ func TestStartControllers(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, extProcName(route), service.Name)
 				require.Len(t, service.OwnerReferences, 1)
-				require.Equal(t, llmRoute.Name, service.OwnerReferences[0].Name)
-				require.Equal(t, "LLMRoute", service.OwnerReferences[0].Kind)
+				require.Equal(t, aiGatewayRoute.Name, service.OwnerReferences[0].Name)
+				require.Equal(t, "AIGatewayRoute", service.OwnerReferences[0].Kind)
 
 				extPolicy := egv1a1.EnvoyExtensionPolicy{}
 				err = c.Get(ctx, client.ObjectKey{Name: extProcName(route), Namespace: "default"}, &extPolicy)
@@ -162,7 +162,7 @@ func TestStartControllers(t *testing.T) {
 					return false
 				}
 				require.Len(t, extPolicy.OwnerReferences, 1)
-				require.Equal(t, llmRoute.Name, extPolicy.OwnerReferences[0].Name)
+				require.Equal(t, aiGatewayRoute.Name, extPolicy.OwnerReferences[0].Name)
 
 				configMap, err := k.CoreV1().ConfigMaps("default").Get(ctx, extProcName(route), metav1.GetOptions{})
 				if err != nil {
@@ -170,7 +170,7 @@ func TestStartControllers(t *testing.T) {
 					return false
 				}
 				require.Len(t, configMap.OwnerReferences, 1)
-				require.Equal(t, llmRoute.Name, configMap.OwnerReferences[0].Name)
+				require.Equal(t, aiGatewayRoute.Name, configMap.OwnerReferences[0].Name)
 				require.Contains(t, configMap.Data, "extproc-config.yaml")
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
@@ -180,14 +180,14 @@ func TestStartControllers(t *testing.T) {
 	for _, backend := range []string{"backend1", "backend2", "backend3", "backend4"} {
 		t.Run("verify backend "+backend, func(t *testing.T) {
 			require.Eventually(t, func() bool {
-				var llmBackend aigv1a1.AIServiceBackend
-				err := c.Get(ctx, client.ObjectKey{Name: backend, Namespace: "default"}, &llmBackend)
+				var aiBackend aigv1a1.AIServiceBackend
+				err := c.Get(ctx, client.ObjectKey{Name: backend, Namespace: "default"}, &aiBackend)
 				if err != nil {
 					t.Logf("failed to get backend %s: %v", backend, err)
 					return false
 				}
-				require.Equal(t, "default", llmBackend.Namespace)
-				require.Equal(t, backend, llmBackend.Name)
+				require.Equal(t, "default", aiBackend.Namespace)
+				require.Equal(t, backend, aiBackend.Name)
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
@@ -217,14 +217,14 @@ func TestStartControllers(t *testing.T) {
 	}
 }
 
-func TestLLMRouteController(t *testing.T) {
+func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
 	opts := controller.Options{
 		ExtProcImage:         "envoyproxy/ai-gateway-extproc:foo",
 		EnableLeaderElection: false,
 	}
 	ch := make(chan controller.ConfigSinkEvent)
-	rc := controller.NewLLMRouteController(c, k, logr.Discard(), opts, ch)
+	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), opts, ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
@@ -301,7 +301,7 @@ func TestLLMRouteController(t *testing.T) {
 			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
 			require.Len(t, deployment.OwnerReferences, 1)
 			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
-			require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+			require.Equal(t, "AIGatewayRoute", deployment.OwnerReferences[0].Kind)
 			require.Equal(t, int32(5), *deployment.Spec.Replicas)
 			require.Equal(t, resourceReq, &deployment.Spec.Template.Spec.Containers[0].Resources)
 			return true
@@ -339,7 +339,7 @@ func TestLLMRouteController(t *testing.T) {
 			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
 			require.Len(t, deployment.OwnerReferences, 1)
 			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
-			require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+			require.Equal(t, "AIGatewayRoute", deployment.OwnerReferences[0].Kind)
 			require.Equal(t, int32(3), *deployment.Spec.Replicas)
 			require.Equal(t, newResource, &deployment.Spec.Template.Spec.Containers[0].Resources)
 			return true
@@ -347,11 +347,11 @@ func TestLLMRouteController(t *testing.T) {
 	})
 }
 
-func TestLLMBackendController(t *testing.T) {
+func TestAIServiceBackendController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
 
 	ch := make(chan controller.ConfigSinkEvent)
-	bc := controller.NewLLMBackendController(c, k, logr.Discard(), ch)
+	bc := controller.NewAIServiceBackendController(c, k, logr.Discard(), ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)

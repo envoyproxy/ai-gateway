@@ -18,7 +18,7 @@ import (
 func TestLlmBackendController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := NewLLMBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	c := NewAIServiceBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
 	err := cl.Create(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
