@@ -50,8 +50,8 @@ func newConfigSink(
 	return c
 }
 
-func (c *configSink) backend(namespace, name string) (*aigv1a1.LLMBackend, error) {
-	backend := &aigv1a1.LLMBackend{}
+func (c *configSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend, error) {
+	backend := &aigv1a1.AIServiceBackend{}
 	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return nil, err
 	}
@@ -78,16 +78,16 @@ func (c *configSink) init(ctx context.Context) error {
 // handleEvent handles the event received from the controllers in a single goroutine.
 func (c *configSink) handleEvent(event ConfigSinkEvent) {
 	switch e := event.(type) {
-	case *aigv1a1.LLMBackend:
+	case *aigv1a1.AIServiceBackend:
 		c.syncLLMBackend(e)
-	case *aigv1a1.LLMRoute:
+	case *aigv1a1.AIGatewayRoute:
 		c.syncLLMRoute(e)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
 	}
 }
 
-func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
+func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRoute exists.
 	var httpRoute gwapiv1.HTTPRoute
 	err := c.client.Get(context.Background(), client.ObjectKey{Name: llmRoute.Name, Namespace: llmRoute.Namespace}, &httpRoute)
@@ -133,9 +133,9 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 	}
 }
 
-func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
+func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.AIServiceBackend) {
 	key := fmt.Sprintf("%s.%s", llmBackend.Name, llmBackend.Namespace)
-	var llmRoutes aigv1a1.LLMRouteList
+	var llmRoutes aigv1a1.AIGatewayRouteList
 	err := c.client.List(context.Background(), &llmRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: key})
 	if err != nil {
 		c.logger.Error(err, "failed to list LLMRoutes", "backend", key)
@@ -147,7 +147,7 @@ func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new LLMRoute.
-func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
+func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.AIGatewayRoute) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(llmRoute.Namespace).Get(context.Background(), extProcName(llmRoute), metav1.GetOptions{})
 	if err != nil {
 		// This is a bug since we should have created the configmap before sending the LLMRoute to the configSink.
@@ -159,7 +159,7 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 
 	ec.InputSchema.Schema = filterconfig.APISchema(spec.APISchema.Schema)
 	ec.InputSchema.Version = spec.APISchema.Version
-	ec.ModelNameHeaderKey = aigv1a1.LLMModelHeaderKey
+	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
 	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
 	for i, rule := range spec.Rules {
@@ -198,8 +198,8 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 }
 
 // newHTTPRoute updates the HTTPRoute with the new LLMRoute.
-func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, llmRoute *aigv1a1.LLMRoute) error {
-	var backends []*aigv1a1.LLMBackend
+func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, llmRoute *aigv1a1.AIGatewayRoute) error {
+	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range llmRoute.Spec.Rules {
 		for _, br := range rule.BackendRefs {

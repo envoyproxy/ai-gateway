@@ -40,11 +40,11 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan)
 	require.NotNil(t, s)
 
-	for _, backend := range []*aigv1a1.LLMBackend{
-		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.LLMBackendSpec{
+	for _, backend := range []*aigv1a1.AIServiceBackend{
+		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
 		}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.LLMBackendSpec{
+		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
 		}},
 	} {
@@ -53,15 +53,15 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 	}
 
 	t.Run("existing", func(t *testing.T) {
-		route := &aigv1a1.LLMRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
-			Spec: aigv1a1.LLMRouteSpec{
-				Rules: []aigv1a1.LLMRouteRule{
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -99,7 +99,7 @@ func TestConfigSink_syncLLMBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan)
-	s.syncLLMBackend(&aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
+	s.syncLLMBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
@@ -110,30 +110,30 @@ func Test_newHTTPRoute(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
 	}
-	llmRoute := &aigv1a1.LLMRoute{
+	llmRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
-		Spec: aigv1a1.LLMRouteSpec{
-			Rules: []aigv1a1.LLMRouteRule{
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{{Name: "apple", Weight: 100}},
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
 				},
 				{
-					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "orange", Weight: 100},
 						{Name: "apple", Weight: 100},
 						{Name: "pineapple", Weight: 100},
 					},
 				},
 				{
-					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{{Name: "foo", Weight: 1}},
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
 				},
 			},
 		},
 	}
-	for _, backend := range []*aigv1a1.LLMBackend{
+	for _, backend := range []*aigv1a1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 				},
@@ -141,7 +141,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 				},
@@ -149,7 +149,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns1"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 				},
@@ -157,7 +157,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns1"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 				},
@@ -211,11 +211,11 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan)
-	for _, b := range []*aigv1a1.LLMBackend{
+	for _, b := range []*aigv1a1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
-			Spec: aigv1a1.LLMBackendSpec{
-				APISchema: aigv1a1.LLMAPISchema{
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
 					Schema: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef: egv1a1.BackendRef{
@@ -225,7 +225,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "cat", Namespace: "ns"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				},
@@ -233,7 +233,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
-			Spec: aigv1a1.LLMBackendSpec{
+			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: egv1a1.BackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				},
@@ -247,29 +247,29 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		route *aigv1a1.LLMRoute
+		route *aigv1a1.AIGatewayRoute
 		exp   *filterconfig.Config
 	}{
 		{
 			name: "basic",
-			route: &aigv1a1.LLMRoute{
+			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
-				Spec: aigv1a1.LLMRouteSpec{
-					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
-					Rules: []aigv1a1.LLMRouteRule{
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
-							BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 								{Name: "apple", Weight: 1},
 								{Name: "pineapple", Weight: 2},
 							},
-							Matches: []aigv1a1.LLMRouteRuleMatch{
-								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}}},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{{Name: "cat", Weight: 1}},
-							Matches: []aigv1a1.LLMRouteRuleMatch{
-								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "another-ai"}}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
 						},
 					},
@@ -277,18 +277,18 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			},
 			exp: &filterconfig.Config{
 				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
-				ModelNameHeaderKey:       aigv1a1.LLMModelHeaderKey,
+				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
 							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "some-ai"}},
+						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
 					{
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1}},
-						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.LLMModelHeaderKey, Value: "another-ai"}},
+						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
 				},
 			},

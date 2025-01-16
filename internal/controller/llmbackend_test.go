@@ -20,13 +20,13 @@ func TestLlmBackendController_Reconcile(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewLLMBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
-	err := cl.Create(context.Background(), &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err := cl.Create(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 	item, ok := <-ch
 	require.True(t, ok)
-	require.IsType(t, &aigv1a1.LLMBackend{}, item)
-	require.Equal(t, "mybackend", item.(*aigv1a1.LLMBackend).Name)
-	require.Equal(t, "default", item.(*aigv1a1.LLMBackend).Namespace)
+	require.IsType(t, &aigv1a1.AIServiceBackend{}, item)
+	require.Equal(t, "mybackend", item.(*aigv1a1.AIServiceBackend).Name)
+	require.Equal(t, "default", item.(*aigv1a1.AIServiceBackend).Namespace)
 }

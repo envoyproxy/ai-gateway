@@ -79,7 +79,7 @@ type AIGatewayRouteSpec struct {
 	//
 	// Currently, the filter is only implemented as an external process filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
-	FilterConfig *LLMRouteFilterConfig `json:"filterConfig,omitempty"`
+	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -133,32 +133,32 @@ type AIGatewayRouteRuleMatch struct {
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 
-type LLMRouteFilterConfig struct {
+type AIGatewayFilterConfig struct {
 	// Type specifies the type of the filter configuration.
 	//
 	// Currently, only ExternalProcess is supported, and default is ExternalProcess.
 	//
 	// +kubebuilder:default=ExternalProcess
-	Type LLMRouteFilterConfigType `json:"type"`
+	Type AIGatewayFilterConfigType `json:"type"`
 
 	// ExternalProcess is the configuration for the external process filter.
 	// This is optional, and if not set, the default values of Deployment spec will be used.
 	//
 	// +optional
-	ExternalProcess *LLMRouteFilterConfigExternalProcess `json:"externalProcess,omitempty"`
+	ExternalProcess *AIGatewayFilterConfigExternalProcess `json:"externalProcess,omitempty"`
 }
 
-// LLMRouteFilterConfigType specifies the type of the filter configuration.
+// AIGatewayFilterConfigType specifies the type of the filter configuration.
 //
 // +kubebuilder:validation:Enum=ExternalProcess;DynamicModule
-type LLMRouteFilterConfigType string
+type AIGatewayFilterConfigType string
 
 const (
-	LLMRouteFilterConfigTypeExternalProcess LLMRouteFilterConfigType = "ExternalProcess"
-	LLMRouteFilterConfigTypeDynamicModule   LLMRouteFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
+	AIGatewayFilterConfigTypeExternalProcess AIGatewayFilterConfigType = "ExternalProcess"
+	AIGatewayFilterConfigTypeDynamicModule   AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
 )
 
-type LLMRouteFilterConfigExternalProcess struct {
+type AIGatewayFilterConfigExternalProcess struct {
 	// Replicas is the number of desired pods of the external process deployment.
 	//
 	// +optional

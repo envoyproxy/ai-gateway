@@ -22,7 +22,7 @@ import (
 )
 
 func Test_extProcName(t *testing.T) {
-	actual := extProcName(&aigv1a1.LLMRoute{
+	actual := extProcName(&aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "myroute",
 		},
@@ -35,7 +35,7 @@ func TestLLMRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	c.kube = fake2.NewClientset()
 
 	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-	llmRoute := &aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}}
+	llmRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}}
 
 	err := c.ensuresExtProcConfigMapExists(context.Background(), llmRoute, ownerRef)
 	require.NoError(t, err)
@@ -57,12 +57,12 @@ func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
 	c.kube = fake2.NewClientset()
 
 	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-	llmRoute := &aigv1a1.LLMRoute{
+	llmRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.LLMRouteSpec{
-			FilterConfig: &aigv1a1.LLMRouteFilterConfig{
-				Type: aigv1a1.LLMRouteFilterConfigTypeExternalProcess,
-				ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
+				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
+				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
 					Replicas: ptr.To[int32](123),
 					Resources: &corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -106,12 +106,12 @@ func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
 func TestLLMRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	c := &llmRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-	llmRoute := &aigv1a1.LLMRoute{
+	llmRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.LLMRouteSpec{
+		Spec: aigv1a1.AIGatewayRouteSpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
@@ -157,9 +157,9 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	}
 	t.Run("not panic", func(t *testing.T) {
 		applyExtProcDeploymentConfigUpdate(dep, nil)
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{})
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
-			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{},
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{},
 		})
 	})
 	t.Run("update", func(t *testing.T) {
@@ -169,8 +169,8 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			},
 		}
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.LLMRouteFilterConfig{
-			ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
 				Image:     "some-image",
@@ -189,24 +189,24 @@ func Test_llmRouteIndexFunc(t *testing.T) {
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithIndex(&aigv1a1.LLMRoute{}, k8sClientIndexBackendToReferencingLLMRoute, llmRouteIndexFunc).
+		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingLLMRoute, llmRouteIndexFunc).
 		Build()
 
 	// Create a LLMRoute.
-	llmRoute := &aigv1a1.LLMRoute{
+	llmRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.LLMRouteSpec{
+		Spec: aigv1a1.AIGatewayRouteSpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
 			},
-			Rules: []aigv1a1.LLMRouteRule{
+			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
-					Matches: []aigv1a1.LLMRouteRuleMatch{},
-					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend1", Weight: 1},
 						{Name: "backend2", Weight: 1},
 					},
@@ -216,7 +216,7 @@ func Test_llmRouteIndexFunc(t *testing.T) {
 	}
 	require.NoError(t, c.Create(context.Background(), llmRoute))
 
-	var llmRoutes aigv1a1.LLMRouteList
+	var llmRoutes aigv1a1.AIGatewayRouteList
 	err := c.List(context.Background(), &llmRoutes,
 		client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: "backend1.default"})
 	require.NoError(t, err)

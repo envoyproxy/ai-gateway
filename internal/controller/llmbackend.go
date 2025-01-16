@@ -12,7 +12,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// llmBackendController implements [reconcile.TypedReconciler] for [aigv1a1.LLMBackend].
+// llmBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
 //
 // This handles the LLMBackend resource and sends it to the config sink so that it can modify the configuration together with the state of other resources.
 type llmBackendController struct {
@@ -22,7 +22,7 @@ type llmBackendController struct {
 	eventChan chan ConfigSinkEvent
 }
 
-// NewLLMBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.LLMBackend].
+// NewLLMBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
 func NewLLMBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmBackendController{
 		client:    client,
@@ -32,9 +32,9 @@ func NewLLMBackendController(client client.Client, kube kubernetes.Interface, lo
 	}
 }
 
-// Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.LLMBackend].
+// Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
 func (l *llmBackendController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	var llmBackend aigv1a1.LLMBackend
+	var llmBackend aigv1a1.AIServiceBackend
 	if err := l.client.Get(ctx, req.NamespacedName, &llmBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			l.logger.Info("Deleting LLMBackend",

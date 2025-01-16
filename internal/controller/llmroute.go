@@ -28,7 +28,7 @@ const (
 )
 
 func llmRouteIndexFunc(o client.Object) []string {
-	llmRoute := o.(*aigv1a1.LLMRoute)
+	llmRoute := o.(*aigv1a1.AIGatewayRoute)
 	var ret []string
 	for _, rule := range llmRoute.Spec.Rules {
 		for _, backend := range rule.BackendRefs {
@@ -74,7 +74,7 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling LLMRoute", "namespace", req.Namespace, "name", req.Name)
 
-	var llmRoute aigv1a1.LLMRoute
+	var llmRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			c.logger.Info("Deleting LLMRoute",
@@ -113,7 +113,7 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 
 // reconcileExtProcExtensionPolicy creates or updates the extension policy for the external process.
 // It only changes the target references.
-func (c *llmRouteController) reconcileExtProcExtensionPolicy(ctx context.Context, llmRoute *aigv1a1.LLMRoute, ownerRef []metav1.OwnerReference) error {
+func (c *llmRouteController) reconcileExtProcExtensionPolicy(ctx context.Context, llmRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
 	var existingPolicy egv1a1.EnvoyExtensionPolicy
 	if err := c.client.Get(ctx, client.ObjectKey{Name: extProcName(llmRoute), Namespace: llmRoute.Namespace}, &existingPolicy); err == nil {
 		existingPolicy.Spec.PolicyTargetReferences.TargetRefs = llmRoute.Spec.TargetRefs
@@ -153,7 +153,7 @@ func (c *llmRouteController) reconcileExtProcExtensionPolicy(ctx context.Context
 
 // ensuresExtProcConfigMapExists ensures that a configmap exists for the external process.
 // This must happen before the external process deployment is created.
-func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, llmRoute *aigv1a1.LLMRoute, ownerRef []metav1.OwnerReference) error {
+func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, llmRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
 	name := extProcName(llmRoute)
 	// Check if a configmap exists for extproc exists, and if not, create one with the default config.
 	_, err := c.kube.CoreV1().ConfigMaps(llmRoute.Namespace).Get(ctx, name, metav1.GetOptions{})
@@ -177,7 +177,7 @@ func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, 
 }
 
 // reconcileExtProcDeployment reconciles the external processor's Deployment and Service.
-func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.LLMRoute, ownerRef []metav1.OwnerReference) error {
+func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
 	name := extProcName(llmRoute)
 	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
 
@@ -267,11 +267,11 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 	return nil
 }
 
-func extProcName(route *aigv1a1.LLMRoute) string {
+func extProcName(route *aigv1a1.AIGatewayRoute) string {
 	return fmt.Sprintf("ai-gateway-llm-route-extproc-%s", route.Name)
 }
 
-func ownerReferenceForLLMRoute(llmRoute *aigv1a1.LLMRoute) []metav1.OwnerReference {
+func ownerReferenceForLLMRoute(llmRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {
 	return []metav1.OwnerReference{{
 		APIVersion: llmRoute.APIVersion,
 		Kind:       llmRoute.Kind,
@@ -280,7 +280,7 @@ func ownerReferenceForLLMRoute(llmRoute *aigv1a1.LLMRoute) []metav1.OwnerReferen
 	}}
 }
 
-func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.LLMRouteFilterConfig) {
+func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
 	if filterConfig == nil || filterConfig.ExternalProcess == nil {
 		return
 	}

@@ -46,7 +46,7 @@ func TestLLMRoutes(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/llmroutes", tc.name))
 			require.NoError(t, err)
 
-			llmRoute := &aigv1a1.LLMRoute{}
+			llmRoute := &aigv1a1.AIGatewayRoute{}
 			err = yaml.UnmarshalStrict(data, llmRoute)
 			require.NoError(t, err)
 
@@ -81,7 +81,7 @@ func TestLLMBackends(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/llmbackends", tc.name))
 			require.NoError(t, err)
 
-			llmBackend := &aigv1a1.LLMBackend{}
+			llmBackend := &aigv1a1.AIServiceBackend{}
 			err = yaml.UnmarshalStrict(data, llmBackend)
 			require.NoError(t, err)
 
