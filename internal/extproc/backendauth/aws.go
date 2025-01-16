@@ -16,7 +16,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 // awsHandler implements [Handler] for AWS Bedrock authz.
@@ -26,7 +26,7 @@ type awsHandler struct {
 	region string
 }
 
-func newAWSHandler(_ *extprocconfig.AWSAuth) (*awsHandler, error) {
+func newAWSHandler(_ *filterconfig.AWSAuth) (*awsHandler, error) {
 	cfg, err := config.NewEnvConfig()
 	if err != nil {
 		return nil, fmt.Errorf("cannot create AWS config: %w", err)

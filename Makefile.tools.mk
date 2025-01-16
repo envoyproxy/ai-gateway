@@ -10,14 +10,16 @@ GO_FUMPT = $(LOCALBIN)/gofumpt
 GCI = $(LOCALBIN)/gci
 EDITORCONFIG_CHECKER = $(LOCALBIN)/editorconfig-checker
 CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
+KIND ?= $(LOCALBIN)/kind
 
 ## Tool versions.
-CONTROLLER_TOOLS_VERSION ?= v0.16.2
+CONTROLLER_TOOLS_VERSION ?= v0.17.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v1.60.1
-GO_FUMPT_VERSION ?= v0.6.0
+GOLANGCI_LINT_VERSION ?= v1.63.4
+GO_FUMPT_VERSION ?= v0.7.0
 GCI_VERSION ?= v0.13.5
-EDITORCONFIG_CHECKER_VERSION ?= v3.0.3
+EDITORCONFIG_CHECKER_VERSION ?= v3.1.2
+KIND_VERSION ?= v0.26.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -48,6 +50,11 @@ $(EDITORCONFIG_CHECKER): $(LOCALBIN)
 envtest: $(ENVTEST)
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: kind
+kind: $(KIND) ## Download kind locally if necessary.
+$(KIND): $(LOCALBIN)
+	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
 
 .bin/.venv/%:
 	mkdir -p $(@D)

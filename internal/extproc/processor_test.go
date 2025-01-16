@@ -9,7 +9,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
@@ -60,7 +60,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
 		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: 123}
-		p := &Processor{translator: mt, config: &processorConfig{tokenUsageMetadata: &extprocconfig.TokenUsageMetadata{
+		p := &Processor{translator: mt, config: &processorConfig{tokenUsageMetadata: &filterconfig.TokenUsageMetadata{
 			Namespace: "ai_gateway_llm_ns", Key: "token_usage",
 		}}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
@@ -95,11 +95,11 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: extprocconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
 		}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: make(map[extprocconfig.VersionedAPISchema]translator.Factory),
+			factories: make(map[filterconfig.VersionedAPISchema]translator.Factory),
 		}, requestHeaders: headers}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to find factory for output schema {\"some-schema\" \"v10.0\"}")
@@ -109,12 +109,12 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: extprocconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retErr: errors.New("test error"), expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[extprocconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers}
@@ -126,12 +126,12 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: extprocconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retTranslator: mockTranslator{t: t, retErr: errors.New("test error")}, expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[extprocconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers}
@@ -144,7 +144,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo", retRb: someBody}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: extprocconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
 		}
 		headerMut := &extprocv3.HeaderMutation{}
 		bodyMut := &extprocv3.BodyMutation{}
@@ -152,11 +152,11 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		factory := mockTranslatorFactory{t: t, retTranslator: mt, expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[extprocconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
-			backendRoutingHeaderKey: "x-ai-gateway-backend-key",
-			ModelNameHeaderKey:      "x-ai-gateway-model-key",
+			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
+			ModelNameHeaderKey:       "x-ai-gateway-model-key",
 		}, requestHeaders: headers}
 		resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.NoError(t, err)

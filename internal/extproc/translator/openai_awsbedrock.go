@@ -302,7 +302,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				usedToken = uint32(usage.TotalTokens)
+				usedToken = uint32(usage.TotalTokens) //nolint:gosec
 			}
 
 			oaiEvent, ok := o.convertEvent(event)
@@ -329,7 +329,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	usedToken = uint32(bedrockResp.Usage.TotalTokens)
+	usedToken = uint32(bedrockResp.Usage.TotalTokens) //nolint:gosec
 
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
@@ -341,7 +341,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
-		usedToken = uint32(bedrockResp.Usage.TotalTokens)
+		usedToken = uint32(bedrockResp.Usage.TotalTokens) //nolint:gosec
 	}
 	for i, output := range bedrockResp.Output.Message.Content {
 		choice := openai.ChatCompletionResponseChoice{

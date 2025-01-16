@@ -7,18 +7,18 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 func TestNewRequestBodyParser(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
-		res, err := NewRequestBodyParser(extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI})
+		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI})
 		require.NotNil(t, res)
 		require.NoError(t, err)
 	})
 	t.Run("error", func(t *testing.T) {
-		res, err := NewRequestBodyParser(extprocconfig.VersionedAPISchema{Schema: "foo"})
+		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Schema: "foo"})
 		require.Nil(t, res)
 		require.Error(t, err)
 	})

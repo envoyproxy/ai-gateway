@@ -1,0 +1,8 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: dog-provider-policy
+  namespace: default
+spec:
+  awsCredentials:
+    region: us-east-1å

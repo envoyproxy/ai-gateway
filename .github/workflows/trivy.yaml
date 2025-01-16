@@ -1,0 +1,40 @@
+name: Trivy
+
+on:
+  push:
+    branches:
+      - "main"
+  schedule:
+    - cron: '0 20 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  image-scan:
+    permissions:
+      contents: read  # Required for actions/checkout to fetch code
+    name: Scan ${{ matrix.target.command_name }} Image
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target:
+          - command_name: "controller"
+          - command_name: "extproc"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.target.command_name }} Docker image
+        run: |
+          make docker-build.${{ matrix.target.command_name }} TAG=${{ github.sha }}
+
+      - name: Run Trivy vulnerability scanner for ${{ matrix.target.command_name }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/envoyproxy/ai-gateway/${{ matrix.target.command_name }}:${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          vuln-type: 'os,library'
+          exit-code: '1'  # Fail workflow on detected vulnerabilities
+          ignore-unfixed: true  # Ignore unfixed vulnerabilities

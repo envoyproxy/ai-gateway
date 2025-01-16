@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
@@ -28,25 +28,25 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(&extprocconfig.Config{
-			InputSchema: extprocconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
+		err := s.LoadConfig(&filterconfig.Config{
+			InputSchema: filterconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "cannot create request body parser")
 	})
 	t.Run("ok", func(t *testing.T) {
-		config := &extprocconfig.Config{
-			TokenUsageMetadata:      &extprocconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			InputSchema:             extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI},
-			BackendRoutingHeaderKey: "x-backend-name",
-			ModelNameHeaderKey:      "x-model-name",
-			Rules: []extprocconfig.RouteRule{
+		config := &filterconfig.Config{
+			TokenUsageMetadata:       &filterconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
+			InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
+			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
+			ModelNameHeaderKey:       "x-model-name",
+			Rules: []filterconfig.RouteRule{
 				{
-					Backends: []extprocconfig.Backend{
-						{Name: "kserve", OutputSchema: extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}},
-						{Name: "awsbedrock", OutputSchema: extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaAWSBedrock}},
+					Backends: []filterconfig.Backend{
+						{Name: "kserve", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
+						{Name: "awsbedrock", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}},
 					},
-					Headers: []extprocconfig.HeaderMatch{
+					Headers: []filterconfig.HeaderMatch{
 						{
 							Name:  "x-model-name",
 							Value: "llama3.3333",
@@ -54,10 +54,10 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 				},
 				{
-					Backends: []extprocconfig.Backend{
-						{Name: "openai", OutputSchema: extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}},
+					Backends: []filterconfig.Backend{
+						{Name: "openai", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
 					},
-					Headers: []extprocconfig.HeaderMatch{
+					Headers: []filterconfig.HeaderMatch{
 						{
 							Name:  "x-model-name",
 							Value: "gpt4.4444",
@@ -76,11 +76,11 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "key", s.config.tokenUsageMetadata.Key)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
-		require.Equal(t, "x-backend-name", s.config.backendRoutingHeaderKey)
+		require.Equal(t, "x-envoy-ai-gateway-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
-		require.NotNil(t, s.config.factories[extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaOpenAI}])
-		require.NotNil(t, s.config.factories[extprocconfig.VersionedAPISchema{Schema: extprocconfig.APISchemaAWSBedrock}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}])
 	})
 }
 

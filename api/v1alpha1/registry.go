@@ -6,8 +6,9 @@ import (
 )
 
 func init() {
-	SchemeBuilder.Register(&LLMRoute{}, &LLMRouteList{})
-	SchemeBuilder.Register(&LLMBackend{}, &LLMBackendList{})
+	SchemeBuilder.Register(&AIGatewayRoute{}, &AIGatewayRouteList{})
+	SchemeBuilder.Register(&AIServiceBackend{}, &AIServiceBackendList{})
+	SchemeBuilder.Register(&BackendSecurityPolicy{}, &BackendSecurityPolicyList{})
 }
 
 const GroupName = "aigateway.envoyproxy.io"

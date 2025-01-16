@@ -1,17 +1,16 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMRoute
+kind: AIGatewayRoute
 metadata:
   name: apple
   namespace: default
 spec:
   inputSchema:
-    # Schema must be OpenAI schema at the moment, so this is invalid.
-    schema: SomeRandomVendor
+    schema: OpenAI
   rules:
     - matches:
       - headers:
         - type: Exact
-          name: x-envoy-ai-gateway-llm-model
+          name: x-envoy-ai-gateway-model
           value: llama3-70b
       backendRefs:
         - name: kserve

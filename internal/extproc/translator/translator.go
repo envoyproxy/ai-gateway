@@ -8,7 +8,7 @@ import (
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
@@ -19,13 +19,13 @@ import (
 type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out extprocconfig.VersionedAPISchema) (Factory, error) {
-	if in.Schema == extprocconfig.APISchemaOpenAI {
+func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
+	if in.Schema == filterconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
 		switch out.Schema {
-		case extprocconfig.APISchemaOpenAI:
+		case filterconfig.APISchemaOpenAI:
 			return newOpenAIToOpenAITranslator, nil
-		case extprocconfig.APISchemaAWSBedrock:
+		case filterconfig.APISchemaAWSBedrock:
 			return newOpenAIToAWSBedrockTranslator, nil
 		}
 	}
