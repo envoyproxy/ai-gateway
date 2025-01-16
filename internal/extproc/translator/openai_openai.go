@@ -13,21 +13,24 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [TranslatorFactory] for OpenAI to OpenAI translation.
-func newOpenAIToOpenAITranslator(path string) (Translator, error) {
-	if path == "/v1/chat/completions" {
-		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
-	} else {
-		return nil, fmt.Errorf("unsupported path: %s", path)
+// newOpenAIToOpenAITranslatorFactory implements [TranslatorFactory] for OpenAI to OpenAI translation.
+func newOpenAIToOpenAITranslatorFactory(monitorContinuousUsageStats bool) Factory {
+	return func(path string) (Translator, error) {
+		if path == "/v1/chat/completions" {
+			return &openAIToOpenAITranslatorV1ChatCompletion{monitorContinuousUsageStats: monitorContinuousUsageStats}, nil
+		} else {
+			return nil, fmt.Errorf("unsupported path: %s", path)
+		}
 	}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
 	defaultTranslator
-	stream        bool
-	buffered      []byte
-	bufferingDone bool
+	stream                      bool
+	buffered                    []byte
+	bufferingDone               bool
+	monitorContinuousUsageStats bool
 }
 
 // RequestBody implements [RequestBody].
@@ -50,24 +53,32 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 
 // ResponseBody implements [Translator.ResponseBody].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tknUsage *TokenUsage, err error,
 ) {
 	if o.stream {
-		if !o.bufferingDone {
-			buf, err := io.ReadAll(body)
+		if !o.bufferingDone || o.monitorContinuousUsageStats {
+			// OpenAI's api suggests that usage info will only be sent in the last chunk (https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage)
+			// whereas vllm model server supports including usage-info in each returned chunk.
+			// To incorporate both approaches, we check for usage-info in each chunk
+			var buf []byte
+			buf, err = io.ReadAll(body)
 			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+				return nil, nil, nil, fmt.Errorf("failed to read body: %w", err)
 			}
 			o.buffered = append(o.buffered, buf...)
-			usedToken = o.extractUsageFromBufferEvent()
+			tknUsage = o.extractUsageFromBufferEvent()
 		}
 		return
 	}
 	var resp openai.ChatCompletionResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	usedToken = uint32(resp.Usage.TotalTokens)
+	tknUsage = &TokenUsage{
+		InputTokens:  uint32(resp.Usage.PromptTokens),
+		OutputTokens: uint32(resp.Usage.CompletionTokens),
+		TotalTokens:  uint32(resp.Usage.TotalTokens),
+	}
 	return
 }
 
@@ -75,11 +86,11 @@ var dataPrefix = []byte("data: ")
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // Once the usage is extracted, it returns the number of tokens used, and bufferingDone is set to true.
-func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent() (usedToken uint32) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent() (tknUsage *TokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
-			return 0
+			return nil
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
@@ -91,7 +102,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			continue
 		}
 		if usage := event.Usage; usage != nil {
-			usedToken = uint32(usage.TotalTokens)
+			tknUsage = &TokenUsage{
+				InputTokens:  uint32(event.Usage.PromptTokens),
+				OutputTokens: uint32(event.Usage.CompletionTokens),
+				TotalTokens:  uint32(event.Usage.TotalTokens),
+			}
 			o.bufferingDone = true
 			o.buffered = nil
 			return

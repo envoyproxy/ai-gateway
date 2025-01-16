@@ -47,7 +47,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
 			if _, ok := factories[b.OutputSchema]; !ok {
-				factories[b.OutputSchema], err = translator.NewFactory(config.InputSchema, b.OutputSchema)
+				factories[b.OutputSchema], err = translator.NewFactory(config.InputSchema, b.OutputSchema, config.MonitorContinuousUsageStats)
 				if err != nil {
 					return fmt.Errorf("cannot create translator factory: %w", err)
 				}

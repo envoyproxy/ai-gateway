@@ -29,3 +29,4 @@ site/yarn-debug.log*
 site/yarn-error.log*
 site/static/.DS_Store
 site/temp
+/.idea/

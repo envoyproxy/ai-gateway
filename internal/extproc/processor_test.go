@@ -59,9 +59,18 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
-		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: 123}
+		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
+			retTokenUsage: &translator.TokenUsage{
+				InputTokens:  11,
+				OutputTokens: 22,
+				TotalTokens:  33,
+			},
+		}
 		p := &Processor{translator: mt, config: &processorConfig{tokenUsageMetadata: &filterconfig.TokenUsageMetadata{
-			Namespace: "ai_gateway_llm_ns", Key: "token_usage",
+			Namespace:       "ai_gateway_llm_ns",
+			InputTokensKey:  "input_tokens_usage",
+			OutputTokensKey: "output_tokens_usage",
+			TotalTokensKey:  "total_tokens_usage",
 		}}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
 		require.NoError(t, err)
@@ -71,7 +80,9 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["token_usage"].GetNumberValue())
+		require.Equal(t, float64(11), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["input_tokens_usage"].GetNumberValue())
+		require.Equal(t, float64(22), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["output_tokens_usage"].GetNumberValue())
+		require.Equal(t, float64(33), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["total_tokens_usage"].GetNumberValue())
 	})
 }
 
