@@ -30,7 +30,7 @@ func Test_extProcName(t *testing.T) {
 	require.Equal(t, "ai-gateway-ai-gateway-route-extproc-myroute", actual)
 }
 
-func TestLLMRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
+func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	c.kube = fake2.NewClientset()
 
@@ -52,7 +52,7 @@ func TestLLMRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
+func TestAIGatewayRouteController_reconcileExtProcDeployment(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	c.kube = fake2.NewClientset()
 
@@ -103,7 +103,7 @@ func TestLLMRouteController_reconcileExtProcDeployment(t *testing.T) {
 	require.Equal(t, int32(456), *deployment.Spec.Replicas)
 }
 
-func TestLLMRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
+func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
@@ -189,10 +189,10 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingLLMRoute, aiGatewayRouteIndexFunc).
+		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc).
 		Build()
 
-	// Create a LLMRoute.
+	// Create a AIGatewayRoute.
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
@@ -218,13 +218,13 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
 	err := c.List(context.Background(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: "backend1.default"})
+		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend1.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
 
 	err = c.List(context.Background(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingLLMRoute: "backend2.default"})
+		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)

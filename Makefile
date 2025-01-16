@@ -114,6 +114,7 @@ test-cel: envtest apigen
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests
 	@echo "Run ExtProc test"
 	@go test ./tests/extproc/... -tags test_extproc -v -count=1
 
@@ -141,6 +142,7 @@ test-e2e: kind
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
 # - `make build.extproc_custom_router CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_router directory.
+# - `make build.testupstream CMD_PATH_PREFIX=tests`: will build the tests/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.

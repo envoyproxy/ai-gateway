@@ -40,7 +40,7 @@ var (
 //   - TEST_AWS_SECRET_ACCESS_KEY
 //   - TEST_OPENAI_API_KEY
 //
-// The test will fail if any of these are not set.
+// The test will be skipped if any of these are not set.
 func TestE2E(t *testing.T) {
 	requireBinaries(t)
 	accessLogPath := t.TempDir() + "/access.log"
@@ -142,8 +142,8 @@ func TestE2E(t *testing.T) {
 // requireExtProc starts the external processor with the provided configPath.
 // The config must be in YAML format specified in [filterconfig.Config] type.
 func requireExtProc(t *testing.T, configPath string) {
-	awsAccessKeyID := requireEnvVar(t, "TEST_AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := requireEnvVar(t, "TEST_AWS_SECRET_ACCESS_KEY")
+	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
 
 	cmd := exec.Command(extProcBinaryPath()) // #nosec G204
 	cmd.Stdout = os.Stdout
@@ -159,7 +159,7 @@ func requireExtProc(t *testing.T, configPath string) {
 
 // requireRunEnvoy starts the Envoy proxy with the provided configuration.
 func requireRunEnvoy(t *testing.T, accessLogPath string) {
-	openAIAPIKey := requireEnvVar(t, "TEST_OPENAI_API_KEY")
+	openAIAPIKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
 
 	tmpDir := t.TempDir()
 	envoyYaml := strings.Replace(envoyYamlBase, "TEST_OPENAI_API_KEY", openAIAPIKey, 1)
@@ -195,11 +195,11 @@ func requireBinaries(t *testing.T) {
 	}
 }
 
-// requireEnvVar requires an environment variable to be set.
-func requireEnvVar(t *testing.T, envVar string) string {
+// getEnvVarOrSkip requires an environment variable to be set.
+func getEnvVarOrSkip(t *testing.T, envVar string) string {
 	value := os.Getenv(envVar)
 	if value == "" {
-		t.Fatalf("Environment variable %s is not set", envVar)
+		t.Skipf("Environment variable %s is not set", envVar)
 	}
 	return value
 }
