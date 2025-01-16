@@ -44,20 +44,6 @@ type Options struct {
 	ZapOptions           zap.Options
 }
 
-func newClients(config *rest.Config) (kubeClient client.Client, kube kubernetes.Interface, err error) {
-	// TODO: cache options, especially HTTPRoutes managed by the AI Gateway.
-	kubeClient, err = client.New(config, client.Options{Scheme: scheme})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create new client: %w", err)
-	}
-
-	kube, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-	return kubeClient, kube, nil
-}
-
 // StartControllers starts the controllers for the AI Gateway.
 // This blocks until the manager is stopped.
 //
@@ -74,29 +60,25 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new controller manager: %w", err)
 	}
 
-	clientForRouteC, kubeForRouteC, err := newClients(config)
-	if err != nil {
-		return fmt.Errorf("failed to create new clients: %w", err)
+	c := mgr.GetClient()
+	indexer := mgr.GetFieldIndexer()
+	if err = applyIndexing(indexer); err != nil {
+		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
 	sinkChan := make(chan ConfigSinkEvent, 100)
-	routeC := NewLLMRouteController(clientForRouteC, kubeForRouteC, logger, sinkChan)
+	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.LLMRoute{}).
+		For(&aigv1a1.AIGatewayRoute{}).
 		Complete(routeC); err != nil {
-		return fmt.Errorf("failed to create controller for LLMRoute: %w", err)
+		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
 	}
 
-	clientForBackendC, kubeForBackendC, err := newClients(config)
-	if err != nil {
-		return fmt.Errorf("failed to create new clients: %w", err)
-	}
-
-	backendC := NewLLMBackendController(clientForBackendC, kubeForBackendC, logger, sinkChan)
+	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.LLMBackend{}).
+		For(&aigv1a1.AIServiceBackend{}).
 		Complete(backendC); err != nil {
-		return fmt.Errorf("failed to create controller for LLMBackend: %w", err)
+		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
 	clientForConfigSink, kubeForConfigSink, err := newClients(config)
@@ -106,7 +88,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	sink := newConfigSink(clientForConfigSink, kubeForConfigSink, logger, sinkChan, options.ExtProcImage)
 
-	// Before starting the manager, initialize the config sink to sync all LLMBackend and LLMRoute objects in the cluster.
+	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	logger.Info("Initializing config sink")
 	if err = sink.init(ctx); err != nil {
 		return fmt.Errorf("failed to initialize config sink: %w", err)
@@ -115,6 +97,15 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	logger.Info("Starting controller manager")
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
 		return fmt.Errorf("failed to start controller manager: %w", err)
+	}
+	return nil
+}
+
+func applyIndexing(indexer client.FieldIndexer) error {
+	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
+		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
 	return nil
 }

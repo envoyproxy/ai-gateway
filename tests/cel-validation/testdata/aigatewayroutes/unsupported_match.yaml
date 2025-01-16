@@ -1,5 +1,5 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMRoute
+kind: AIGatewayRoute
 metadata:
   name: apple
   namespace: default
@@ -9,7 +9,7 @@ spec:
   rules:
     - matches:
       - headers:
-        - type: Exact
+        - type: RegularExpression
           name: x-envoy-ai-gateway-model
           value: llama3-70b
       backendRefs:

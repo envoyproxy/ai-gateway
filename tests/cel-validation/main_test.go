@@ -19,7 +19,7 @@ import (
 //go:embed testdata
 var testdata embed.FS
 
-func TestLLMRoutes(t *testing.T) {
+func TestAIGatewayRoutes(t *testing.T) {
 	c, _, _ := tests.NewEnvTest(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
@@ -43,24 +43,24 @@ func TestLLMRoutes(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := testdata.ReadFile(path.Join("testdata/llmroutes", tc.name))
+			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
 			require.NoError(t, err)
 
-			llmRoute := &aigv1a1.LLMRoute{}
-			err = yaml.UnmarshalStrict(data, llmRoute)
+			aiGatewayRoute := &aigv1a1.AIGatewayRoute{}
+			err = yaml.UnmarshalStrict(data, aiGatewayRoute)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, llmRoute), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, aiGatewayRoute), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, llmRoute))
-				require.NoError(t, c.Delete(ctx, llmRoute))
+				require.NoError(t, c.Create(ctx, aiGatewayRoute))
+				require.NoError(t, c.Delete(ctx, aiGatewayRoute))
 			}
 		})
 	}
 }
 
-func TestLLMBackends(t *testing.T) {
+func TestAIServiceBackends(t *testing.T) {
 	c, _, _ := tests.NewEnvTest(t)
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
@@ -78,18 +78,18 @@ func TestLLMBackends(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := testdata.ReadFile(path.Join("testdata/llmbackends", tc.name))
+			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))
 			require.NoError(t, err)
 
-			llmBackend := &aigv1a1.LLMBackend{}
-			err = yaml.UnmarshalStrict(data, llmBackend)
+			aiBackend := &aigv1a1.AIServiceBackend{}
+			err = yaml.UnmarshalStrict(data, aiBackend)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, llmBackend), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, aiBackend), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, llmBackend))
-				require.NoError(t, c.Delete(ctx, llmBackend))
+				require.NoError(t, c.Create(ctx, aiBackend))
+				require.NoError(t, c.Delete(ctx, aiBackend))
 			}
 		})
 	}

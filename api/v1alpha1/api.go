@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -9,57 +10,58 @@ import (
 
 // +kubebuilder:object:root=true
 
-// LLMRoute combines multiple LLMBackends and attaching them to Gateway(s) resources.
+// AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 //
-// This serves as a way to define a "unified" LLM API for a Gateway which allows downstream
-// clients to use a single schema API to interact with multiple LLM backends.
+// This serves as a way to define a "unified" AI API for a Gateway which allows downstream
+// clients to use a single schema API to interact with multiple AI backends.
 //
 // The inputSchema field is used to determine the structure of the requests that the Gateway will
-// receive. And then the Gateway will route the traffic to the appropriate LLMBackend based
-// on the output schema of the LLMBackend while doing the other necessary jobs like
+// receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
+// on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
-// LLMRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
-// The generated HTTPRoute has the owner reference set to this LLMRoute.
-type LLMRoute struct {
+// AIGatewayRoute generates a HTTPRoute resource based on the configuration basis for routing the traffic.
+// The generated HTTPRoute has the owner reference set to this AIGatewayRoute.
+type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the LLM policy.
-	Spec LLMRouteSpec `json:"spec,omitempty"`
+	// Spec defines the details of the AIGatewayRoute.
+	Spec AIGatewayRouteSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LLMRouteList contains a list of LLMTrafficPolicy
-type LLMRouteList struct {
+// AIGatewayRouteList contains a list of AIGatewayRoute.
+type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LLMRoute `json:"items"`
+	Items           []AIGatewayRoute `json:"items"`
 }
 
-// LLMRouteSpec details the LLMRoute configuration.
-type LLMRouteSpec struct {
-	// TargetRefs are the names of the Gateway resources this LLMRoute is being attached to.
+// AIGatewayRouteSpec details the AIGatewayRoute configuration.
+type AIGatewayRouteSpec struct {
+	// TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
-	// output schema specified in the selected LLMBackend during the routing process.
+	// output schema specified in the selected AIServiceBackend during the routing process.
 	//
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema LLMAPISchema `json:"inputSchema"`
-	// Rules is the list of LLMRouteRule that this LLMRoute will match the traffic to.
+	APISchema VersionedAPISchema `json:"inputSchema"`
+	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
 	// AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
-	// modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
+	// modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
+	// the transformation of the request and response, etc.
 	//
-	// In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-model` header is available
+	// In the matching conditions in the AIGatewayRouteRule, `x-envoy-ai-gateway-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
 	// from the request content before the routing decision.
 	//
@@ -68,38 +70,47 @@ type LLMRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=128
-	Rules []LLMRouteRule `json:"rules"`
+	Rules []AIGatewayRouteRule `json:"rules"`
+
+	// FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
+	//
+	// An AI Gateway filter is responsible for the transformation of the request and response
+	// as well as the routing behavior based on the model name extracted from the request content, etc.
+	//
+	// Currently, the filter is only implemented as an external process filter, which might be
+	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
+	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 }
 
-// LLMRouteRule is a rule that defines the routing behavior of the LLMRoute.
-type LLMRouteRule struct {
-	// BackendRefs is the list of LLMBackend that this rule will route the traffic to.
+// AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
+type AIGatewayRouteRule struct {
+	// BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
-	// The namespace of each backend is "local", i.e. the same namespace as the LLMRoute.
+	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	BackendRefs []LLMRouteRuleBackendRef `json:"backendRefs,omitempty"`
+	BackendRefs []AIGatewayRouteRuleBackendRef `json:"backendRefs,omitempty"`
 
-	// Matches is the list of LLMRouteMatch that this rule will match the traffic to.
+	// Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
 	// This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
-	Matches []LLMRouteRuleMatch `json:"matches,omitempty"`
+	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
 }
 
-// LLMRouteRuleBackendRef is a reference to a LLMBackend with a weight.
-type LLMRouteRuleBackendRef struct {
-	// Name is the name of the LLMBackend.
+// AIGatewayRouteRuleBackendRef is a reference to a AIServiceBackend with a weight.
+type AIGatewayRouteRuleBackendRef struct {
+	// Name is the name of the AIServiceBackend.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
-	// Weight is the weight of the LLMBackend. This is exactly the same as the weight in
+	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 	//
@@ -108,7 +119,7 @@ type LLMRouteRuleBackendRef struct {
 	Weight int `json:"weight"`
 }
 
-type LLMRouteRuleMatch struct {
+type AIGatewayRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
@@ -122,44 +133,90 @@ type LLMRouteRuleMatch struct {
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 
+type AIGatewayFilterConfig struct {
+	// Type specifies the type of the filter configuration.
+	//
+	// Currently, only ExternalProcess is supported, and default is ExternalProcess.
+	//
+	// +kubebuilder:default=ExternalProcess
+	Type AIGatewayFilterConfigType `json:"type"`
+
+	// ExternalProcess is the configuration for the external process filter.
+	// This is optional, and if not set, the default values of Deployment spec will be used.
+	//
+	// +optional
+	ExternalProcess *AIGatewayFilterConfigExternalProcess `json:"externalProcess,omitempty"`
+}
+
+// AIGatewayFilterConfigType specifies the type of the filter configuration.
+//
+// +kubebuilder:validation:Enum=ExternalProcess;DynamicModule
+type AIGatewayFilterConfigType string
+
+const (
+	AIGatewayFilterConfigTypeExternalProcess AIGatewayFilterConfigType = "ExternalProcess"
+	AIGatewayFilterConfigTypeDynamicModule   AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
+)
+
+type AIGatewayFilterConfigExternalProcess struct {
+	// Replicas is the number of desired pods of the external process deployment.
+	//
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+	// Resources required by the external process container.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+	//
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	// Image is the image of the external process container.
+	//
+	// This defaults to the ghcr.io/envoyproxy/ai-gateway/extproc:${VERSION} image where
+	// ${VERSION} is the version of the Envoy AI Gateway controller.
+	//
+	// +optional
+	Image string `json:"image,omitempty"`
+	// TODO: maybe adding the option not to deploy the external process filter and let the user deploy it manually?
+	// 	Not sure if it is worth it as we are migrating to dynamic modules.
+}
+
 // +kubebuilder:object:root=true
 
-// LLMBackend is a resource that represents a single backend for LLMRoute.
+// AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
 // A backend is a service that handles traffic with a concrete API specification.
 //
-// A LLMBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+// A AIServiceBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 //
-// When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
-// HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
+// When a backend with an attached AIServiceBackend is used as a routing target in the AIGatewayRoute (more precisely, the
+// HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
-type LLMBackend struct {
+type AIServiceBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// Spec defines the details of the LLM policy.
-	Spec LLMBackendSpec `json:"spec,omitempty"`
+	// Spec defines the details of AIServiceBackend.
+	Spec AIServiceBackendSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LLMBackendList contains a list of LLMBackends.
-type LLMBackendList struct {
+// AIServiceBackendList contains a list of AIServiceBackends.
+type AIServiceBackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LLMBackend `json:"items"`
+	Items           []AIServiceBackend `json:"items"`
 }
 
-// LLMBackendSpec details the LLMBackend configuration.
-type LLMBackendSpec struct {
+// AIServiceBackendSpec details the AIServiceBackend configuration.
+type AIServiceBackendSpec struct {
 	// APISchema specifies the API schema of the output format of requests from
-	// Envoy that this LLMBackend can accept as incoming requests.
+	// Envoy that this AIServiceBackend can accept as incoming requests.
 	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
+	// the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.
 	//
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema LLMAPISchema `json:"outputSchema"`
-	// BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+	APISchema VersionedAPISchema `json:"outputSchema"`
+	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
 	//
@@ -175,15 +232,15 @@ type LLMBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
-// LLMAPISchema defines the API schema of either LLMRoute (the input) or LLMBackend (the output).
+// VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
 //
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
-type LLMAPISchema struct {
-	// Schema is the API schema of the LLMRoute or LLMBackend.
+type VersionedAPISchema struct {
+	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
 	Schema APISchema `json:"schema"`
@@ -207,9 +264,9 @@ const (
 )
 
 const (
-	// LLMModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
-	// This can be used to describe the routing behavior in HTTPRoute referenced by LLMRoute.
-	LLMModelHeaderKey = "x-envoy-ai-gateway-model"
+	// AIModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
+	// This can be used to describe the routing behavior in HTTPRoute referenced by AIGatewayRoute.
+	AIModelHeaderKey = "x-envoy-ai-gateway-model"
 )
 
 // BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.
