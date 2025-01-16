@@ -20,6 +20,8 @@ type Handler interface {
 func NewHandler(config *filterconfig.BackendAuth) (Handler, error) {
 	if config.AWSAuth != nil {
 		return newAWSHandler(config.AWSAuth)
+	} else if config.APIKey != nil {
+		return NewAPIKeyHandler(config.APIKey)
 	}
 	return nil, errors.New("no backend auth handler found")
 }
