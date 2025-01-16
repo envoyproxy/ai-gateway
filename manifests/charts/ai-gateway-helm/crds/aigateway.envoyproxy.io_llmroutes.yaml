@@ -51,6 +51,108 @@ spec:
           spec:
             description: Spec defines the details of the LLM policy.
             properties:
+              filterConfig:
+                description: |-
+                  FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
+
+                  An AI Gateway filter is responsible for the transformation of the request and response
+                  as well as the routing behavior based on the model name extracted from the request content, etc.
+
+                  Currently, the filter is only implemented as an external process filter, which might be
+                  extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
+                properties:
+                  externalProcess:
+                    description: |-
+                      ExternalProcess is the configuration for the external process filter.
+                      This is optional, and if not set, the default values of Deployment spec will be used.
+                    properties:
+                      image:
+                        description: |-
+                          Image is the image of the external process container.
+
+                          This defaults to the ghcr.io/envoyproxy/ai-gateway/extproc:${VERSION} image where
+                          ${VERSION} is the version of the Envoy AI Gateway controller.
+                        type: string
+                      replicas:
+                        description: Replicas is the number of desired pods of the
+                          external process deployment.
+                        format: int32
+                        type: integer
+                      resources:
+                        description: |-
+                          Resources required by the external process container.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This is an alpha field and requires enabling the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  type:
+                    default: ExternalProcess
+                    description: |-
+                      Type specifies the type of the filter configuration.
+
+                      Currently, only ExternalProcess is supported, and default is ExternalProcess.
+                    enum:
+                    - ExternalProcess
+                    - DynamicModule
+                    type: string
+                required:
+                - type
+                type: object
               inputSchema:
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
@@ -79,7 +181,8 @@ spec:
                   Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 
                   AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
-                  modifications to achieve the necessary jobs, notably inserting the AI Gateway external processor filter.
+                  modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
+                  the transformation of the request and response, etc.
 
                   In the matching conditions in the LLMRouteRule, `x-envoy-ai-gateway-model` header is available
                   if we want to describe the routing behavior based on the model name. The model name is extracted

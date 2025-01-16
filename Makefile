@@ -16,6 +16,24 @@ OUTPUT_DIR ?= out
 OCI_REGISTRY ?= ghcr.io/envoyproxy/ai-gateway
 TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
+HELM_CHART_VERSION ?= v0.0.0-latest
+
+# This will print out the help message for contributing to the project.
+.PHONY: help
+help:
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "All core targets needed for contributing:"
+	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
+	@echo "  test            	 Run the unit tests for the codebase."
+	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
+	@echo "                  	 This will be needed when changing API definitions."
+	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
+	@echo "                  	 Note that this requires some credentials."
+	@echo "  test-controller	 Run the integration tests for the controller with envtest."
+	@echo ""
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc."
+	@echo ""
 
 # This runs the linter, formatter, and tidy on the codebase.
 .PHONY: lint
@@ -55,18 +73,20 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen format lint
+precommit: tidy codespell apigen format lint editorconfig helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
-check: editorconfig-checker
-	@$(MAKE) precommit
-	@echo "running editorconfig-checker"
-	@$(EDITORCONFIG_CHECKER)
+check: precommit
 	@if [ ! -z "`git status -s`" ]; then \
 		echo "The following differences will fail CI until committed:"; \
 		git diff --exit-code; \
 	fi
+
+# This runs the editorconfig-checker on the codebase.
+editorconfig: editorconfig-checker
+	@echo "running editorconfig-checker"
+	@$(EDITORCONFIG_CHECKER)
 
 # This runs the unit tests for the codebase.
 .PHONY: test
@@ -104,6 +124,15 @@ test-controller: envtest apigen
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
                  go test ./tests/controller --tags test_controller -v -count=1; \
     done
+
+# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
+#
+# This requires the docker images to be built.
+.PHONY: test-e2e
+test-e2e: kind
+	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
+	@echo "Run E2E tests"
+	@go test ./tests/e2e/... -tags test_e2e -v -count=1
 
 # This builds a binary for the given command under the internal/cmd directory.
 #
@@ -173,3 +202,30 @@ docker-build.%:
 .PHONE: docker-build
 docker-build:
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) docker-build.$(COMMAND_NAME);)
+
+HELM_DIR := ./manifests/charts/ai-gateway-helm
+
+# This lints the helm chart, ensuring that it is for packaging.
+#
+# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
+.PHONY: helm-lint
+helm-lint:
+	@echo "helm-lint => .${HELM_DIR}"
+	@helm lint ${HELM_DIR}
+
+# This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
+# This must pass before `helm-push` can be run as well as on any commit.
+#
+# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
+.PHONY: helm-package
+helm-package: helm-lint
+	@echo "helm-package => ${HELM_DIR}"
+	@helm package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+
+# This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
+#
+# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
+.PHONY: helm-push
+helm-push: helm-package
+	@echo "helm-push => .${HELM_DIR}"
+	@helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}

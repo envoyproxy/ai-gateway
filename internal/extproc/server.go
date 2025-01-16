@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -32,7 +32,7 @@ func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*process
 }
 
 // LoadConfig updates the configuration of the external processor.
-func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
+func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 	bodyParser, err := router.NewRequestBodyParser(config.InputSchema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)
@@ -42,7 +42,7 @@ func (s *Server[P]) LoadConfig(config *extprocconfig.Config) error {
 		return fmt.Errorf("cannot create router: %w", err)
 	}
 
-	factories := make(map[extprocconfig.VersionedAPISchema]translator.Factory)
+	factories := make(map[filterconfig.VersionedAPISchema]translator.Factory)
 	backendAuthHandlers := make(map[string]backendauth.Handler)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {

@@ -2,9 +2,9 @@
 
 We welcome contributions from the community. Please read the following guidelines carefully to maximize the chances of your PR being merged.
 
-## Coding Style
+## Development
 
-To ensure your change passes format checks, run `make precommit` and ensure all checks pass.
+See `make help`.
 
 ## DCO
 

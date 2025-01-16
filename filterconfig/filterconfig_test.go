@@ -1,4 +1,4 @@
-package extprocconfig_test
+package filterconfig_test
 
 import (
 	"log/slog"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 )
 
@@ -18,8 +18,8 @@ func TestDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, server)
 
-	var cfg extprocconfig.Config
-	err = yaml.Unmarshal([]byte(extprocconfig.DefaultConfig), &cfg)
+	var cfg filterconfig.Config
+	err = yaml.Unmarshal([]byte(filterconfig.DefaultConfig), &cfg)
 	require.NoError(t, err)
 
 	err = server.LoadConfig(&cfg)
@@ -58,7 +58,7 @@ rules:
     value: gpt4.4444
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
-	cfg, err := extprocconfig.UnmarshalConfigYaml(configPath)
+	cfg, err := filterconfig.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
 	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
 	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)

@@ -18,24 +18,37 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/extprocconfig"
+	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
 const (
-	managedByLabel        = "app.kubernetes.io/managed-by"
-	expProcConfigFileName = "extproc-config.yaml"
+	managedByLabel                             = "app.kubernetes.io/managed-by"
+	expProcConfigFileName                      = "extproc-config.yaml"
+	k8sClientIndexBackendToReferencingLLMRoute = "BackendToReferencingLLMRoute"
 )
+
+func llmRouteIndexFunc(o client.Object) []string {
+	llmRoute := o.(*aigv1a1.LLMRoute)
+	var ret []string
+	for _, rule := range llmRoute.Spec.Rules {
+		for _, backend := range rule.BackendRefs {
+			key := fmt.Sprintf("%s.%s", backend.Name, llmRoute.Namespace)
+			ret = append(ret, key)
+		}
+	}
+	return ret
+}
 
 // llmRouteController implements [reconcile.TypedReconciler].
 //
 // This handles the LLMRoute resource and creates the necessary resources for the external process.
 type llmRouteController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	logLevel     string
-	extProcImage string
-	eventChan    chan ConfigSinkEvent
+	client              client.Client
+	kube                kubernetes.Interface
+	logger              logr.Logger
+	logLevel            string
+	defaultExtProcImage string
+	eventChan           chan ConfigSinkEvent
 }
 
 // NewLLMRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the LLMRoute resource.
@@ -44,11 +57,11 @@ func NewLLMRouteController(
 	options Options, ch chan ConfigSinkEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmRouteController{
-		client:       client,
-		kube:         kube,
-		logger:       logger,
-		extProcImage: options.ExtProcImage,
-		eventChan:    ch,
+		client:              client,
+		kube:                kube,
+		logger:              logger.WithName("llmroute-controller"),
+		defaultExtProcImage: options.ExtProcImage,
+		eventChan:           ch,
 	}
 }
 
@@ -64,8 +77,7 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 	var llmRoute aigv1a1.LLMRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &llmRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.eventChan <- ConfigSinkEventLLMRouteDeleted{namespace: req.Namespace, name: req.Name}
-			ctrl.Log.Info("Deleting LLMRoute",
+			c.logger.Info("Deleting LLMRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -153,7 +165,7 @@ func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, 
 					Namespace:       llmRoute.Namespace,
 					OwnerReferences: ownerRef,
 				},
-				Data: map[string]string{expProcConfigFileName: extprocconfig.DefaultConfig},
+				Data: map[string]string{expProcConfigFileName: filterconfig.DefaultConfig},
 			}
 			_, err = c.kube.CoreV1().ConfigMaps(llmRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {
@@ -187,7 +199,7 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           c.extProcImage,
+									Image:           c.defaultExtProcImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
@@ -213,18 +225,21 @@ func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llm
 					},
 				},
 			}
+			applyExtProcDeploymentConfigUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
 			}
-			ctrl.Log.Info("Created deployment", "name", name)
+			c.logger.Info("Created deployment", "name", name)
 		} else {
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
+	} else {
+		applyExtProcDeploymentConfigUpdate(&deployment.Spec, llmRoute.Spec.FilterConfig)
+		if _, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update deployment: %w", err)
+		}
 	}
-
-	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
-	_ = deployment
 
 	// This is static, so we don't need to update it.
 	service := &corev1.Service{
@@ -263,4 +278,20 @@ func ownerReferenceForLLMRoute(llmRoute *aigv1a1.LLMRoute) []metav1.OwnerReferen
 		Name:       llmRoute.Name,
 		UID:        llmRoute.UID,
 	}}
+}
+
+func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.LLMRouteFilterConfig) {
+	if filterConfig == nil || filterConfig.ExternalProcess == nil {
+		return
+	}
+	extProc := filterConfig.ExternalProcess
+	if resource := extProc.Resources; resource != nil {
+		d.Template.Spec.Containers[0].Resources = *resource
+	}
+	if replica := extProc.Replicas; replica != nil {
+		d.Replicas = replica
+	}
+	if image := extProc.Image; image != "" {
+		d.Template.Spec.Containers[0].Image = image
+	}
 }

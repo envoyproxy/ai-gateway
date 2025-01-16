@@ -16,6 +16,8 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -67,6 +69,16 @@ func TestStartControllers(t *testing.T) {
 			require.NoError(t, err)
 		}
 	})
+	resourceReq := &corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("16Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("8Mi"),
+		},
+	}
 	t.Run("setup routes", func(t *testing.T) {
 		for _, route := range []string{"route1", "route2"} {
 			err := c.Create(ctx, &aigv1a1.LLMRoute{
@@ -89,6 +101,12 @@ func TestStartControllers(t *testing.T) {
 								{Name: "backend1", Weight: 1},
 								{Name: "backend2", Weight: 1},
 							},
+						},
+					},
+					FilterConfig: &aigv1a1.LLMRouteFilterConfig{
+						Type: aigv1a1.LLMRouteFilterConfigTypeExternalProcess,
+						ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+							Replicas: ptr.To[int32](5), Resources: resourceReq,
 						},
 					},
 				},
@@ -123,6 +141,8 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, deployment.OwnerReferences, 1)
 				require.Equal(t, llmRoute.Name, deployment.OwnerReferences[0].Name)
 				require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+				require.Equal(t, int32(5), *deployment.Spec.Replicas)
+				require.Equal(t, resourceReq, &deployment.Spec.Template.Spec.Containers[0].Resources)
 
 				service, err := k.CoreV1().Services("default").Get(ctx, extProcName(route), metav1.GetOptions{})
 				if err != nil {
@@ -220,29 +240,45 @@ func TestLLMRouteController(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	t.Run("create route", func(t *testing.T) {
-		origin := &aigv1a1.LLMRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.LLMRouteSpec{
-				APISchema: defaultSchema,
-				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-					{
-						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-							Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
-						},
-					},
-				},
-				Rules: []aigv1a1.LLMRouteRule{
-					{
-						Matches: []aigv1a1.LLMRouteRuleMatch{},
-						BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
-							{Name: "backend1", Weight: 1},
-							{Name: "backend2", Weight: 1},
-						},
+	resourceReq := &corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("16Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("8Mi"),
+		},
+	}
+	origin := &aigv1a1.LLMRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.LLMRouteSpec{
+			APISchema: defaultSchema,
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
 					},
 				},
 			},
-		}
+			Rules: []aigv1a1.LLMRouteRule{
+				{
+					Matches: []aigv1a1.LLMRouteRuleMatch{},
+					BackendRefs: []aigv1a1.LLMRouteRuleBackendRef{
+						{Name: "backend1", Weight: 1},
+						{Name: "backend2", Weight: 1},
+					},
+				},
+			},
+			FilterConfig: &aigv1a1.LLMRouteFilterConfig{
+				Type: aigv1a1.LLMRouteFilterConfigTypeExternalProcess,
+				ExternalProcess: &aigv1a1.LLMRouteFilterConfigExternalProcess{
+					Replicas: ptr.To[int32](5), Resources: resourceReq,
+				},
+			},
+		},
+	}
+	t.Run("create route", func(t *testing.T) {
 		err := c.Create(ctx, origin)
 		require.NoError(t, err)
 
@@ -254,15 +290,60 @@ func TestLLMRouteController(t *testing.T) {
 		created := item.(*aigv1a1.LLMRoute)
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
+
+		// Deployment must be created.
+		require.Eventually(t, func() bool {
+			deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName("myroute"), metav1.GetOptions{})
+			if err != nil {
+				t.Logf("failed to get deployment %s: %v", extProcName("myroute"), err)
+				return false
+			}
+			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
+			require.Len(t, deployment.OwnerReferences, 1)
+			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
+			require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+			require.Equal(t, int32(5), *deployment.Spec.Replicas)
+			require.Equal(t, resourceReq, &deployment.Spec.Template.Spec.Containers[0].Resources)
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
 	})
 
-	t.Run("delete route", func(t *testing.T) {
-		err := c.Delete(ctx, &aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	t.Run("update", func(t *testing.T) {
+		newResource := &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("300m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		}
+		origin.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](3)
+		origin.Spec.FilterConfig.ExternalProcess.Resources = newResource
+		err := c.Update(ctx, origin)
 		require.NoError(t, err)
+
 		item, ok := <-ch
 		require.True(t, ok)
-		require.IsType(t, controller.ConfigSinkEventLLMRouteDeleted{}, item)
-		require.Equal(t, "myroute.default", item.(controller.ConfigSinkEventLLMRouteDeleted).String())
+		require.IsType(t, &aigv1a1.LLMRoute{}, item)
+
+		// Verify that they are the same.
+		created := item.(*aigv1a1.LLMRoute)
+		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
+		require.Equal(t, origin, created)
+
+		// Deployment must be updated.
+		require.Eventually(t, func() bool {
+			deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName("myroute"), metav1.GetOptions{})
+			if err != nil {
+				t.Logf("failed to get deployment %s: %v", extProcName("myroute"), err)
+				return false
+			}
+			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
+			require.Len(t, deployment.OwnerReferences, 1)
+			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
+			require.Equal(t, "LLMRoute", deployment.OwnerReferences[0].Kind)
+			require.Equal(t, int32(3), *deployment.Spec.Replicas)
+			require.Equal(t, newResource, &deployment.Spec.Template.Spec.Containers[0].Resources)
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
 
@@ -307,14 +388,5 @@ func TestLLMBackendController(t *testing.T) {
 		// Verify that they are the same.
 		created := item.(*aigv1a1.LLMBackend)
 		require.Equal(t, origin, created)
-	})
-
-	t.Run("delete backend", func(t *testing.T) {
-		err := c.Delete(ctx, &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
-		require.NoError(t, err)
-		item, ok := <-ch
-		require.True(t, ok)
-		require.IsType(t, controller.ConfigSinkEventLLMBackendDeleted{}, item)
-		require.Equal(t, "mybackend.default", item.(controller.ConfigSinkEventLLMBackendDeleted).String())
 	})
 }
