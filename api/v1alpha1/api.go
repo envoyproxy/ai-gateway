@@ -53,7 +53,7 @@ type AIGatewayRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema VersionedAPISchema `json:"inputSchema"`
+	APISchema LLMAPISchema `json:"inputSchema"`
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -215,7 +215,7 @@ type AIServiceBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema VersionedAPISchema `json:"outputSchema"`
+	APISchema LLMAPISchema `json:"outputSchema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
@@ -232,14 +232,14 @@ type AIServiceBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 }
 
-// VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
+// LLMAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
 //
 // This allows the ai-gateway to understand the input and perform the necessary transformation
 // depending on the API schema pair (input, output).
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
-type VersionedAPISchema struct {
+type LLMAPISchema struct {
 	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock

@@ -61,7 +61,7 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -215,7 +215,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				APISchema: aigv1a1.VersionedAPISchema{
+				APISchema: aigv1a1.LLMAPISchema{
 					Schema: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef: egv1a1.BackendRef{
@@ -255,7 +255,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					APISchema: aigv1a1.LLMAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
