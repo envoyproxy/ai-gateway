@@ -255,15 +255,6 @@ func TestLLMRouteController(t *testing.T) {
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
 	})
-
-	t.Run("delete route", func(t *testing.T) {
-		err := c.Delete(ctx, &aigv1a1.LLMRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
-		require.NoError(t, err)
-		item, ok := <-ch
-		require.True(t, ok)
-		require.IsType(t, controller.ConfigSinkEventLLMRouteDeleted{}, item)
-		require.Equal(t, "myroute.default", item.(controller.ConfigSinkEventLLMRouteDeleted).String())
-	})
 }
 
 func TestLLMBackendController(t *testing.T) {
@@ -307,14 +298,5 @@ func TestLLMBackendController(t *testing.T) {
 		// Verify that they are the same.
 		created := item.(*aigv1a1.LLMBackend)
 		require.Equal(t, origin, created)
-	})
-
-	t.Run("delete backend", func(t *testing.T) {
-		err := c.Delete(ctx, &aigv1a1.LLMBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
-		require.NoError(t, err)
-		item, ok := <-ch
-		require.True(t, ok)
-		require.IsType(t, controller.ConfigSinkEventLLMBackendDeleted{}, item)
-		require.Equal(t, "mybackend.default", item.(controller.ConfigSinkEventLLMBackendDeleted).String())
 	})
 }

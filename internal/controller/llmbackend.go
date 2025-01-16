@@ -37,7 +37,6 @@ func (l *llmBackendController) Reconcile(ctx context.Context, req reconcile.Requ
 	var llmBackend aigv1a1.LLMBackend
 	if err := l.client.Get(ctx, req.NamespacedName, &llmBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			l.eventChan <- ConfigSinkEventLLMBackendDeleted{namespace: req.Namespace, name: req.Name}
 			l.logger.Info("Deleting LLMBackend",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
