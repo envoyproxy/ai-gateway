@@ -1,9 +1,5 @@
 package main
 
-import (
-	maincmd "github.com/envoyproxy/ai-gateway/internal/extproc/main"
-)
+import "github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 
-func main() {
-	maincmd.Main()
-}
+func main() { mainlib.Main() }

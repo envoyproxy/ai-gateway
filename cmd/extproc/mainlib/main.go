@@ -1,4 +1,4 @@
-package maincmd
+package mainlib
 
 import (
 	"context"
@@ -27,6 +27,8 @@ var (
 	logLevel    = flag.String("logLevel", "info", "log level")
 )
 
+// Main is a main function for the external processor exposed
+// for allowing users to build their own external processor.
 func Main() {
 	flag.Parse()
 
