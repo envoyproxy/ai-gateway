@@ -113,6 +113,7 @@ test-cel: envtest apigen
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
+	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@echo "Run ExtProc test"
 	@go test ./tests/extproc/... -tags test_extproc -v -count=1
 
@@ -139,12 +140,14 @@ test-e2e: kind
 # Example:
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
+# - `make build.testupstream CMD_PATH_PREFIX=tests`: will build the tests/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
 # Example:
 # - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
+CMD_PATH_PREFIX ?= cmd
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%
@@ -155,7 +158,7 @@ build.%:
 		for goarch in $(GOARCH_LIST); do \
 			echo "-> Building $(COMMAND_NAME) for $$goos/$$goarch"; \
 			CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -ldflags "$(GO_LDFLAGS)" \
-				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./cmd/$(COMMAND_NAME); \
+				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./$(CMD_PATH_PREFIX)/$(COMMAND_NAME); \
 			echo "<- Built $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch"; \
 		done; \
 	done
