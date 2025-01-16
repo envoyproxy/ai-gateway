@@ -80,6 +80,54 @@ type AIGatewayRouteSpec struct {
 	// Currently, the filter is only implemented as an external process filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
+
+	// RequestCost specifies the cost of the request, notably the token usage.
+	// The AI Gateway filter will capture this information and store it in the Envoy's dynamic
+	// metadata per HTTP request. The namespaced key is "envoy.filters.http.ai_gateway.token_usage",
+	// and the key is "ai_gateway_route_request_cost".
+	//
+	// For example, with the following BackendTrafficPolicy of Envoy Gateway,
+	// the captured value is used as the "token usage rate limiting":
+	//
+	// apiVersion: gateway.envoyproxy.io/v1alpha1
+	// kind: BackendTrafficPolicy
+	// metadata:
+	//	name: some-example-token-rate-limit
+	//	namespace: default
+	// spec:
+	//	targetRefs:
+	//	  - group: gateway.networking.k8s.io
+	//	    kind: HTTPRoute
+	//	    name: usage-rate-limit
+	//	rateLimit:
+	//	  type: Global
+	//	  global:
+	//	    rules:
+	//	      - clientSelectors:
+	//	          # Do the rate limiting based on the x-user-id header.
+	//	          - headers:
+	//	              - name: x-user-id
+	//	                type: Exact
+	//	                value: one
+	//	        limit:
+	//	          # Configures the number of "tokens" allowed per hour.
+	//	          requests: 10000
+	//	          unit: Hour
+	//	        cost:
+	//	          request:
+	//	            from: Number
+	//	            # Setting the request cost to zero allows to only check the rate limit budget,
+	//	            # and not consume the budget on the request path.
+	//	            number: 0
+	//	          # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.
+	//	          # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited
+	//	          # if the budget is exhausted.
+	//	          response:
+	//	            from: Metadata
+	//	            metadata:
+	//	              namespace: envoy.filters.http.ai_gateway.token_usage
+	//	              key: ai_gateway_route_request_cost
+	RequestCost *RequestCost `json:"captureTokenUsage,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -378,3 +426,34 @@ type AWSOIDCExchangeToken struct {
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
 	AwsRoleArn string `json:"awsRoleArn"`
 }
+
+// RequestCost configures the request cost.
+type RequestCost struct {
+	// Type specifies the type of the request cost. The default is "default",
+	// and it uses "output token" as the cost.
+	//
+	// +kubebuilder:validation:Enum=default
+	Type RequestCostType `json:"type"`
+
+	// CELExpression is the CEL expression to calculate the cost of the request.
+	// The CEL expression must return an integer value. The CEL expression should be
+	// able to access the request headers, model name, backend name, input/output tokens etc.
+	//
+	// +optional
+	// +notImplementedHide https://github.com/envoyproxy/ai-gateway/issues/97
+	CELExpression *string `json:"celExpression"`
+}
+
+// RequestCostType specifies the type of the RequestCost.
+type RequestCostType string
+
+const (
+	RequestCostTypeDefault RequestCostType = "default"
+	RequestCostTypeCEL     RequestCostType = "cel"
+)
+
+const (
+	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
+	AIGatewayFilterMetadataNamespace              = "envoy.filters.http.ai_gateway"
+	AIGatewayFilterMetadataRequestCostMetadataKey = "ai_gateway_route_request_cost"
+)

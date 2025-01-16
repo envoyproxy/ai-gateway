@@ -60,9 +60,9 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
 		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: 123}
-		p := &Processor{translator: mt, config: &processorConfig{tokenUsageMetadata: &filterconfig.TokenUsageMetadata{
-			Namespace: "ai_gateway_llm_ns", Key: "token_usage",
-		}}}
+		p := &Processor{translator: mt, config: &processorConfig{
+			requestCostNamespace: "ai_gateway_llm_ns", requestCostKey: "token_usage",
+		}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response

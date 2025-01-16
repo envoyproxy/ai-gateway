@@ -33,7 +33,7 @@ inputSchema:
   schema: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
-tokenUsageMetadata:
+requestCost:
   namespace: ai_gateway_llm_ns
   key: token_usage_key
 rules:
@@ -60,8 +60,8 @@ rules:
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 	cfg, err := filterconfig.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
-	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
-	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
+	require.Equal(t, "ai_gateway_llm_ns", cfg.RequestCost.Namespace)
+	require.Equal(t, "token_usage_key", cfg.RequestCost.Key)
 	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
 	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)

@@ -66,10 +66,9 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 // From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
 type Config struct {
-	// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token, optional.
-	// If this is provided, the filter will populate the usage token in the filter metadata at the end of the
-	// response body processing.
-	TokenUsageMetadata *TokenUsageMetadata `yaml:"tokenUsageMetadata,omitempty"`
+	// RequestCost configures the cost of each request. Optional. If this is provided, the filter will populate
+	// the "calculated" cost in the filter metadata at the end of the response body processing.
+	RequestCost *RequestCost `yaml:"tokenUsageMetadata,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
 	InputSchema VersionedAPISchema `yaml:"inputSchema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
@@ -82,16 +81,20 @@ type Config struct {
 	Rules []RouteRule `yaml:"rules"`
 }
 
-// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token.
+// RequestCost specifies "where" the request cost is stored in the filter metadata as well as
+// "how" the cost is calculated. By default, the cost is retrieved from "output token" in the response body.
+//
 // This can be used to subtract the usage token from the usage quota in the rate limit filter when
 // the request completes combined with `apply_on_stream_done` and `hits_addend` fields of
 // the rate limit configuration https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#config-route-v3-ratelimit
 // which is introduced in Envoy 1.33 (to be released soon as of writing).
-type TokenUsageMetadata struct {
-	// Namespace is the namespace of the metadata.
+type RequestCost struct {
+	// Namespace is the namespace of the metadata storing the request cost.
 	Namespace string `yaml:"namespace"`
-	// Key is the key of the metadata.
+	// Key is the key of the metadata storing the request cost.
 	Key string `yaml:"key"`
+	// CELExpression is the CEL expression to calculate the cost of the request.
+	CELExpression string `yaml:"celExpression,omitempty"`
 }
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.

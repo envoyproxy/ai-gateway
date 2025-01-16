@@ -183,6 +183,13 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		}
 	}
 
+	if cost := aiGatewayRoute.Spec.RequestCost; cost != nil {
+		ec.RequestCost = &filterconfig.RequestCost{
+			Namespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+			Key:       aigv1a1.AIGatewayFilterMetadataRequestCostMetadataKey,
+		}
+	}
+
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal extproc config: %w", err)

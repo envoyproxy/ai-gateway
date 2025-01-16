@@ -26,7 +26,7 @@ type processorConfig struct {
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	tokenUsageMetadata                           *filterconfig.TokenUsageMetadata
+	requestCostNamespace, requestCostKey         string
 }
 
 // ProcessorIface is the interface for the processor.
@@ -179,20 +179,21 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
-	if p.config.tokenUsageMetadata != nil {
-		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(p.config.tokenUsageMetadata, usedToken)
+	if len(p.config.requestCostNamespace) > 0 {
+		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(
+			p.config.requestCostNamespace, p.config.requestCostKey, usedToken)
 	}
 	return resp, nil
 }
 
-func buildTokenUsageDynamicMetadata(md *filterconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
+func buildTokenUsageDynamicMetadata(namespace, key string, usage uint32) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			md.Namespace: {
+			namespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							md.Key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
+							key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
 						},
 					},
 				},

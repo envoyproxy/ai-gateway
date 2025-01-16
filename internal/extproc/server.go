@@ -69,7 +69,10 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		ModelNameHeaderKey:       config.ModelNameHeaderKey,
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
-		tokenUsageMetadata:       config.TokenUsageMetadata,
+	}
+	if cost := config.RequestCost; cost != nil {
+		newConfig.requestCostNamespace = cost.Namespace
+		newConfig.requestCostKey = cost.Key
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

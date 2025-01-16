@@ -142,6 +142,9 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 						Port:      &port,
 					},
 				}}},
+				Metadata: &egv1a1.ExtProcMetadata{
+					WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+				},
 			}},
 		},
 	}
