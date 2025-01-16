@@ -12,6 +12,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -22,7 +23,7 @@ import (
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
-	router                                       router.Router
+	router                                       extprocapi.Router
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
@@ -73,14 +74,14 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
-	backendName, schema, err := p.config.router.Calculate(p.requestHeaders)
+	b, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
-	factory, ok := p.config.factories[schema]
+	factory, ok := p.config.factories[b.Schema]
 	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", schema)
+		return nil, fmt.Errorf("failed to find factory for output schema %q", b.Schema)
 	}
 
 	t, err := factory(path)
@@ -101,10 +102,10 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: p.config.ModelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(backendName)},
+		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
 	})
 
-	if authHandler, ok := p.config.backendAuthHandlers[backendName]; ok {
+	if authHandler, ok := p.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(p.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
