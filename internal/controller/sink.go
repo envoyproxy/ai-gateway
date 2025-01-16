@@ -163,6 +163,11 @@ func (c *configSink) init(ctx context.Context) error {
 				c.backendsToReferencingRoutes[backendKey][llmRoute] = struct{}{}
 			}
 		}
+
+		err := c.syncExtProcDeployment(ctx, llmRoute)
+		if err != nil {
+			return err
+		}
 	}
 
 	go func() {
@@ -256,6 +261,10 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 		}
 	}
 	c.llmRoutes[key] = llmRoute
+
+	if err := c.syncExtProcDeployment(context.Background(), llmRoute); err != nil {
+		c.logger.Error(err, "failed to update extproc deployment", "namespace", llmRoute.Namespace, "name", llmRoute.Name)
+	}
 }
 
 func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
