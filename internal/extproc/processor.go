@@ -73,14 +73,14 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
-	backendName, outputSchema, err := p.config.router.Calculate(p.requestHeaders)
+	b, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
-	factory, ok := p.config.factories[outputSchema]
+	factory, ok := p.config.factories[b.OutputSchema]
 	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", outputSchema)
+		return nil, fmt.Errorf("failed to find factory for output schema %q", b.OutputSchema)
 	}
 
 	t, err := factory(path)
@@ -101,10 +101,10 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: p.config.ModelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(backendName)},
+		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
 	})
 
-	if authHandler, ok := p.config.backendAuthHandlers[backendName]; ok {
+	if authHandler, ok := p.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(p.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}

@@ -104,9 +104,10 @@ type mockRouter struct {
 }
 
 // Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (string, filterconfig.VersionedAPISchema, error) {
+func (m mockRouter) Calculate(headers map[string]string) (*filterconfig.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	return m.retBackendName, m.retVersionedAPISchema, m.retErr
+	b := &filterconfig.Backend{Name: m.retBackendName, OutputSchema: m.retVersionedAPISchema}
+	return b, m.retErr
 }
 
 // mockRequestBodyParser implements [router.RequestBodyParser] for testing.
