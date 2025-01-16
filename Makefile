@@ -113,7 +113,7 @@ test-cel: envtest apigen
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
-	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests
 	@echo "Run ExtProc test"
 	@go test ./tests/extproc/... -tags test_extproc -v -count=1
 
