@@ -116,7 +116,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 			ToolSpec: &awsbedrock.ToolSpecification{
 				Name:        &toolType,
 				Description: &toolDefinition.Function.Description,
-				InputSchema: &awsbedrock.ToolSchema{
+				InputSchema: &awsbedrock.ToolInputSchema{
 					JSON: toolDefinition.Function.Parameters,
 				},
 			},

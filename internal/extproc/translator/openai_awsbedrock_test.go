@@ -350,7 +350,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							ToolSpec: &awsbedrock.ToolSpecification{
 								Name:        ptr.To("function"),
 								Description: ptr.To("Get the current weather in a given location"),
-								InputSchema: &awsbedrock.ToolSchema{
+								InputSchema: &awsbedrock.ToolInputSchema{
 									JSON: map[string]interface{}{
 										"type": "object",
 										"properties": map[string]interface{}{
