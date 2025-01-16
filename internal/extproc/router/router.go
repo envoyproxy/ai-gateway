@@ -24,6 +24,10 @@ type router struct {
 
 // NewRouter creates a new [Router] implementation for the given config.
 func NewRouter(config *filterconfig.Config) (Router, error) {
+	if filterconfig.NewCustomRouter != nil {
+		customRouter := filterconfig.NewCustomRouter(config.Rules)
+		return customRouter, nil
+	}
 	return &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))}, nil
 }
 

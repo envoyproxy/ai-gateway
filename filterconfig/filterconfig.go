@@ -10,9 +10,8 @@
 package filterconfig
 
 import (
-	"os"
-
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"os"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -158,4 +157,23 @@ func UnmarshalConfigYaml(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// NewCustomRouter is the function to create a custom router.
+// This is nil by default and can be set by the custom build of external processor.
+var NewCustomRouter NewCustomRouterFn
+
+// NewCustomRouterFn is the function signature for [NewCustomRouter].
+//
+// IT accepts the routing rules passed to the AI Gateway filter and returns a CustomRouter.
+// This is called when the new configuration is loaded.
+type NewCustomRouterFn func(Rules []RouteRule) CustomRouter
+
+// CustomRouter is the interface for the router.
+//
+// CustomRouter must be goroutine-safe as it is shared across multiple requests.
+type CustomRouter interface {
+	// Calculate determines the backend to route to based on the headers.
+	// Returns the backend name and the output schema.
+	Calculate(headers map[string]string) (backend *Backend, err error)
 }
