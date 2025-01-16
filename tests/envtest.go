@@ -21,13 +21,12 @@ import (
 // NewEnvTest creates a new environment for testing the controller package.
 func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.Interface) {
 	log.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
+	crdPath := filepath.Join("..", "..", "manifests", "charts", "ai-gateway-helm", "crds")
+	files, err := os.ReadDir(crdPath)
+	require.NoError(t, err)
 	var crds []string
-	for _, crd := range []string{
-		"aigateway.envoyproxy.io_llmroutes.yaml",
-		"aigateway.envoyproxy.io_llmbackends.yaml",
-		"aigateway.envoyproxy.io_backendsecuritypolicies.yaml",
-	} {
-		crds = append(crds, filepath.Join("..", "..", "manifests", "charts", "ai-gateway-helm", "crds", crd))
+	for _, file := range files {
+		crds = append(crds, filepath.Join(crdPath, file.Name()))
 	}
 	const (
 		extensionPolicyURL = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.4/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_envoyextensionpolicies.yaml"
@@ -37,7 +36,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	crds = append(crds, requireThirdPartyCRDDownloaded(t, "httproutes_crd_for_tests.yaml", httpRouteURL))
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
-	cfg, err := env.Start()
+	cfg, err = env.Start()
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := env.Stop(); err != nil {

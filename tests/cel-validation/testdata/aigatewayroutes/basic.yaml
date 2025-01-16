@@ -1,12 +1,11 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMRoute
+kind: AIGatewayRoute
 metadata:
   name: apple
   namespace: default
 spec:
   schema:
-    # Schema name must be OpenAI schema at the moment, so this is invalid.
-    name: AWSBedrock
+    name: OpenAI
   rules:
     - matches:
       - headers:

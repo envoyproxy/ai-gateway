@@ -1,5 +1,5 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: LLMBackend
+kind: AIServiceBackend
 metadata:
   name: dog-backend
   namespace: default

@@ -1,24 +1,27 @@
 apiVersion: v2
 name: ai-gateway-helm
-description: A Helm chart for Kubernetes
-
-# A chart can be either an 'application' or a 'library' chart.
-#
-# Application charts are a collection of templates that can be packaged into versioned archives
-# to be deployed.
-#
-# Library charts provide useful utilities or functions for the chart developer. They're included as
-# a dependency of application charts to inject those utilities and functions into the rendering
-# pipeline. Library charts do not define any templates and therefore cannot be deployed.
+description: The Helm chart for Envoy AI Gateway
 type: application
 
-# This is the chart version. This version number should be incremented each time you make changes
-# to the chart and its templates, including the app version.
-# Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: v0.1.0
+version: v0.0.0-latest
+appVersion: "latest"
+# TODO: fix the icon path to AI Gateway logo once it's available.
+icon: https://raw.githubusercontent.com/envoyproxy/gateway/main/site/assets/icons/logo.svg
 
-# This is the version number of the application being deployed. This version number should be
-# incremented each time you make changes to the application. Versions are not expected to
-# follow Semantic Versioning. They should reflect the version the application is using.
-# It is recommended to use it with quotes.
-appVersion: "1.16.0"
+maintainers:
+  - name: envoy-gateway-maintainers
+    url: https://github.com/envoyproxy/gateway/blob/main/CODEOWNERS
+
+keywords:
+  - gateway-api
+  - envoyproxy
+  - envoy-gateway
+  - eg
+  - ai-gateway
+  - ai
+
+# TODO: update the home URL once the website is available.
+home: https://github.com/envoyproxy/ai-gateway
+
+sources:
+  - https://github.com/envoyproxy/ai-gateway

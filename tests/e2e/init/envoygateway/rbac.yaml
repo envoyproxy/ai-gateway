@@ -7,8 +7,8 @@ rules:
   - apiGroups:
       - "aigateway.envoyproxy.io"
     resources:
-      - "llmroutes"
-      - "llmbackends"
+      - "aigatewayroutes"
+      - "aiservicebackends"
       - "backendSecurityPolicies"
     verbs:
       - "get"

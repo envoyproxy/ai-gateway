@@ -3,28 +3,28 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.2
-  name: llmbackends.aigateway.envoyproxy.io
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: aiservicebackends.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
   names:
-    kind: LLMBackend
-    listKind: LLMBackendList
-    plural: llmbackends
-    singular: llmbackend
+    kind: AIServiceBackend
+    listKind: AIServiceBackendList
+    plural: aiservicebackends
+    singular: aiservicebackend
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          LLMBackend is a resource that represents a single backend for LLMRoute.
+          AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
           A backend is a service that handles traffic with a concrete API specification.
 
-          A LLMBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+          A AIServiceBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 
-          When a backend with an attached LLMBackend is used as a routing target in the LLMRoute (more precisely, the
-          HTTPRouteSpec defined in the LLMRoute), the ai-gateway will generate the necessary configuration to do
+          When a backend with an attached AIServiceBackend is used as a routing target in the AIGatewayRoute (more precisely, the
+          HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
           the backend specific logic in the final HTTPRoute.
         properties:
           apiVersion:
@@ -45,11 +45,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the details of the LLM policy.
+            description: Spec defines the details of AIServiceBackend.
             properties:
               backendRef:
                 description: |-
-                  BackendRef is the reference to the Backend resource that this LLMBackend corresponds to.
+                  BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 
                   A backend can be of either k8s Service or Backend resource of Envoy Gateway.
 
@@ -163,9 +163,9 @@ spec:
               schema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
-                  Envoy that this LLMBackend can accept as incoming requests.
+                  Envoy that this AIServiceBackend can accept as incoming requests.
                   Based on this schema, the ai-gateway will perform the necessary transformation for
-                  the pair of LLMRouteSpec.APISchema and LLMBackendSpec.APISchema.
+                  the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.
 
                   This is required to be set.
                 properties:

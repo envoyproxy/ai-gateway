@@ -3,6 +3,7 @@
 out/
 .DS_Store
 .terraform
+.idea
 *for_tests.yaml
 .idea/
 
