@@ -229,7 +229,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		key := fmt.Sprintf("%s.%s", b.Name, b.Namespace)
 		rule := gwapiv1.HTTPRouteRule{
 			BackendRefs: []gwapiv1.HTTPBackendRef{
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef.BackendObjectReference}},
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef}},
 			},
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
@@ -244,7 +244,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
 		},
 		BackendRefs: []gwapiv1.HTTPBackendRef{
-			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef.BackendObjectReference}},
+			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 		},
 	})
 

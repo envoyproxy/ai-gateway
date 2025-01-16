@@ -60,10 +60,10 @@ func TestStartControllers(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: backend, Namespace: "default"},
 				Spec: aigv1a1.AIServiceBackendSpec{
 					APISchema: defaultSchema,
-					BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{
+					BackendRef: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName(backend),
 						Port: ptr.To[gwapiv1.PortNumber](8080),
-					}},
+					},
 				},
 			})
 			require.NoError(t, err)
@@ -372,10 +372,10 @@ func TestAIServiceBackendController(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
-				BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{
+				BackendRef: gwapiv1.BackendObjectReference{
 					Name: gwapiv1.ObjectName("mybackend"),
 					Port: ptr.To[gwapiv1.PortNumber](8080),
-				}},
+				},
 			},
 		}
 		err := c.Create(ctx, origin)

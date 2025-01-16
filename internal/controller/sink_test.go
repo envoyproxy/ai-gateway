@@ -7,7 +7,6 @@ import (
 	"os"
 	"testing"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -42,10 +41,10 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
 		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
-			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
-			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 	} {
 		err := fakeClient.Create(context.Background(), backend, &client.CreateOptions{})
@@ -137,33 +136,25 @@ func Test_newHTTPRoute(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 	} {
@@ -227,25 +218,19 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{
 					Schema: aigv1a1.APISchemaAWSBedrock,
 				},
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "cat", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 	} {
