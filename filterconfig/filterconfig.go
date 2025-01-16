@@ -141,11 +141,31 @@ type Backend struct {
 
 // BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type BackendAuth struct {
+	// Type specifies the auth type used to access the provider. Currently, only "APIKey" is supported.
+	//
+	// +kubebuilder:validation:Enum=APIKey
+	Type AuthType `yaml:"type"`
+
 	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
+
+	// Location of the api key secret file.
+	APIKey *APIKeyAuth `yaml:"apiKey,omitempty"`
 }
 
 // AWSAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type AWSAuth struct{}
+
+// APIKeyAuth defines the file that will be mounted to the external proc.
+type APIKeyAuth struct {
+	Filename string `yaml:"filename"`
+}
+
+// AuthType corresponds to BackendSecurityPolicyType in api/v1alpha1/api.go.
+type AuthType string
+
+const (
+	AuthTypeAPIKey AuthType = "APIKey"
+)
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, error) {
