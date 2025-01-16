@@ -15,7 +15,7 @@ import (
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple AI backends.
 //
-// The inputSchema field is used to determine the structure of the requests that the Gateway will
+// The schema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
 // on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
@@ -53,7 +53,7 @@ type AIGatewayRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema VersionedAPISchema `json:"inputSchema"`
+	APISchema VersionedAPISchema `json:"schema"`
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -215,7 +215,7 @@ type AIServiceBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema VersionedAPISchema `json:"outputSchema"`
+	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
