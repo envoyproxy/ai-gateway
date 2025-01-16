@@ -475,11 +475,10 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", c.logLevel,
+										//"-logLevel", c.logLevel,
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
-										//{Name: "backendSecurityPolicySecrets", MountPath: MountedExtProcSecretPath},
 									},
 								},
 							},
@@ -492,14 +491,6 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 										},
 									},
 								},
-								//{
-								//	Name: "backendSecurityPolicySecrets",
-								//	VolumeSource: corev1.VolumeSource{
-								//		Secret: &corev1.SecretVolumeSource{
-								//			SecretName: "backend-security-policy-secrets",
-								//		},
-								//	},
-								//},
 							},
 						},
 					},
@@ -517,6 +508,35 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 
 	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
 	_ = deployment
+
+	for _, rule := range llmRoute.Spec.Rules {
+		for _, backendRef := range rule.BackendRefs {
+			// Unsure if this is fine
+			backendKey := fmt.Sprintf("%s.%s", backendRef.Name, llmRoute.Namespace)
+			if backend, ok := c.backends[backendKey]; ok && backend.Spec.BackendSecurityPolicyRef != nil {
+				bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, llmRoute.Namespace)
+				if bspAuthInfo, ok := c.backendSecurityPoliciesAuthInfo[bspKey]; ok {
+					deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, corev1.Volume{
+						Name: bspKey,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: string(bspAuthInfo.secretRef.Name),
+							},
+						},
+					})
+					deployment.Spec.Template.Spec.Containers[0].VolumeMounts = append(deployment.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+						Name:      bspKey,
+						MountPath: fmt.Sprintf("%s/%s", MountedExtProcSecretPath, bspKey),
+					})
+				}
+			}
+		}
+	}
+
+	_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update deployment: %w", err)
+	}
 
 	// This is static, so we don't need to update it.
 	service := &corev1.Service{

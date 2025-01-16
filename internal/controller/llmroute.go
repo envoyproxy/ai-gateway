@@ -31,7 +31,6 @@ type llmRouteController struct {
 	client    client.Client
 	kube      kubernetes.Interface
 	logger    logr.Logger
-	logLevel  string
 	eventChan chan ConfigSinkEvent
 }
 

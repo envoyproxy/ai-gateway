@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.32.8
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.10
+	github.com/aws/smithy-go v1.22.1
 	github.com/envoyproxy/gateway v1.2.4
 	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/go-logr/logr v1.4.2
@@ -40,7 +41,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.24.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.6 // indirect
-	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
