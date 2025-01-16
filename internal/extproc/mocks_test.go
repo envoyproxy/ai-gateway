@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -23,7 +24,7 @@ var (
 	_ extprocapi.Router     = &mockRouter{}
 )
 
-func newMockProcessor(_ *processorConfig) *mockProcessor {
+func newMockProcessor(_ *processorConfig, _ *slog.Logger) *mockProcessor {
 	return &mockProcessor{}
 }
 

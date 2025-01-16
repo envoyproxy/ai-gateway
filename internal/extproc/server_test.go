@@ -104,13 +104,13 @@ func TestServer_Watch(t *testing.T) {
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 		_, err := s.processMsg(context.Background(), p, &extprocv3.ProcessingRequest{})
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
@@ -127,7 +127,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("request body", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}
@@ -144,7 +144,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("response headers", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -161,7 +161,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("response body", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
@@ -213,7 +213,7 @@ func TestServer_Process(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
 		p.t = t

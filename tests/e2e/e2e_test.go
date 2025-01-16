@@ -6,10 +6,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	egNamespace   = "envoy-gateway-system"
+	egDefaultPort = 10080
 )
 
 func initLog(msg string) {
@@ -18,6 +27,11 @@ func initLog(msg string) {
 
 func TestMain(m *testing.M) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
+
+	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
+	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
+	// failures.
+
 	if err := initKindCluster(ctx); err != nil {
 		cancel()
 		panic(err)
@@ -29,6 +43,11 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := initAIGateway(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	if err := initTestupstream(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -71,6 +90,7 @@ func initKindCluster(ctx context.Context) (err error) {
 	for _, image := range []string{
 		"ghcr.io/envoyproxy/ai-gateway/controller:latest",
 		"ghcr.io/envoyproxy/ai-gateway/extproc:latest",
+		"ghcr.io/envoyproxy/ai-gateway/testupstream:latest",
 	} {
 		cmd := exec.CommandContext(ctx, kindPath, "load", "docker-image", image, "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
@@ -129,7 +149,27 @@ func initAIGateway(ctx context.Context) (err error) {
 	if err = helm.Run(); err != nil {
 		return
 	}
+	// Restart the controller to pick up the new changes in the AI Gateway.
+	initLog("\tRestart AI Gateway controller")
+	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+		return
+	}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+func initTestupstream(ctx context.Context) (err error) {
+	initLog("Installing Test Upstream sever")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+	initLog("\tapplying manifests")
+	if err = kubectlApplyManifest(ctx, "./init/testupstream/"); err != nil {
+		return
+	}
+	initLog("\t--- waiting for deployment")
+	return kubectlWaitForDeploymentReady("default", "testupstream")
 }
 
 func kubectl(ctx context.Context, args ...string) *exec.Cmd {
@@ -141,6 +181,11 @@ func kubectl(ctx context.Context, args ...string) *exec.Cmd {
 
 func kubectlApplyManifest(ctx context.Context, manifest string) (err error) {
 	cmd := kubectl(ctx, "apply", "--server-side", "-f", manifest, "--force-conflicts")
+	return cmd.Run()
+}
+
+func kubectlDeleteManifest(ctx context.Context, manifest string) (err error) {
+	cmd := kubectl(ctx, "delete", "-f", manifest)
 	return cmd.Run()
 }
 
@@ -156,4 +201,83 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 	return
+}
+
+func requireWaitForPodReady(t *testing.T, namespace, labelSelector string) {
+	// This repeats the wait subcommand in order to be able to wait for the
+	// resources not created yet.
+	requireWaitForPodReadyWithTimeout(t, namespace, labelSelector, 3*time.Minute)
+}
+
+func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector string, timeout time.Duration) {
+	// This repeats the wait subcommand in order to be able to wait for the
+	// resources not created yet.
+	require.Eventually(t, func() bool {
+		cmd := kubectl(context.Background(), "wait", "--timeout=2s", "-n", namespace,
+			"pods", "--for=condition=Ready", "-l", labelSelector)
+		return cmd.Run() == nil
+	}, timeout, 5*time.Second)
+}
+
+func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
+	f, err := newPodPortForwarder(context.Background(), namespace, selector, port)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		conn, err := http.Get(f.address())
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		_ = conn.Body.Close()
+		return true // We don't care about the response.
+	}, 3*time.Minute, 200*time.Millisecond)
+	return f
+}
+
+// newPodPortForwarder creates a new local port forwarder for the namespace and selector.
+func newPodPortForwarder(ctx context.Context, namespace, selector string, podPort int) (f portForwarder, err error) {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return portForwarder{}, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
+	}
+	err = l.Close()
+	if err != nil {
+		return portForwarder{}, err
+	}
+	f.localPort = l.Addr().(*net.TCPAddr).Port
+
+	cmd := kubectl(ctx, "get", "pod", "-n", namespace,
+		"--selector="+selector, "-o", "jsonpath='{.items[0].metadata.name}'")
+	cmd.Stdout = nil // To ensure that we can capture the output by Output().
+	out, err := cmd.Output()
+	if err != nil {
+		return portForwarder{}, fmt.Errorf("failed to get service name: %w", err)
+	}
+	serviceName := string(out[1 : len(out)-1]) // Remove the quotes.
+
+	cmd = kubectl(ctx, "port-forward",
+		"-n", namespace, "pod/"+serviceName,
+		fmt.Sprintf("%d:%d", f.localPort, podPort),
+	)
+	if err := cmd.Start(); err != nil {
+		return portForwarder{}, fmt.Errorf("failed to start port-forward: %w", err)
+	}
+	f.cmd = cmd
+	return
+}
+
+// portForwarder is a local port forwarder to a pod.
+type portForwarder struct {
+	cmd       *exec.Cmd
+	localPort int
+}
+
+// kill stops the port forwarder.
+func (f portForwarder) kill() {
+	_ = f.cmd.Process.Kill()
+}
+
+// address returns the address of the port forwarder.
+func (f portForwarder) address() string {
+	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
 }

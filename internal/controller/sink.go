@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -89,6 +90,7 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 
 func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRoute exists.
+	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
 	err := c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
@@ -115,11 +117,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	if existingRoute {
+		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Update(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
 	} else {
+		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Create(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
@@ -142,6 +146,10 @@ func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 		return
 	}
 	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
+		c.logger.Info("syncing AIGatewayRoute",
+			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
+			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
+		)
 		c.syncAIGatewayRoute(&aiGatewayRoute)
 	}
 }
@@ -229,6 +237,17 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 		rules[i] = rule
 	}
+
+	// Adds the default route rule with "/" path.
+	rules = append(rules, gwapiv1.HTTPRouteRule{
+		Matches: []gwapiv1.HTTPRouteMatch{
+			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
+		},
+		BackendRefs: []gwapiv1.HTTPBackendRef{
+			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef.BackendObjectReference}},
+		},
+	})
+
 	dst.Spec.Rules = rules
 
 	targetRefs := aiGatewayRoute.Spec.TargetRefs

@@ -35,7 +35,7 @@ import (
 var defaultSchema = aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(aiGatewayRouteName string) string {
-	return fmt.Sprintf("ai-gateway-ai-gateway-route-extproc-%s", aiGatewayRouteName)
+	return fmt.Sprintf("eaig-route-extproc-%s", aiGatewayRouteName)
 }
 
 // TestStartControllers tests the [controller.StartControllers] function.

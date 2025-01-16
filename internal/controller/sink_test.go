@@ -86,12 +86,15 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 2)
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 3) // 2 backends + 1 for the default rule.
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "apple.ns1", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "orange.ns1", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+		// Defaulting to the first backend.
+		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
+		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
 	})
 }
 
@@ -196,11 +199,17 @@ func Test_newHTTPRoute(t *testing.T) {
 			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
 		},
 	}
-	require.Len(t, httpRoute.Spec.Rules, 4)
+	require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
 	for i, r := range httpRoute.Spec.Rules {
 		t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-			require.Equal(t, expRules[i].Matches, r.Matches)
-			require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+			if i == 4 {
+				require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
+				require.NotNil(t, r.Matches[0].Path)
+				require.Equal(t, "/", *r.Matches[0].Path.Value)
+			} else {
+				require.Equal(t, expRules[i].Matches, r.Matches)
+				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+			}
 		})
 	}
 }
