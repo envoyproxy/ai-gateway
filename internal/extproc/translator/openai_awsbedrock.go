@@ -303,9 +303,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
 				tknUsage = &TokenUsage{
-					InputTokens:  uint32(usage.InputTokens),
-					OutputTokens: uint32(usage.OutputTokens),
-					TotalTokens:  uint32(usage.TotalTokens),
+					InputTokens:  uint32(usage.InputTokens),  //nolint:gosec
+					OutputTokens: uint32(usage.OutputTokens), //nolint:gosec
+					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
 				}
 			}
 
@@ -334,9 +334,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 	}
 
 	tknUsage = &TokenUsage{
-		InputTokens:  uint32(bedrockResp.Usage.InputTokens),
-		OutputTokens: uint32(bedrockResp.Usage.OutputTokens),
-		TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),
+		InputTokens:  uint32(bedrockResp.Usage.InputTokens),  //nolint:gosec
+		OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
+		TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
 	}
 
 	openAIResp := openai.ChatCompletionResponse{
@@ -350,9 +350,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 		tknUsage = &TokenUsage{
-			InputTokens:  uint32(bedrockResp.Usage.InputTokens),
-			OutputTokens: uint32(bedrockResp.Usage.OutputTokens),
-			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),
+			InputTokens:  uint32(bedrockResp.Usage.InputTokens),  //nolint:gosec
+			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
+			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
 		}
 	}
 	for i, output := range bedrockResp.Output.Message.Content {

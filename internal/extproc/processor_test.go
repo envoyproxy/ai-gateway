@@ -59,7 +59,8 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
-		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
 			retTokenUsage: &translator.TokenUsage{
 				InputTokens:  11,
 				OutputTokens: 22,

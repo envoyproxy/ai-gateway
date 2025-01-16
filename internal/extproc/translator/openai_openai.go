@@ -75,9 +75,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, 
 		return nil, nil, nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	tknUsage = &TokenUsage{
-		InputTokens:  uint32(resp.Usage.PromptTokens),
-		OutputTokens: uint32(resp.Usage.CompletionTokens),
-		TotalTokens:  uint32(resp.Usage.TotalTokens),
+		InputTokens:  uint32(resp.Usage.PromptTokens),     //nolint:gosec
+		OutputTokens: uint32(resp.Usage.CompletionTokens), //nolint:gosec
+		TotalTokens:  uint32(resp.Usage.TotalTokens),      //nolint:gosec
 	}
 	return
 }
@@ -103,9 +103,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 		}
 		if usage := event.Usage; usage != nil {
 			tknUsage = &TokenUsage{
-				InputTokens:  uint32(event.Usage.PromptTokens),
-				OutputTokens: uint32(event.Usage.CompletionTokens),
-				TotalTokens:  uint32(event.Usage.TotalTokens),
+				InputTokens:  uint32(event.Usage.PromptTokens),     //nolint:gosec
+				OutputTokens: uint32(event.Usage.CompletionTokens), //nolint:gosec
+				TotalTokens:  uint32(event.Usage.TotalTokens),      //nolint:gosec
 			}
 			o.bufferingDone = true
 			o.buffered = nil
