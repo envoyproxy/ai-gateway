@@ -240,10 +240,10 @@ type AIServiceBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type VersionedAPISchema struct {
-	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
+	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
-	Schema APISchema `json:"schema"`
+	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
 	Version string `json:"version,omitempty"`

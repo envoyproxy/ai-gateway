@@ -157,7 +157,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 	ec := &filterconfig.Config{}
 	spec := &aiGatewayRoute.Spec
 
-	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Schema)
+	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
 	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
@@ -172,7 +172,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
-				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Schema)
+				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Name)
 				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 		}

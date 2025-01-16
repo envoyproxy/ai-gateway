@@ -170,8 +170,8 @@ spec:
                   This is required to be set.
                 properties:
                   name:
-                    description: Name is the name of the API schema of the LLMRoute
-                      or LLMBackend.
+                    description: Name is the name of the API schema of the AIGatewayRoute
+                      or AIServiceBackend.
                     enum:
                     - OpenAI
                     - AWSBedrock
