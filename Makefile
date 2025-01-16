@@ -18,6 +18,10 @@ TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
 
+# Arguments for go test. This can be used, for example, to run specific tests via
+# `GO_TEST_EXTRA_ARGS="-run TestName/foo/etc"`.
+GO_TEST_EXTRA_ARGS ?=
+
 # This will print out the help message for contributing to the project.
 .PHONY: help
 help:
@@ -104,7 +108,7 @@ test-cel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/cel-validation --tags test_cel_validation -v -count=1; \
+                 go test ./tests/cel-validation $(GO_TEST_EXTRA_ARGS) --tags test_cel_validation -v -count=1; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
@@ -113,8 +117,10 @@ test-cel: envtest apigen
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
+	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... -tags test_extproc -v -count=1
+	@go test ./tests/extproc/... $(GO_TEST_EXTRA_ARGS) -tags test_extproc -v -count=1
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
@@ -122,7 +128,7 @@ test-controller: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/controller --tags test_controller -v -count=1; \
+                 go test ./tests/controller $(GO_TEST_EXTRA_ARGS) --tags test_controller -v -count=1; \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
@@ -131,20 +137,24 @@ test-controller: envtest apigen
 .PHONY: test-e2e
 test-e2e: kind
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
-	@go test ./tests/e2e/... -tags test_e2e -v -count=1
+	@go test ./tests/e2e/... $(GO_TEST_EXTRA_ARGS) -tags test_e2e -v -count=1
 
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
+# - `make build.extproc_custom_router CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_router directory.
+# - `make build.testupstream CMD_PATH_PREFIX=tests`: will build the tests/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
 #
 # Example:
 # - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
+CMD_PATH_PREFIX ?= cmd
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%
@@ -155,7 +165,7 @@ build.%:
 		for goarch in $(GOARCH_LIST); do \
 			echo "-> Building $(COMMAND_NAME) for $$goos/$$goarch"; \
 			CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch go build -ldflags "$(GO_LDFLAGS)" \
-				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./cmd/$(COMMAND_NAME); \
+				-o $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch ./$(CMD_PATH_PREFIX)/$(COMMAND_NAME); \
 			echo "<- Built $(OUTPUT_DIR)/$(COMMAND_NAME)-$$goos-$$goarch"; \
 		done; \
 	done
@@ -182,6 +192,12 @@ build.%:
 #
 # Example:
 # - `make docker-build.controller TAG=v1.2.3`
+#
+# To build the main functions outside cmd/ directory, set CMD_PATH_PREFIX to the directory containing the main function.
+#
+# Example:
+# - `make docker-build.extproc_custom_router CMD_PATH_PREFIX=examples`
+# - `make docker-build.testupstream CMD_PATH_PREFIX=tests`
 .PHONY: docker-build.%
 docker-build.%:
 	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
@@ -193,7 +209,7 @@ docker-build.%:
 	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux"
 	docker buildx build . -t $(OCI_REGISTRY)/$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
-# This builds docker images for all commands. All options for `docker-build.%` apply.
+# This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
 #
 # Example:
 # - `make docker-build`

@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -86,7 +87,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
-		p := &Processor{config: &processorConfig{bodyParser: rbp.impl, router: rt}, requestHeaders: headers}
+		p := &Processor{config: &processorConfig{bodyParser: rbp.impl, router: rt}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
 	})
@@ -100,7 +101,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: make(map[filterconfig.VersionedAPISchema]translator.Factory),
-		}, requestHeaders: headers}
+		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to find factory for output schema {\"some-schema\" \"v10.0\"}")
 	})
@@ -117,7 +118,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
-		}, requestHeaders: headers}
+		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to create translator: test error")
 	})
@@ -134,7 +135,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
 				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
 			},
-		}, requestHeaders: headers}
+		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to transform request: test error")
 	})
@@ -157,7 +158,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			},
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
 			ModelNameHeaderKey:       "x-ai-gateway-model-key",
-		}, requestHeaders: headers}
+		}, requestHeaders: headers, logger: slog.Default()}
 		resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.NoError(t, err)
 		require.Equal(t, mt, p.translator)

@@ -36,28 +36,4 @@ data:
     extensionApis:
       enableEnvoyPatchPolicy: true
       enableBackend: true
-    extensionManager:
-      resources:
-      - group: aigateway.envoyproxy.io
-        version: v1alpha1
-        kind: LLMRoute
-      # Envoy Gateway will watch these resource kinds and use them as extension policies
-      # which can be attached to Gateway resources.
-      policyResources:
-      - group: aigateway.envoyproxy.io
-        version: v1alpha1
-        kind: LLMRoute
-      hooks:
-        # The type of hooks that should be invoked
-        xdsTranslator:
-          post:
-          - HTTPListener
-          - Route
-          - Translation
-      service:
-        # The service that is hosting the extension server
-        fqdn:
-          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-          port: 1063
 ---
-

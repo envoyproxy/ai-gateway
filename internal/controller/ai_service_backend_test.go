@@ -15,7 +15,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-func TestLlmBackendController_Reconcile(t *testing.T) {
+func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewAIServiceBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)

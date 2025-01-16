@@ -67,7 +67,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, 
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	usedToken = uint32(resp.Usage.TotalTokens)
+	usedToken = uint32(resp.Usage.TotalTokens) //nolint:gosec
 	return
 }
 
@@ -91,7 +91,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			continue
 		}
 		if usage := event.Usage; usage != nil {
-			usedToken = uint32(usage.TotalTokens)
+			usedToken = uint32(usage.TotalTokens) //nolint:gosec
 			o.bufferingDone = true
 			o.buffered = nil
 			return

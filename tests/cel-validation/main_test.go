@@ -19,7 +19,7 @@ import (
 //go:embed testdata
 var testdata embed.FS
 
-func TestLLMRoutes(t *testing.T) {
+func TestAIGatewayRoutes(t *testing.T) {
 	c, _, _ := tests.NewEnvTest(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()

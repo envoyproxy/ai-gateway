@@ -271,7 +271,7 @@ type AIServiceBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	BackendRef egv1a1.BackendRef `json:"backendRef"`
+	BackendRef gwapiv1.BackendObjectReference `json:"backendRef"`
 
 	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
 	// is being attached to.

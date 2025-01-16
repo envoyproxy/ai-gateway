@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -19,10 +21,10 @@ import (
 var (
 	_ ProcessorIface        = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
-	_ router.Router         = &mockRouter{}
+	_ extprocapi.Router     = &mockRouter{}
 )
 
-func newMockProcessor(_ *processorConfig) *mockProcessor {
+func newMockProcessor(_ *processorConfig, _ *slog.Logger) *mockProcessor {
 	return &mockProcessor{}
 }
 
@@ -104,9 +106,10 @@ type mockRouter struct {
 }
 
 // Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (string, filterconfig.VersionedAPISchema, error) {
+func (m mockRouter) Calculate(headers map[string]string) (*filterconfig.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	return m.retBackendName, m.retVersionedAPISchema, m.retErr
+	b := &filterconfig.Backend{Name: m.retBackendName, OutputSchema: m.retVersionedAPISchema}
+	return b, m.retErr
 }
 
 // mockRequestBodyParser implements [router.RequestBodyParser] for testing.

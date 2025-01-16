@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	managedByLabel                             = "app.kubernetes.io/managed-by"
-	expProcConfigFileName                      = "extproc-config.yaml"
-	k8sClientIndexBackendToReferencingLLMRoute = "BackendToReferencingLLMRoute"
+	managedByLabel                                   = "app.kubernetes.io/managed-by"
+	expProcConfigFileName                            = "extproc-config.yaml"
+	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
 )
 
 func aiGatewayRouteIndexFunc(o client.Object) []string {
@@ -41,12 +41,11 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
 //
-// This handles the LLMRoute resource and creates the necessary resources for the external process.
+// This handles the AIGatewayRoute resource and creates the necessary resources for the external process.
 type aiGatewayRouteController struct {
 	client              client.Client
 	kube                kubernetes.Interface
 	logger              logr.Logger
-	logLevel            string
 	defaultExtProcImage string
 	eventChan           chan ConfigSinkEvent
 }
@@ -59,7 +58,7 @@ func NewAIGatewayRouteController(
 	return &aiGatewayRouteController{
 		client:              client,
 		kube:                kube,
-		logger:              logger.WithName("ai-gateway-route-controller"),
+		logger:              logger.WithName("eaig-route-controller"),
 		defaultExtProcImage: options.ExtProcImage,
 		eventChan:           ch,
 	}
@@ -67,17 +66,17 @@ func NewAIGatewayRouteController(
 
 // Reconcile implements [reconcile.TypedReconciler].
 //
-// This only creates the external process deployment and service for the LLMRoute as well as the extension policy.
+// This only creates the external process deployment and service for the AIGatewayRoute as well as the extension policy.
 // The actual HTTPRoute and the extproc configuration will be created in the config sink since we need
-// not only the LLMRoute but also the AIServiceBackend and other resources to create the full configuration.
+// not only the AIGatewayRoute but also the AIServiceBackend and other resources to create the full configuration.
 func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling LLMRoute", "namespace", req.Namespace, "name", req.Name)
+	logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
 
 	var aiGatewayRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &aiGatewayRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.logger.Info("Deleting LLMRoute",
+			c.logger.Info("Deleting AIGatewayRoute",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -92,7 +91,7 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if !unversioned && len(gvks) == 1 {
 		aiGatewayRoute.SetGroupVersionKind(gvks[0])
 	}
-	ownerRef := ownerReferenceForLLMRoute(&aiGatewayRoute)
+	ownerRef := ownerReferenceForAIGatewayRoute(&aiGatewayRoute)
 
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute, ownerRef); err != nil {
 		logger.Error(err, "Failed to reconcile extProc config map")
@@ -207,7 +206,7 @@ func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Contex
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", c.logLevel,
+										"-logLevel", "info", // TODO: this should be configurable via FilterConfig API.
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
@@ -271,10 +270,10 @@ func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Contex
 }
 
 func extProcName(route *aigv1a1.AIGatewayRoute) string {
-	return fmt.Sprintf("ai-gateway-ai-gateway-route-extproc-%s", route.Name)
+	return fmt.Sprintf("eaig-route-extproc-%s", route.Name)
 }
 
-func ownerReferenceForLLMRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {
+func ownerReferenceForAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {
 	return []metav1.OwnerReference{{
 		APIVersion: aiGatewayRoute.APIVersion,
 		Kind:       aiGatewayRoute.Kind,
