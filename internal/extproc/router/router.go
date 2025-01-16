@@ -10,30 +10,23 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
-// Router is the interface for the router.
-type Router interface {
-	// Calculate determines the backend to route to based on the request headers.
-	// Returns the selected backend.
-	Calculate(requestHeaders map[string]string) (backend *filterconfig.Backend, err error)
-}
-
-// router implements [Router].
+// router implements [extprocapi.Router].
 type router struct {
 	rules []filterconfig.RouteRule
 	rng   *rand.Rand
 }
 
-// NewRouter creates a new [Router] implementation for the given config.
-func NewRouter(config *filterconfig.Config) (Router, error) {
+// NewRouter creates a new [extprocapi.Router] implementation for the given config.
+func NewRouter(config *filterconfig.Config, newCustomFn extprocapi.NewCustomRouterFn) (extprocapi.Router, error) {
 	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))}
-	if newFn := extprocapi.NewCustomRouter; newFn != nil {
-		customRouter := newFn(r, config)
+	if newCustomFn != nil {
+		customRouter := newCustomFn(r, config)
 		return customRouter, nil
 	}
 	return r, nil
 }
 
-// Calculate implements [Router.Calculate].
+// Calculate implements [extprocapi.Router.Calculate].
 func (r *router) Calculate(headers map[string]string) (backend *filterconfig.Backend, err error) {
 	var rule *filterconfig.RouteRule
 	for i := range r.rules {
