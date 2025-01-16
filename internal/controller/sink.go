@@ -3,10 +3,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -16,6 +19,11 @@ import (
 )
 
 const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
+
+// MountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
+//
+//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
+const MountedExtProcSecretPath = "/etc/backend_security_policy"
 
 // ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an LLMBackend, an LLMRoute, or a deletion event.
@@ -41,19 +49,34 @@ func (c ConfigSinkEventLLMRouteDeleted) String() string {
 	return fmt.Sprintf("%s.%s", c.name, c.namespace)
 }
 
+// ConfigSinkEventBackendSecurityPolicyDeleted is an event to notify the configSink that a BackendSecurityPolicy has been deleted.
+type ConfigSinkEventBackendSecurityPolicyDeleted struct{ namespace, name string }
+
+func (c ConfigSinkEventBackendSecurityPolicyDeleted) String() string {
+	return fmt.Sprintf("%s.%s", c.name, c.namespace)
+}
+
+type ConfigAuthInfo struct {
+	secretRef *gwapiv1.SecretObjectReference
+	authType  filterconfig.AuthType
+}
+
 // configSink centralizes the LLMRoute and LLMBackend objects handling
 // which requires to be done in a single goroutine since we need to
 // consolidate the information from both objects to generate the ExtProcConfig
 // and HTTPRoute objects.
 type configSink struct {
-	client client.Client
-	kube   kubernetes.Interface
-	logger logr.Logger
+	client       client.Client
+	kube         kubernetes.Interface
+	logger       logr.Logger
+	extProcImage string
 
-	eventChan                   chan ConfigSinkEvent
-	llmRoutes                   map[string]*aigv1a1.LLMRoute
-	backends                    map[string]*aigv1a1.LLMBackend
-	backendsToReferencingRoutes map[string]map[*aigv1a1.LLMRoute]struct{}
+	eventChan                                   chan ConfigSinkEvent
+	llmRoutes                                   map[string]*aigv1a1.LLMRoute
+	backends                                    map[string]*aigv1a1.LLMBackend
+	backendsToReferencingRoutes                 map[string]map[*aigv1a1.LLMRoute]struct{}
+	backendSecurityPoliciesReferencedByBackends map[string]map[*aigv1a1.LLMBackend]struct{}
+	backendSecurityPoliciesAuthInfo             map[string]*ConfigAuthInfo
 }
 
 func newConfigSink(
@@ -61,15 +84,19 @@ func newConfigSink(
 	kube kubernetes.Interface,
 	logger logr.Logger,
 	eventChan chan ConfigSinkEvent,
+	extProcImage string,
 ) *configSink {
 	c := &configSink{
-		client:                      kubeClient,
-		kube:                        kube,
-		logger:                      logger.WithName("config-sink"),
-		backends:                    make(map[string]*aigv1a1.LLMBackend),
-		llmRoutes:                   make(map[string]*aigv1a1.LLMRoute),
-		backendsToReferencingRoutes: make(map[string]map[*aigv1a1.LLMRoute]struct{}),
-		eventChan:                   eventChan,
+		client:                          kubeClient,
+		kube:                            kube,
+		logger:                          logger.WithName("config-sink"),
+		extProcImage:                    extProcImage,
+		backends:                        make(map[string]*aigv1a1.LLMBackend),
+		llmRoutes:                       make(map[string]*aigv1a1.LLMRoute),
+		backendsToReferencingRoutes:     make(map[string]map[*aigv1a1.LLMRoute]struct{}),
+		backendSecurityPoliciesAuthInfo: make(map[string]*ConfigAuthInfo),
+		backendSecurityPoliciesReferencedByBackends: make(map[string]map[*aigv1a1.LLMBackend]struct{}),
+		eventChan: eventChan,
 	}
 	return c
 }
@@ -77,6 +104,29 @@ func newConfigSink(
 // init caches all LLMBackend and LLMRoute objects in the cluster after the controller gets the leader election,
 // and starts a goroutine to handle the events from the controllers.
 func (c *configSink) init(ctx context.Context) error {
+	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
+	if err := c.client.List(ctx, &backendSecurityPolicies); err != nil {
+		return fmt.Errorf("failed to list backend security policies: %w", err)
+	}
+
+	for i := range backendSecurityPolicies.Items {
+		bsp := &backendSecurityPolicies.Items[i]
+		var bspSecretRef *gwapiv1.SecretObjectReference
+		var bspAuthType filterconfig.AuthType
+
+		if bsp.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
+			bspSecretRef = bsp.Spec.APIKey.SecretRef
+			bspAuthType = filterconfig.AuthTypeAPIKey
+		} else {
+			return fmt.Errorf("unsupported backend security policy type: %s", bsp.Spec.Type)
+		}
+
+		c.backendSecurityPoliciesAuthInfo[fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)] = &ConfigAuthInfo{
+			bspSecretRef,
+			bspAuthType,
+		}
+	}
+
 	var llmBackends aigv1a1.LLMBackendList
 	if err := c.client.List(ctx, &llmBackends); err != nil {
 		return fmt.Errorf("failed to list LLMBackends: %w", err)
@@ -85,6 +135,13 @@ func (c *configSink) init(ctx context.Context) error {
 	for i := range llmBackends.Items {
 		llmBackend := &llmBackends.Items[i]
 		c.backends[fmt.Sprintf("%s.%s", llmBackend.Name, llmBackend.Namespace)] = llmBackend
+		if bspRef := llmBackend.Spec.BackendSecurityPolicyRef; bspRef != nil {
+			bspKey := fmt.Sprintf("%s.%s", bspRef.Name, llmBackend.Namespace)
+			if _, ok := c.backendSecurityPoliciesReferencedByBackends[bspKey]; !ok {
+				c.backendSecurityPoliciesReferencedByBackends[bspKey] = make(map[*aigv1a1.LLMBackend]struct{})
+			}
+			c.backendSecurityPoliciesReferencedByBackends[bspKey][llmBackend] = struct{}{}
+		}
 	}
 
 	var llmRoutes aigv1a1.LLMRouteList
@@ -133,6 +190,10 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 		c.syncLLMRoute(e)
 	case ConfigSinkEventLLMRouteDeleted:
 		c.deleteLLMRoute(e)
+	case *aigv1a1.BackendSecurityPolicy:
+		c.syncBackendSecurityPolicy(e)
+	case ConfigSinkEventBackendSecurityPolicyDeleted:
+		c.deleteBackendSecurityPolicy(e)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
 	}
@@ -199,20 +260,75 @@ func (c *configSink) syncLLMRoute(llmRoute *aigv1a1.LLMRoute) {
 
 func (c *configSink) syncLLMBackend(llmBackend *aigv1a1.LLMBackend) {
 	key := fmt.Sprintf("%s.%s", llmBackend.Name, llmBackend.Namespace)
+
+	if prevLlmBackend, ok := c.backends[key]; ok {
+		previousBSPRef := prevLlmBackend.Spec.BackendSecurityPolicyRef
+		newBSPRef := llmBackend.Spec.BackendSecurityPolicyRef
+
+		if previousBSPRef != nil && previousBSPRef != newBSPRef {
+			prevBackendSecurityPolicyKey := fmt.Sprintf("%s.%s", previousBSPRef, llmBackend.Namespace)
+			delete(c.backendSecurityPoliciesReferencedByBackends[prevBackendSecurityPolicyKey], prevLlmBackend)
+		}
+
+		if newBSPRef != nil {
+			newBackendSecurityPolicyKey := fmt.Sprintf("%s.%s", newBSPRef, llmBackend.Namespace)
+			if _, ok = c.backendSecurityPoliciesReferencedByBackends[newBackendSecurityPolicyKey]; !ok {
+				c.backendSecurityPoliciesReferencedByBackends[newBackendSecurityPolicyKey][llmBackend] = struct{}{}
+			}
+		}
+	}
+
 	c.backends[key] = llmBackend
+
 	for referencedLLMRoute := range c.backendsToReferencingRoutes[key] {
 		c.syncLLMRoute(referencedLLMRoute)
 	}
 }
 
+func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
+	key := fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
+
+	if bsp.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
+		c.backendSecurityPoliciesAuthInfo[key] = &ConfigAuthInfo{
+			bsp.Spec.APIKey.SecretRef,
+			filterconfig.AuthTypeAPIKey,
+		}
+	} else {
+		c.logger.Info(fmt.Sprintf("unexpected security policy type %s", bsp.Spec.Type))
+	}
+
+	if _, ok := c.backendSecurityPoliciesReferencedByBackends[key]; !ok {
+		c.backendSecurityPoliciesReferencedByBackends[key] = make(map[*aigv1a1.LLMBackend]struct{})
+	} else {
+		for backend := range c.backendSecurityPoliciesReferencedByBackends[key] {
+			c.syncLLMBackend(backend)
+		}
+	}
+}
+
+// TODO-AC: how does this update the ext proc pod deployment
 func (c *configSink) deleteLLMRoute(event ConfigSinkEventLLMRouteDeleted) {
 	delete(c.llmRoutes, event.String())
 }
 
 func (c *configSink) deleteLLMBackend(event ConfigSinkEventLLMBackendDeleted) {
 	key := event.String()
+
+	if backend := c.backends[key]; backend.Spec.BackendSecurityPolicyRef != nil {
+		bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, backend.Namespace)
+		delete(c.backendSecurityPoliciesReferencedByBackends[bspKey], backend)
+	}
+
 	delete(c.backends, key)
 	delete(c.backendsToReferencingRoutes, key)
+
+}
+
+func (c *configSink) deleteBackendSecurityPolicy(event ConfigSinkEventBackendSecurityPolicyDeleted) {
+	// Have to prevent somehow if not exists -- can add that as a follow up problem
+	key := event.String()
+	delete(c.backendSecurityPoliciesAuthInfo, key)
+	delete(c.backendSecurityPoliciesReferencedByBackends, key)
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new LLMRoute.
@@ -244,6 +360,22 @@ func (c *configSink) updateExtProcConfigMap(llmRoute *aigv1a1.LLMRoute) error {
 			} else {
 				ec.Rules[i].Backends[j].OutputSchema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
 				ec.Rules[i].Backends[j].OutputSchema.Version = backendObj.Spec.APISchema.Version
+			}
+
+			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
+				bspKey := fmt.Sprintf("%s.%s", bspRef.Name, backendObj.Namespace)
+				if authInfo := c.backendSecurityPoliciesAuthInfo[bspKey]; authInfo != nil {
+
+					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
+						Type: authInfo.authType,
+					}
+
+					if authInfo.authType == filterconfig.AuthTypeAPIKey {
+						ec.Rules[i].Backends[j].Auth.APIKey = &filterconfig.APIKeyAuth{
+							Filename: fmt.Sprintf("%s/%s/apiKey", MountedExtProcSecretPath, bspKey),
+						}
+					}
+				}
 			}
 		}
 		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
@@ -312,5 +444,102 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, llmRoute *aigv1a1.LLMR
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
+	return nil
+}
+
+func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.LLMRoute) error {
+	name := extProcName(llmRoute)
+	ownerRef := ownerReferenceForLLMRoute(llmRoute)
+	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
+
+	deployment, err := c.kube.AppsV1().Deployments(llmRoute.Namespace).Get(ctx, extProcName(llmRoute), metav1.GetOptions{})
+	if err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			deployment = &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            name,
+					Namespace:       llmRoute.Namespace,
+					OwnerReferences: ownerRef,
+					Labels:          labels,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{MatchLabels: labels},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            name,
+									Image:           c.extProcImage,
+									ImagePullPolicy: corev1.PullIfNotPresent,
+									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
+									Args: []string{
+										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
+										"-logLevel", c.logLevel,
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
+										//{Name: "backendSecurityPolicySecrets", MountPath: MountedExtProcSecretPath},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "config",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(llmRoute)},
+										},
+									},
+								},
+								//{
+								//	Name: "backendSecurityPolicySecrets",
+								//	VolumeSource: corev1.VolumeSource{
+								//		Secret: &corev1.SecretVolumeSource{
+								//			SecretName: "backend-security-policy-secrets",
+								//		},
+								//	},
+								//},
+							},
+						},
+					},
+				},
+			}
+			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to create deployment: %w", err)
+			}
+			c.logger.Info("Created deployment", "name", name)
+		} else {
+			return fmt.Errorf("failed to get deployment: %w", err)
+		}
+	}
+
+	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
+	_ = deployment
+
+	// This is static, so we don't need to update it.
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       llmRoute.Namespace,
+			OwnerReferences: ownerRef,
+			Labels:          labels,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: labels,
+			Ports: []corev1.ServicePort{
+				{
+					Name:        "grpc",
+					Protocol:    corev1.ProtocolTCP,
+					Port:        1063,
+					AppProtocol: ptr.To("grpc"),
+				},
+			},
+		},
+	}
+	if _, err = c.kube.CoreV1().Services(llmRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
+		return fmt.Errorf("failed to create Service %s.%s: %w", name, llmRoute.Namespace, err)
+	}
 	return nil
 }

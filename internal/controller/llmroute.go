@@ -6,11 +6,9 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,25 +28,23 @@ const (
 //
 // This handles the LLMRoute resource and creates the necessary resources for the external process.
 type llmRouteController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	logLevel     string
-	extProcImage string
-	eventChan    chan ConfigSinkEvent
+	client    client.Client
+	kube      kubernetes.Interface
+	logger    logr.Logger
+	logLevel  string
+	eventChan chan ConfigSinkEvent
 }
 
 // NewLLMRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the LLMRoute resource.
 func NewLLMRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	options Options, ch chan ConfigSinkEvent,
+	ch chan ConfigSinkEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &llmRouteController{
-		client:       client,
-		kube:         kube,
-		logger:       logger.WithName("llmroute-controller"),
-		extProcImage: options.ExtProcImage,
-		eventChan:    ch,
+		client:    client,
+		kube:      kube,
+		logger:    logger.WithName("llmroute-controller"),
+		eventChan: ch,
 	}
 }
 
@@ -86,10 +82,10 @@ func (c *llmRouteController) Reconcile(ctx context.Context, req reconcile.Reques
 		logger.Error(err, "Failed to reconcile extProc config map")
 		return ctrl.Result{}, err
 	}
-	if err := c.reconcileExtProcDeployment(ctx, &llmRoute, ownerRef); err != nil {
-		logger.Error(err, "Failed to reconcile extProc deployment")
-		return ctrl.Result{}, err
-	}
+	//if err := c.reconcileExtProcDeployment(ctx, &llmRoute, ownerRef); err != nil {
+	//	logger.Error(err, "Failed to reconcile extProc deployment")
+	//	return ctrl.Result{}, err
+	//}
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &llmRoute, ownerRef); err != nil {
 		logger.Error(err, "Failed to reconcile extension policy")
 		return ctrl.Result{}, err
@@ -161,122 +157,6 @@ func (c *llmRouteController) ensuresExtProcConfigMapExists(ctx context.Context, 
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-// reconcileExtProcDeployment reconciles the external processor's Deployment and Service.
-func (c *llmRouteController) reconcileExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.LLMRoute, ownerRef []metav1.OwnerReference) error {
-	name := extProcName(llmRoute)
-	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
-
-	deployment, err := c.kube.AppsV1().Deployments(llmRoute.Namespace).Get(ctx, extProcName(llmRoute), metav1.GetOptions{})
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			var backendSecurityPolicySecrets corev1.Secret
-			bspSecretName := fmt.Sprintf("backend-security-policy-%s", llmRoute.Name)
-			if err := c.client.Get(ctx, client.ObjectKey{Name: bspSecretName}, &backendSecurityPolicySecrets); err != nil {
-				if client.IgnoreNotFound(err) == nil {
-					backendSecurityPolicySecrets = corev1.Secret{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      bspSecretName,
-							Namespace: llmRoute.Namespace,
-						},
-					}
-					err := c.client.Create(ctx, &backendSecurityPolicySecrets)
-					if err != nil {
-						return fmt.Errorf("failed to create backend security policy secrets: %w", err)
-					}
-				} else {
-					return fmt.Errorf("failed to get backend security policy secrets: %w", err)
-				}
-			}
-
-			deployment = &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            name,
-					Namespace:       llmRoute.Namespace,
-					OwnerReferences: ownerRef,
-					Labels:          labels,
-				},
-				Spec: appsv1.DeploymentSpec{
-					Selector: &metav1.LabelSelector{MatchLabels: labels},
-					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: labels},
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:            name,
-									Image:           c.extProcImage,
-									ImagePullPolicy: corev1.PullIfNotPresent,
-									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
-									Args: []string{
-										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", c.logLevel,
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
-										{Name: "backendSecurityPolicySecrets", MountPath: MountedExtProcSecretPath},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "config",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(llmRoute)},
-										},
-									},
-								},
-								{
-									Name: "backendSecurityPolicySecrets",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "backend-security-policy-secrets",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to create deployment: %w", err)
-			}
-			c.logger.Info("Created deployment", "name", name)
-		} else {
-			return fmt.Errorf("failed to get deployment: %w", err)
-		}
-	}
-
-	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
-	_ = deployment
-
-	// This is static, so we don't need to update it.
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       llmRoute.Namespace,
-			OwnerReferences: ownerRef,
-			Labels:          labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: labels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:        "grpc",
-					Protocol:    corev1.ProtocolTCP,
-					Port:        1063,
-					AppProtocol: ptr.To("grpc"),
-				},
-			},
-		},
-	}
-	if _, err = c.kube.CoreV1().Services(llmRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
-		return fmt.Errorf("failed to create Service %s.%s: %w", name, llmRoute.Namespace, err)
 	}
 	return nil
 }

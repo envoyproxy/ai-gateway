@@ -80,7 +80,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sinkChan := make(chan ConfigSinkEvent, 100)
-	routeC := NewLLMRouteController(clientForRouteC, kubeForRouteC, logger, options, sinkChan)
+	routeC := NewLLMRouteController(clientForRouteC, kubeForRouteC, logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.LLMRoute{}).
 		Complete(routeC); err != nil {
@@ -104,7 +104,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create new clients: %w", err)
 	}
 
-	sink := newConfigSink(clientForConfigSink, kubeForConfigSink, logger, sinkChan)
+	sink := newConfigSink(clientForConfigSink, kubeForConfigSink, logger, sinkChan, options.ExtProcImage)
 
 	// Before starting the manager, initialize the config sink to sync all LLMBackend and LLMRoute objects in the cluster.
 	logger.Info("Initializing config sink")
