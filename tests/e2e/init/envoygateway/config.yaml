@@ -40,13 +40,13 @@ data:
       resources:
       - group: aigateway.envoyproxy.io
         version: v1alpha1
-        kind: LLMRoute
+        kind: AIGatewayRoute
       # Envoy Gateway will watch these resource kinds and use them as extension policies
       # which can be attached to Gateway resources.
       policyResources:
       - group: aigateway.envoyproxy.io
         version: v1alpha1
-        kind: LLMRoute
+        kind: AIGatewayRoute
       hooks:
         # The type of hooks that should be invoked
         xdsTranslator:

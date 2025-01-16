@@ -83,7 +83,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 
-	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and LLMRoute objects in the cluster.
+	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	logger.Info("Initializing config sink")
 	if err = sink.init(ctx); err != nil {
 		return fmt.Errorf("failed to initialize config sink: %w", err)
@@ -98,9 +98,9 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 func applyIndexing(indexer client.FieldIndexer) error {
 	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
-		k8sClientIndexBackendToReferencingLLMRoute, aiGatewayRouteIndexFunc)
+		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for LLMRoute: %w", err)
+		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
 	return nil
 }

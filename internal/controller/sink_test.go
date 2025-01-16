@@ -32,7 +32,7 @@ func TestConfigSink_init(t *testing.T) {
 	require.NotNil(t, s)
 }
 
-func TestConfigSink_syncLLMRoute(t *testing.T) {
+func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	kube := fake2.NewClientset()
 
@@ -80,7 +80,7 @@ func TestConfigSink_syncLLMRoute(t *testing.T) {
 		require.NoError(t, err)
 
 		// Then sync.
-		s.syncLLMRoute(route)
+		s.syncAIGatewayRoute(route)
 		// Referencing backends should be updated.
 		// Also HTTPRoute should be updated.
 		var updatedHTTPRoute gwapiv1.HTTPRoute
