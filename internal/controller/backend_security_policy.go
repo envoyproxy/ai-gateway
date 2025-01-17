@@ -12,12 +12,9 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// TODO-AC: rewrite
-
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 //
 // This handles the BackendSecurityPolicy resource and sends it to the config sink so that it can modify configuration.
-// The sink will handle change in backend security policy type or in a deletion event.
 type backendSecurityPolicyController struct {
 	client    client.Client
 	kube      kubernetes.Interface

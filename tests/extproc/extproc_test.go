@@ -109,10 +109,14 @@ func TestE2E(t *testing.T) {
 						t.Logf("error: %v", err)
 						return false
 					}
+					nonEmptyCompletion := false
 					for _, choice := range chatCompletion.Choices {
 						t.Logf("choice: %s", choice.Message.Content)
+						if choice.Message.Content != "" {
+							nonEmptyCompletion = true
+						}
 					}
-					return true
+					return nonEmptyCompletion
 				}, 10*time.Second, 1*time.Second)
 			})
 		}
