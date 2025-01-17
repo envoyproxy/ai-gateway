@@ -94,10 +94,6 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		return ctrl.Result{}, err
 	}
 
-	//if err := c.reconcileExtProcDeployment(ctx, &aiGatewayRoute, ownerRef); err != nil {
-	//	logger.Error(err, "Failed to reconcile extProc deployment")
-	//	return ctrl.Result{}, err
-	//}
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute, ownerRef); err != nil {
 		logger.Error(err, "Failed to reconcile extension policy")
 		return ctrl.Result{}, err

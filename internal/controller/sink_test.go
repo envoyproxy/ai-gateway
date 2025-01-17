@@ -308,3 +308,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		})
 	}
 }
+
+// Add test for checking mounted security policy on new backend security policy
+
+// Add test for new security policy needed to be mounted/unmounted

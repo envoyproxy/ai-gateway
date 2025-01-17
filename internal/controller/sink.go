@@ -379,7 +379,6 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
 	} else {
-		// updates is slightly trickier
 		updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
@@ -416,13 +415,14 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 	return nil
 }
 
+// mountBackendSecurityPolicySecrets will mount secrets based on backendSecurityPolicies attached to AIServiceBackend.
 func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
-	mountedSecrets := map[string]bool{}
-	for _, volume := range spec.Volumes {
-		if volume.Secret != nil {
-			mountedSecrets[volume.Secret.SecretName] = true
-		}
-	}
+	// Mount from scratch to avoid secrets that should be unmounted.
+	// Only keep the original mount which should be the config volume.
+	spec.Volumes = []corev1.Volume{spec.Volumes[0]}
+	spec.Containers[0].VolumeMounts = []corev1.VolumeMount{spec.Containers[0].VolumeMounts[0]}
+
+	mountedSecrets := make(map[string]bool)
 
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
@@ -461,8 +461,6 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					})
 
 					mountedSecrets[secretName] = true
-				} else {
-					continue
 				}
 			}
 		}
