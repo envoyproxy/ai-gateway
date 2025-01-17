@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"log/slog"
 	"os"
 	"testing"
@@ -401,119 +402,74 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 	}
 	require.NotNil(t, s)
 
-	for _, tc := range []struct {
-		name  string
-		route *aigv1a1.AIGatewayRoute
-		exp   *filterconfig.Config
-	}{
-		{
-			name: "basic",
-			route: &aigv1a1.AIGatewayRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
-				Spec: aigv1a1.AIGatewayRouteSpec{
-					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
-					Rules: []aigv1a1.AIGatewayRouteRule{
-						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "apple", Weight: 1},
-								{Name: "pineapple", Weight: 2},
-							},
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
-								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
-							},
-						},
-						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
-								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
-							},
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
+				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
+				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+					Replicas: ptr.To[int32](123),
+					Resources: &corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("200m"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
 						},
 					},
 				},
 			},
-			exp: &filterconfig.Config{
-				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
-				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
-				SelectedBackendHeaderKey: selectedBackendHeaderKey,
-				Rules: []filterconfig.RouteRule{
-					{
-						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
-								Type: filterconfig.AuthTypeAPIKey,
-								APIKey: &filterconfig.APIKeyAuth{
-									Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
-								},
-							}},
-							{Name: "pineapple.ns", Weight: 2},
-						},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
+			APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "apple", Weight: 1},
+						{Name: "pineapple", Weight: 2},
 					},
-					{
-						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
-							Type: filterconfig.AuthTypeAPIKey,
-							APIKey: &filterconfig.APIKeyAuth{
-								Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
-							},
-						}}},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
+					},
+				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 					},
 				},
 			},
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-
-		})
 	}
-}
 
-// TODO-AC: Finish this test case
-// func TestConfigSink_SyncExtProcDeployment(t *testing.T) {
-//	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-//	kube := fake2.NewClientset()
-//	eventChan := make(chan ConfigSinkEvent)
-//
-//	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-//	s := NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
-//	require.NotNil(t, s)
-//
-//	// TODO-AC: add backends
-//	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
-//		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-//		Spec: aigv1a1.AIGatewayRouteSpec{
-//			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-//				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-//				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
-//					Replicas: ptr.To[int32](123),
-//					Resources: &corev1.ResourceRequirements{
-//						Limits: corev1.ResourceList{
-//							corev1.ResourceCPU:    resource.MustParse("200m"),
-//							corev1.ResourceMemory: resource.MustParse("100Mi"),
-//						},
-//					},
-//				},
-//			},
-//		},
-//	}
-//
-//	// Create the deployment
-//
-//	// Check
-//	deployment, err := s.kube.AppsV1().Deployments("default").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-//	require.NoError(t, err)
-//	require.Equal(t, extProcName(aiGatewayRoute), deployment.Name)
-//	require.Equal(t, int32(123), *deployment.Spec.Replicas)
-//	require.Equal(t, ownerRef, deployment.OwnerReferences)
-//	require.Equal(t, corev1.ResourceRequirements{
-//		Limits: corev1.ResourceList{
-//			corev1.ResourceCPU:    resource.MustParse("200m"),
-//			corev1.ResourceMemory: resource.MustParse("100Mi"),
-//		},
-//	}, deployment.Spec.Template.Spec.Containers[0].Resources)
-//	service, err := s.kube.CoreV1().Services("default").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-//	require.NoError(t, err)
-//	require.Equal(t, extProcName(aiGatewayRoute), service.Name)
-//}
+	err = fakeClient.Create(context.Background(), aiGatewayRoute, &client.CreateOptions{})
+	require.NoError(t, err)
+
+	err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+	require.NoError(t, err)
+
+	extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, extProcDeployment)
+	require.Equal(t, extProcName(aiGatewayRoute), extProcDeployment.Name)
+	require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
+	require.Equal(t, ownerReferenceForAIGatewayRoute(aiGatewayRoute), extProcDeployment.OwnerReferences)
+	require.Equal(t, corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("100Mi"),
+		},
+	}, extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+	service, err := s.kube.CoreV1().Services("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, extProcName(aiGatewayRoute), service.Name)
+
+	// Update fields in resource again
+	// Doing it again should not fail and update the deployment.
+	aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
+	err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+	require.NoError(t, err)
+	// Check the deployment is updated.
+	extProcDeployment, err = s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
+}
 
 func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	// Create simple case
