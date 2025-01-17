@@ -81,7 +81,7 @@ type AIGatewayRouteSpec struct {
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
-	// RequestCost specifies the cost of the request, notably the token usage.
+	// LLMRequestCost specifies the cost of the LLM-related request, notably the token usage.
 	// The AI Gateway filter will capture this information and store it in the Envoy's dynamic
 	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
 	// and the key is "ai_gateway_route_request_cost".
@@ -127,7 +127,7 @@ type AIGatewayRouteSpec struct {
 	//	            metadata:
 	//	              namespace: io.envoy.ai_gateway
 	//	              key: ai_gateway_route_request_cost
-	RequestCost *RequestCost `json:"requestCost,omitempty"`
+	LLMRequestCost *LLMRequestCost `json:"LLMRequestCost,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -279,7 +279,7 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
-	// TODO: maybe add backend-level RequestCost configuration that overrides the AIGatewayRoute-level RequestCost.
+	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
 }
 
@@ -430,13 +430,13 @@ type AWSOIDCExchangeToken struct {
 	AwsRoleArn string `json:"awsRoleArn"`
 }
 
-// RequestCost configures the request cost.
-type RequestCost struct {
+// LLMRequestCost configures the request cost.
+type LLMRequestCost struct {
 	// Type specifies the type of the request cost. The default is "OutputToken",
 	// and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
 	//
 	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken
-	Type RequestCostType `json:"type"`
+	Type LLMRequestCostType `json:"type"`
 
 	// CELExpression is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return an integer value. The CEL expression should be
@@ -447,18 +447,23 @@ type RequestCost struct {
 	CELExpression *string `json:"celExpression"`
 }
 
-// RequestCostType specifies the type of the RequestCost.
-type RequestCostType string
+// LLMRequestCostType specifies the type of the LLMRequestCost.
+type LLMRequestCostType string
 
 const (
-	RequestCostTypeInputToken  RequestCostType = "InputToken"
-	RequestCostTypeOutputToken RequestCostType = "OutputToken"
-	RequestCostTypeTotalToken  RequestCostType = "TotalToken"
-	RequestCostTypeCEL         RequestCostType = "CEL"
+	// LLMRequestCostTypeInputToken is the cost type of the input token.
+	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
+	// LLMRequestCostTypeOutputToken is the cost type of the output token.
+	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
+	// LLMRequestCostTypeTotalToken is the cost type of the total token.
+	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.
+	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
 
 const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
-	AIGatewayFilterMetadataNamespace              = "io.envoy.ai_gateway"
+	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
+	// AIGatewayFilterMetadataRequestCostMetadataKey is the key for the request cost metadata.
 	AIGatewayFilterMetadataRequestCostMetadataKey = "ai_gateway_route_request_cost"
 )

@@ -94,28 +94,28 @@ type RequestCost struct {
 	// Key is the key of the metadata storing the request cost.
 	Key string `yaml:"key"`
 	// Type is the kind of the request cost calculation.
-	Type RequestCostType
+	Type LLMRequestCostType
 	// CELExpression is the CEL expression to calculate the cost of the request.
-	// This is not empty when the Type is RequestCostTypeCELExpression.
+	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
 	CELExpression string `yaml:"celExpression,omitempty"`
 }
 
-// RequestCostType specifies the kind of the request cost calculation.
-type RequestCostType int
+// LLMRequestCostType specifies the kind of the request cost calculation.
+type LLMRequestCostType int
 
 const (
-	// RequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
-	RequestCostTypeOutputToken RequestCostType = iota
-	// RequestCostTypeInputToken specifies that the request cost is calculated from the input token.
-	RequestCostTypeInputToken
-	// RequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
-	RequestCostTypeTotalToken
-	// RequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
-	RequestCostTypeCELExpression
+	// LLMRequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
+	LLMRequestCostTypeOutputToken LLMRequestCostType = iota
+	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
+	LLMRequestCostTypeInputToken
+	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
+	LLMRequestCostTypeTotalToken
+	// LLMRequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
+	LLMRequestCostTypeCELExpression
 )
 
 // String implements fmt.Stringer.
-func (k RequestCostType) String() string {
+func (k LLMRequestCostType) String() string {
 	return [...]string{"OutputToken", "InputToken", "TotalToken", "CELExpression"}[k]
 }
 

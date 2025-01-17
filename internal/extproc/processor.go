@@ -193,11 +193,11 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 		c := p.config.requestCost
 		var cost uint32
 		switch c.Type {
-		case filterconfig.RequestCostTypeInputToken:
+		case filterconfig.LLMRequestCostTypeInputToken:
 			cost = tokenUsage.InputTokens
-		case filterconfig.RequestCostTypeOutputToken:
+		case filterconfig.LLMRequestCostTypeOutputToken:
 			cost = tokenUsage.OutputTokens
-		case filterconfig.RequestCostTypeTotalToken:
+		case filterconfig.LLMRequestCostTypeTotalToken:
 			cost = tokenUsage.TotalTokens
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
