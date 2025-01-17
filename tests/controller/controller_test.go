@@ -220,7 +220,10 @@ func TestStartControllers(t *testing.T) {
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
 	ch := make(chan controller.ConfigSinkEvent)
-	s := controller.newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	sink = controller.NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+
+	err = sink.init(ctx)
+	require.NoError(t, err)
 
 	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), ch)
 

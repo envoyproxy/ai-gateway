@@ -88,7 +88,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
-	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan, options.ExtProcImage)
+	sink := NewConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan, options.ExtProcImage)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	logger.Info("Initializing config sink")

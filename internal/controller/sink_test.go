@@ -27,7 +27,7 @@ func TestConfigSink_init(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
 	require.NotNil(t, s)
 }
 
@@ -36,7 +36,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
-	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan, "defaultExtProcImage")
 	require.NotNil(t, s)
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -100,21 +100,21 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
 func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
@@ -217,7 +217,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
 	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
 	require.NoError(t, err)
 
@@ -354,7 +354,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 //	eventChan := make(chan ConfigSinkEvent)
 //
 //	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-//	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+//	s := NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
 //	require.NotNil(t, s)
 //
 //	// TODO-AC: add backends

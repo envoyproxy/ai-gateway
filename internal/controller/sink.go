@@ -36,7 +36,7 @@ type ConfigSinkEvent any
 // which requires to be done in a single goroutine since we need to
 // consolidate the information from both objects to generate the ExtProcConfig
 // and HTTPRoute objects.
-type configSink struct {
+type ConfigSink struct {
 	client              client.Client
 	kube                kubernetes.Interface
 	logger              logr.Logger
@@ -45,14 +45,14 @@ type configSink struct {
 	eventChan chan ConfigSinkEvent
 }
 
-func newConfigSink(
+func NewConfigSink(
 	kubeClient client.Client,
 	kube kubernetes.Interface,
 	logger logr.Logger,
 	eventChan chan ConfigSinkEvent,
 	extProcImage string,
-) *configSink {
-	c := &configSink{
+) *ConfigSink {
+	c := &ConfigSink{
 		client:              kubeClient,
 		kube:                kube,
 		logger:              logger.WithName("config-sink"),
@@ -62,7 +62,7 @@ func newConfigSink(
 	return c
 }
 
-func (c *configSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend, error) {
+func (c *ConfigSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend, error) {
 	backend := &aigv1a1.AIServiceBackend{}
 	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (c *configSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend,
 	return backend, nil
 }
 
-func (c *configSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
+func (c *ConfigSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
 	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
 	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy); err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (c *configSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.Bac
 
 // init caches all AIServiceBackend and AIGatewayRoute objects in the cluster after the controller gets the leader election,
 // and starts a goroutine to handle the events from the controllers.
-func (c *configSink) init(ctx context.Context) error {
+func (c *ConfigSink) init(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -96,7 +96,7 @@ func (c *configSink) init(ctx context.Context) error {
 }
 
 // handleEvent handles the event received from the controllers in a single goroutine.
-func (c *configSink) handleEvent(event ConfigSinkEvent) {
+func (c *ConfigSink) handleEvent(event ConfigSinkEvent) {
 	switch e := event.(type) {
 	case *aigv1a1.AIServiceBackend:
 		c.syncAIServiceBackend(e)
@@ -109,7 +109,7 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 	}
 }
 
-func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
+func (c *ConfigSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRoute exists.
 	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
@@ -165,7 +165,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 }
 
-func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
+func (c *ConfigSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
 	err := c.client.List(context.Background(), &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
@@ -182,7 +182,7 @@ func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 	}
 }
 
-func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
+func (c *ConfigSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
 	key := fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
 	var aiServiceBackends aigv1a1.AIServiceBackendList
 	err := c.client.List(context.Background(), &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
@@ -196,7 +196,7 @@ func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolic
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
-func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *ConfigSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {
 		// This is a bug since we should have created the configmap before sending the AIGatewayRoute to the configSink.
@@ -264,7 +264,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *ConfigSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range aiGatewayRoute.Spec.Rules {
@@ -323,7 +323,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 }
 
 // syncExtProcDeployment syncs the external processor's Deployment and Service.
-func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *ConfigSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	name := extProcName(aiGatewayRoute)
 	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
 
@@ -422,7 +422,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 }
 
 // mountBackendSecurityPolicySecrets will mount secrets based on backendSecurityPolicies attached to AIServiceBackend.
-func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
+func (c *ConfigSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
 	// Mount from scratch to avoid secrets that should be unmounted.
 	// Only keep the original mount which should be the config volume.
 	spec.Volumes = []corev1.Volume{spec.Volumes[0]}
