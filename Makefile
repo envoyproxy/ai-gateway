@@ -56,7 +56,7 @@ codespell: $(CODESPELL)
 .PHONY: format
 format: gci gofumpt
 	@echo "format => *.go"
-	@find . -type f -name '*.go' | xargs gofmt -s -w
+	@find . -type f -name '*.go' | xargs gofumpt -w
 	@find . -type f -name '*.go' | xargs $(GO_FUMPT) -l -w
 	@echo "gci => *.go"
 	@$(GCI) write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
