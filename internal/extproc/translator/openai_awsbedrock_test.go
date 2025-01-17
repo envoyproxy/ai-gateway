@@ -599,7 +599,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			var openAIResp openai.ChatCompletionResponse
 			err = json.Unmarshal(newBody, &openAIResp)
 			require.NoError(t, err)
-			require.Equal(t, TokenUsage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}, usedToken)
+			require.Equal(t, LLMTokenUsage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}, usedToken)
 			if !cmp.Equal(openAIResp, tt.output) {
 				t.Errorf("ConvertOpenAIToBedrock(), diff(got, expected) = %s\n", cmp.Diff(openAIResp, tt.output))
 			}

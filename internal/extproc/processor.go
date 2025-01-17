@@ -28,7 +28,7 @@ type processorConfig struct {
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	requestCost                                  *filterconfig.RequestCost
+	requestCost                                  *filterconfig.LLMRequestCost
 }
 
 // ProcessorIface is the interface for the processor.
@@ -57,7 +57,7 @@ type Processor struct {
 	responseEncoding string
 	translator       translator.Translator
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.TokenUsage
+	costs translator.LLMTokenUsage
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -186,6 +186,8 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
+
+	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
 	p.costs.InputTokens += tokenUsage.InputTokens
 	p.costs.OutputTokens += tokenUsage.OutputTokens
 	p.costs.TotalTokens += tokenUsage.TotalTokens

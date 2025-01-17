@@ -288,7 +288,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 
 // ResponseBody implements [Translator.ResponseBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage TokenUsage, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
@@ -302,7 +302,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				tokenUsage = TokenUsage{
+				tokenUsage = LLMTokenUsage{
 					InputTokens:  uint32(usage.InputTokens),  //nolint:gosec
 					OutputTokens: uint32(usage.OutputTokens), //nolint:gosec
 					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
@@ -338,7 +338,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		Choices: make([]openai.ChatCompletionResponseChoice, 0, len(bedrockResp.Output.Message.Content)),
 	}
 	if bedrockResp.Usage != nil {
-		tokenUsage = TokenUsage{
+		tokenUsage = LLMTokenUsage{
 			InputTokens:  uint32(bedrockResp.Usage.InputTokens),  //nolint:gosec
 			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
 			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec

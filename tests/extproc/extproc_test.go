@@ -51,7 +51,7 @@ func TestE2E(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath, openAIAPIKey)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
-		RequestCost: &filterconfig.RequestCost{
+		LLMRequestCost: &filterconfig.LLMRequestCost{
 			Namespace: "ai_gateway_llm_ns",
 			Key:       "used_token",
 		},

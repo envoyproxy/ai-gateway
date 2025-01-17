@@ -71,7 +71,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
 	}
-	newConfig.requestCost = config.RequestCost
+	newConfig.requestCost = config.LLMRequestCost
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
 }

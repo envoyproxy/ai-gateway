@@ -36,7 +36,7 @@ func TestServer_LoadConfig(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
-			RequestCost:              &filterconfig.RequestCost{Namespace: "ns", Key: "key"},
+			LLMRequestCost:           &filterconfig.LLMRequestCost{Namespace: "ns", Key: "key"},
 			InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
