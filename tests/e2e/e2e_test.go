@@ -168,7 +168,7 @@ func initTestupstream(ctx context.Context) (err error) {
 	if err = kubectlApplyManifest(ctx, "./init/testupstream/"); err != nil {
 		return
 	}
-	initLog("\t--- waiting for deployment")
+	initLog("\twaiting for deployment")
 	return kubectlWaitForDeploymentReady("default", "testupstream")
 }
 

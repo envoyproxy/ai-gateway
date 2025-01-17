@@ -77,6 +77,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	p.logger.Info("Processing request", "path", path, "model", model)
+	fmt.Println("Processing request", "path", path, "model", model)
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
 	b, err := p.config.router.Calculate(p.requestHeaders)
@@ -84,6 +85,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 	p.logger.Info("Selected backend", "backend", b.Name)
+	fmt.Println("Selected backend", "backend", b.Name)
 
 	factory, ok := p.config.factories[b.OutputSchema]
 	if !ok {

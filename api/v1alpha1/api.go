@@ -83,7 +83,7 @@ type AIGatewayRouteSpec struct {
 
 	// RequestCost specifies the cost of the request, notably the token usage.
 	// The AI Gateway filter will capture this information and store it in the Envoy's dynamic
-	// metadata per HTTP request. The namespaced key is "envoy.filters.http.ai_gateway.token_usage",
+	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway.token_usage",
 	// and the key is "ai_gateway_route_request_cost".
 	//
 	// For example, with the following BackendTrafficPolicy of Envoy Gateway,
@@ -125,7 +125,7 @@ type AIGatewayRouteSpec struct {
 	//	          response:
 	//	            from: Metadata
 	//	            metadata:
-	//	              namespace: envoy.filters.http.ai_gateway.token_usage
+	//	              namespace: io.envoy.ai_gateway.token_usage
 	//	              key: ai_gateway_route_request_cost
 	RequestCost *RequestCost `json:"requestCost,omitempty"`
 }
@@ -459,6 +459,6 @@ const (
 
 const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
-	AIGatewayFilterMetadataNamespace              = "envoy.filters.http.ai_gateway"
+	AIGatewayFilterMetadataNamespace              = "io.envoy.ai_gateway"
 	AIGatewayFilterMetadataRequestCostMetadataKey = "ai_gateway_route_request_cost"
 )
