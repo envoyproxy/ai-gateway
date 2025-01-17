@@ -103,7 +103,7 @@ jobs:
 
   test_extproc:
     name: External Processor Test
-    # Not all the cases in E2E require secrets, so we run for all the events.
+    # Not  all the cases in E2E require secrets, so we run for all the events.
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     runs-on: ubuntu-latest
     steps:
