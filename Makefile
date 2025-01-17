@@ -199,14 +199,13 @@ build.%:
 # - `make docker-build.extproc_custom_router CMD_PATH_PREFIX=examples`
 # - `make docker-build.testupstream CMD_PATH_PREFIX=tests`
 .PHONY: docker-build.%
+ifeq ($(ENABLE_MULTI_PLATFORMS),true)
+docker-build.%: GOARCH_LIST = amd64 arm64
+docker-build.%: PLATFORMS = --platform linux/amd64,linux/arm64
+endif
 docker-build.%:
 	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
-	@if [ "$(ENABLE_MULTI_PLATFORMS)" = "true" ]; then \
-		GOARCH_LIST="amd64 arm64"; PLATFORMS="--platform linux/amd64,linux/arm64"; \
-	else \
-		GOARCH_LIST="$(shell go env GOARCH)"; PLATFORMS=""; \
-	fi
-	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux"
+	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
 	docker buildx build . -t $(OCI_REGISTRY)/$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
 # This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
