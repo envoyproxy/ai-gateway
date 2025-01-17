@@ -180,10 +180,9 @@ spec:
                 description: "RequestCost specifies the cost of the request, notably
                   the token usage.\nThe AI Gateway filter will capture this information
                   and store it in the Envoy's dynamic\nmetadata per HTTP request.
-                  The namespaced key is \"io.envoy.ai_gateway.token_usage\",\nand
-                  the key is \"ai_gateway_route_request_cost\".\n\nFor example, with
-                  the following BackendTrafficPolicy of Envoy Gateway,\nthe captured
-                  value is used as the \"token usage rate limiting\":\n\napiVersion:
+                  The namespaced key is \"io.envoy.ai_gateway\",\nand the key is \"ai_gateway_route_request_cost\".\n\nFor
+                  example, with the following BackendTrafficPolicy of Envoy Gateway,\nthe
+                  captured value is used as the \"token usage rate limiting\":\n\napiVersion:
                   gateway.envoyproxy.io/v1alpha1\nkind: BackendTrafficPolicy\nmetadata:\n\tname:
                   some-example-token-rate-limit\n\tnamespace: default\nspec:\n\ttargetRefs:\n\t
                   \ - group: gateway.networking.k8s.io\n\t    kind: HTTPRoute\n\t
@@ -202,7 +201,7 @@ spec:
                   The extracted value will be used to consume the rate limit budget,
                   and subsequent requests will be rate limited\n\t          # if the
                   budget is exhausted.\n\t          response:\n\t            from:
-                  Metadata\n\t            metadata:\n\t              namespace: io.envoy.ai_gateway.token_usage\n\t
+                  Metadata\n\t            metadata:\n\t              namespace: io.envoy.ai_gateway\n\t
                   \             key: ai_gateway_route_request_cost"
                 properties:
                   celExpression:
