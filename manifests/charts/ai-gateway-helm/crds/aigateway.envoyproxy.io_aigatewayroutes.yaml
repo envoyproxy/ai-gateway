@@ -359,8 +359,8 @@ spec:
                 type: array
             required:
             - rules
-            - targetRefs
             - schema
+            - targetRefs
             type: object
         type: object
     served: true
