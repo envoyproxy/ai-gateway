@@ -84,7 +84,6 @@ func TestE2E(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, os.Remove("/etc/open-ai-api-key"))
 
 	requireExtProcWithAWSCredentials(t, configPath)
 
