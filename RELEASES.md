@@ -3,7 +3,7 @@
 ## Release Cycles
 
 Since Envoy AI Gateway depends on the Envoy Gateway and Envoy Proxy, we will follow the release cycle of the Envoy Gateway.
-In other words, we aim to cut the release of the Envoy AI Gateway a few days or a week after the new version of the Envoy Gateway 
+In other words, we aim to cut the release of the Envoy AI Gateway a few days or a week after the new version of the Envoy Gateway
 is released. Therefore, the release cycle of the Envoy AI Gateway will be approximately every 2-3 months.
 
 We do not distinguish between major and patch releases. We will increment the version number by one for each release,
