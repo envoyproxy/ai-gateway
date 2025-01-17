@@ -52,7 +52,8 @@ func TestE2E(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
 	// Test with APIKey
-	require.NoError(t, os.WriteFile("/etc/open-ai-api-key", []byte(openAIAPIKey), 0o600))
+	require.NoError(t, os.Create(configPath))
+	require.NoError(t, os.WriteFile("/etc/open-ai-api-key", []byte(openAIAPIKey)))
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		TokenUsageMetadata: &filterconfig.TokenUsageMetadata{
 			Namespace: "ai_gateway_llm_ns",
@@ -69,9 +70,12 @@ func TestE2E(t *testing.T) {
 					APIKey: &filterconfig.APIKeyAuth{Filename: "/etc/open-ai-api-key"},
 				}}},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
-			}, {
-				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
-				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+			},
+			{
+				Backends: []filterconfig.Backend{
+					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+				},
+				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
 		},
 	})
