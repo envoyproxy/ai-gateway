@@ -70,8 +70,8 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		ModelNameHeaderKey:       config.ModelNameHeaderKey,
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
+		requestCost:              config.LLMRequestCost,
 	}
-	newConfig.requestCost = config.LLMRequestCost
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
 }
