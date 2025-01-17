@@ -66,9 +66,11 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 // From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
 type Config struct {
+	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
+	MetadataNamespace string `yaml:"namespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
-	LLMRequestCost *LLMRequestCost `yaml:"llmRequestCost,omitempty"`
+	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCost,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
 	InputSchema VersionedAPISchema `yaml:"inputSchema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
@@ -89,35 +91,28 @@ type Config struct {
 // the rate limit configuration https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#config-route-v3-ratelimit
 // which is introduced in Envoy 1.33 (to be released soon as of writing).
 type LLMRequestCost struct {
-	// Namespace is the namespace of the metadata storing the request cost.
-	Namespace string `yaml:"namespace"`
-	// Key is the key of the metadata storing the request cost.
-	Key string `yaml:"key"`
+	// MetadataKey is the key of the metadata storing the request cost.
+	MetadataKey string `yaml:"key"`
 	// Type is the kind of the request cost calculation.
-	Type LLMRequestCostType
+	Type LLMRequestCostType `yaml:"type"`
 	// CELExpression is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
 	CELExpression string `yaml:"celExpression,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
-type LLMRequestCostType int
+type LLMRequestCostType string
 
 const (
 	// LLMRequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
-	LLMRequestCostTypeOutputToken LLMRequestCostType = iota
+	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
-	LLMRequestCostTypeInputToken
+	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
-	LLMRequestCostTypeTotalToken
+	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
 	// LLMRequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
-	LLMRequestCostTypeCELExpression
+	LLMRequestCostTypeCELExpression LLMRequestCostType = "CEL"
 )
-
-// String implements fmt.Stringer.
-func (k LLMRequestCostType) String() string {
-	return [...]string{"OutputToken", "InputToken", "TotalToken", "CELExpression"}[k]
-}
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {

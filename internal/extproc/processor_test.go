@@ -60,10 +60,16 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
-		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: translator.LLMTokenUsage{OutputTokens: 123}}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
+			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
+		}
 		p := &Processor{translator: mt, config: &processorConfig{
-			requestCost: &filterconfig.LLMRequestCost{
-				Namespace: "ai_gateway_llm_ns", Key: "token_usage",
+			metadataNamespace: "ai_gateway_llm_ns",
+			requestCosts: []filterconfig.LLMRequestCost{
+				{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"},
+				{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"},
 			},
 		}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
@@ -74,7 +80,10 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["token_usage"].GetNumberValue())
+		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["output_token_usage"].GetNumberValue())
+		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["input_token_usage"].GetNumberValue())
 	})
 }
 

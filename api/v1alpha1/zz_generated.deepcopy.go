@@ -201,10 +201,12 @@ func (in *AIGatewayRouteSpec) DeepCopyInto(out *AIGatewayRouteSpec) {
 		*out = new(AIGatewayFilterConfig)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.LLMRequestCost != nil {
-		in, out := &in.LLMRequestCost, &out.LLMRequestCost
-		*out = new(LLMRequestCost)
-		(*in).DeepCopyInto(*out)
+	if in.LLMRequestCosts != nil {
+		in, out := &in.LLMRequestCosts, &out.LLMRequestCosts
+		*out = make([]LLMRequestCost, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 }
 

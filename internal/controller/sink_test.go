@@ -267,11 +267,22 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							},
 						},
 					},
+					LLMRequestCosts: []aigv1a1.LLMRequestCost{
+						{
+							Type:        aigv1a1.LLMRequestCostTypeOutputToken,
+							MetadataKey: "output-token",
+						},
+						{
+							Type:        aigv1a1.LLMRequestCostTypeInputToken,
+							MetadataKey: "input-token",
+						},
+					},
 				},
 			},
 			exp: &filterconfig.Config{
 				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
+				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
@@ -284,6 +295,10 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1}},
 						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
+				},
+				LLMRequestCosts: []filterconfig.LLMRequestCost{
+					{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
+					{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
 				},
 			},
 		},

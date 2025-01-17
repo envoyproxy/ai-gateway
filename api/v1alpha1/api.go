@@ -81,53 +81,100 @@ type AIGatewayRouteSpec struct {
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
-	// LLMRequestCost specifies the cost of the LLM-related request, notably the token usage.
-	// The AI Gateway filter will capture this information and store it in the Envoy's dynamic
+	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
+	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
 	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
-	// and the key is "ai_gateway_route_request_cost".
 	//
-	// For example, with the following BackendTrafficPolicy of Envoy Gateway,
-	// the captured value is used as the "token usage rate limiting":
+	// For example, let's say we have the following LLMRequestCosts configuration:
 	//
-	// apiVersion: gateway.envoyproxy.io/v1alpha1
-	// kind: BackendTrafficPolicy
-	// metadata:
-	//	name: some-example-token-rate-limit
-	//	namespace: default
-	// spec:
-	//	targetRefs:
+	//	llmRequestCosts:
+	//	- metadataKey: llm_input_token
+	//	  type: InputToken
+	//	- metadataKey: llm_output_token
+	//	  type: OutputToken
+	//	- metadataKey: llm_total_token
+	//	  type: TotalToken
+	//
+	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
+	// rate limit buckets for each x-user-id header. One bucket is for the input token,
+	// the other is for the output token, and the last one is for the total token.
+	// Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
+	//
+	//	apiVersion: gateway.envoyproxy.io/v1alpha1
+	//	kind: BackendTrafficPolicy
+	//	metadata:
+	//	  name: some-example-token-rate-limit
+	//	  namespace: default
+	//	spec:
+	//	  targetRefs:
 	//	  - group: gateway.networking.k8s.io
-	//	    kind: HTTPRoute
-	//	    name: usage-rate-limit
-	//	rateLimit:
-	//	  type: Global
-	//	  global:
-	//	    rules:
-	//	      - clientSelectors:
-	//	          # Do the rate limiting based on the x-user-id header.
-	//	          - headers:
-	//	              - name: x-user-id
-	//	                type: Exact
-	//	                value: one
-	//	        limit:
-	//	          # Configures the number of "tokens" allowed per hour.
-	//	          requests: 10000
-	//	          unit: Hour
-	//	        cost:
-	//	          request:
-	//	            from: Number
-	//	            # Setting the request cost to zero allows to only check the rate limit budget,
-	//	            # and not consume the budget on the request path.
-	//	            number: 0
-	//	          # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.
-	//	          # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited
-	//	          # if the budget is exhausted.
-	//	          response:
-	//	            from: Metadata
-	//	            metadata:
-	//	              namespace: io.envoy.ai_gateway
-	//	              key: ai_gateway_route_request_cost
-	LLMRequestCost *LLMRequestCost `json:"llmRequestCost,omitempty"`
+	//	     kind: HTTPRoute
+	//	     name: usage-rate-limit
+	//	  rateLimit:
+	//	    type: Global
+	//	    global:
+	//	      rules:
+	//	        - clientSelectors:
+	//	            # Do the rate limiting based on the x-user-id header.
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Exact
+	//	                  value: one
+	//	          limit:
+	//	            # Configures the number of "tokens" allowed per hour.
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              # Setting the request cost to zero allows to only check the rate limit budget,
+	//	              # and not consume the budget on the request path.
+	//	              number: 0
+	//	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.
+	//	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited
+	//	            # if the budget is exhausted.
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_input_token
+	//	        - clientSelectors:
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Exact
+	//	                  value: one
+	//	          limit:
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              number: 0
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_output_token
+	//	        - clientSelectors:
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Exact
+	//	                  value: one
+	//	          limit:
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              number: 0
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_total_token
+	//
+	// +optional
+	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -430,14 +477,17 @@ type AWSOIDCExchangeToken struct {
 	AwsRoleArn string `json:"awsRoleArn"`
 }
 
-// LLMRequestCost configures the request cost.
+// LLMRequestCost configures each request cost.
 type LLMRequestCost struct {
+	// MetadataKey is the key of the metadata to store this cost of the request.
+	//
+	// +kubebuilder:validation:Required
+	MetadataKey string `json:"metadataKey"`
 	// Type specifies the type of the request cost. The default is "OutputToken",
 	// and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
 	//
 	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken
 	Type LLMRequestCostType `json:"type"`
-
 	// CELExpression is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return an integer value. The CEL expression should be
 	// able to access the request headers, model name, backend name, input/output tokens etc.
@@ -464,6 +514,4 @@ const (
 const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
-	// AIGatewayFilterMetadataRequestCostMetadataKey is the key for the request cost metadata.
-	AIGatewayFilterMetadataRequestCostMetadataKey = "ai_gateway_route_request_cost"
 )

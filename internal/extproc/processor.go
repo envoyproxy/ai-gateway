@@ -28,7 +28,8 @@ type processorConfig struct {
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	requestCost                                  *filterconfig.LLMRequestCost
+	metadataNamespace                            string
+	requestCosts                                 []filterconfig.LLMRequestCost
 }
 
 // ProcessorIface is the interface for the processor.
@@ -191,40 +192,43 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	p.costs.InputTokens += tokenUsage.InputTokens
 	p.costs.OutputTokens += tokenUsage.OutputTokens
 	p.costs.TotalTokens += tokenUsage.TotalTokens
-	if body.EndOfStream && p.config.requestCost != nil {
-		c := p.config.requestCost
-		var cost uint32
-		switch c.Type {
-		case filterconfig.LLMRequestCostTypeInputToken:
-			cost = tokenUsage.InputTokens
-		case filterconfig.LLMRequestCostTypeOutputToken:
-			cost = tokenUsage.OutputTokens
-		case filterconfig.LLMRequestCostTypeTotalToken:
-			cost = tokenUsage.TotalTokens
-		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
-		}
-		if cost > 0 {
-			resp.DynamicMetadata = buildRequestCostDynamicMetadata(c.Namespace, c.Key, cost)
+	if body.EndOfStream && len(p.config.requestCosts) > 0 {
+		resp.DynamicMetadata, err = p.maybeBuildDynamicMetadata()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
 	}
 	return resp, nil
 }
 
-func buildRequestCostDynamicMetadata(namespace, key string, cost uint32) *structpb.Struct {
+func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(p.config.requestCosts))
+	for _, c := range p.config.requestCosts {
+		var cost uint32
+		switch c.Type {
+		case filterconfig.LLMRequestCostTypeInputToken:
+			cost = p.costs.InputTokens
+		case filterconfig.LLMRequestCostTypeOutputToken:
+			cost = p.costs.OutputTokens
+		case filterconfig.LLMRequestCostTypeTotalToken:
+			cost = p.costs.TotalTokens
+		default:
+			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
+		}
+		metadata[c.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+	}
+	if len(metadata) == 0 {
+		return nil, nil
+	}
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			namespace: {
+			p.config.metadataNamespace: {
 				Kind: &structpb.Value_StructValue{
-					StructValue: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}},
-						},
-					},
+					StructValue: &structpb.Struct{Fields: metadata},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // headersToMap converts a [corev3.HeaderMap] to a Go map for easier processing.

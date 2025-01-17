@@ -51,9 +51,9 @@ func TestE2E(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath, openAIAPIKey)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
-		LLMRequestCost: &filterconfig.LLMRequestCost{
-			Namespace: "ai_gateway_llm_ns",
-			Key:       "used_token",
+		MetadataNamespace: "ai_gateway_llm_ns",
+		LLMRequestCosts: []filterconfig.LLMRequestCost{
+			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
 		},
 		InputSchema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.

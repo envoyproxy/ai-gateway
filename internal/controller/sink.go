@@ -191,11 +191,9 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		}
 	}
 
-	if cost := aiGatewayRoute.Spec.LLMRequestCost; cost != nil {
-		fc := &filterconfig.LLMRequestCost{
-			Namespace: aigv1a1.AIGatewayFilterMetadataNamespace,
-			Key:       aigv1a1.AIGatewayFilterMetadataRequestCostMetadataKey,
-		}
+	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
+	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
+		fc := filterconfig.LLMRequestCost{MetadataKey: cost.MetadataKey}
 		switch cost.Type {
 		case aigv1a1.LLMRequestCostTypeInputToken:
 			fc.Type = filterconfig.LLMRequestCostTypeInputToken
@@ -208,7 +206,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		default:
 			return fmt.Errorf("unknown request cost type: %s", cost.Type)
 		}
-		ec.LLMRequestCost = fc
+		ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 	}
 
 	marshaled, err := yaml.Marshal(ec)
