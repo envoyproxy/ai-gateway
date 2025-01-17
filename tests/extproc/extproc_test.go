@@ -73,6 +73,7 @@ func TestE2E(t *testing.T) {
 		},
 	})
 	requireExtProcWithAWSCredentials(t, configPath)
+	t.Fatal("test")
 
 	t.Run("health-checking", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
