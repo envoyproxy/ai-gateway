@@ -6,6 +6,10 @@ metadata:
 spec:
   schema:
     name: OpenAI
+  targetRefs:
+    - name: some-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
   rules:
     - matches:
       - headers:

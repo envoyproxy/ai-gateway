@@ -355,9 +355,11 @@ spec:
                   - name
                   type: object
                 maxItems: 128
+                minItems: 1
                 type: array
             required:
             - rules
+            - targetRefs
             - schema
             type: object
         type: object

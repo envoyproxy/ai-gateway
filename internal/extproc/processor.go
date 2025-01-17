@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -44,12 +45,13 @@ type ProcessorIface interface {
 }
 
 // NewProcessor creates a new processor.
-func NewProcessor(config *processorConfig) *Processor {
-	return &Processor{config: config}
+func NewProcessor(config *processorConfig, logger *slog.Logger) *Processor {
+	return &Processor{config: config, logger: logger}
 }
 
 // Processor handles the processing of the request and response messages for a single stream.
 type Processor struct {
+	logger           *slog.Logger
 	config           *processorConfig
 	requestHeaders   map[string]string
 	responseEncoding string
@@ -72,12 +74,14 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+	p.logger.Info("Processing request", "path", path, "model", model)
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
 	b, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
+	p.logger.Info("Selected backend", "backend", b.Name)
 
 	factory, ok := p.config.factories[b.Schema]
 	if !ok {
