@@ -219,12 +219,8 @@ func TestStartControllers(t *testing.T) {
 
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
-	opts := controller.Options{
-		ExtProcImage:         "envoyproxy/ai-gateway-extproc:foo",
-		EnableLeaderElection: false,
-	}
 	ch := make(chan controller.ConfigSinkEvent)
-	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), opts, ch)
+	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)

@@ -27,7 +27,7 @@ func TestConfigSink_init(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
 	require.NotNil(t, s)
 }
 
@@ -36,7 +36,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
-	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan)
+	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan, "defaultExtProcImage")
 	require.NotNil(t, s)
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -100,14 +100,21 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan)
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
+}
+
+func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
+	eventChan := make(chan ConfigSinkEvent)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan)
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
@@ -210,7 +217,25 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
+	require.NoError(t, err)
+
+	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-1", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+					SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
+	} {
+		err := fakeClient.Create(context.Background(), bsp, &client.CreateOptions{})
+		require.NoError(t, err)
+	}
+
 	for _, b := range []*aigv1a1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
@@ -218,13 +243,15 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{
 					Schema: aigv1a1.APISchemaAWSBedrock,
 				},
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "cat", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
 			},
 		},
 		{
@@ -276,13 +303,24 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
+								Type: filterconfig.AuthTypeAPIKey,
+								APIKey: &filterconfig.APIKeyAuth{
+									Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
+								},
+							}},
+							{Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
 					{
-						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1}},
-						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
+							Type: filterconfig.AuthTypeAPIKey,
+							APIKey: &filterconfig.APIKeyAuth{
+								Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
+							},
+						}}},
+						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
 				},
 			},
@@ -309,6 +347,55 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	}
 }
 
-// Add test for checking mounted security policy on new backend security policy
+// TODO-AC: Finish this test case
+// func TestConfigSink_SyncExtProcDeployment(t *testing.T) {
+//	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+//	kube := fake2.NewClientset()
+//	eventChan := make(chan ConfigSinkEvent)
+//
+//	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
+//	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+//	require.NotNil(t, s)
+//
+//	// TODO-AC: add backends
+//	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+//		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+//		Spec: aigv1a1.AIGatewayRouteSpec{
+//			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
+//				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
+//				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+//					Replicas: ptr.To[int32](123),
+//					Resources: &corev1.ResourceRequirements{
+//						Limits: corev1.ResourceList{
+//							corev1.ResourceCPU:    resource.MustParse("200m"),
+//							corev1.ResourceMemory: resource.MustParse("100Mi"),
+//						},
+//					},
+//				},
+//			},
+//		},
+//	}
+//
+//	// Create the deployment
+//
+//	// Check
+//	deployment, err := s.kube.AppsV1().Deployments("default").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+//	require.NoError(t, err)
+//	require.Equal(t, extProcName(aiGatewayRoute), deployment.Name)
+//	require.Equal(t, int32(123), *deployment.Spec.Replicas)
+//	require.Equal(t, ownerRef, deployment.OwnerReferences)
+//	require.Equal(t, corev1.ResourceRequirements{
+//		Limits: corev1.ResourceList{
+//			corev1.ResourceCPU:    resource.MustParse("200m"),
+//			corev1.ResourceMemory: resource.MustParse("100Mi"),
+//		},
+//	}, deployment.Spec.Template.Spec.Containers[0].Resources)
+//	service, err := s.kube.CoreV1().Services("default").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+//	require.NoError(t, err)
+//	require.Equal(t, extProcName(aiGatewayRoute), service.Name)
+//}
 
-// Add test for new security policy needed to be mounted/unmounted
+func Test_GetBackendSecurityMountPath(t *testing.T) {
+	mountPath := getBackendSecurityMountPath("policyName")
+	require.Equal(t, "/etc/backend_security_policy/policyName", mountPath)
+}

@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -23,7 +23,7 @@ const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
 // MountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
 //
 //	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
-const MountedExtProcSecretPath = "/etc/backend_security_policy"
+const MountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
 
 // ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an AIServiceBackend, an AIGatewayRoute, or a deletion event.
@@ -156,6 +156,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
+
+	// Deploy extproc deployment with potential updates.
+	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+	if err != nil {
+		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		return
+	}
 }
 
 func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
@@ -221,7 +228,6 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 				bspKey := fmt.Sprintf("%s.%s", bspRef.Name, aiGatewayRoute.Namespace)
 				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(bspRef.Name))
-
 				if err != nil {
 					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
 				}

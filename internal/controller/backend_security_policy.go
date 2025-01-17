@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
-	"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 // TODO-AC: rewrite
@@ -34,7 +36,7 @@ func newBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 func (b backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var backendSecurityPolicy v1alpha1.BackendSecurityPolicy
+	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
 	if err := b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if errors.IsNotFound(err) {
 			ctrl.Log.Info("Deleting Backend Security Policy",
