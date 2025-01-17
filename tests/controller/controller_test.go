@@ -220,6 +220,8 @@ func TestStartControllers(t *testing.T) {
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
 	ch := make(chan controller.ConfigSinkEvent)
+	s := controller.newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+
 	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
