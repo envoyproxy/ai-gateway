@@ -105,7 +105,7 @@ func TestAIGatewayRouteController_reconcileExtProcDeployment(t *testing.T) {
 
 func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
-	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Type", Name: "Name"}}
+	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
