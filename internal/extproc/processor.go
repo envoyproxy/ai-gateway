@@ -186,15 +186,15 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	}
 	if c := p.config.requestCost; c != nil {
 		var cost uint32
-		switch c.Kind {
-		case filterconfig.RequestCostKindInputToken:
+		switch c.Type {
+		case filterconfig.RequestCostTypeInputToken:
 			cost = tokenUsage.InputTokens
-		case filterconfig.RequestCostKindOutputToken:
+		case filterconfig.RequestCostTypeOutputToken:
 			cost = tokenUsage.OutputTokens
-		case filterconfig.RequestCostKindTotalToken:
+		case filterconfig.RequestCostTypeTotalToken:
 			cost = tokenUsage.TotalTokens
 		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", c.Kind)
+			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}
 		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(c.Namespace, c.Key, cost)
 	}

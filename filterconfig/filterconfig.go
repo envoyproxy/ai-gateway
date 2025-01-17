@@ -33,7 +33,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	  schema: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
-//	tokenUsageMetadata:
+//	requestCost:
 //	  namespace: ai_gateway_llm_ns
 //	  key: token_usage_key
 //	rules:
@@ -68,7 +68,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 type Config struct {
 	// RequestCost configures the cost of each request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
-	RequestCost *RequestCost `yaml:"tokenUsageMetadata,omitempty"`
+	RequestCost *RequestCost `yaml:"requestCost,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
 	InputSchema VersionedAPISchema `yaml:"inputSchema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
@@ -93,29 +93,29 @@ type RequestCost struct {
 	Namespace string `yaml:"namespace"`
 	// Key is the key of the metadata storing the request cost.
 	Key string `yaml:"key"`
-	// Kind is the kind of the request cost calculation.
-	Kind RequestCostKind
+	// Type is the kind of the request cost calculation.
+	Type RequestCostType
 	// CELExpression is the CEL expression to calculate the cost of the request.
-	// This is not empty when the Kind is RequestCostKindCELExpression.
+	// This is not empty when the Type is RequestCostTypeCELExpression.
 	CELExpression string `yaml:"celExpression,omitempty"`
 }
 
-// RequestCostKind specifies the kind of the request cost calculation.
-type RequestCostKind int
+// RequestCostType specifies the kind of the request cost calculation.
+type RequestCostType int
 
 const (
-	// RequestCostKindOutputToken specifies that the request cost is calculated from the output token.
-	RequestCostKindOutputToken RequestCostKind = iota
-	// RequestCostKindInputToken specifies that the request cost is calculated from the input token.
-	RequestCostKindInputToken
-	// RequestCostKindTotalToken specifies that the request cost is calculated from the total token.
-	RequestCostKindTotalToken
-	// RequestCostKindCELExpression specifies that the request cost is calculated from the CEL expression.
-	RequestCostKindCELExpression
+	// RequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
+	RequestCostTypeOutputToken RequestCostType = iota
+	// RequestCostTypeInputToken specifies that the request cost is calculated from the input token.
+	RequestCostTypeInputToken
+	// RequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
+	RequestCostTypeTotalToken
+	// RequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
+	RequestCostTypeCELExpression
 )
 
 // String implements fmt.Stringer.
-func (k RequestCostKind) String() string {
+func (k RequestCostType) String() string {
 	return [...]string{"OutputToken", "InputToken", "TotalToken", "CELExpression"}[k]
 }
 
