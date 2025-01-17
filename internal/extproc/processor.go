@@ -203,20 +203,20 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}
 		if cost > 0 {
-			resp.DynamicMetadata = buildTokenUsageDynamicMetadata(c.Namespace, c.Key, cost)
+			resp.DynamicMetadata = buildRequestCostDynamicMetadata(c.Namespace, c.Key, cost)
 		}
 	}
 	return resp, nil
 }
 
-func buildTokenUsageDynamicMetadata(namespace, key string, usage uint32) *structpb.Struct {
+func buildRequestCostDynamicMetadata(namespace, key string, cost uint32) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			namespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
+							key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}},
 						},
 					},
 				},
