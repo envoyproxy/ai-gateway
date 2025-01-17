@@ -31,8 +31,7 @@ const MountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
 // Exported for internal testing purposes.
 type ConfigSinkEvent any
 
-// configSink centralizes the AIGatewayRoute and AIServiceBackend objects handling
-
+// ConfigSink centralizes the AIGatewayRoute and AIServiceBackend objects handling
 // which requires to be done in a single goroutine since we need to
 // consolidate the information from both objects to generate the ExtProcConfig
 // and HTTPRoute objects.
@@ -78,9 +77,9 @@ func (c *ConfigSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.Bac
 	return backendSecurityPolicy, nil
 }
 
-// init caches all AIServiceBackend and AIGatewayRoute objects in the cluster after the controller gets the leader election,
+// Init caches all AIServiceBackend and AIGatewayRoute objects in the cluster after the controller gets the leader election,
 // and starts a goroutine to handle the events from the controllers.
-func (c *ConfigSink) init(ctx context.Context) error {
+func (c *ConfigSink) Init(ctx context.Context) error {
 	go func() {
 		for {
 			select {
