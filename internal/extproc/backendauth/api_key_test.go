@@ -17,7 +17,9 @@ func TestNewAPIKeyHandler(t *testing.T) {
 }
 
 func TestApiKeyHandler_Do(t *testing.T) {
-	f, err := os.Create("/tmp/test")
+	apiKeyFile := t.TempDir() + "/test"
+
+	f, err := os.Create(apiKeyFile)
 	require.NoError(t, err)
 
 	_, err = f.WriteString("test")
@@ -27,7 +29,7 @@ func TestApiKeyHandler_Do(t *testing.T) {
 	err = f.Close()
 	require.NoError(t, err)
 
-	auth := filterconfig.APIKeyAuth{Filename: "/tmp/test"}
+	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
 	handler, err := NewAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
@@ -57,7 +59,7 @@ func TestApiKeyHandler_Do(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "Bearer test", bearerToken)
 
-	require.Equal(t, 2, len(headerMut.SetHeaders))
+	require.Len(t, headerMut.SetHeaders, 2)
 	require.Equal(t, "Authorization", headerMut.SetHeaders[1].Header.Key)
 	require.Equal(t, []byte("Bearer test"), headerMut.SetHeaders[1].Header.GetRawValue())
 }

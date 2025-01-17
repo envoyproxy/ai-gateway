@@ -463,8 +463,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 	// Update fields in resource again
 	// Doing it again should not fail and update the deployment.
 	aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
-	err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
-	require.NoError(t, err)
+	require.NoError(t, s.syncExtProcDeployment(context.Background(), aiGatewayRoute))
 	// Check the deployment is updated.
 	extProcDeployment, err = s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 	require.NoError(t, err)
@@ -480,8 +479,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	s := NewConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
 	err := s.Init(context.Background())
 	require.NoError(t, err)
-	err = fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 
 	for _, secret := range []*corev1.Secret{
 		{
@@ -491,8 +489,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), secret, &client.CreateOptions{})
-		require.NoError(t, err)
+		require.NoError(t, fakeClient.Create(context.Background(), secret, &client.CreateOptions{}))
 	}
 
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -515,8 +512,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 			},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), bsp, &client.CreateOptions{})
-		require.NoError(t, err)
+		require.NoError(t, fakeClient.Create(context.Background(), bsp, &client.CreateOptions{}))
 	}
 
 	backend := aigv1a1.AIServiceBackend{
@@ -530,8 +526,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		},
 	}
 
-	err = fakeClient.Create(context.Background(), &backend, &client.CreateOptions{})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 	require.NotNil(t, s)
 
 	aiGateway := aigv1a1.AIGatewayRoute{
@@ -573,20 +568,19 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		},
 	}
 
-	err = fakeClient.Create(context.Background(), &aiGateway, &client.CreateOptions{})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), &aiGateway, &client.CreateOptions{}))
 
 	updatedSpec, err := s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Equal(t, 2, len(updatedSpec.Volumes))
-	require.Equal(t, 2, len(updatedSpec.Containers[0].VolumeMounts))
+	require.Len(t, updatedSpec.Volumes, 2)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 2)
 	require.Equal(t, "some-secret-policy-1", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
 
-	err = fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{})
+	require.NoError(t, fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{}))
 
 	// update to new security policy
 	backend = aigv1a1.AIServiceBackend{
@@ -600,15 +594,14 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		},
 	}
 
-	err = fakeClient.Create(context.Background(), &backend, &client.CreateOptions{})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 	require.NotNil(t, s)
 
 	updatedSpec, err = s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Equal(t, 2, len(updatedSpec.Volumes))
-	require.Equal(t, 2, len(updatedSpec.Containers[0].VolumeMounts))
+	require.Len(t, updatedSpec.Volumes, 2)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 2)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)

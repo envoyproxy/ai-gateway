@@ -69,6 +69,9 @@ func TestE2E(t *testing.T) {
 					APIKey: &filterconfig.APIKeyAuth{Filename: "/etc/open-ai-api-key"},
 				}}},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+			}, {
+				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
+				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 		},
 	})
