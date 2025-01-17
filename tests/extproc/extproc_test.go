@@ -52,7 +52,8 @@ func TestE2E(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
 	// Test with APIKey
-	file, err := os.Create(t.TempDir() + "/open-ai-api-key")
+	apiKeyFilePath := t.TempDir() + "/open-ai-api-key"
+	file, err := os.Create(apiKeyFilePath)
 	require.NoError(t, err)
 	_, err = file.WriteString(openAIAPIKey)
 	require.NoError(t, err)
@@ -72,7 +73,7 @@ func TestE2E(t *testing.T) {
 			{
 				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema, Auth: &filterconfig.BackendAuth{
 					Type:   filterconfig.AuthTypeAPIKey,
-					APIKey: &filterconfig.APIKeyAuth{Filename: "/etc/open-ai-api-key"},
+					APIKey: &filterconfig.APIKeyAuth{Filename: apiKeyFilePath},
 				}}},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
