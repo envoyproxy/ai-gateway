@@ -184,7 +184,8 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
-	if c := p.config.requestCost; c != nil {
+	if body.EndOfStream && p.config.requestCost != nil {
+		c := p.config.requestCost
 		var cost uint32
 		switch c.Type {
 		case filterconfig.RequestCostTypeInputToken:
@@ -196,7 +197,9 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}
-		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(c.Namespace, c.Key, cost)
+		if cost > 0 {
+			resp.DynamicMetadata = buildTokenUsageDynamicMetadata(c.Namespace, c.Key, cost)
+		}
 	}
 	return resp, nil
 }

@@ -57,7 +57,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
-		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
+		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
 		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: translator.TokenUsage{OutputTokens: 123}}
