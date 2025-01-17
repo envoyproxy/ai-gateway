@@ -169,7 +169,7 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	if p.translator == nil {
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
 	}
-	headerMutation, bodyMutation, usedToken, err := p.translator.ResponseBody(br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, err := p.translator.ResponseBody(br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -186,7 +186,7 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	}
 	if len(p.config.requestCostNamespace) > 0 {
 		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(
-			p.config.requestCostNamespace, p.config.requestCostKey, usedToken)
+			p.config.requestCostNamespace, p.config.requestCostKey, tokenUsage.OutputTokens)
 	}
 	return resp, nil
 }

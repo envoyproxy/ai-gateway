@@ -278,6 +278,9 @@ type AIServiceBackendSpec struct {
 	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
+
+	// TODO: maybe add backend-level RequestCost configuration that overrides the AIGatewayRoute-level RequestCost.
+	// 	That may be useful for the backend that has a different cost calculation logic.
 }
 
 // VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
@@ -429,10 +432,10 @@ type AWSOIDCExchangeToken struct {
 
 // RequestCost configures the request cost.
 type RequestCost struct {
-	// Type specifies the type of the request cost. The default is "default",
-	// and it uses "output token" as the cost.
+	// Type specifies the type of the request cost. The default is "OutputToken",
+	// and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
 	//
-	// +kubebuilder:validation:Enum=default
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken
 	Type RequestCostType `json:"type"`
 
 	// CELExpression is the CEL expression to calculate the cost of the request.
@@ -448,8 +451,10 @@ type RequestCost struct {
 type RequestCostType string
 
 const (
-	RequestCostTypeDefault RequestCostType = "default"
-	RequestCostTypeCEL     RequestCostType = "cel"
+	RequestCostTypeInputToken  RequestCostType = "InputToken"
+	RequestCostTypeOutputToken RequestCostType = "OutputToken"
+	RequestCostTypeTotalToken  RequestCostType = "TotalToken"
+	RequestCostTypeCEL         RequestCostType = "CEL"
 )
 
 const (

@@ -60,7 +60,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
-		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: 123}
+		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: translator.TokenUsage{OutputTokens: 123}}
 		p := &Processor{translator: mt, config: &processorConfig{
 			requestCostNamespace: "ai_gateway_llm_ns", requestCostKey: "token_usage",
 		}}

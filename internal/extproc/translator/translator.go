@@ -65,7 +65,7 @@ type Translator interface {
 	ResponseBody(body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
-		usedToken uint32,
+		tokenUsage TokenUsage,
 		err error,
 	)
 }
@@ -95,4 +95,14 @@ func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
 			RawValue: []byte(fmt.Sprintf("%d", len(body))),
 		},
 	})
+}
+
+// TokenUsage represents the token usage reported usually by the backend API in the response body.
+type TokenUsage struct {
+	// InputTokens is the number of tokens consumed from the input.
+	InputTokens uint32
+	// OutputTokens is the number of tokens consumed from the output.
+	OutputTokens uint32
+	// TotalTokens is the total number of tokens consumed.
+	TotalTokens uint32
 }

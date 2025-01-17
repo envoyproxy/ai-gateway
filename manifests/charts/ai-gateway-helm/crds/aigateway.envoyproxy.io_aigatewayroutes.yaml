@@ -213,10 +213,12 @@ spec:
                     type: string
                   type:
                     description: |-
-                      Type specifies the type of the request cost. The default is "default",
-                      and it uses "output token" as the cost.
+                      Type specifies the type of the request cost. The default is "OutputToken",
+                      and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
                     enum:
-                    - default
+                    - OutputToken
+                    - InputToken
+                    - TotalToken
                     type: string
                 required:
                 - type
