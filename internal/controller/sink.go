@@ -38,10 +38,11 @@ type ConfigSinkEvent any
 //
 // Exported for internal testing purposes.
 type ConfigSink struct {
-	client              client.Client
-	kube                kubernetes.Interface
-	logger              logr.Logger
-	defaultExtProcImage string
+	client                        client.Client
+	kube                          kubernetes.Interface
+	logger                        logr.Logger
+	defaultExtProcImage           string
+	defaultExtProcImagePullPolicy corev1.PullPolicy
 
 	eventChan chan ConfigSinkEvent
 }
@@ -54,11 +55,12 @@ func NewConfigSink(
 	extProcImage string,
 ) *ConfigSink {
 	c := &ConfigSink{
-		client:              kubeClient,
-		kube:                kube,
-		logger:              logger.WithName("config-sink"),
-		defaultExtProcImage: extProcImage,
-		eventChan:           eventChan,
+		client:                        kubeClient,
+		kube:                          kube,
+		logger:                        logger.WithName("config-sink"),
+		defaultExtProcImage:           extProcImage,
+		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
+		eventChan:                     eventChan,
 	}
 	return c
 }
@@ -348,7 +350,7 @@ func (c *ConfigSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 								{
 									Name:            name,
 									Image:           c.defaultExtProcImage,
-									ImagePullPolicy: corev1.PullIfNotPresent,
+									ImagePullPolicy: c.defaultExtProcImagePullPolicy,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
