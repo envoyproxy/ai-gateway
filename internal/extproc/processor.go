@@ -56,6 +56,8 @@ type Processor struct {
 	requestHeaders   map[string]string
 	responseEncoding string
 	translator       translator.Translator
+	// cost is the cost of the request that is accumulated during the processing of the response.
+	costs translator.TokenUsage
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -184,6 +186,9 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
+	p.costs.InputTokens += tokenUsage.InputTokens
+	p.costs.OutputTokens += tokenUsage.OutputTokens
+	p.costs.TotalTokens += tokenUsage.TotalTokens
 	if body.EndOfStream && p.config.requestCost != nil {
 		c := p.config.requestCost
 		var cost uint32
