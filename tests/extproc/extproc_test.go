@@ -53,7 +53,7 @@ func TestE2E(t *testing.T) {
 
 	// Test with APIKey
 	require.NoError(t, os.Create(configPath))
-	require.NoError(t, os.WriteFile("/etc/open-ai-api-key", []byte(openAIAPIKey)))
+	require.NoError(t, os.WriteFile("/etc/open-ai-api-key", []byte(openAIAPIKey), 0o600))
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		TokenUsageMetadata: &filterconfig.TokenUsageMetadata{
 			Namespace: "ai_gateway_llm_ns",
