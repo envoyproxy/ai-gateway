@@ -71,8 +71,10 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
-		require.Equal(t, "ns", s.config.requestCostNamespace)
-		require.Equal(t, "key", s.config.requestCostKey)
+		require.NotNil(t, s.config.requestCost)
+		require.Equal(t, "ns", s.config.requestCost.Namespace)
+		require.Equal(t, "key", s.config.requestCost.Key)
+		require.Equal(t, filterconfig.RequestCostKindOutputToken, s.config.requestCost.Kind)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
 		require.Equal(t, "x-envoy-ai-gateway-selected-backend", s.config.selectedBackendHeaderKey)

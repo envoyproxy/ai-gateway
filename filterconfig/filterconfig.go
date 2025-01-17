@@ -93,8 +93,30 @@ type RequestCost struct {
 	Namespace string `yaml:"namespace"`
 	// Key is the key of the metadata storing the request cost.
 	Key string `yaml:"key"`
+	// Kind is the kind of the request cost calculation.
+	Kind RequestCostKind
 	// CELExpression is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Kind is RequestCostKindCELExpression.
 	CELExpression string `yaml:"celExpression,omitempty"`
+}
+
+// RequestCostKind specifies the kind of the request cost calculation.
+type RequestCostKind int
+
+const (
+	// RequestCostKindOutputToken specifies that the request cost is calculated from the output token.
+	RequestCostKindOutputToken RequestCostKind = iota
+	// RequestCostKindInputToken specifies that the request cost is calculated from the input token.
+	RequestCostKindInputToken
+	// RequestCostKindTotalToken specifies that the request cost is calculated from the total token.
+	RequestCostKindTotalToken
+	// RequestCostKindCELExpression specifies that the request cost is calculated from the CEL expression.
+	RequestCostKindCELExpression
+)
+
+// String implements fmt.Stringer.
+func (k RequestCostKind) String() string {
+	return [...]string{"OutputToken", "InputToken", "TotalToken", "CELExpression"}[k]
 }
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.

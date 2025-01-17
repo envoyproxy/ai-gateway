@@ -28,7 +28,7 @@ type processorConfig struct {
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	requestCostNamespace, requestCostKey         string
+	requestCost                                  *filterconfig.RequestCost
 }
 
 // ProcessorIface is the interface for the processor.
@@ -184,9 +184,19 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
-	if len(p.config.requestCostNamespace) > 0 {
-		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(
-			p.config.requestCostNamespace, p.config.requestCostKey, tokenUsage.OutputTokens)
+	if c := p.config.requestCost; c != nil {
+		var cost uint32
+		switch c.Kind {
+		case filterconfig.RequestCostKindInputToken:
+			cost = tokenUsage.InputTokens
+		case filterconfig.RequestCostKindOutputToken:
+			cost = tokenUsage.OutputTokens
+		case filterconfig.RequestCostKindTotalToken:
+			cost = tokenUsage.TotalTokens
+		default:
+			return nil, fmt.Errorf("unknown request cost kind: %s", c.Kind)
+		}
+		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(c.Namespace, c.Key, cost)
 	}
 	return resp, nil
 }
