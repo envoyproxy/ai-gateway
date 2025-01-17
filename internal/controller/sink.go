@@ -431,13 +431,13 @@ func (c *ConfigSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
-			backend, err := c.backend(backendRef.Name, aiGatewayRoute.Namespace)
+			backend, err := c.backend(aiGatewayRoute.Namespace, backendRef.Name)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
 			}
 
-			bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, backendRef.Name)
 			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
+				bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, aiGatewayRoute.Namespace)
 				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
 				if err != nil {
 					return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
