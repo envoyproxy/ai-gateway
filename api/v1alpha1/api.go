@@ -127,7 +127,7 @@ type AIGatewayRouteSpec struct {
 	//	            metadata:
 	//	              namespace: io.envoy.ai_gateway
 	//	              key: ai_gateway_route_request_cost
-	LLMRequestCost *LLMRequestCost `json:"LLMRequestCost,omitempty"`
+	LLMRequestCost *LLMRequestCost `json:"llmRequestCost,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
