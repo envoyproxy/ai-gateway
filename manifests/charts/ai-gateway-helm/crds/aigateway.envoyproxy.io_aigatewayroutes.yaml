@@ -402,10 +402,12 @@ spec:
                   - name
                   type: object
                 maxItems: 128
+                minItems: 1
                 type: array
             required:
             - inputSchema
             - rules
+            - targetRefs
             type: object
         type: object
     served: true
