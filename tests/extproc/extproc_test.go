@@ -52,9 +52,13 @@ func TestE2E(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
 	// Test with APIKey
-	_, err := os.Create(configPath)
+	file, err := os.Create(t.TempDir() + "/open-ai-api-key")
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile("/etc/open-ai-api-key", []byte(openAIAPIKey), 0o644))
+	_, err = file.WriteString(openAIAPIKey)
+	require.NoError(t, err)
+	require.NoError(t, file.Sync())
+	require.NoError(t, file.Close())
+
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		TokenUsageMetadata: &filterconfig.TokenUsageMetadata{
 			Namespace: "ai_gateway_llm_ns",
