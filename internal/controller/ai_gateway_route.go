@@ -46,7 +46,6 @@ type aiGatewayRouteController struct {
 	client    client.Client
 	kube      kubernetes.Interface
 	logger    logr.Logger
-	logLevel  string
 	eventChan chan ConfigSinkEvent
 }
 
@@ -58,7 +57,7 @@ func NewAIGatewayRouteController(
 	return &aiGatewayRouteController{
 		client:    client,
 		kube:      kube,
-		logger:    logger.WithName("ai-gateway-route-controller"),
+		logger:    logger.WithName("ai-eg-route-controller"),
 		eventChan: ch,
 	}
 }
@@ -204,7 +203,7 @@ func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Contex
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", c.logLevel,
+										"-logLevel", "info", // TODO: this should be configurable via FilterConfig API.
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
@@ -268,7 +267,7 @@ func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Contex
 }
 
 func extProcName(route *aigv1a1.AIGatewayRoute) string {
-	return fmt.Sprintf("ai-gateway-ai-gateway-route-extproc-%s", route.Name)
+	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
 }
 
 func ownerReferenceForAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {

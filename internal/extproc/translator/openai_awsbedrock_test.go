@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -579,6 +580,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			body, err := json.Marshal(tt.input)
 			require.NoError(t, err)
+			fmt.Println(string(body))
+
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)

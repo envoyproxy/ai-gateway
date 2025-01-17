@@ -6,12 +6,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -22,7 +24,7 @@ import (
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
-	router                                       router.Router
+	router                                       extprocapi.Router
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
@@ -43,12 +45,13 @@ type ProcessorIface interface {
 }
 
 // NewProcessor creates a new processor.
-func NewProcessor(config *processorConfig) *Processor {
-	return &Processor{config: config}
+func NewProcessor(config *processorConfig, logger *slog.Logger) *Processor {
+	return &Processor{config: config, logger: logger}
 }
 
 // Processor handles the processing of the request and response messages for a single stream.
 type Processor struct {
+	logger           *slog.Logger
 	config           *processorConfig
 	requestHeaders   map[string]string
 	responseEncoding string
@@ -71,12 +74,14 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+	p.logger.Info("Processing request", "path", path, "model", model)
 
 	p.requestHeaders[p.config.ModelNameHeaderKey] = model
 	b, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
+	p.logger.Info("Selected backend", "backend", b.Name)
 
 	factory, ok := p.config.factories[b.OutputSchema]
 	if !ok {

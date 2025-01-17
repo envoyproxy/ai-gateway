@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.2
+    controller-gen.kubebuilder.io/version: v0.17.1
   name: aigatewayroutes.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
@@ -355,10 +355,12 @@ spec:
                   - name
                   type: object
                 maxItems: 128
+                minItems: 1
                 type: array
             required:
             - inputSchema
             - rules
+            - targetRefs
             type: object
         type: object
     served: true
