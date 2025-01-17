@@ -197,7 +197,7 @@ func requireTestUpstream(t *testing.T) {
 // requireRunEnvoy starts the Envoy proxy with the provided configuration.
 func requireRunEnvoy(t *testing.T, accessLogPath string, openAIAPIKey string) {
 	tmpDir := t.TempDir()
-	envoyYaml = strings.Replace(envoyYaml, "ACCESS_LOG_PATH", accessLogPath, 1)
+	envoyYaml := strings.Replace(envoyYaml, "ACCESS_LOG_PATH", accessLogPath, 1)
 
 	// Write the envoy.yaml file.
 	envoyYamlPath := tmpDir + "/envoy.yaml"
