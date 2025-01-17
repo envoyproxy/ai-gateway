@@ -53,8 +53,8 @@ metadata:
   name: translation-testupstream-cool-model-backend
   namespace: default
 spec:
-  outputSchema:
-    schema: OpenAI
+  schema:
+    name: OpenAI
   backendRef:
     name: testupstream
     kind: Service
@@ -66,8 +66,8 @@ metadata:
   name: translation-testupstream-another-cool-model-backend
   namespace: default
 spec:
-  outputSchema:
-    schema: AWSBedrock
+  schema:
+    name: AWSBedrock
   backendRef:
     name: testupstream-canary
     kind: Service
