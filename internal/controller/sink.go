@@ -37,10 +37,10 @@ type ConfigSinkEvent any
 // consolidate the information from both objects to generate the ExtProcConfig
 // and HTTPRoute objects.
 type configSink struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	extProcImage string
+	client              client.Client
+	kube                kubernetes.Interface
+	logger              logr.Logger
+	defaultExtProcImage string
 
 	eventChan chan ConfigSinkEvent
 }
@@ -53,11 +53,11 @@ func newConfigSink(
 	extProcImage string,
 ) *configSink {
 	c := &configSink{
-		client:       kubeClient,
-		kube:         kube,
-		logger:       logger.WithName("config-sink"),
-		extProcImage: extProcImage,
-		eventChan:    eventChan,
+		client:              kubeClient,
+		kube:                kube,
+		logger:              logger.WithName("config-sink"),
+		defaultExtProcImage: extProcImage,
+		eventChan:           eventChan,
 	}
 	return c
 }
@@ -229,7 +229,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
 					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
 						Type:   filterconfig.AuthTypeAPIKey,
-						APIKey: &filterconfig.APIKeyAuth{Filename: fmt.Sprintf("%s/%s/apiKey", MountedExtProcSecretPath, bspKey)},
+						APIKey: &filterconfig.APIKeyAuth{Filename: getBackendSecurityMountPath(bspKey)},
 					}
 				} else {
 					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type, bspKey)
@@ -316,19 +316,19 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	return nil
 }
 
-func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.AIGatewayRoute) error {
-	name := extProcName(llmRoute)
-	ownerRef := ownerReferenceForAIGatewayRoute(llmRoute)
+// syncExtProcDeployment syncs the external processor's Deployment and Service.
+func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+	name := extProcName(aiGatewayRoute)
 	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
 
-	deployment, err := c.kube.AppsV1().Deployments(llmRoute.Namespace).Get(ctx, extProcName(llmRoute), metav1.GetOptions{})
+	deployment, err := c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Get(ctx, extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            name,
-					Namespace:       llmRoute.Namespace,
-					OwnerReferences: ownerRef,
+					Namespace:       aiGatewayRoute.Namespace,
+					OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
 					Labels:          labels,
 				},
 				Spec: appsv1.DeploymentSpec{
@@ -339,12 +339,12 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           c.extProcImage,
+									Image:           c.defaultExtProcImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										//"-logLevel", c.logLevel,
+										"-logLevel", "info",
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
@@ -356,7 +356,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 									Name: "config",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(llmRoute)},
+											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(aiGatewayRoute)},
 										},
 									},
 								},
@@ -365,7 +365,12 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 					},
 				},
 			}
-			_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
+			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
+			if err == nil {
+				deployment.Spec.Template.Spec = *updatedSpec
+			}
+			applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+			_, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
 			}
@@ -373,46 +378,24 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 		} else {
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
-	}
-
-	// TODO: reconcile the deployment spec like replicas etc once we have support for it at the CRD level.
-	_ = deployment
-
-	for _, rule := range llmRoute.Spec.Rules {
-		for _, backendRef := range rule.BackendRefs {
-			// Unsure if this is fine
-			backendKey := fmt.Sprintf("%s.%s", backendRef.Name, llmRoute.Namespace)
-			if backend, ok := c.backends[backendKey]; ok && backend.Spec.BackendSecurityPolicyRef != nil {
-				bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, llmRoute.Namespace)
-				if bspAuthInfo, ok := c.backendSecurityPoliciesAuthInfo[bspKey]; ok {
-					deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, corev1.Volume{
-						Name: bspKey,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: string(bspAuthInfo.secretRef.Name),
-							},
-						},
-					})
-					deployment.Spec.Template.Spec.Containers[0].VolumeMounts = append(deployment.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
-						Name:      bspKey,
-						MountPath: fmt.Sprintf("%s/%s", MountedExtProcSecretPath, bspKey),
-					})
-				}
-			}
+	} else {
+		// updates is slightly trickier
+		updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
+		if err == nil {
+			deployment.Spec.Template.Spec = *updatedSpec
 		}
-	}
-
-	_, err = c.kube.AppsV1().Deployments(llmRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to update deployment: %w", err)
+		applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+		if _, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update deployment: %w", err)
+		}
 	}
 
 	// This is static, so we don't need to update it.
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
-			Namespace:       llmRoute.Namespace,
-			OwnerReferences: ownerRef,
+			Namespace:       aiGatewayRoute.Namespace,
+			OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
 			Labels:          labels,
 		},
 		Spec: corev1.ServiceSpec{
@@ -427,8 +410,66 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a
 			},
 		},
 	}
-	if _, err = c.kube.CoreV1().Services(llmRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
-		return fmt.Errorf("failed to create Service %s.%s: %w", name, llmRoute.Namespace, err)
+	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
+		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)
 	}
 	return nil
+}
+
+func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
+	mountedSecrets := map[string]bool{}
+	for _, volume := range spec.Volumes {
+		if volume.Secret != nil {
+			mountedSecrets[volume.Secret.SecretName] = true
+		}
+	}
+
+	for _, rule := range aiGatewayRoute.Spec.Rules {
+		for _, backendRef := range rule.BackendRefs {
+			backend, err := c.backend(backendRef.Name, aiGatewayRoute.Namespace)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
+			}
+
+			bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, backendRef.Name)
+			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
+				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+				if err != nil {
+					return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
+				}
+
+				var secretName string
+				if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
+					secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
+				} else {
+					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
+				}
+
+				if _, ok := mountedSecrets[secretName]; !ok {
+					spec.Volumes = append(spec.Volumes, corev1.Volume{
+						Name: bspKey,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: secretName,
+							},
+						},
+					})
+
+					spec.Containers[0].VolumeMounts = append(spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+						Name:      bspKey,
+						MountPath: getBackendSecurityMountPath(bspKey),
+					})
+
+					mountedSecrets[secretName] = true
+				} else {
+					continue
+				}
+			}
+		}
+	}
+	return spec, nil
+}
+
+func getBackendSecurityMountPath(backendSecurityPolicyKey string) string {
+	return fmt.Sprintf("%s/%s", MountedExtProcSecretPath, backendSecurityPolicyKey)
 }
