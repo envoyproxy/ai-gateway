@@ -20,10 +20,10 @@ type backendSecurityPolicyController struct {
 	client    client.Client
 	kube      kubernetes.Interface
 	logger    logr.Logger
-	eventChan chan configSinkEvent
+	eventChan chan ConfigSinkEvent
 }
 
-func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan configSinkEvent) *backendSecurityPolicyController {
+func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
 		client:    client,
 		kube:      kube,
@@ -37,7 +37,6 @@ func (b backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl
 	var backendSecurityPolicy v1alpha1.BackendSecurityPolicy
 	if err := b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if errors.IsNotFound(err) {
-			b.eventChan <- ConfigSinkEventBackendSecurityPolicyDeleted{namespace: req.Namespace, name: req.Name}
 			ctrl.Log.Info("Deleting Backend Security Policy",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil

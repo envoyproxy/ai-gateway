@@ -81,6 +81,13 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
+	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	if err = ctrl.NewControllerManagedBy(mgr).
+		For(&aigv1a1.BackendSecurityPolicy{}).
+		Complete(backendSecurityPolicyC); err != nil {
+		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
+	}
+
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan, options.ExtProcImage)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
@@ -102,5 +109,11 @@ func applyIndexing(indexer client.FieldIndexer) error {
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
+	err = indexer.IndexField(context.Background(), &aigv1a1.AIServiceBackend{},
+		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
+	}
+
 	return nil
 }

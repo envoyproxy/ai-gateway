@@ -70,6 +70,14 @@ func (c *configSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend,
 	return backend, nil
 }
 
+func (c *configSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
+	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
+	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy); err != nil {
+		return nil, err
+	}
+	return backendSecurityPolicy, nil
+}
+
 // init caches all AIServiceBackend and AIGatewayRoute objects in the cluster after the controller gets the leader election,
 // and starts a goroutine to handle the events from the controllers.
 func (c *configSink) init(ctx context.Context) error {
@@ -160,6 +168,19 @@ func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 	}
 }
 
+func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
+	key := fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
+	var aiServiceBackends aigv1a1.AIServiceBackendList
+	err := c.client.List(context.Background(), &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
+	if err != nil {
+		c.logger.Error(err, "failed to list AIServiceBackendList", "backendSecurityPolicy", key)
+		return
+	}
+	for _, aiBackend := range aiServiceBackends.Items {
+		c.syncAIServiceBackend(&aiBackend)
+	}
+}
+
 // updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
 func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
@@ -191,18 +212,20 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			}
 
 			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-				bspKey := fmt.Sprintf("%s.%s", bspRef.Name, backendObj.Namespace)
-				if authInfo := c.backendSecurityPoliciesAuthInfo[bspKey]; authInfo != nil {
+				bspKey := fmt.Sprintf("%s.%s", bspRef.Name, aiGatewayRoute.Namespace)
+				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(bspRef.Name))
 
+				if err != nil {
+					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
+				}
+
+				if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
 					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						Type: authInfo.authType,
+						Type:   filterconfig.AuthTypeAPIKey,
+						APIKey: &filterconfig.APIKeyAuth{Filename: fmt.Sprintf("%s/%s/apiKey", MountedExtProcSecretPath, bspKey)},
 					}
-
-					if authInfo.authType == filterconfig.AuthTypeAPIKey {
-						ec.Rules[i].Backends[j].Auth.APIKey = &filterconfig.APIKeyAuth{
-							Filename: fmt.Sprintf("%s/%s/apiKey", MountedExtProcSecretPath, bspKey),
-						}
-					}
+				} else {
+					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type, bspKey)
 				}
 			}
 		}
@@ -225,10 +248,6 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		return fmt.Errorf("failed to update configmap %s: %w", configMap.Name, err)
 	}
 	return nil
-}
-
-func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
-	_ = fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
@@ -279,9 +298,9 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	return nil
 }
 
-func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.LLMRoute) error {
+func (c *configSink) syncExtProcDeployment(ctx context.Context, llmRoute *aigv1a1.AIGatewayRoute) error {
 	name := extProcName(llmRoute)
-	ownerRef := ownerReferenceForLLMRoute(llmRoute)
+	ownerRef := ownerReferenceForAIGatewayRoute(llmRoute)
 	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
 
 	deployment, err := c.kube.AppsV1().Deployments(llmRoute.Namespace).Get(ctx, extProcName(llmRoute), metav1.GetOptions{})

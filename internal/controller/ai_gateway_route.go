@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/utils/ptr"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
