@@ -10,7 +10,7 @@ We do not distinguish between major and minor versions. We will increment the mi
 except that we will cut the major v1.0.0 release when we have a first stable control plane API, i.e. the introduction of
 package `api/v1`. Until then, we will use the version number v0.3.x, v0.4.y, etc. See the [support policy](#Support-Policy) for more details.
 
-The patch version will be incremented when we have a bug fix or a minor feature addition. The end of life for the version
+The patch version will be incremented when we have a bug fix or a security fix. The end of life for the version
 will be 2 releases after the release of the version. For example, if we release the version v0.1.0, the end of life for
 the version will be when we release the version v0.3.0.
 
