@@ -171,6 +171,7 @@ type AIGatewayRouteSpec struct {
 	//	                key: llm_total_token
 	//
 	// +optional
+	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 }
 

@@ -70,7 +70,7 @@ type Config struct {
 	MetadataNamespace string `yaml:"namespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
-	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCost,omitempty"`
+	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCosts,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
 	Schema VersionedAPISchema `yaml:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
