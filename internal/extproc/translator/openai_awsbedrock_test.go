@@ -58,6 +58,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						}, Type: openai.ChatMessageRoleSystem,
 					},
 					{
+						Value: openai.ChatCompletionDeveloperMessageParam{
+							Content: openai.StringOrArray{
+								Value: "from-developer",
+							},
+						}, Type: openai.ChatMessageRoleDeveloper,
+					},
+					{
 						Value: openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
@@ -85,6 +92,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				System: []*awsbedrock.SystemContentBlock{
 					{
 						Text: "from-system",
+					},
+					{
+						Text: "from-developer",
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -131,6 +141,15 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						}, Type: openai.ChatMessageRoleSystem,
 					},
 					{
+						Value: openai.ChatCompletionDeveloperMessageParam{
+							Content: openai.StringOrArray{
+								Value: []openai.ChatCompletionContentPartTextParam{
+									{Text: "from-developer"},
+								},
+							},
+						}, Type: openai.ChatMessageRoleDeveloper,
+					},
+					{
 						Value: openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
@@ -164,6 +183,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				System: []*awsbedrock.SystemContentBlock{
 					{
 						Text: "from-system",
+					},
+					{
+						Text: "from-developer",
 					},
 				},
 				Messages: []*awsbedrock.Message{
