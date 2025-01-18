@@ -35,7 +35,7 @@ import (
 var defaultSchema = aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(aiGatewayRouteName string) string {
-	return fmt.Sprintf("ai-gateway-ai-gateway-route-extproc-%s", aiGatewayRouteName)
+	return fmt.Sprintf("eaig-route-extproc-%s", aiGatewayRouteName)
 }
 
 // TestStartControllers tests the [controller.StartControllers] function.
@@ -60,10 +60,10 @@ func TestStartControllers(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: backend, Namespace: "default"},
 				Spec: aigv1a1.AIServiceBackendSpec{
 					APISchema: defaultSchema,
-					BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{
+					BackendRef: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName(backend),
 						Port: ptr.To[gwapiv1.PortNumber](8080),
-					}},
+					},
 				},
 			})
 			require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 2)
+				require.Len(t, httpRoute.Spec.Rules, 3) // 2 for backends, 1 for the default backend.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
 				require.Equal(t, "x-envoy-ai-gateway-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
@@ -372,10 +372,10 @@ func TestAIServiceBackendController(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
-				BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{
+				BackendRef: gwapiv1.BackendObjectReference{
 					Name: gwapiv1.ObjectName("mybackend"),
 					Port: ptr.To[gwapiv1.PortNumber](8080),
-				}},
+				},
 			},
 		}
 		err := c.Create(ctx, origin)

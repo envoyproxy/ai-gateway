@@ -1,0 +1,74 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: translation-testupstream
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: translation-testupstream
+  namespace: default
+spec:
+  gatewayClassName: translation-testupstream
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: translation-testupstream
+  namespace: default
+spec:
+  inputSchema:
+    schema: OpenAI
+  targetRefs:
+    - name: translation-testupstream
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-envoy-ai-gateway-model
+              value: some-cool-model
+      backendRefs:
+        - name: translation-testupstream-cool-model-backend
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-envoy-ai-gateway-model
+              value: another-cool-model
+      backendRefs:
+        - name: translation-testupstream-another-cool-model-backend
+          weight: 100
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: translation-testupstream-cool-model-backend
+  namespace: default
+spec:
+  outputSchema:
+    schema: OpenAI
+  backendRef:
+    name: testupstream
+    kind: Service
+    port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: translation-testupstream-another-cool-model-backend
+  namespace: default
+spec:
+  outputSchema:
+    schema: AWSBedrock
+  backendRef:
+    name: testupstream-canary
+    kind: Service
+    port: 80

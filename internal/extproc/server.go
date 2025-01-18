@@ -23,11 +23,11 @@ import (
 type Server[P ProcessorIface] struct {
 	logger       *slog.Logger
 	config       *processorConfig
-	newProcessor func(*processorConfig) P
+	newProcessor func(*processorConfig, *slog.Logger) P
 }
 
 // NewServer creates a new external processor server.
-func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*processorConfig) P) (*Server[P], error) {
+func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*processorConfig, *slog.Logger) P) (*Server[P], error) {
 	srv := &Server[P]{logger: logger, newProcessor: newProcessor}
 	return srv, nil
 }
@@ -78,7 +78,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server[P]) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	p := s.newProcessor(s.config)
+	p := s.newProcessor(s.config, s.logger)
 	return s.process(p, stream)
 }
 

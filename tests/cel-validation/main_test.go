@@ -41,6 +41,10 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "unsupported_match.yaml",
 			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
 		},
+		{
+			name:   "no_target_refs.yaml",
+			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
