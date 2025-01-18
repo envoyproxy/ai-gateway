@@ -107,7 +107,7 @@ jobs:
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     matrix:
       include:
-        - name: Ev1.33.0
+        - name: v1.33.0
           envoy_version: envoyproxy/envoy:v1.33.0
         - name: latest
           envoy_version: envoyproxy/envoy-dev:latest
