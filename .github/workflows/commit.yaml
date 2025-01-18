@@ -127,12 +127,11 @@ jobs:
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Install Envoy
         env:
-          # TODO: use the latest envoy after 1.33 is released.
-          ENVOY_VERSION: envoyproxy/envoy-dev:latest
+          ENVOY_VERSION: envoyproxy/envoy:v1.33.0
         run: |
           export ENVOY_BIN_DIR=$HOME/envoy/bin
           mkdir -p $ENVOY_BIN_DIR
-          docker run -v $ENVOY_BIN_DIR:/tmp/coraza -w /tmp/coraza \
+          docker run -v $ENVOY_BIN_DIR:/tmp/ci -w /tmp/ci \
           --entrypoint /bin/cp ${ENVOY_VERSION} /usr/local/bin/envoy .
           echo $ENVOY_BIN_DIR >> $GITHUB_PATH
       - name: Run unit tests

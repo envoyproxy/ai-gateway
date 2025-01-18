@@ -14,8 +14,10 @@ The patch version will be incremented when we have a bug fix or a minor feature 
 will be 2 releases after the release of the version. For example, if we release the version v0.1.0, the end of life for
 the version will be when we release the version v0.3.0.
 
-The main branch will always use the latest version of the Envoy Gateway hence the latest version of the Envoy, and
-the main version will be available just like the tagged released versions in the GitHub Container Registry where
+The main branch will always use the latest version of the Envoy Gateway hence the latest version of the Envoy except
+when we are in the middle of the release cycle e.g. one or two week before the release of the new version of the Envoy AI Gateway.
+That's the time when we will freeze the version of the Envoy Gateway, and Envoy Proxy to the latest released version.
+The main version will be available just like the tagged released versions in the GitHub Container Registry where
 we also host the helm chart.
 
 ## Support Policy

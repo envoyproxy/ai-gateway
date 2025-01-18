@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	egVersion     = "v0.0.0-latest" // TODO: pin the version to a specific one during the release cycle.
 	egNamespace   = "envoy-gateway-system"
 	egDefaultPort = 10080
 )
@@ -113,7 +114,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	}()
 	initLog("\tHelm Install")
 	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "eg",
-		"oci://docker.io/envoyproxy/gateway-helm", "--version", "v0.0.0-latest",
+		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
