@@ -132,7 +132,6 @@ jobs:
             ~/go/bin
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Install Envoy
-        env:
         run: |
           export ENVOY_BIN_DIR=$HOME/envoy/bin
           mkdir -p $ENVOY_BIN_DIR
