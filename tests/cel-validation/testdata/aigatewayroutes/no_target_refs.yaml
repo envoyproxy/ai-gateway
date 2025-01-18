@@ -5,8 +5,8 @@ metadata:
   namespace: default
 spec:
   targetRefs: []
-  inputSchema:
-    schema: OpenAI
+  schema:
+    name: OpenAI
   rules:
     - matches:
       - headers:

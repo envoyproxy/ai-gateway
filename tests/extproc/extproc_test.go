@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -32,8 +32,8 @@ const listenerAddress = "http://localhost:1062"
 var envoyYamlBase string
 
 var (
-	openAISchema     = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
-	awsBedrockSchema = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}
+	openAISchema     = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
+	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
 )
 
 // TestE2E tests the end-to-end flow of the external processor with Envoy.
@@ -55,18 +55,18 @@ func TestE2E(t *testing.T) {
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
 		},
-		InputSchema: openAISchema,
+		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
 		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
+				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema}},
 				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},

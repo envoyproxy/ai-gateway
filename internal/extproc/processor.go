@@ -86,9 +86,9 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 	p.logger.Info("Selected backend", "backend", b.Name)
 
-	factory, ok := p.config.factories[b.OutputSchema]
+	factory, ok := p.config.factories[b.Schema]
 	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", b.OutputSchema)
+		return nil, fmt.Errorf("failed to find factory for output schema %q", b.Schema)
 	}
 
 	t, err := factory(path)

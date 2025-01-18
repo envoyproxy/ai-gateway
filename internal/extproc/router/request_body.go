@@ -14,11 +14,11 @@ import (
 type RequestBodyParser func(path string, body *extprocv3.HttpBody) (modelName string, rb RequestBody, err error)
 
 // NewRequestBodyParser creates a new RequestBodyParser based on the schema.
-func NewRequestBodyParser(inputSchema filterconfig.VersionedAPISchema) (RequestBodyParser, error) {
-	if inputSchema.Schema == filterconfig.APISchemaOpenAI {
+func NewRequestBodyParser(schema filterconfig.VersionedAPISchema) (RequestBodyParser, error) {
+	if schema.Name == filterconfig.APISchemaOpenAI {
 		return openAIParseBody, nil
 	}
-	return nil, fmt.Errorf("unsupported API schema: %s", inputSchema)
+	return nil, fmt.Errorf("unsupported API schema: %s", schema)
 }
 
 // RequestBody is the union of all request body types.

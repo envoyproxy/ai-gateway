@@ -4,8 +4,8 @@ metadata:
   name: dog-backend
   namespace: default
 spec:
-  outputSchema:
-    schema: AWSBedrock
+  schema:
+    name: AWSBedrock
   backendRef:
     name: dog-service
     kind: Service

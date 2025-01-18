@@ -34,13 +34,13 @@ func TestRouter_NewRouter_Custom(t *testing.T) {
 }
 
 func TestRouter_Calculate(t *testing.T) {
-	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
 	_r, err := NewRouter(&filterconfig.Config{
 		Rules: []filterconfig.RouteRule{
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "foo", OutputSchema: outSchema, Weight: 1},
-					{Name: "bar", OutputSchema: outSchema, Weight: 3},
+					{Name: "foo", Schema: outSchema, Weight: 1},
+					{Name: "bar", Schema: outSchema, Weight: 3},
 				},
 				Headers: []filterconfig.HeaderMatch{
 					{Name: "x-model-name", Value: "llama3.3333"},
@@ -48,7 +48,7 @@ func TestRouter_Calculate(t *testing.T) {
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "openai", OutputSchema: outSchema},
+					{Name: "openai", Schema: outSchema},
 				},
 				Headers: []filterconfig.HeaderMatch{
 					{Name: "x-model-name", Value: "gpt4.4444"},
@@ -69,7 +69,7 @@ func TestRouter_Calculate(t *testing.T) {
 		b, err := r.Calculate(map[string]string{"x-model-name": "gpt4.4444"})
 		require.NoError(t, err)
 		require.Equal(t, "openai", b.Name)
-		require.Equal(t, outSchema, b.OutputSchema)
+		require.Equal(t, outSchema, b.Schema)
 	})
 	t.Run("matching rule - multiple backend choices", func(t *testing.T) {
 		chosenNames := make(map[string]int)
@@ -78,7 +78,7 @@ func TestRouter_Calculate(t *testing.T) {
 			require.NoError(t, err)
 			chosenNames[b.Name]++
 			require.Contains(t, []string{"foo", "bar"}, b.Name)
-			require.Equal(t, outSchema, b.OutputSchema)
+			require.Equal(t, outSchema, b.Schema)
 		}
 		require.Greater(t, chosenNames["bar"], chosenNames["foo"])
 		require.Greater(t, chosenNames["bar"], 700)
@@ -92,12 +92,12 @@ func TestRouter_selectBackendFromRule(t *testing.T) {
 	r, ok := _r.(*router)
 	require.True(t, ok)
 
-	outSchema := filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
+	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
 
 	rule := &filterconfig.RouteRule{
 		Backends: []filterconfig.Backend{
-			{Name: "foo", OutputSchema: outSchema, Weight: 1},
-			{Name: "bar", OutputSchema: outSchema, Weight: 3},
+			{Name: "foo", Schema: outSchema, Weight: 1},
+			{Name: "bar", Schema: outSchema, Weight: 3},
 		},
 	}
 

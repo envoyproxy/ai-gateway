@@ -108,7 +108,7 @@ type mockRouter struct {
 // Calculate implements [router.Router.Calculate].
 func (m mockRouter) Calculate(headers map[string]string) (*filterconfig.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	b := &filterconfig.Backend{Name: m.retBackendName, OutputSchema: m.retVersionedAPISchema}
+	b := &filterconfig.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
 	return b, m.retErr
 }
 

@@ -60,7 +60,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -216,7 +216,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
-					Schema: aigv1a1.APISchemaAWSBedrock,
+					Name: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
@@ -249,7 +249,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -280,14 +280,14 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterconfig.Config{
-				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
 				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},

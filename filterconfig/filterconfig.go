@@ -19,8 +19,8 @@ import (
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
 const DefaultConfig = `
-inputSchema:
-  schema: OpenAI
+schema:
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
 `
@@ -29,8 +29,8 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //
 // # Example configuration:
 //
-//	inputSchema:
-//	  schema: OpenAI
+//	schema:
+//	  name: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
 //	llmRequestCost:
@@ -40,19 +40,19 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	- backends:
 //	  - name: kserve
 //	    weight: 1
-//	    outputSchema:
-//	      schema: OpenAI
+//	    schema:
+//	      name: OpenAI
 //	  - name: awsbedrock
 //	    weight: 10
-//	    outputSchema:
-//	      schema: AWSBedrock
+//	    schema:
+//	      name: AWSBedrock
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
-//	    outputSchema:
-//	      schema: OpenAI
+//	    schema:
+//	      name: OpenAI
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: gpt4.4444
@@ -72,7 +72,7 @@ type Config struct {
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCost,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
-	InputSchema VersionedAPISchema `yaml:"inputSchema"`
+	Schema VersionedAPISchema `yaml:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `yaml:"modelNameHeaderKey"`
 	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the filter
@@ -116,18 +116,18 @@ const (
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
-	// Schema is the API schema.
-	Schema APISchema `yaml:"schema"`
+	// Name is the name of the API schema.
+	Name APISchemaName `yaml:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `yaml:"version,omitempty"`
 }
 
-// APISchema corresponds to APISchema in api/v1alpha1/api.go.
-type APISchema string
+// APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
+type APISchemaName string
 
 const (
-	APISchemaOpenAI     APISchema = "OpenAI"
-	APISchemaAWSBedrock APISchema = "AWSBedrock"
+	APISchemaOpenAI     APISchemaName = "OpenAI"
+	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 )
 
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
@@ -150,8 +150,8 @@ type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
 	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
 	Name string `yaml:"name"`
-	// OutputSchema specifies the API schema of the output format of requests from.
-	OutputSchema VersionedAPISchema `yaml:"outputSchema"`
+	// Schema specifies the API schema of the output format of requests from.
+	Schema VersionedAPISchema `yaml:"schema"`
 	// Weight is the weight of the backend in the routing decision.
 	Weight int `yaml:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.

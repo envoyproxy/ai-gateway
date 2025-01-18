@@ -23,7 +23,7 @@ spec:
           This serves as a way to define a "unified" AI API for a Gateway which allows downstream
           clients to use a single schema API to interact with multiple AI backends.
 
-          The inputSchema field is used to determine the structure of the requests that the Gateway will
+          The schema field is used to determine the structure of the requests that the Gateway will
           receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
           on the output schema of the AIServiceBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
@@ -153,29 +153,6 @@ spec:
                 required:
                 - type
                 type: object
-              inputSchema:
-                description: |-
-                  APISchema specifies the API schema of the input that the target Gateway(s) will receive.
-                  Based on this schema, the ai-gateway will perform the necessary transformation to the
-                  output schema specified in the selected AIServiceBackend during the routing process.
-
-                  Currently, the only supported schema is OpenAI as the input schema.
-                properties:
-                  schema:
-                    description: Schema is the API schema of the AIGatewayRoute or
-                      AIServiceBackend.
-                    enum:
-                    - OpenAI
-                    - AWSBedrock
-                    type: string
-                  version:
-                    description: Version is the version of the API schema.
-                    type: string
-                required:
-                - schema
-                type: object
-                x-kubernetes-validations:
-                - rule: self.schema == 'OpenAI'
               llmRequestCosts:
                 description: "LLMRequestCosts specifies how to capture the cost of
                   the LLM-related request, notably the token usage.\nThe AI Gateway
@@ -376,6 +353,29 @@ spec:
                   type: object
                 maxItems: 128
                 type: array
+              schema:
+                description: |-
+                  APISchema specifies the API schema of the input that the target Gateway(s) will receive.
+                  Based on this schema, the ai-gateway will perform the necessary transformation to the
+                  output schema specified in the selected AIServiceBackend during the routing process.
+
+                  Currently, the only supported schema is OpenAI as the input schema.
+                properties:
+                  name:
+                    description: Name is the name of the API schema of the AIGatewayRoute
+                      or AIServiceBackend.
+                    enum:
+                    - OpenAI
+                    - AWSBedrock
+                    type: string
+                  version:
+                    description: Version is the version of the API schema.
+                    type: string
+                required:
+                - name
+                type: object
+                x-kubernetes-validations:
+                - rule: self.name == 'OpenAI'
               targetRefs:
                 description: TargetRefs are the names of the Gateway resources this
                   AIGatewayRoute is being attached to.
@@ -433,8 +433,8 @@ spec:
                 minItems: 1
                 type: array
             required:
-            - inputSchema
             - rules
+            - schema
             - targetRefs
             type: object
         type: object

@@ -20,6 +20,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			in: []byte(`{"model": "gpu-o4",
                         "messages": [
                          {"role": "system", "content": "you are a helpful assistant"},
+                         {"role": "developer", "content": "you are a helpful dev assistant"},
                          {"role": "user", "content": "what do you see in this image"}]}`),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -32,6 +33,15 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 							},
 						},
 						Type: ChatMessageRoleSystem,
+					},
+					{
+						Value: ChatCompletionDeveloperMessageParam{
+							Role: ChatMessageRoleDeveloper,
+							Content: StringOrArray{
+								Value: "you are a helpful dev assistant",
+							},
+						},
+						Type: ChatMessageRoleDeveloper,
 					},
 					{
 						Value: ChatCompletionUserMessageParam{
@@ -50,6 +60,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			in: []byte(`{"model": "gpu-o4",
                         "messages": [
                          {"role": "system", "content": [{"text": "you are a helpful assistant", "type": "text"}]},
+                         {"role": "developer", "content": [{"text": "you are a helpful dev assistant", "type": "text"}]},
                          {"role": "user", "content": [{"text": "what do you see in this image", "type": "text"}]}]}`),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -67,6 +78,20 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 							},
 						},
 						Type: ChatMessageRoleSystem,
+					},
+					{
+						Value: ChatCompletionDeveloperMessageParam{
+							Role: ChatMessageRoleDeveloper,
+							Content: StringOrArray{
+								Value: []ChatCompletionContentPartTextParam{
+									{
+										Text: "you are a helpful dev assistant",
+										Type: string(openai.ChatCompletionContentPartTextTypeText),
+									},
+								},
+							},
+						},
+						Type: ChatMessageRoleDeveloper,
 					},
 					{
 						Value: ChatCompletionUserMessageParam{

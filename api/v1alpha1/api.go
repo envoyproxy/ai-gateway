@@ -15,7 +15,7 @@ import (
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple AI backends.
 //
-// The inputSchema field is used to determine the structure of the requests that the Gateway will
+// The schema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
 // on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
@@ -52,8 +52,8 @@ type AIGatewayRouteSpec struct {
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema VersionedAPISchema `json:"inputSchema"`
+	// +kubebuilder:validation:XValidation:rule="self.name == 'OpenAI'"
+	APISchema VersionedAPISchema `json:"schema"`
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -310,7 +310,7 @@ type AIServiceBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema VersionedAPISchema `json:"outputSchema"`
+	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
@@ -338,10 +338,10 @@ type AIServiceBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type VersionedAPISchema struct {
-	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
+	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
-	Schema APISchema `json:"schema"`
+	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
 	Version string `json:"version,omitempty"`
