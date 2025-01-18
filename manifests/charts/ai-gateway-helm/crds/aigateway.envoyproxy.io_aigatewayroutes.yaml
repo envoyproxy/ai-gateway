@@ -225,7 +225,7 @@ spec:
                   - metadataKey
                   - type
                   type: object
-                maxItems: 24
+                maxItems: 36
                 type: array
               rules:
                 description: |-
