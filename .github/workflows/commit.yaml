@@ -105,8 +105,10 @@ jobs:
     name: External Processor Test (Envoy ${{ matrix.name }})
     # Not all the cases in E2E require secrets, so we run for all the events.
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
-    matrix:
-      include:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
         - name: v1.33.0
           envoy_version: envoyproxy/envoy:v1.33.0
         - name: latest
@@ -150,8 +152,10 @@ jobs:
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
     runs-on: ubuntu-latest
-    matrix:
-      include:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
         - name: v1.2.5
           envoy_gateway_version: v1.2.5
         - name: latest
