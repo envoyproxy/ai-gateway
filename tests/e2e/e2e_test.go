@@ -21,17 +21,19 @@ const (
 	egDefaultPort = 10080
 )
 
-var egVersion = "v0.0.0-latest" // This defaults to the latest dev version.
+var egVersion = func() string {
+	if v, ok := os.LookupEnv("EG_VERSION"); ok {
+		return v
+	} else {
+		return "v0.0.0-latest" // This defaults to the latest dev version.
+	}
+}()
 
 func initLog(msg string) {
 	fmt.Printf("\u001b[32m=== INIT LOG: %s\u001B[0m\n", msg)
 }
 
 func TestMain(m *testing.M) {
-	if v, ok := os.LookupEnv("EG_VERSION"); ok {
-		egVersion = v
-	}
-
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
