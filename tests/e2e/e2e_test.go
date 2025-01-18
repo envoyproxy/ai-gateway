@@ -17,16 +17,21 @@ import (
 )
 
 const (
-	egVersion     = "v0.0.0-latest" // TODO: pin the version to a specific one during the release cycle.
 	egNamespace   = "envoy-gateway-system"
 	egDefaultPort = 10080
 )
+
+var egVersion = "v0.0.0-latest" // This defaults to the latest dev version.
 
 func initLog(msg string) {
 	fmt.Printf("\u001b[32m=== INIT LOG: %s\u001B[0m\n", msg)
 }
 
 func TestMain(m *testing.M) {
+	if v, ok := os.LookupEnv("EG_VERSION"); ok {
+		egVersion = v
+	}
+
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.

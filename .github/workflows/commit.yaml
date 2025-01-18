@@ -102,9 +102,15 @@ jobs:
         run: make test-controller
 
   test_extproc:
-    name: External Processor Test
+    name: External Processor Test (Envoy ${{ matrix.name }})
     # Not all the cases in E2E require secrets, so we run for all the events.
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    matrix:
+      include:
+        - name: Ev1.33.0
+          envoy_version: envoyproxy/envoy:v1.33.0
+        - name: latest
+          envoy_version: envoyproxy/envoy-dev:latest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,12 +133,11 @@ jobs:
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Install Envoy
         env:
-          ENVOY_VERSION: envoyproxy/envoy:v1.33.0
         run: |
           export ENVOY_BIN_DIR=$HOME/envoy/bin
           mkdir -p $ENVOY_BIN_DIR
           docker run -v $ENVOY_BIN_DIR:/tmp/ci -w /tmp/ci \
-          --entrypoint /bin/cp ${ENVOY_VERSION} /usr/local/bin/envoy .
+          --entrypoint /bin/cp ${{ matrix.envoy_version }} /usr/local/bin/envoy .
           echo $ENVOY_BIN_DIR >> $GITHUB_PATH
       - name: Run unit tests
         env:
@@ -144,8 +149,14 @@ jobs:
   test_e2e:
     # Not all the cases in E2E require secrets, so we run for all the events.
     if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
-    name: E2E Test
+    name: E2E Test (Envoy Gateway ${{ matrix.name }})
     runs-on: ubuntu-latest
+    matrix:
+      include:
+        - name: v1.2.5
+          envoy_gateway_version: v1.2.5
+        - name: latest
+          envoy_gateway_version: v0.0.0-latest
     steps:
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request_target'
@@ -169,6 +180,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Run E2E tests
         env:
+          EG_VERSION: ${{ matrix.envoy_gateway_version }}
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
