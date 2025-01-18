@@ -163,23 +163,22 @@ spec:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\nThen, with the following BackendTrafficPolicy
                   of Envoy Gateway, you can have three\nrate limit buckets for each
-                  x-user-id header. One bucket is for the input token,\nthe other
-                  is for the output token, and the last one is for the total token.\nEach
-                  bucket will be reduced by the corresponding token usage captured
-                  by the AI Gateway filter.\n\n\tapiVersion: gateway.envoyproxy.io/v1alpha1\n\tkind:
+                  unique x-user-id header value. One bucket is for the input token,\nthe
+                  other is for the output token, and the last one is for the total
+                  token.\nEach bucket will be reduced by the corresponding token usage
+                  captured by the AI Gateway filter.\n\n\tapiVersion: gateway.envoyproxy.io/v1alpha1\n\tkind:
                   BackendTrafficPolicy\n\tmetadata:\n\t  name: some-example-token-rate-limit\n\t
                   \ namespace: default\n\tspec:\n\t  targetRefs:\n\t  - group: gateway.networking.k8s.io\n\t
                   \    kind: HTTPRoute\n\t     name: usage-rate-limit\n\t  rateLimit:\n\t
                   \   type: Global\n\t    global:\n\t      rules:\n\t        - clientSelectors:\n\t
                   \           # Do the rate limiting based on the x-user-id header.\n\t
                   \           - headers:\n\t                - name: x-user-id\n\t
-                  \                 type: Exact\n\t                  value: one\n\t
-                  \         limit:\n\t            # Configures the number of \"tokens\"
-                  allowed per hour.\n\t            requests: 10000\n\t            unit:
-                  Hour\n\t          cost:\n\t            request:\n\t              from:
-                  Number\n\t              # Setting the request cost to zero allows
-                  to only check the rate limit budget,\n\t              # and not
-                  consume the budget on the request path.\n\t              number:
+                  \                 type: Distinct\n\t          limit:\n\t            #
+                  Configures the number of \"tokens\" allowed per hour.\n\t            requests:
+                  10000\n\t            unit: Hour\n\t          cost:\n\t            request:\n\t
+                  \             from: Number\n\t              # Setting the request
+                  cost to zero allows to only check the rate limit budget,\n\t              #
+                  and not consume the budget on the request path.\n\t              number:
                   0\n\t            # This specifies the cost of the response retrieved
                   from the dynamic metadata set by the AI Gateway filter.\n\t            #
                   The extracted value will be used to consume the rate limit budget,
@@ -188,18 +187,17 @@ spec:
                   Metadata\n\t              metadata:\n\t                namespace:
                   io.envoy.ai_gateway\n\t                key: llm_input_token\n\t
                   \       - clientSelectors:\n\t            - headers:\n\t                -
-                  name: x-user-id\n\t                  type: Exact\n\t                  value:
-                  one\n\t          limit:\n\t            requests: 10000\n\t            unit:
-                  Hour\n\t          cost:\n\t            request:\n\t              from:
-                  Number\n\t              number: 0\n\t            response:\n\t              from:
-                  Metadata\n\t              metadata:\n\t                namespace:
-                  io.envoy.ai_gateway\n\t                key: llm_output_token\n\t
-                  \       - clientSelectors:\n\t            - headers:\n\t                -
-                  name: x-user-id\n\t                  type: Exact\n\t                  value:
-                  one\n\t          limit:\n\t            requests: 10000\n\t            unit:
-                  Hour\n\t          cost:\n\t            request:\n\t              from:
-                  Number\n\t              number: 0\n\t            response:\n\t              from:
-                  Metadata\n\t              metadata:\n\t                namespace:
+                  name: x-user-id\n\t                  type: Distinct\n\t          limit:\n\t
+                  \           requests: 10000\n\t            unit: Hour\n\t          cost:\n\t
+                  \           request:\n\t              from: Number\n\t              number:
+                  0\n\t            response:\n\t              from: Metadata\n\t              metadata:\n\t
+                  \               namespace: io.envoy.ai_gateway\n\t                key:
+                  llm_output_token\n\t        - clientSelectors:\n\t            -
+                  headers:\n\t                - name: x-user-id\n\t                  type:
+                  Distinct\n\t          limit:\n\t            requests: 10000\n\t
+                  \           unit: Hour\n\t          cost:\n\t            request:\n\t
+                  \             from: Number\n\t              number: 0\n\t            response:\n\t
+                  \             from: Metadata\n\t              metadata:\n\t                namespace:
                   io.envoy.ai_gateway\n\t                key: llm_total_token"
                 items:
                   description: LLMRequestCost configures each request cost.
