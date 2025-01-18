@@ -70,7 +70,7 @@ type mockTranslator struct {
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
 	retOverride       *extprocv3http.ProcessingMode
-	retUsedToken      uint32
+	retTokenUsage     *translator.TokenUsage
 	retErr            error
 }
 
@@ -87,13 +87,13 @@ func (m mockTranslator) ResponseHeaders(headers map[string]string) (headerMutati
 }
 
 // ResponseBody implements [translator.Translator.ResponseBody].
-func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error) {
+func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tknUsage *translator.TokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
-	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retErr
 }
 
 // mockRouter implements [router.Router] for testing.

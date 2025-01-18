@@ -35,7 +35,9 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
 //	tokenUsageMetadata:
 //	  namespace: ai_gateway_llm_ns
-//	  key: token_usage_key
+//	  inputTokensKey: input_tokens_usage
+//	  outputTokensKey: output_tokens_usage
+//	  totalTokensKey: total_tokens_usage
 //	rules:
 //	- backends:
 //	  - name: kserve
@@ -66,6 +68,13 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 // From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
 type Config struct {
+	// MonitorContinuousUsageStats flag controls if external process monitors every response-body chunk for usage stats
+	// when true, it will monitor for token metadata usage in every response-body chunk received during request in streaming mode
+	// compatible with vllm's 'continuous_usage_stats' flag
+	// when false, it will stop monitoring after detecting token metadata usage after finding it for the first time.
+	// compatible with OpenAI's streaming response (https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage)
+	// Only affects request in streaming mode
+	MonitorContinuousUsageStats bool `yaml:"monitorContinuousUsageStats,omitempty"`
 	// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token, optional.
 	// If this is provided, the filter will populate the usage token in the filter metadata at the end of the
 	// response body processing.
@@ -90,8 +99,12 @@ type Config struct {
 type TokenUsageMetadata struct {
 	// Namespace is the namespace of the metadata.
 	Namespace string `yaml:"namespace"`
-	// Key is the key of the metadata.
-	Key string `yaml:"key"`
+	// InputTokensKey is the key of the metadata containing input-token count parsed from upstream-response.
+	InputTokensKey string `yaml:"inputTokenKey"`
+	// OutputTokensKey is the key of the metadata containing output-token count parsed from upstream-response.
+	OutputTokensKey string `yaml:"outputTokenKey"`
+	// TotalTokensKey is the key of the metadata containing total-token count parsed from upstream-response.
+	TotalTokensKey string `yaml:"totalTokenKey"`
 }
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.

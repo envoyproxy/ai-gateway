@@ -35,7 +35,9 @@ selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
 tokenUsageMetadata:
   namespace: ai_gateway_llm_ns
-  key: token_usage_key
+  inputTokensKey: input_tokens_usage
+  outputTokensKey: output_tokens_usage
+  totalTokensKey: total_tokens_usage
 rules:
 - backends:
   - name: kserve
@@ -61,7 +63,9 @@ rules:
 	cfg, err := filterconfig.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
 	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
-	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
+	require.Equal(t, "input_tokens_usage", cfg.TokenUsageMetadata.InputTokensKey)
+	require.Equal(t, "output_tokens_usage", cfg.TokenUsageMetadata.OutputTokensKey)
+	require.Equal(t, "total_tokens_usage", cfg.TokenUsageMetadata.TotalTokensKey)
 	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
 	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)

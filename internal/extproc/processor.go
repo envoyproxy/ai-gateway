@@ -184,20 +184,23 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
-	if p.config.tokenUsageMetadata != nil {
+	if p.config.tokenUsageMetadata != nil && usedToken != nil {
 		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(p.config.tokenUsageMetadata, usedToken)
 	}
 	return resp, nil
 }
 
-func buildTokenUsageDynamicMetadata(md *filterconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
+func buildTokenUsageDynamicMetadata(md *filterconfig.TokenUsageMetadata, tknUsage *translator.TokenUsage) *structpb.Struct {
+	fmt.Println("**** token usage **** ", tknUsage)
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			md.Namespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							md.Key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
+							md.InputTokensKey:  {Kind: &structpb.Value_NumberValue{NumberValue: float64(tknUsage.InputTokens)}},
+							md.OutputTokensKey: {Kind: &structpb.Value_NumberValue{NumberValue: float64(tknUsage.OutputTokens)}},
+							md.TotalTokensKey:  {Kind: &structpb.Value_NumberValue{NumberValue: float64(tknUsage.TotalTokens)}},
 						},
 					},
 				},

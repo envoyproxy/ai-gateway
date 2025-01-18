@@ -12,6 +12,12 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
+type TokenUsage struct {
+	InputTokens  uint32
+	OutputTokens uint32
+	TotalTokens  uint32
+}
+
 // Factory creates a [Translator] for the given API schema combination and request path.
 //
 //   - `path`: the path of the request.
@@ -19,12 +25,12 @@ import (
 type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
+func NewFactory(in, out filterconfig.VersionedAPISchema, monitorContinuousUsageStats bool) (Factory, error) {
 	if in.Schema == filterconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
 		switch out.Schema {
 		case filterconfig.APISchemaOpenAI:
-			return newOpenAIToOpenAITranslator, nil
+			return newOpenAIToOpenAITranslatorFactory(monitorContinuousUsageStats), nil
 		case filterconfig.APISchemaAWSBedrock:
 			return newOpenAIToAWSBedrockTranslator, nil
 		}
@@ -65,7 +71,7 @@ type Translator interface {
 	ResponseBody(body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
-		usedToken uint32,
+		tokenUsage *TokenUsage,
 		err error,
 	)
 }
