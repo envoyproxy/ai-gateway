@@ -51,18 +51,18 @@ rules:
   - name: kserve
     weight: 1
     schema:
-      schema: OpenAI
+      name: OpenAI
   - name: awsbedrock
     weight: 10
     schema:
-      schema: AWSBedrock
+      name: AWSBedrock
   headers:
   - name: x-model-name
     value: llama3.3333
 - backends:
   - name: openai
     schema:
-      schema: OpenAI
+      name: OpenAI
   headers:
   - name: x-model-name
     value: gpt4.4444
