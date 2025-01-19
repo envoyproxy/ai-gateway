@@ -34,7 +34,7 @@ func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*process
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
-	bodyParser, err := router.NewRequestBodyParser(config.InputSchema)
+	bodyParser, err := router.NewRequestBodyParser(config.Schema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)
 	}
@@ -47,8 +47,8 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 	backendAuthHandlers := make(map[string]backendauth.Handler)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
-			if _, ok := factories[b.OutputSchema]; !ok {
-				factories[b.OutputSchema], err = translator.NewFactory(config.InputSchema, b.OutputSchema)
+			if _, ok := factories[b.Schema]; !ok {
+				factories[b.Schema], err = translator.NewFactory(config.Schema, b.Schema)
 				if err != nil {
 					return fmt.Errorf("cannot create translator factory: %w", err)
 				}
@@ -70,7 +70,8 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		ModelNameHeaderKey:       config.ModelNameHeaderKey,
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
-		tokenUsageMetadata:       config.TokenUsageMetadata,
+		metadataNamespace:        config.MetadataNamespace,
+		requestCosts:             config.LLMRequestCosts,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

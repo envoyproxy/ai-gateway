@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
@@ -25,13 +25,13 @@ func TestExtProcCustomRouter(t *testing.T) {
 	requireTestUpstream(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
-		InputSchema: openAISchema,
+		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
 		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "testupstream", OutputSchema: openAISchema}},
+				Backends: []filterconfig.Backend{{Name: "testupstream", Schema: openAISchema}},
 				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
 			},
 		},

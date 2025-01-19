@@ -15,7 +15,7 @@ import (
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple AI backends.
 //
-// The inputSchema field is used to determine the structure of the requests that the Gateway will
+// The schema field is used to determine the structure of the requests that the Gateway will
 // receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
 // on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
@@ -52,8 +52,8 @@ type AIGatewayRouteSpec struct {
 	// Currently, the only supported schema is OpenAI as the input schema.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self.schema == 'OpenAI'"
-	APISchema VersionedAPISchema `json:"inputSchema"`
+	// +kubebuilder:validation:XValidation:rule="self.name == 'OpenAI'"
+	APISchema VersionedAPISchema `json:"schema"`
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -80,6 +80,99 @@ type AIGatewayRouteSpec struct {
 	// Currently, the filter is only implemented as an external process filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
+
+	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
+	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
+	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
+	//
+	// For example, let's say we have the following LLMRequestCosts configuration:
+	//
+	//	llmRequestCosts:
+	//	- metadataKey: llm_input_token
+	//	  type: InputToken
+	//	- metadataKey: llm_output_token
+	//	  type: OutputToken
+	//	- metadataKey: llm_total_token
+	//	  type: TotalToken
+	//
+	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
+	// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,
+	// the other is for the output token, and the last one is for the total token.
+	// Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
+	//
+	//	apiVersion: gateway.envoyproxy.io/v1alpha1
+	//	kind: BackendTrafficPolicy
+	//	metadata:
+	//	  name: some-example-token-rate-limit
+	//	  namespace: default
+	//	spec:
+	//	  targetRefs:
+	//	  - group: gateway.networking.k8s.io
+	//	     kind: HTTPRoute
+	//	     name: usage-rate-limit
+	//	  rateLimit:
+	//	    type: Global
+	//	    global:
+	//	      rules:
+	//	        - clientSelectors:
+	//	            # Do the rate limiting based on the x-user-id header.
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Distinct
+	//	          limit:
+	//	            # Configures the number of "tokens" allowed per hour.
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              # Setting the request cost to zero allows to only check the rate limit budget,
+	//	              # and not consume the budget on the request path.
+	//	              number: 0
+	//	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.
+	//	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited
+	//	            # if the budget is exhausted.
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_input_token
+	//	        - clientSelectors:
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Distinct
+	//	          limit:
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              number: 0
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_output_token
+	//	        - clientSelectors:
+	//	            - headers:
+	//	                - name: x-user-id
+	//	                  type: Distinct
+	//	          limit:
+	//	            requests: 10000
+	//	            unit: Hour
+	//	          cost:
+	//	            request:
+	//	              from: Number
+	//	              number: 0
+	//	            response:
+	//	              from: Metadata
+	//	              metadata:
+	//	                namespace: io.envoy.ai_gateway
+	//	                key: llm_total_token
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=36
+	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -208,7 +301,7 @@ type AIServiceBackendSpec struct {
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
-	APISchema VersionedAPISchema `json:"outputSchema"`
+	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
@@ -223,6 +316,9 @@ type AIServiceBackendSpec struct {
 	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
+
+	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
+	// 	That may be useful for the backend that has a different cost calculation logic.
 }
 
 // VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
@@ -233,10 +329,10 @@ type AIServiceBackendSpec struct {
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
 type VersionedAPISchema struct {
-	// Schema is the API schema of the AIGatewayRoute or AIServiceBackend.
+	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
 	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
-	Schema APISchema `json:"schema"`
+	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
 	Version string `json:"version,omitempty"`
@@ -371,3 +467,42 @@ type AWSOIDCExchangeToken struct {
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
 	AwsRoleArn string `json:"awsRoleArn"`
 }
+
+// LLMRequestCost configures each request cost.
+type LLMRequestCost struct {
+	// MetadataKey is the key of the metadata to store this cost of the request.
+	//
+	// +kubebuilder:validation:Required
+	MetadataKey string `json:"metadataKey"`
+	// Type specifies the type of the request cost. The default is "OutputToken",
+	// and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
+	//
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken
+	Type LLMRequestCostType `json:"type"`
+	// CELExpression is the CEL expression to calculate the cost of the request.
+	// The CEL expression must return an integer value. The CEL expression should be
+	// able to access the request headers, model name, backend name, input/output tokens etc.
+	//
+	// +optional
+	// +notImplementedHide https://github.com/envoyproxy/ai-gateway/issues/97
+	CELExpression *string `json:"celExpression"`
+}
+
+// LLMRequestCostType specifies the type of the LLMRequestCost.
+type LLMRequestCostType string
+
+const (
+	// LLMRequestCostTypeInputToken is the cost type of the input token.
+	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
+	// LLMRequestCostTypeOutputToken is the cost type of the output token.
+	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
+	// LLMRequestCostTypeTotalToken is the cost type of the total token.
+	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.
+	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
+)
+
+const (
+	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
+	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
+)

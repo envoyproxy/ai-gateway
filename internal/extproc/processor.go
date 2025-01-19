@@ -28,7 +28,8 @@ type processorConfig struct {
 	ModelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
-	tokenUsageMetadata                           *filterconfig.TokenUsageMetadata
+	metadataNamespace                            string
+	requestCosts                                 []filterconfig.LLMRequestCost
 }
 
 // ProcessorIface is the interface for the processor.
@@ -56,6 +57,8 @@ type Processor struct {
 	requestHeaders   map[string]string
 	responseEncoding string
 	translator       translator.Translator
+	// cost is the cost of the request that is accumulated during the processing of the response.
+	costs translator.LLMTokenUsage
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -83,9 +86,9 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 	p.logger.Info("Selected backend", "backend", b.Name)
 
-	factory, ok := p.config.factories[b.OutputSchema]
+	factory, ok := p.config.factories[b.Schema]
 	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", b.OutputSchema)
+		return nil, fmt.Errorf("failed to find factory for output schema %q", b.Schema)
 	}
 
 	t, err := factory(path)
@@ -169,7 +172,7 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	if p.translator == nil {
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
 	}
-	headerMutation, bodyMutation, usedToken, err := p.translator.ResponseBody(br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, err := p.translator.ResponseBody(br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -184,26 +187,48 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			},
 		},
 	}
-	if p.config.tokenUsageMetadata != nil {
-		resp.DynamicMetadata = buildTokenUsageDynamicMetadata(p.config.tokenUsageMetadata, usedToken)
+
+	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
+	p.costs.InputTokens += tokenUsage.InputTokens
+	p.costs.OutputTokens += tokenUsage.OutputTokens
+	p.costs.TotalTokens += tokenUsage.TotalTokens
+	if body.EndOfStream && len(p.config.requestCosts) > 0 {
+		resp.DynamicMetadata, err = p.maybeBuildDynamicMetadata()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
+		}
 	}
 	return resp, nil
 }
 
-func buildTokenUsageDynamicMetadata(md *filterconfig.TokenUsageMetadata, usage uint32) *structpb.Struct {
+func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(p.config.requestCosts))
+	for _, c := range p.config.requestCosts {
+		var cost uint32
+		switch c.Type {
+		case filterconfig.LLMRequestCostTypeInputToken:
+			cost = p.costs.InputTokens
+		case filterconfig.LLMRequestCostTypeOutputToken:
+			cost = p.costs.OutputTokens
+		case filterconfig.LLMRequestCostTypeTotalToken:
+			cost = p.costs.TotalTokens
+		default:
+			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
+		}
+		metadata[c.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+	}
+	if len(metadata) == 0 {
+		return nil, nil
+	}
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			md.Namespace: {
+			p.config.metadataNamespace: {
 				Kind: &structpb.Value_StructValue{
-					StructValue: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							md.Key: {Kind: &structpb.Value_NumberValue{NumberValue: float64(usage)}},
-						},
-					},
+					StructValue: &structpb.Struct{Fields: metadata},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // headersToMap converts a [corev3.HeaderMap] to a Go map for easier processing.

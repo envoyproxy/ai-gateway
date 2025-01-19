@@ -58,6 +58,8 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 					t.Logf("modelName: %s", tc.modelName)
 					client := openai.NewClient(option.WithBaseURL(fwd.address()+"/v1/"),
 						option.WithHeader(
+							"x-test-case-name", tc.name),
+						option.WithHeader(
 							"x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
 						option.WithHeader("x-response-body",
 							base64.StdEncoding.EncodeToString([]byte(tc.fakeResponseBody)),

@@ -42,27 +42,27 @@ func TestStartConfigWatcher(t *testing.T) {
 
 	// Create the initial config file.
 	cfg := `
-inputSchema:
-  schema: OpenAI
+schema:
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-model-name
 rules:
 - backends:
   - name: kserve
     weight: 1
-    outputSchema:
-      schema: OpenAI
+    schema:
+      name: OpenAI
   - name: awsbedrock
     weight: 10
-    outputSchema:
-      schema: AWSBedrock
+    schema:
+      name: AWSBedrock
   headers:
   - name: x-model-name
     value: llama3.3333
 - backends:
   - name: openai
-    outputSchema:
-      schema: OpenAI
+    schema:
+      name: OpenAI
   headers:
   - name: x-model-name
     value: gpt4.4444
@@ -82,15 +82,15 @@ rules:
 
 	// Update the config file.
 	cfg = `
-inputSchema:
-  schema: OpenAI
+schema:
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-model-name
 rules:
 - backends:
   - name: openai
-    outputSchema:
-      schema: OpenAI
+    schema:
+      name: OpenAI
   headers:
   - name: x-model-name
     value: gpt4.4444
