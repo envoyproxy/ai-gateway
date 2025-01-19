@@ -156,12 +156,6 @@ type APIKeyAuth struct {
 	Filename string `yaml:"filename"`
 }
 
-// AuthType corresponds to BackendSecurityPolicyType in api/v1alpha1/api.go.
-type AuthType string
-
-const (
-	AuthTypeAPIKey AuthType = "APIKey"
-)
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, error) {
