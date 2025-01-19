@@ -173,13 +173,11 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
-				Image:     "some-image",
 			},
 		},
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
-		require.Equal(t, "some-image", dep.Template.Spec.Containers[0].Image)
 	})
 }
 

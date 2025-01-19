@@ -1,5 +1,10 @@
 # Default values for ai-gateway-helm.
 
+extProcImage:
+  repository: ghcr.io/envoyproxy/ai-gateway/extproc
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
 controller:
   logLevel: info
   nameOverride: ""
