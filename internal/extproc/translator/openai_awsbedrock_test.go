@@ -62,16 +62,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
-								{
-									ID: "call_6g7a",
-									Function: openai.ChatCompletionMessageToolCallFunctionParam{
-										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
-										Name:      "exec_python_code",
-									},
-									Type: openai.ChatCompletionMessageToolCallTypeFunction,
-								},
-							},
 						}, Type: openai.ChatMessageRoleUser,
 					},
 					{
@@ -124,20 +114,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
-						Content: []*awsbedrock.ContentBlock{
-							{
-								ToolResult: &awsbedrock.ToolResultBlock{
-									ToolUseID: ptr.To("call_6g7a"),
-									Content: []*awsbedrock.ToolResultContentBlock{
-										{
-											JSON: ptr.To(`{"id":"call_6g7a","function":{"arguments":"{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}","name":"exec_python_code"},"type":"function"}`),
-										},
-									},
-								},
-							},
-						},
-					},
-					{
 						Role: openai.ChatMessageRoleUser,
 						Content: []*awsbedrock.ContentBlock{
 							{
@@ -159,15 +135,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							{
 								Text: ptr.To("I dunno"),
 							},
-						},
-					},
-					{
-						Content: []*awsbedrock.ContentBlock{
 							{
 								ToolUse: &awsbedrock.ToolUseBlock{
-									Name:      ptr.To("exec_python_code"),
-									ToolUseID: ptr.To("call_6g7a"),
-									Input:     ptr.To("{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}"),
+									Name:      "exec_python_code",
+									ToolUseID: "call_6g7a",
+									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
 								},
 							},
 						},
@@ -275,7 +247,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
 									{ImageContent: &openai.ChatCompletionContentPartImageParam{
 										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-											URL: "data:image/jpeg;base64,dGVzdAo=",
+											URL: "data:image/jpeg;base64,dGVzdA==",
 										},
 									}},
 								},
@@ -298,7 +270,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							{
 								Image: &awsbedrock.ImageBlock{
 									Source: awsbedrock.ImageSource{
-										Bytes: []byte("dGVzdAo="),
+										Bytes: []byte("test"),
 									},
 									Format: "jpeg",
 								},

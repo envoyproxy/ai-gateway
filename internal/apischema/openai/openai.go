@@ -255,8 +255,7 @@ type ChatCompletionUserMessageParam struct {
 	Role string `json:"role"`
 	// An optional name for the participant. Provides the model information to
 	// differentiate between participants of the same role.
-	Name      string                               `json:"name,omitempty"`
-	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 // ChatCompletionSystemMessageParam Developer-provided instructions that the model should follow, regardless of

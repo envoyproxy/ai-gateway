@@ -304,10 +304,14 @@ type ToolResultBlock struct {
 
 // ToolUseBlock A tool use block contains information about a tool that the model is requesting be run.
 // The model uses the result from the tool to generate a response.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolUseBlock.html
 type ToolUseBlock struct {
-	Name      *string `json:"name"`
-	Input     *string `json:"input"`
-	ToolUseID *string `json:"toolUseId"`
+	// Name is the name the tool that the model wants to use.
+	Name string `json:"name"`
+	// Input is to pass to the tool in JSON format.
+	Input string `json:"input"`
+	// ToolUseID is the ID for the tool request, pattern is ^[a-zA-Z0-9_-]+$.
+	ToolUseID string `json:"toolUseId"`
 }
 
 // ContentBlock is defined in the AWS Bedrock API:
