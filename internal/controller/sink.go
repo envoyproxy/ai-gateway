@@ -429,7 +429,7 @@ func (c *ConfigSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 func (c *ConfigSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
 	// Mount from scratch to avoid secrets that should be unmounted.
 	// Only keep the original mount which should be the config volume.
-	spec.Volumes = []corev1.Volume{spec.Volumes[0]}
+	spec.Volumes = spec.Volumes[:1]
 	spec.Containers[0].VolumeMounts = []corev1.VolumeMount{spec.Containers[0].VolumeMounts[0]}
 
 	mountedSecrets := make(map[string]bool)
