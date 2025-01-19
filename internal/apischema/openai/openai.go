@@ -247,7 +247,8 @@ type ChatCompletionUserMessageParam struct {
 	Role string `json:"role"`
 	// An optional name for the participant. Provides the model information to
 	// differentiate between participants of the same role.
-	Name string `json:"name,omitempty"`
+	Name      string                               `json:"name,omitempty"`
+	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 }
 
 // ChatCompletionSystemMessageParam Developer-provided instructions that the model should follow, regardless of
@@ -560,7 +561,6 @@ const (
 	ChatCompletionChoicesFinishReasonLength        ChatCompletionChoicesFinishReason = "length"
 	ChatCompletionChoicesFinishReasonToolCalls     ChatCompletionChoicesFinishReason = "tool_calls"
 	ChatCompletionChoicesFinishReasonContentFilter ChatCompletionChoicesFinishReason = "content_filter"
-	ChatCompletionChoicesFinishReasonFunctionCall  ChatCompletionChoicesFinishReason = "function_call"
 )
 
 type ChatCompletionTokenLogprobTopLogprob struct {
@@ -625,8 +625,9 @@ type ChatCompletionResponseChoice struct {
 // ChatCompletionResponseChoiceMessage is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
 type ChatCompletionResponseChoiceMessage struct {
-	Content *string `json:"content,omitempty"`
-	Role    string  `json:"role,omitempty"`
+	Content   *string                              `json:"content,omitempty"`
+	Role      string                               `json:"role,omitempty"`
+	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 }
 
 // ChatCompletionResponseUsage is described in the OpenAI API documentation:
@@ -668,8 +669,9 @@ type ChatCompletionResponseChunkChoice struct {
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content *string `json:"content,omitempty"`
-	Role    *string `json:"role,omitempty"`
+	Content   *string                              `json:"content,omitempty"`
+	Role      *string                              `json:"role,omitempty"`
+	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation

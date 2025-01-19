@@ -278,6 +278,9 @@ type ToolResultContentBlock struct {
 
 	// A tool result that is text.
 	Text *string `json:"text" type:"string,omitempty"`
+
+	// A tool result that is JSON format data.
+	JSON *string `json:"json" type:"string,omitempty"`
 }
 
 // ToolResultBlock A tool result block that contains the results for a tool request that the
@@ -299,6 +302,14 @@ type ToolResultBlock struct {
 	ToolUseID *string `json:"toolUseId"`
 }
 
+// ToolUseBlock A tool use block contains information about a tool that the model is requesting be run.
+// The model uses the result from the tool to generate a response.
+type ToolUseBlock struct {
+	Name      *string `json:"name"`
+	Input     *string `json:"input"`
+	ToolUseID *string `json:"toolUseId"`
+}
+
 // ContentBlock is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlock.html
 type ContentBlock struct {
@@ -314,6 +325,9 @@ type ContentBlock struct {
 
 	// The result for a tool request that a model makes.
 	ToolResult *ToolResultBlock `json:"toolResult,omitempty"`
+
+	// Information about a tool use request from a model.
+	ToolUse *ToolUseBlock `json:"toolUse,omitempty"`
 }
 
 // ConverseMetrics Metrics for a call to Converse (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html).

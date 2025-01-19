@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -61,6 +62,16 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "call_6g7a",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+										Name:      "exec_python_code",
+									},
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								},
+							},
 						}, Type: openai.ChatMessageRoleUser,
 					},
 					{
@@ -76,6 +87,23 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								Value: "part2",
 							},
 						}, Type: openai.ChatMessageRoleUser,
+					},
+					{
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Content: openai.ChatCompletionAssistantMessageParamContent{
+								Text: ptr.To("I dunno"),
+							},
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "call_6g7a",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+										Name:      "exec_python_code",
+									},
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								},
+							},
+						}, Type: openai.ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -96,6 +124,20 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									ToolUseID: ptr.To("call_6g7a"),
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{
+											JSON: ptr.To(`{"id":"call_6g7a","function":{"arguments":"{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}","name":"exec_python_code"},"type":"function"}`),
+										},
+									},
+								},
+							},
+						},
+					},
+					{
 						Role: openai.ChatMessageRoleUser,
 						Content: []*awsbedrock.ContentBlock{
 							{
@@ -108,6 +150,25 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Content: []*awsbedrock.ContentBlock{
 							{
 								Text: ptr.To("part2"),
+							},
+						},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("I dunno"),
+							},
+						},
+					},
+					{
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      ptr.To("exec_python_code"),
+									ToolUseID: ptr.To("call_6g7a"),
+									Input:     ptr.To("{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}"),
+								},
 							},
 						},
 					},
@@ -284,7 +345,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 		},
 		{
-			name: "test function calling",
+			name: "test tools function calling with empty tool choice",
 			input: openai.ChatCompletionRequest{
 				Stream:      false,
 				Model:       "gpt-4o",
@@ -323,7 +384,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "auto",
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{
@@ -342,13 +402,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 				},
 				ToolConfig: &awsbedrock.ToolConfiguration{
-					ToolChoice: &awsbedrock.ToolChoice{
-						Auto: &awsbedrock.AutoToolChoice{},
-					},
 					Tools: []*awsbedrock.Tool{
 						{
 							ToolSpec: &awsbedrock.ToolSpecification{
-								Name:        ptr.To("function"),
+								Name:        ptr.To("get_current_weather"),
 								Description: ptr.To("Get the current weather in a given location"),
 								InputSchema: &awsbedrock.ToolInputSchema{
 									JSON: map[string]interface{}{
@@ -372,6 +429,291 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test auto tool choice",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+						}, Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: "auto",
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+				ToolConfig: &awsbedrock.ToolConfiguration{
+					Tools: []*awsbedrock.Tool{
+						{
+							ToolSpec: &awsbedrock.ToolSpecification{
+								Name:        ptr.To("get_current_weather"),
+								Description: ptr.To("Get the current weather in a given location"),
+								InputSchema: &awsbedrock.ToolInputSchema{},
+							},
+						},
+					},
+					ToolChoice: &awsbedrock.ToolChoice{Auto: &awsbedrock.AutoToolChoice{}},
+				},
+			},
+		},
+		{
+			name: "test required tool choice",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+						}, Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: "required",
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+				ToolConfig: &awsbedrock.ToolConfiguration{
+					Tools: []*awsbedrock.Tool{
+						{
+							ToolSpec: &awsbedrock.ToolSpecification{
+								Name:        ptr.To("get_current_weather"),
+								Description: ptr.To("Get the current weather in a given location"),
+								InputSchema: &awsbedrock.ToolInputSchema{},
+							},
+						},
+					},
+					ToolChoice: &awsbedrock.ToolChoice{Any: &awsbedrock.AnyToolChoice{}},
+				},
+			},
+		},
+		{
+			name: "test tool choice for anthropic claude model",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+						}, Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: "some-tools",
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+				ToolConfig: &awsbedrock.ToolConfiguration{
+					Tools: []*awsbedrock.Tool{
+						{
+							ToolSpec: &awsbedrock.ToolSpecification{
+								Name:        ptr.To("get_current_weather"),
+								Description: ptr.To("Get the current weather in a given location"),
+								InputSchema: &awsbedrock.ToolInputSchema{},
+							},
+						},
+					},
+					ToolChoice: &awsbedrock.ToolChoice{
+						Tool: &awsbedrock.SpecificToolChoice{
+							Name: ptr.To("some-tools"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test structed tool choices",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+						}, Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: openai.ToolChoice{
+					Type: openai.ToolType("function"),
+					Function: openai.ToolFunction{
+						Name: "my_function",
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+				ToolConfig: &awsbedrock.ToolConfiguration{
+					Tools: []*awsbedrock.Tool{
+						{
+							ToolSpec: &awsbedrock.ToolSpecification{
+								Name:        ptr.To("get_current_weather"),
+								Description: ptr.To("Get the current weather in a given location"),
+								InputSchema: &awsbedrock.ToolInputSchema{},
+							},
+						},
+					},
+					ToolChoice: &awsbedrock.ToolChoice{
+						Tool: &awsbedrock.SpecificToolChoice{
+							Name: ptr.To("function"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test single stop word",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+						}, Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Stop: []*string{ptr.To("stop_only")},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{
+					StopSequences: []*string{ptr.To("stop_only")},
+				},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test system array request",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionSystemMessageParam{
+							Content: openai.StringOrArray{
+								Value: "You are number genius.",
+							},
+						}, Type: openai.ChatMessageRoleSystem,
+					},
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "How to math.",
+							},
+						},
+						Type: openai.ChatMessageRoleUser,
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				System: []*awsbedrock.SystemContentBlock{
+					{
+						Text: "You are number genius.",
+					},
+				},
+				Messages: []*awsbedrock.Message{
+					{
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("How to math."),
+							},
+						},
+						Role: openai.ChatMessageRoleUser,
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -380,13 +722,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			hm, bm, mode, err := o.RequestBody(router.RequestBody(&originalReq))
 			var expPath string
 			if tt.input.Stream {
-				expPath = "/model/gpt-4o/converse-stream"
+				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
 				require.True(t, o.stream)
 				require.NotNil(t, mode)
 				require.Equal(t, extprocv3http.ProcessingMode_STREAMED, mode.ResponseBodyMode)
 				require.Equal(t, extprocv3http.ProcessingMode_SEND, mode.ResponseHeaderMode)
 			} else {
-				expPath = "/model/gpt-4o/converse"
+				expPath = fmt.Sprintf("/model/%s/converse", tt.input.Model)
 				require.False(t, o.stream)
 				require.Nil(t, mode)
 			}
@@ -518,6 +860,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Content: ptr.To("response"),
 							Role:    "assistant",
 						},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 					{
 						Index: 1,
@@ -525,6 +868,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Content: ptr.To("from"),
 							Role:    "assistant",
 						},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 					{
 						Index: 2,
@@ -532,6 +876,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Content: ptr.To("assistant"),
 							Role:    "assistant",
 						},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
 			},
