@@ -144,7 +144,7 @@ type BackendAuth struct {
 
 	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
 
-	// Location of the api key secret file.
+	// APIKey is a location of the api key secret file.
 	APIKey *APIKeyAuth `yaml:"apiKey,omitempty"`
 }
 
