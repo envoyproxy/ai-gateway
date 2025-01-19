@@ -66,13 +66,6 @@ spec:
                       ExternalProcess is the configuration for the external process filter.
                       This is optional, and if not set, the default values of Deployment spec will be used.
                     properties:
-                      image:
-                        description: |-
-                          Image is the image of the external process container.
-
-                          This defaults to the ghcr.io/envoyproxy/ai-gateway/extproc:${VERSION} image where
-                          ${VERSION} is the version of the Envoy AI Gateway controller.
-                        type: string
                       replicas:
                         description: Replicas is the number of desired pods of the
                           external process deployment.

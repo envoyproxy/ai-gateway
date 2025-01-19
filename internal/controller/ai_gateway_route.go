@@ -293,7 +293,4 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	if replica := extProc.Replicas; replica != nil {
 		d.Replicas = replica
 	}
-	if image := extProc.Image; image != "" {
-		d.Template.Spec.Containers[0].Image = image
-	}
 }
