@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -89,6 +90,7 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 
 func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRoute exists.
+	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
 	err := c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
@@ -115,11 +117,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	if existingRoute {
+		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Update(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
 	} else {
+		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Create(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
@@ -142,6 +146,10 @@ func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 		return
 	}
 	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
+		c.logger.Info("syncing AIGatewayRoute",
+			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
+			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
+		)
 		c.syncAIGatewayRoute(&aiGatewayRoute)
 	}
 }
@@ -157,8 +165,8 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 	ec := &filterconfig.Config{}
 	spec := &aiGatewayRoute.Spec
 
-	ec.InputSchema.Schema = filterconfig.APISchema(spec.APISchema.Schema)
-	ec.InputSchema.Version = spec.APISchema.Version
+	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
+	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
 	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
@@ -172,8 +180,8 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
-				ec.Rules[i].Backends[j].OutputSchema.Schema = filterconfig.APISchema(backendObj.Spec.APISchema.Schema)
-				ec.Rules[i].Backends[j].OutputSchema.Version = backendObj.Spec.APISchema.Version
+				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Name)
+				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 		}
 		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
@@ -181,6 +189,24 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
 		}
+	}
+
+	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
+	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
+		fc := filterconfig.LLMRequestCost{MetadataKey: cost.MetadataKey}
+		switch cost.Type {
+		case aigv1a1.LLMRequestCostTypeInputToken:
+			fc.Type = filterconfig.LLMRequestCostTypeInputToken
+		case aigv1a1.LLMRequestCostTypeOutputToken:
+			fc.Type = filterconfig.LLMRequestCostTypeOutputToken
+		case aigv1a1.LLMRequestCostTypeTotalToken:
+			fc.Type = filterconfig.LLMRequestCostTypeTotalToken
+		case aigv1a1.LLMRequestCostTypeCEL:
+			fc.Type = filterconfig.LLMRequestCostTypeCELExpression
+		default:
+			return fmt.Errorf("unknown request cost type: %s", cost.Type)
+		}
+		ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 	}
 
 	marshaled, err := yaml.Marshal(ec)
@@ -221,7 +247,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		key := fmt.Sprintf("%s.%s", b.Name, b.Namespace)
 		rule := gwapiv1.HTTPRouteRule{
 			BackendRefs: []gwapiv1.HTTPBackendRef{
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef.BackendObjectReference}},
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef}},
 			},
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
@@ -229,6 +255,17 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 		rules[i] = rule
 	}
+
+	// Adds the default route rule with "/" path.
+	rules = append(rules, gwapiv1.HTTPRouteRule{
+		Matches: []gwapiv1.HTTPRouteMatch{
+			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
+		},
+		BackendRefs: []gwapiv1.HTTPBackendRef{
+			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
+		},
+	})
+
 	dst.Spec.Rules = rules
 
 	targetRefs := aiGatewayRoute.Spec.TargetRefs

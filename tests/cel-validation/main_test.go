@@ -31,15 +31,19 @@ func TestAIGatewayRoutes(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "non_openai_schema.yaml",
-			expErr: `spec.inputSchema: Invalid value: "object": failed rule: self.schema == 'OpenAI'`,
+			expErr: `spec.schema: Invalid value: "object": failed rule: self.name == 'OpenAI'`,
 		},
 		{
 			name:   "unknown_schema.yaml",
-			expErr: "spec.inputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
+			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 		{
 			name:   "unsupported_match.yaml",
 			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
+		},
+		{
+			name:   "no_target_refs.yaml",
+			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,7 +78,7 @@ func TestAIServiceBackends(t *testing.T) {
 		{name: "basic-eg-backend.yaml"},
 		{
 			name:   "unknown_schema.yaml",
-			expErr: "spec.outputSchema.schema: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
+			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

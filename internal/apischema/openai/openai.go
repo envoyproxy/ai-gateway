@@ -12,6 +12,7 @@ import (
 // Chat message role defined by the OpenAI API.
 const (
 	ChatMessageRoleSystem    = "system"
+	ChatMessageRoleDeveloper = "developer"
 	ChatMessageRoleUser      = "user"
 	ChatMessageRoleAssistant = "assistant"
 	ChatMessageRoleFunction  = "function"
@@ -225,6 +226,13 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 		}
 		c.Value = systemMessage
 		c.Type = ChatMessageRoleSystem
+	case ChatMessageRoleDeveloper:
+		var developerMessage ChatCompletionDeveloperMessageParam
+		if err := json.Unmarshal(data, &developerMessage); err != nil {
+			return err
+		}
+		c.Value = developerMessage
+		c.Type = ChatMessageRoleDeveloper
 	case ChatMessageRoleTool:
 		var toolMessage ChatCompletionToolMessageParam
 		if err := json.Unmarshal(data, &toolMessage); err != nil {
@@ -258,6 +266,19 @@ type ChatCompletionSystemMessageParam struct {
 	// The contents of the system message.
 	Content StringOrArray `json:"content"`
 	// The role of the messages author, in this case `system`.
+	Role string `json:"role"`
+	// An optional name for the participant. Provides the model information to
+	// differentiate between participants of the same role.
+	Name string `json:"name,omitempty"`
+}
+
+// ChatCompletionDeveloperMessageParam Developer-provided instructions that the model should follow, regardless of
+// messages sent by the user. With o1 models and newer, use `developer` messages
+// for this purpose instead.
+type ChatCompletionDeveloperMessageParam struct {
+	// The contents of the developer message.
+	Content StringOrArray `json:"content"`
+	// The role of the messages author, in this case `developer`.
 	Role string `json:"role"`
 	// An optional name for the participant. Provides the model information to
 	// differentiate between participants of the same role.

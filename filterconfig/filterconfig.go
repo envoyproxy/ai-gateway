@@ -19,8 +19,8 @@ import (
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
 const DefaultConfig = `
-inputSchema:
-  schema: OpenAI
+schema:
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
 `
@@ -29,30 +29,30 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //
 // # Example configuration:
 //
-//	inputSchema:
-//	  schema: OpenAI
+//	schema:
+//	  name: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-envoy-ai-gateway-model
-//	tokenUsageMetadata:
+//	llmRequestCost:
 //	  namespace: ai_gateway_llm_ns
 //	  key: token_usage_key
 //	rules:
 //	- backends:
 //	  - name: kserve
 //	    weight: 1
-//	    outputSchema:
-//	      schema: OpenAI
+//	    schema:
+//	      name: OpenAI
 //	  - name: awsbedrock
 //	    weight: 10
-//	    outputSchema:
-//	      schema: AWSBedrock
+//	    schema:
+//	      name: AWSBedrock
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
-//	    outputSchema:
-//	      schema: OpenAI
+//	    schema:
+//	      name: OpenAI
 //	  headers:
 //	  - name: x-envoy-ai-gateway-model
 //	    value: gpt4.4444
@@ -66,12 +66,13 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 // From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
 type Config struct {
-	// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token, optional.
-	// If this is provided, the filter will populate the usage token in the filter metadata at the end of the
-	// response body processing.
-	TokenUsageMetadata *TokenUsageMetadata `yaml:"tokenUsageMetadata,omitempty"`
+	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
+	MetadataNamespace string `yaml:"namespace"`
+	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
+	// the "calculated" cost in the filter metadata at the end of the response body processing.
+	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCosts,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
-	InputSchema VersionedAPISchema `yaml:"inputSchema"`
+	Schema VersionedAPISchema `yaml:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `yaml:"modelNameHeaderKey"`
 	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the filter
@@ -82,32 +83,51 @@ type Config struct {
 	Rules []RouteRule `yaml:"rules"`
 }
 
-// TokenUsageMetadata is the namespace and key to be used in the filter metadata to store the usage token.
+// LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
+// "how" the cost is calculated. By default, the cost is retrieved from "output token" in the response body.
+//
 // This can be used to subtract the usage token from the usage quota in the rate limit filter when
 // the request completes combined with `apply_on_stream_done` and `hits_addend` fields of
 // the rate limit configuration https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#config-route-v3-ratelimit
 // which is introduced in Envoy 1.33 (to be released soon as of writing).
-type TokenUsageMetadata struct {
-	// Namespace is the namespace of the metadata.
-	Namespace string `yaml:"namespace"`
-	// Key is the key of the metadata.
-	Key string `yaml:"key"`
+type LLMRequestCost struct {
+	// MetadataKey is the key of the metadata storing the request cost.
+	MetadataKey string `yaml:"key"`
+	// Type is the kind of the request cost calculation.
+	Type LLMRequestCostType `yaml:"type"`
+	// CELExpression is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
+	CELExpression string `yaml:"celExpression,omitempty"`
 }
+
+// LLMRequestCostType specifies the kind of the request cost calculation.
+type LLMRequestCostType string
+
+const (
+	// LLMRequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
+	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
+	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
+	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
+	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
+	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
+	LLMRequestCostTypeCELExpression LLMRequestCostType = "CEL"
+)
 
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
-	// Schema is the API schema.
-	Schema APISchema `yaml:"schema"`
+	// Name is the name of the API schema.
+	Name APISchemaName `yaml:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `yaml:"version,omitempty"`
 }
 
-// APISchema corresponds to APISchema in api/v1alpha1/api.go.
-type APISchema string
+// APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
+type APISchemaName string
 
 const (
-	APISchemaOpenAI     APISchema = "OpenAI"
-	APISchemaAWSBedrock APISchema = "AWSBedrock"
+	APISchemaOpenAI     APISchemaName = "OpenAI"
+	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 )
 
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
@@ -130,8 +150,8 @@ type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
 	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
 	Name string `yaml:"name"`
-	// OutputSchema specifies the API schema of the output format of requests from.
-	OutputSchema VersionedAPISchema `yaml:"outputSchema"`
+	// Schema specifies the API schema of the output format of requests from.
+	Schema VersionedAPISchema `yaml:"schema"`
 	// Weight is the weight of the backend in the routing decision.
 	Weight int `yaml:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.

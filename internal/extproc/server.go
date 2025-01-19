@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -22,22 +23,22 @@ import (
 type Server[P ProcessorIface] struct {
 	logger       *slog.Logger
 	config       *processorConfig
-	newProcessor func(*processorConfig) P
+	newProcessor func(*processorConfig, *slog.Logger) P
 }
 
 // NewServer creates a new external processor server.
-func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*processorConfig) P) (*Server[P], error) {
+func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*processorConfig, *slog.Logger) P) (*Server[P], error) {
 	srv := &Server[P]{logger: logger, newProcessor: newProcessor}
 	return srv, nil
 }
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
-	bodyParser, err := router.NewRequestBodyParser(config.InputSchema)
+	bodyParser, err := router.NewRequestBodyParser(config.Schema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)
 	}
-	rt, err := router.NewRouter(config)
+	rt, err := router.NewRouter(config, extprocapi.NewCustomRouter)
 	if err != nil {
 		return fmt.Errorf("cannot create router: %w", err)
 	}
@@ -46,8 +47,8 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 	backendAuthHandlers := make(map[string]backendauth.Handler)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
-			if _, ok := factories[b.OutputSchema]; !ok {
-				factories[b.OutputSchema], err = translator.NewFactory(config.InputSchema, b.OutputSchema)
+			if _, ok := factories[b.Schema]; !ok {
+				factories[b.Schema], err = translator.NewFactory(config.Schema, b.Schema)
 				if err != nil {
 					return fmt.Errorf("cannot create translator factory: %w", err)
 				}
@@ -69,7 +70,8 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		ModelNameHeaderKey:       config.ModelNameHeaderKey,
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
-		tokenUsageMetadata:       config.TokenUsageMetadata,
+		metadataNamespace:        config.MetadataNamespace,
+		requestCosts:             config.LLMRequestCosts,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -77,7 +79,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server[P]) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	p := s.newProcessor(s.config)
+	p := s.newProcessor(s.config, s.logger)
 	return s.process(p, stream)
 }
 

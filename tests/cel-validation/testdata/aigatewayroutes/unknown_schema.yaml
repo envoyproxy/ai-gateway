@@ -4,9 +4,13 @@ metadata:
   name: apple
   namespace: default
 spec:
-  inputSchema:
-    # Schema must be OpenAI schema at the moment, so this is invalid.
-    schema: SomeRandomVendor
+  schema:
+    # Schema name must be OpenAI schema at the moment, so this is invalid.
+    name: SomeRandomVendor
+  targetRefs:
+    - name: some-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
   rules:
     - matches:
       - headers:

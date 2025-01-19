@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/envoyproxy/ai-gateway/extprocapi"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -19,10 +21,10 @@ import (
 var (
 	_ ProcessorIface        = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
-	_ router.Router         = &mockRouter{}
+	_ extprocapi.Router     = &mockRouter{}
 )
 
-func newMockProcessor(_ *processorConfig) *mockProcessor {
+func newMockProcessor(_ *processorConfig, _ *slog.Logger) *mockProcessor {
 	return &mockProcessor{}
 }
 
@@ -68,7 +70,7 @@ type mockTranslator struct {
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
 	retOverride       *extprocv3http.ProcessingMode
-	retUsedToken      uint32
+	retUsedToken      translator.LLMTokenUsage
 	retErr            error
 }
 
@@ -85,7 +87,7 @@ func (m mockTranslator) ResponseHeaders(headers map[string]string) (headerMutati
 }
 
 // ResponseBody implements [translator.Translator.ResponseBody].
-func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error) {
+func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -106,7 +108,7 @@ type mockRouter struct {
 // Calculate implements [router.Router.Calculate].
 func (m mockRouter) Calculate(headers map[string]string) (*filterconfig.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	b := &filterconfig.Backend{Name: m.retBackendName, OutputSchema: m.retVersionedAPISchema}
+	b := &filterconfig.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
 	return b, m.retErr
 }
 

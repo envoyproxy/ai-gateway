@@ -7,7 +7,6 @@ import (
 	"os"
 	"testing"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -42,10 +41,10 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
 		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
-			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
-			BackendRef: egv1a1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 	} {
 		err := fakeClient.Create(context.Background(), backend, &client.CreateOptions{})
@@ -61,7 +60,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -86,12 +85,15 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 2)
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 3) // 2 backends + 1 for the default rule.
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "apple.ns1", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "orange.ns1", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+		// Defaulting to the first backend.
+		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
+		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
 	})
 }
 
@@ -134,33 +136,25 @@ func Test_newHTTPRoute(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns1"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 			},
 		},
 	} {
@@ -196,11 +190,17 @@ func Test_newHTTPRoute(t *testing.T) {
 			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
 		},
 	}
-	require.Len(t, httpRoute.Spec.Rules, 4)
+	require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
 	for i, r := range httpRoute.Spec.Rules {
 		t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-			require.Equal(t, expRules[i].Matches, r.Matches)
-			require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+			if i == 4 {
+				require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
+				require.NotNil(t, r.Matches[0].Path)
+				require.Equal(t, "/", *r.Matches[0].Path.Value)
+			} else {
+				require.Equal(t, expRules[i].Matches, r.Matches)
+				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+			}
 		})
 	}
 }
@@ -216,27 +216,21 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
-					Schema: aigv1a1.APISchemaAWSBedrock,
+					Name: aigv1a1.APISchemaAWSBedrock,
 				},
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "cat", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: egv1a1.BackendRef{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 	} {
@@ -255,7 +249,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -273,16 +267,27 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							},
 						},
 					},
+					LLMRequestCosts: []aigv1a1.LLMRequestCost{
+						{
+							Type:        aigv1a1.LLMRequestCostTypeOutputToken,
+							MetadataKey: "output-token",
+						},
+						{
+							Type:        aigv1a1.LLMRequestCostTypeInputToken,
+							MetadataKey: "input-token",
+						},
+					},
 				},
 			},
 			exp: &filterconfig.Config{
-				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
+				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
+							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}}, {Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
@@ -290,6 +295,10 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1}},
 						Headers:  []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
+				},
+				LLMRequestCosts: []filterconfig.LLMRequestCost{
+					{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
+					{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
 				},
 			},
 		},

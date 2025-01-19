@@ -29,22 +29,23 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(&filterconfig.Config{
-			InputSchema: filterconfig.VersionedAPISchema{Schema: "some-invalid-schema"},
+			Schema: filterconfig.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "cannot create request body parser")
 	})
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
-			TokenUsageMetadata:       &filterconfig.TokenUsageMetadata{Namespace: "ns", Key: "key"},
-			InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI},
+			MetadataNamespace:        "ns",
+			LLMRequestCosts:          []filterconfig.LLMRequestCost{{MetadataKey: "key", Type: filterconfig.LLMRequestCostTypeOutputToken}},
+			Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-envoy-ai-gateway-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
 			Rules: []filterconfig.RouteRule{
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "kserve", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
-						{Name: "awsbedrock", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}},
+						{Name: "kserve", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
+						{Name: "awsbedrock", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{
@@ -55,7 +56,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				},
 				{
 					Backends: []filterconfig.Backend{
-						{Name: "openai", OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}},
+						{Name: "openai", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
 					},
 					Headers: []filterconfig.HeaderMatch{
 						{
@@ -71,16 +72,17 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
-		require.NotNil(t, s.config.tokenUsageMetadata)
-		require.Equal(t, "ns", s.config.tokenUsageMetadata.Namespace)
-		require.Equal(t, "key", s.config.tokenUsageMetadata.Key)
+		require.NotEmpty(t, s.config.requestCosts)
+		require.Equal(t, "ns", s.config.metadataNamespace)
+		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
+		require.Equal(t, filterconfig.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
 		require.Equal(t, "x-envoy-ai-gateway-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}])
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}])
+		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}])
 	})
 }
 
@@ -104,13 +106,13 @@ func TestServer_Watch(t *testing.T) {
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 		_, err := s.processMsg(context.Background(), p, &extprocv3.ProcessingRequest{})
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
@@ -127,7 +129,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("request body", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}
@@ -144,7 +146,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("response headers", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -161,7 +163,7 @@ func TestServer_processMsg(t *testing.T) {
 	})
 	t.Run("response body", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
@@ -213,7 +215,7 @@ func TestServer_Process(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		p := s.newProcessor(nil)
+		p := s.newProcessor(nil, slog.Default())
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
 		p.t = t

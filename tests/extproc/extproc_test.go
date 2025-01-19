@@ -9,6 +9,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -17,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -25,12 +26,14 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
+const listenerAddress = "http://localhost:1062"
+
 //go:embed envoy.yaml
 var envoyYamlBase string
 
 var (
-	openAISchema     = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI}
-	awsBedrockSchema = filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}
+	openAISchema     = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
+	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
 )
 
 // TestE2E tests the end-to-end flow of the external processor with Envoy.
@@ -40,38 +43,39 @@ var (
 //   - TEST_AWS_SECRET_ACCESS_KEY
 //   - TEST_OPENAI_API_KEY
 //
-// The test will fail if any of these are not set.
+// The test will be skipped if any of these are not set.
 func TestE2E(t *testing.T) {
 	requireBinaries(t)
 	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
+	openAIAPIKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
+	requireRunEnvoy(t, accessLogPath, openAIAPIKey)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
-		TokenUsageMetadata: &filterconfig.TokenUsageMetadata{
-			Namespace: "ai_gateway_llm_ns",
-			Key:       "used_token",
+		MetadataNamespace: "ai_gateway_llm_ns",
+		LLMRequestCosts: []filterconfig.LLMRequestCost{
+			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
 		},
-		InputSchema: openAISchema,
+		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
 		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "openai", OutputSchema: openAISchema}},
+				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema}},
 				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", OutputSchema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
 		},
 	})
-	requireExtProc(t, configPath)
+	requireExtProcWithAWSCredentials(t, configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
-		client := openai.NewClient(option.WithBaseURL("http://localhost:1062/v1/"))
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []struct {
 			testCaseName,
 			modelName string
@@ -91,10 +95,14 @@ func TestE2E(t *testing.T) {
 						t.Logf("error: %v", err)
 						return false
 					}
+					nonEmptyCompletion := false
 					for _, choice := range chatCompletion.Choices {
 						t.Logf("choice: %s", choice.Message.Content)
+						if choice.Message.Content != "" {
+							nonEmptyCompletion = true
+						}
 					}
-					return true
+					return nonEmptyCompletion
 				}, 10*time.Second, 1*time.Second)
 			})
 		}
@@ -135,32 +143,97 @@ func TestE2E(t *testing.T) {
 		}, 10*time.Second, 1*time.Second)
 	})
 
-	// TODO: add streaming endpoints.
+	t.Run("streaming", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+		for _, tc := range []struct {
+			testCaseName,
+			modelName string
+		}{
+			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				require.Eventually(t, func() bool {
+					stream := client.Chat.Completions.NewStreaming(context.Background(), openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage("Say this is a test"),
+						}),
+						Model: openai.F(tc.modelName),
+					})
+					defer func() {
+						_ = stream.Close()
+					}()
+
+					acc := openai.ChatCompletionAccumulator{}
+
+					for stream.Next() {
+						chunk := stream.Current()
+						if !acc.AddChunk(chunk) {
+							t.Log("error adding chunk")
+							return false
+						}
+					}
+
+					if err := stream.Err(); err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+
+					nonEmptyCompletion := false
+					for _, choice := range acc.Choices {
+						t.Logf("choice: %s", choice.Message.Content)
+						if choice.Message.Content != "" {
+							nonEmptyCompletion = true
+						}
+					}
+					return nonEmptyCompletion
+				}, 10*time.Second, 1*time.Second)
+			})
+		}
+	})
+
 	// TODO: add more tests like updating the config, signal handling, etc.
 }
 
-// requireExtProc starts the external processor with the provided configPath.
+// requireExtProcWithAWSCredentials starts the external processor with the provided executable and configPath
+// with additional environment variables for AWS credentials.
+//
 // The config must be in YAML format specified in [filterconfig.Config] type.
-func requireExtProc(t *testing.T, configPath string) {
-	awsAccessKeyID := requireEnvVar(t, "TEST_AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := requireEnvVar(t, "TEST_AWS_SECRET_ACCESS_KEY")
-
-	cmd := exec.Command(extProcBinaryPath()) // #nosec G204
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
-	cmd.Env = append(os.Environ(),
+func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
+	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
 		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
 		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
 	)
+}
+
+// requireExtProc starts the external processor with the provided executable and configPath
+// with additional environment variables.
+//
+// The config must be in YAML format specified in [filterconfig.Config] type.
+func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath string, envs ...string) {
+	cmd := exec.Command(executable)
+	cmd.Stdout = stdout
+	cmd.Stderr = os.Stderr
+	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 	t.Cleanup(func() { _ = cmd.Process.Signal(os.Interrupt) })
 }
 
-// requireRunEnvoy starts the Envoy proxy with the provided configuration.
-func requireRunEnvoy(t *testing.T, accessLogPath string) {
-	openAIAPIKey := requireEnvVar(t, "TEST_OPENAI_API_KEY")
+func requireTestUpstream(t *testing.T) {
+	// Starts the Envoy proxy.
+	envoyCmd := exec.Command(testUpstreamExecutablePath()) // #nosec G204
+	envoyCmd.Stdout = os.Stdout
+	envoyCmd.Stderr = os.Stderr
+	envoyCmd.Env = []string{"TESTUPSTREAM_ID=extproc_test"}
+	require.NoError(t, envoyCmd.Start())
+	t.Cleanup(func() { _ = envoyCmd.Process.Signal(os.Interrupt) })
+}
 
+// requireRunEnvoy starts the Envoy proxy with the provided configuration.
+func requireRunEnvoy(t *testing.T, accessLogPath string, openAIAPIKey string) {
 	tmpDir := t.TempDir()
 	envoyYaml := strings.Replace(envoyYamlBase, "TEST_OPENAI_API_KEY", openAIAPIKey, 1)
 	envoyYaml = strings.Replace(envoyYaml, "ACCESS_LOG_PATH", accessLogPath, 1)
@@ -189,17 +262,23 @@ func requireBinaries(t *testing.T) {
 	}
 
 	// Check if the Extproc binary is present in the root of the repository
-	_, err = os.Stat(extProcBinaryPath())
+	_, err = os.Stat(extProcExecutablePath())
 	if err != nil {
-		t.Fatalf("%s binary not found in the root of the repository", extProcBinaryPath())
+		t.Fatalf("%s binary not found in the root of the repository", extProcExecutablePath())
+	}
+
+	// Check if the TestUpstream binary is present in the root of the repository
+	_, err = os.Stat(testUpstreamExecutablePath())
+	if err != nil {
+		t.Fatalf("%s binary not found in the root of the repository", testUpstreamExecutablePath())
 	}
 }
 
-// requireEnvVar requires an environment variable to be set.
-func requireEnvVar(t *testing.T, envVar string) string {
+// getEnvVarOrSkip requires an environment variable to be set.
+func getEnvVarOrSkip(t *testing.T, envVar string) string {
 	value := os.Getenv(envVar)
 	if value == "" {
-		t.Fatalf("Environment variable %s is not set", envVar)
+		t.Skipf("Environment variable %s is not set", envVar)
 	}
 	return value
 }
@@ -211,6 +290,10 @@ func requireWriteExtProcConfig(t *testing.T, configPath string, config *filterco
 	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))
 }
 
-func extProcBinaryPath() string {
+func extProcExecutablePath() string {
 	return fmt.Sprintf("../../out/extproc-%s-%s", runtime.GOOS, runtime.GOARCH)
+}
+
+func testUpstreamExecutablePath() string {
+	return fmt.Sprintf("../../out/testupstream-%s-%s", runtime.GOOS, runtime.GOARCH)
 }

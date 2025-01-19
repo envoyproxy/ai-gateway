@@ -4,13 +4,9 @@ metadata:
   name: apple
   namespace: default
 spec:
+  targetRefs: []
   schema:
-    # Schema name must be OpenAI schema at the moment, so this is invalid.
-    name: AWSBedrock
-  targetRefs:
-    - name: some-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
+    name: OpenAI
   rules:
     - matches:
       - headers:

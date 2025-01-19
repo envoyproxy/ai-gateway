@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.2
+    controller-gen.kubebuilder.io/version: v0.17.1
   name: aiservicebackends.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
@@ -55,15 +55,6 @@ spec:
 
                   This is required to be set.
                 properties:
-                  fallback:
-                    description: |-
-                      Fallback indicates whether the backend is designated as a fallback.
-                      Multiple fallback backends can be configured.
-                      It is highly recommended to configure active or passive health checks to ensure that failover can be detected
-                      when the active backends become unhealthy and to automatically readjust once the primary backends are healthy again.
-                      The overprovisioning factor is set to 1.4, meaning the fallback backends will only start receiving traffic when
-                      the health of the active backends falls below 72%.
-                    type: boolean
                   group:
                     default: ""
                     description: |-
@@ -160,7 +151,7 @@ spec:
                 - kind
                 - name
                 type: object
-              outputSchema:
+              schema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
                   Envoy that this AIServiceBackend can accept as incoming requests.
@@ -169,9 +160,9 @@ spec:
 
                   This is required to be set.
                 properties:
-                  schema:
-                    description: Schema is the API schema of the AIGatewayRoute or
-                      AIServiceBackend.
+                  name:
+                    description: Name is the name of the API schema of the AIGatewayRoute
+                      or AIServiceBackend.
                     enum:
                     - OpenAI
                     - AWSBedrock
@@ -180,11 +171,11 @@ spec:
                     description: Version is the version of the API schema.
                     type: string
                 required:
-                - schema
+                - name
                 type: object
             required:
             - backendRef
-            - outputSchema
+            - schema
             type: object
         type: object
     served: true

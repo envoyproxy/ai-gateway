@@ -50,24 +50,28 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 
 // ResponseBody implements [Translator.ResponseBody].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if o.stream {
 		if !o.bufferingDone {
 			buf, err := io.ReadAll(body)
 			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+				return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 			}
 			o.buffered = append(o.buffered, buf...)
-			usedToken = o.extractUsageFromBufferEvent()
+			tokenUsage = o.extractUsageFromBufferEvent()
 		}
 		return
 	}
 	var resp openai.ChatCompletionResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	usedToken = uint32(resp.Usage.TotalTokens)
+	tokenUsage = LLMTokenUsage{
+		InputTokens:  uint32(resp.Usage.PromptTokens),     //nolint:gosec
+		OutputTokens: uint32(resp.Usage.CompletionTokens), //nolint:gosec
+		TotalTokens:  uint32(resp.Usage.TotalTokens),      //nolint:gosec
+	}
 	return
 }
 
@@ -75,11 +79,11 @@ var dataPrefix = []byte("data: ")
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // Once the usage is extracted, it returns the number of tokens used, and bufferingDone is set to true.
-func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent() (usedToken uint32) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent() (tokenUsage LLMTokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
-			return 0
+			return
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
@@ -91,7 +95,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			continue
 		}
 		if usage := event.Usage; usage != nil {
-			usedToken = uint32(usage.TotalTokens)
+			tokenUsage = LLMTokenUsage{
+				InputTokens:  uint32(usage.PromptTokens),     //nolint:gosec
+				OutputTokens: uint32(usage.CompletionTokens), //nolint:gosec
+				TotalTokens:  uint32(usage.TotalTokens),      //nolint:gosec
+			}
 			o.bufferingDone = true
 			o.buffered = nil
 			return

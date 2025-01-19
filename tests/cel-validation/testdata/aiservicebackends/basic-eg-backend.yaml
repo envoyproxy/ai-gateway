@@ -4,8 +4,8 @@ metadata:
   name: eg-backend
   namespace: default
 spec:
-  outputSchema:
-    schema: AWSBedrock
+  schema:
+    name: AWSBedrock
   backendRef:
     name: eg-backend
     kind: Backend

@@ -781,7 +781,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
+			hm, bm, tokenUsage, err := o.ResponseBody(bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -790,8 +790,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 			if len(newBody) > 0 {
 				results = append(results, string(newBody))
 			}
-			if usedToken > 0 {
-				require.Equal(t, uint32(77), usedToken)
+			if tokenUsage.OutputTokens > 0 {
+				require.Equal(t, uint32(36), tokenUsage.OutputTokens)
 			}
 		}
 
@@ -924,6 +924,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			body, err := json.Marshal(tt.input)
 			require.NoError(t, err)
+			fmt.Println(string(body))
+
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
@@ -941,7 +943,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			var openAIResp openai.ChatCompletionResponse
 			err = json.Unmarshal(newBody, &openAIResp)
 			require.NoError(t, err)
-			require.Equal(t, uint32(30), usedToken)
+			require.Equal(t, LLMTokenUsage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}, usedToken)
 			if !cmp.Equal(openAIResp, tt.output) {
 				t.Errorf("ConvertOpenAIToBedrock(), diff(got, expected) = %s\n", cmp.Diff(openAIResp, tt.output))
 			}
