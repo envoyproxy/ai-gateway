@@ -301,7 +301,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	} else {
 		return fmt.Errorf("unexpected content type for system message")
 	}
-	fmt.Printf("YaoTest line 304 len bedrockSystem %d\n", len(*bedrockSystem))
 	return nil
 }
 
