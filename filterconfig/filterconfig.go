@@ -141,10 +141,6 @@ type Backend struct {
 
 // BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type BackendAuth struct {
-	// Type specifies the auth type used to access the provider. Currently, only "APIKey" is supported.
-	//
-	// +kubebuilder:validation:Enum=APIKey
-	Type AuthType `yaml:"type"`
 
 	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
 
