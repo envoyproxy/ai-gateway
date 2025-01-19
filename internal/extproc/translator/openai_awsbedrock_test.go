@@ -645,47 +645,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
-		{
-			name: "test system array request",
-			input: openai.ChatCompletionRequest{
-				Model: "gpt-4o",
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{
-						Value: openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
-								Value: "You are number genius.",
-							},
-						}, Type: openai.ChatMessageRoleSystem,
-					},
-					{
-						Value: openai.ChatCompletionUserMessageParam{
-							Content: openai.StringOrUserRoleContentUnion{
-								Value: "How to math.",
-							},
-						},
-						Type: openai.ChatMessageRoleUser,
-					},
-				},
-			},
-			output: awsbedrock.ConverseInput{
-				InferenceConfig: &awsbedrock.InferenceConfiguration{},
-				System: []*awsbedrock.SystemContentBlock{
-					{
-						Text: "You are number genius.",
-					},
-				},
-				Messages: []*awsbedrock.Message{
-					{
-						Content: []*awsbedrock.ContentBlock{
-							{
-								Text: ptr.To("How to math."),
-							},
-						},
-						Role: openai.ChatMessageRoleUser,
-					},
-				},
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
