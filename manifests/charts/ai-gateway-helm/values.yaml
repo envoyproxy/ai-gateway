@@ -1,9 +1,5 @@
 # Default values for ai-gateway-helm.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
 
-# ExtProc resource will be configured at CRD level, so we only need to specify the image here.
-# TODO: this also might be moved to a CRD level as in https://github.com/envoyproxy/ai-gateway/issues/82
 extProcImage:
   repository: ghcr.io/envoyproxy/ai-gateway/extproc
   # Overrides the image tag whose default is the chart appVersion.

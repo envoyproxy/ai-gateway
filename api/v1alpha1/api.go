@@ -261,13 +261,6 @@ type AIGatewayFilterConfigExternalProcess struct {
 	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// Image is the image of the external process container.
-	//
-	// This defaults to the ghcr.io/envoyproxy/ai-gateway/extproc:${VERSION} image where
-	// ${VERSION} is the version of the Envoy AI Gateway controller.
-	//
-	// +optional
-	Image string `json:"image,omitempty"`
 	// TODO: maybe adding the option not to deploy the external process filter and let the user deploy it manually?
 	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
