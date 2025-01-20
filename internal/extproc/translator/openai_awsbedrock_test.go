@@ -871,6 +871,49 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 		},
+		{
+			name: "test tool use",
+			input: awsbedrock.ConverseOutput{
+				Output: &awsbedrock.ConverseOutput_{
+					Message: awsbedrock.Message{
+						Role: awsbedrock.ConversationRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("response"),
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      "exec_python_code",
+									ToolUseID: "call_6g7a",
+									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+								},
+							},
+						},
+					},
+				},
+			},
+			output: openai.ChatCompletionResponse{
+				Object: "chat.completion",
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+						Message: openai.ChatCompletionResponseChoiceMessage{
+							Content: ptr.To("response"),
+							Role:    awsbedrock.ConversationRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "call_6g7a",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "exec_python_code",
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+									},
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -896,7 +939,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			var openAIResp openai.ChatCompletionResponse
 			err = json.Unmarshal(newBody, &openAIResp)
 			require.NoError(t, err)
-			require.Equal(t, LLMTokenUsage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}, usedToken)
+			require.Equal(t,
+				LLMTokenUsage{
+					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
+					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
+					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
+				}, usedToken)
 			if !cmp.Equal(openAIResp, tt.output) {
 				t.Errorf("ConvertOpenAIToBedrock(), diff(got, expected) = %s\n", cmp.Diff(openAIResp, tt.output))
 			}
