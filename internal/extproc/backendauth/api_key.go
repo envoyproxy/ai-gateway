@@ -25,6 +25,7 @@ func NewAPIKeyHandler(auth *filterconfig.APIKeyAuth) (Handler, error) {
 //
 // Extracts the api key from the local file and set it as an authorization header.
 func (a *apiKeyHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+	// TODO: Stop reading a file on request path.
 	secret, err := os.ReadFile(a.fileName)
 	if err != nil {
 		return err
