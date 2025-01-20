@@ -31,11 +31,11 @@ modelNameHeaderKey: x-ai-eg-model
 //
 //	schema:
 //	  name: OpenAI
-//	selectedBackendHeaderKey: x-ai-eg-selected-backend
+//	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 //	modelNameHeaderKey: x-ai-eg-model
-//	llmRequestCost:
-//	  namespace: ai_gateway_llm_ns
-//	  key: token_usage_key
+//	llmRequestCosts:
+//	- metadataKey: token_usage_key
+//	  type: OutputToken
 //	rules:
 //	- backends:
 //	  - name: kserve
@@ -67,20 +67,20 @@ modelNameHeaderKey: x-ai-eg-model
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-ai-eg-selected-backend`.
 type Config struct {
 	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
-	MetadataNamespace string `yaml:"namespace"`
+	MetadataNamespace string `json:"metadataNamespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
-	LLMRequestCosts []LLMRequestCost `yaml:"llmRequestCosts,omitempty"`
+	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
-	Schema VersionedAPISchema `yaml:"schema"`
+	Schema VersionedAPISchema `json:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
-	ModelNameHeaderKey string `yaml:"modelNameHeaderKey"`
+	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
 	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the filter
 	// **after** the routing decision is made by the filter using Rules.
-	SelectedBackendHeaderKey string `yaml:"selectedBackendHeaderKey"`
+	SelectedBackendHeaderKey string `json:"selectedBackendHeaderKey"`
 	// Rules is the routing rules to be used by the filter to make the routing decision.
 	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
-	Rules []RouteRule `yaml:"rules"`
+	Rules []RouteRule `json:"rules"`
 }
 
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
@@ -92,12 +92,12 @@ type Config struct {
 // which is introduced in Envoy 1.33 (to be released soon as of writing).
 type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata storing the request cost.
-	MetadataKey string `yaml:"key"`
+	MetadataKey string `json:"metadataKey"`
 	// Type is the kind of the request cost calculation.
-	Type LLMRequestCostType `yaml:"type"`
+	Type LLMRequestCostType `json:"type"`
 	// CELExpression is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
-	CELExpression string `yaml:"celExpression,omitempty"`
+	CELExpression string `json:"celExpression,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
@@ -117,9 +117,9 @@ const (
 // VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
 	// Name is the name of the API schema.
-	Name APISchemaName `yaml:"name"`
+	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
-	Version string `yaml:"version,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
@@ -139,9 +139,9 @@ type HeaderMatch = gwapiv1.HTTPHeaderMatch
 type RouteRule struct {
 	// Headers is the list of headers to match for the routing decision.
 	// Currently, only exact match is supported.
-	Headers []HeaderMatch `yaml:"headers"`
+	Headers []HeaderMatch `json:"headers"`
 	// Backends is the list of backends to which the request should be routed to when the headers match.
-	Backends []Backend `yaml:"backends"`
+	Backends []Backend `json:"backends"`
 }
 
 // Backend corresponds to LLMRouteRuleBackendRef in api/v1alpha1/api.go
@@ -149,19 +149,19 @@ type RouteRule struct {
 type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
 	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
-	Name string `yaml:"name"`
+	Name string `json:"name"`
 	// Schema specifies the API schema of the output format of requests from.
-	Schema VersionedAPISchema `yaml:"schema"`
+	Schema VersionedAPISchema `json:"schema"`
 	// Weight is the weight of the backend in the routing decision.
-	Weight int `yaml:"weight"`
+	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
-	Auth *BackendAuth `yaml:"auth,omitempty"`
+	Auth *BackendAuth `json:"auth,omitempty"`
 }
 
 // BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type BackendAuth struct {
-	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
+	AWSAuth *AWSAuth `json:"aws,omitempty"`
 }
 
 // AWSAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
