@@ -343,6 +343,28 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if err != nil {
 				return err
 			}
+		case openai.ChatMessageRoleDeveloper:
+			message := msg.Value.(openai.ChatCompletionDeveloperMessageParam)
+			if bedrockReq.System == nil {
+				bedrockReq.System = []*awsbedrock.SystemContentBlock{}
+			}
+
+			if _, ok := message.Content.Value.(string); ok {
+				bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
+					Text: message.Content.Value.(string),
+				})
+			} else {
+				if contents, ok := message.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
+					for _, contentPart := range contents {
+						textContentPart := contentPart.Text
+						bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
+							Text: textContentPart,
+						})
+					}
+				} else {
+					return fmt.Errorf("unexpected content type for developer message")
+				}
+			}
 		case openai.ChatMessageRoleTool:
 			toolMessage := msg.Value.(openai.ChatCompletionToolMessageParam)
 			// Bedrock does not support tool role, merging to the user role.
