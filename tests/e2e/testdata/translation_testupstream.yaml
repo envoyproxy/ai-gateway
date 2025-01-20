@@ -33,7 +33,7 @@ spec:
     - matches:
         - headers:
             - type: Exact
-              name: x-eaig-model
+              name: x-ai-eg-model
               value: some-cool-model
       backendRefs:
         - name: translation-testupstream-cool-model-backend
@@ -41,7 +41,7 @@ spec:
     - matches:
         - headers:
             - type: Exact
-              name: x-eaig-model
+              name: x-ai-eg-model
               value: another-cool-model
       backendRefs:
         - name: translation-testupstream-another-cool-model-backend

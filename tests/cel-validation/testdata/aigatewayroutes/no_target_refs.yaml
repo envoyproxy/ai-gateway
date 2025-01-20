@@ -11,7 +11,7 @@ spec:
     - matches:
         - headers:
             - type: Exact
-              name: x-eaig-model
+              name: x-ai-eg-model
               value: llama3-70b
       backendRefs:
         - name: kserve

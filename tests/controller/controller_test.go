@@ -35,7 +35,7 @@ import (
 var defaultSchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(aiGatewayRouteName string) string {
-	return fmt.Sprintf("eaig-route-extproc-%s", aiGatewayRouteName)
+	return fmt.Sprintf("ai-eg-route-extproc-%s", aiGatewayRouteName)
 }
 
 // TestStartControllers tests the [controller.StartControllers] function.
@@ -205,11 +205,11 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, httpRoute.Spec.Rules, 3) // 2 for backends, 1 for the default backend.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-eaig-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend1.default", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 				require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
-				require.Equal(t, "x-eaig-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
+				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
 				return true
 			}, 30*time.Second, 200*time.Millisecond)

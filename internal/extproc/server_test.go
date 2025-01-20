@@ -39,7 +39,7 @@ func TestServer_LoadConfig(t *testing.T) {
 			MetadataNamespace:        "ns",
 			LLMRequestCosts:          []filterconfig.LLMRequestCost{{MetadataKey: "key", Type: filterconfig.LLMRequestCostTypeOutputToken}},
 			Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
-			SelectedBackendHeaderKey: "x-eaig-selected-backend",
+			SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
 			Rules: []filterconfig.RouteRule{
 				{
@@ -78,7 +78,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, filterconfig.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
-		require.Equal(t, "x-eaig-selected-backend", s.config.selectedBackendHeaderKey)
+		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
 		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}])
