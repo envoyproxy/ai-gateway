@@ -21,18 +21,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-const (
-	anthropic = "anthropic"
-	claude    = "claude"
-)
-
-var supportedMediumType = map[string]string{
-	"image/png":  "png",
-	"image/jpeg": "jpeg",
-	"image/gif":  "gif",
-	"image/webp": "webp",
-}
-
 // newOpenAIToAWSBedrockTranslator implements [TranslatorFactory] for OpenAI to AWS Bedrock translation.
 func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
@@ -40,10 +28,6 @@ func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	} else {
 		return nil, fmt.Errorf("unsupported path: %s", path)
 	}
-}
-
-func isAnthropicClaude(modelID string) bool {
-	return strings.Contains(modelID, anthropic) && strings.Contains(modelID, claude)
 }
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
@@ -86,7 +70,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 
 	var bedrockReq awsbedrock.ConverseInput
 	// Convert InferenceConfiguration.
-	o.openAIToBedrockInferenceConfiguration(openAIReq, &bedrockReq)
+	bedrockReq.InferenceConfig = &awsbedrock.InferenceConfiguration{}
+	bedrockReq.InferenceConfig.MaxTokens = openAIReq.MaxTokens
+	bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop
+	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
+	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {
@@ -108,16 +96,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 	}
 	setContentLength(headerMutation, mut.Body)
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
-}
-
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToBedrockInferenceConfiguration(
-	openAIReq *openai.ChatCompletionRequest, bedrockReq *awsbedrock.ConverseInput,
-) {
-	bedrockReq.InferenceConfig = &awsbedrock.InferenceConfiguration{}
-	bedrockReq.InferenceConfig.MaxTokens = openAIReq.MaxTokens
-	bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop
-	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
-	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
 }
 
 // openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations
@@ -159,7 +137,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 				// any tells Claude that it must use one of the provided tools, but doesn't force a particular tool.
 				// tool allows us to force Claude to always use a particular tool.
 				// The tool option is only applied to Anthropic Claude
-				if isAnthropicClaude(openAIReq.Model) {
+				if strings.Contains(openAIReq.Model, "anthropic") && strings.Contains(openAIReq.Model, "claude") {
 					bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
 						Tool: &awsbedrock.SpecificToolChoice{
 							Name: &toolChoice,
@@ -186,33 +164,35 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 var regDataURI = regexp.MustCompile(`\Adata:(.+?)?(;base64)?,`)
 
 // parseDataURI parse data uri example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD
-func parseDataURI(uri string) (string, []byte, bool) {
+func parseDataURI(uri string) (string, []byte, error) {
 	matches := regDataURI.FindStringSubmatch(uri)
 	if len(matches) != 3 {
-		return "", nil, false
+		return "", nil, fmt.Errorf("data uri does not have a valid format")
 	}
 	l := len(matches[0])
 	contentType := matches[1]
-	bin, _ := base64.StdEncoding.DecodeString(uri[l:])
-	return contentType, bin, true
+	bin, err := base64.StdEncoding.DecodeString(uri[l:])
+	if err != nil {
+		return "", nil, err
+	}
+	return contentType, bin, nil
 }
 
 // openAIMessageToBedrockMessageRoleUser converts openai user role message
 // returns a list of bedrock message and error
 // the tool content is appended to the list of bedrock message list if tool_call is in openai message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleUser(
-	openAiMessage *openai.ChatCompletionMessageParamUnion,
+	openAiMessage *openai.ChatCompletionUserMessageParam, role string,
 ) (*awsbedrock.Message, error) {
-	message := openAiMessage.Value.(openai.ChatCompletionUserMessageParam)
-	if v, ok := message.Content.Value.(string); ok {
+	if v, ok := openAiMessage.Content.Value.(string); ok {
 		return &awsbedrock.Message{
-			Role: openAiMessage.Type,
+			Role: role,
 			Content: []*awsbedrock.ContentBlock{
 				{Text: ptr.To(v)},
 			},
 		}, nil
-	} else if contents, ok := message.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam); ok {
-		chatMessage := &awsbedrock.Message{Role: openAiMessage.Type}
+	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam); ok {
+		chatMessage := &awsbedrock.Message{Role: role}
 		chatMessage.Content = make([]*awsbedrock.ContentBlock, 0, len(contents))
 		for _, contentPart := range contents {
 			if contentPart.TextContent != nil {
@@ -222,23 +202,33 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				})
 			} else if contentPart.ImageContent != nil {
 				imageContentPart := contentPart.ImageContent
-				contentType, b, valid := parseDataURI(imageContentPart.ImageURL.URL)
-				if !valid {
-					return nil, fmt.Errorf("failed to parse image URL: %s", imageContentPart.ImageURL.URL)
+				contentType, b, err := parseDataURI(imageContentPart.ImageURL.URL)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse image URL: %s %w", imageContentPart.ImageURL.URL, err)
 				}
-				if format, supported := supportedMediumType[contentType]; !supported {
+				var format string
+				switch contentType {
+				case "image/png":
+					format = "png"
+				case "image/jpeg":
+					format = "jpeg"
+				case "image/gif":
+					format = "gif"
+				case "image/webp":
+					format = "webp"
+				default:
 					return nil, fmt.Errorf("unsupported image type: %s please use one of [png, jpeg, gif, webp]",
 						contentType)
-				} else {
-					chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
-						Image: &awsbedrock.ImageBlock{
-							Format: format,
-							Source: awsbedrock.ImageSource{
-								Bytes: b, // Decoded data as bytes.
-							},
-						},
-					})
 				}
+
+				chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
+					Image: &awsbedrock.ImageBlock{
+						Format: format,
+						Source: awsbedrock.ImageSource{
+							Bytes: b, // Decoded data as bytes.
+						},
+					},
+				})
 			}
 		}
 		return chatMessage, nil
@@ -251,24 +241,21 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 // returns a list of bedrock message and error
 // the tool content is appended to the list of bedrock message list if tool_call is in openai message
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleAssistant(
-	openAiMessage *openai.ChatCompletionMessageParamUnion,
+	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	var bedrockMessage *awsbedrock.Message
-	message := openAiMessage.Value.(openai.ChatCompletionAssistantMessageParam)
-
-	if message.Content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
-		bedrockMessage = &awsbedrock.Message{
-			Role:    openAiMessage.Type,
-			Content: []*awsbedrock.ContentBlock{{Text: message.Content.Refusal}},
-		}
+	contentBlocks := make([]*awsbedrock.ContentBlock, 1)
+	if openAiMessage.Content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
+		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal}
 	} else {
-		bedrockMessage = &awsbedrock.Message{
-			Role:    openAiMessage.Type,
-			Content: []*awsbedrock.ContentBlock{{Text: message.Content.Text}},
-		}
+		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text}
+	}
+	bedrockMessage = &awsbedrock.Message{
+		Role:    role,
+		Content: contentBlocks,
 	}
 	// Process tool_calls.
-	for _, toolCall := range message.ToolCalls {
+	for _, toolCall := range openAiMessage.ToolCalls {
 		bedrockMessage.Content = append(bedrockMessage.Content,
 			&awsbedrock.ContentBlock{
 				ToolUse: &awsbedrock.ToolUseBlock{
@@ -284,40 +271,37 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 // openAIMessageToBedrockMessageRoleSystem converts openai system role message
 // returns a list of bedrock system content and error
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleSystem(
-	openAiMessage *openai.ChatCompletionMessageParamUnion, bedrockSystem *[]*awsbedrock.SystemContentBlock,
-) error {
-	message := openAiMessage.Value.(openai.ChatCompletionSystemMessageParam)
-	if v, ok := message.Content.Value.(string); ok {
-		*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
+	openAiMessage *openai.ChatCompletionSystemMessageParam,
+) (bedrockSystem []*awsbedrock.SystemContentBlock, err error) {
+	if v, ok := openAiMessage.Content.Value.(string); ok {
+		bedrockSystem = append(bedrockSystem, &awsbedrock.SystemContentBlock{
 			Text: v,
 		})
-	} else if contents, ok := message.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
+	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
 		for _, contentPart := range contents {
 			textContentPart := contentPart.Text
-			*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
+			bedrockSystem = append(bedrockSystem, &awsbedrock.SystemContentBlock{
 				Text: textContentPart,
 			})
 		}
 	} else {
-		return fmt.Errorf("unexpected content type for system message")
+		err = fmt.Errorf("unexpected content type for system message")
 	}
-	return nil
+	return bedrockSystem, err
 }
 
 // openAIMessageToBedrockMessageRoleTool converts openai tool role message
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
-	openAiMessage *openai.ChatCompletionMessageParamUnion,
+	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
-	message := openAiMessage.Value.(openai.ChatCompletionToolMessageParam)
 	return &awsbedrock.Message{
-		// Bedrock does not support tool role, merging to the user role.
-		Role: awsbedrock.ConversationRoleUser,
+		Role: role,
 		Content: []*awsbedrock.ContentBlock{
 			{
 				ToolResult: &awsbedrock.ToolResultBlock{
 					Content: []*awsbedrock.ToolResultContentBlock{
 						{
-							Text: message.Content.Value.(*string),
+							Text: openAiMessage.Content.Value.(*string),
 						},
 					},
 				},
@@ -335,27 +319,33 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	for _, msg := range openAIReq.Messages {
 		switch msg.Type {
 		case openai.ChatMessageRoleUser:
-			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleUser(&msg)
+			userMessage := msg.Value.(openai.ChatCompletionUserMessageParam)
+			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleUser(&userMessage, msg.Type)
 			if err != nil {
 				return err
 			}
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		case openai.ChatMessageRoleAssistant:
-			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleAssistant(&msg)
+			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
+			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleAssistant(&assistantMessage, msg.Type)
 			if err != nil {
 				return err
 			}
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		case openai.ChatMessageRoleSystem:
 			if bedrockReq.System == nil {
-				bedrockReq.System = []*awsbedrock.SystemContentBlock{}
+				bedrockReq.System = make([]*awsbedrock.SystemContentBlock, 0)
 			}
-			err := o.openAIMessageToBedrockMessageRoleSystem(&msg, &bedrockReq.System)
+			systemMessage := msg.Value.(openai.ChatCompletionSystemMessageParam)
+			bedrockSystems, err := o.openAIMessageToBedrockMessageRoleSystem(&systemMessage)
 			if err != nil {
 				return err
 			}
+			bedrockReq.System = append(bedrockReq.System, bedrockSystems...)
 		case openai.ChatMessageRoleTool:
-			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleTool(&msg)
+			toolMessage := msg.Value.(openai.ChatCompletionToolMessageParam)
+			// Bedrock does not support tool role, merging to the user role.
+			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleTool(&toolMessage, awsbedrock.ConversationRoleUser)
 			if err != nil {
 				return err
 			}
