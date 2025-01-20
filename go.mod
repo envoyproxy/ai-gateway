@@ -5,7 +5,7 @@ go 1.23.4
 replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.16
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.32.8
+	github.com/aws/aws-sdk-go-v2 v1.33.0
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.10
 	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250115172926-8b89dadfbd2c
