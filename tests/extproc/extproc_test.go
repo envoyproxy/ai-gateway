@@ -51,7 +51,7 @@ func TestE2E(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath, openAIAPIKey)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
-	// Test with APIKey
+	// Test with APIKey.
 	apiKeyFilePath := t.TempDir() + "/open-ai-api-key"
 	file, err := os.Create(apiKeyFilePath)
 	require.NoError(t, err)
