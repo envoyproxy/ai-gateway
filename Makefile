@@ -55,7 +55,7 @@ codespell: $(CODESPELL)
 .PHONY: yamllint
 yamllint: $(YAMLLINT)
 	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u) 
+	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format

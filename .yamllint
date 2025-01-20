@@ -2,8 +2,6 @@
 
 ignore: |
   manifests/charts/ai-gateway-helm
-  tests/cel-validation/testdata
-  .github/workflows/commit.yaml
 
 rules:
   braces:
