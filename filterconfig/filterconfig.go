@@ -21,8 +21,8 @@ import (
 const DefaultConfig = `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
-modelNameHeaderKey: x-envoy-ai-gateway-model
+selectedBackendHeaderKey: x-ai-eg-selected-backend
+modelNameHeaderKey: x-ai-eg-model
 `
 
 // Config is the configuration schema for the filter.
@@ -32,7 +32,7 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	schema:
 //	  name: OpenAI
 //	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
-//	modelNameHeaderKey: x-envoy-ai-gateway-model
+//	modelNameHeaderKey: x-ai-eg-model
 //	llmRequestCosts:
 //	- metadataKey: token_usage_key
 //	  type: OutputToken
@@ -47,24 +47,24 @@ modelNameHeaderKey: x-envoy-ai-gateway-model
 //	    schema:
 //	      name: AWSBedrock
 //	  headers:
-//	  - name: x-envoy-ai-gateway-model
+//	  - name: x-ai-eg-model
 //	    value: llama3.3333
 //	- backends:
 //	  - name: openai
 //	    schema:
 //	      name: OpenAI
 //	  headers:
-//	  - name: x-envoy-ai-gateway-model
+//	  - name: x-ai-eg-model
 //	    value: gpt4.4444
 //
-// where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-envoy-ai-gateway-model,
-// The model name header `x-envoy-ai-gateway-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
-// the selected backend name is populated in the header `x-envoy-ai-gateway-selected-backend`. For example, when the model name is `llama3.3333`,
+// where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-ai-eg-model,
+// The model name header `x-ai-eg-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
+// the selected backend name is populated in the header `x-ai-eg-selected-backend`. For example, when the model name is `llama3.3333`,
 // the request is routed to either backends `kserve` or `awsbedrock` with weights 1 and 10 respectively, and the selected
-// backend, say `awsbedrock`, is populated in the header `x-envoy-ai-gateway-selected-backend`.
+// backend, say `awsbedrock`, is populated in the header `x-ai-eg-selected-backend`.
 //
-// From Envoy configuration perspective, configuring the header matching based on `x-envoy-ai-gateway-selected-backend` is enough to route the request to the selected backend.
-// That is because the matching decision is made by the filter and the selected backend is populated in the header `x-envoy-ai-gateway-selected-backend`.
+// From Envoy configuration perspective, configuring the header matching based on `x-ai-eg-selected-backend` is enough to route the request to the selected backend.
+// That is because the matching decision is made by the filter and the selected backend is populated in the header `x-ai-eg-selected-backend`.
 type Config struct {
 	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
 	MetadataNamespace string `json:"metadataNamespace"`

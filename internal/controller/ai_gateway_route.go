@@ -58,7 +58,7 @@ func NewAIGatewayRouteController(
 	return &aiGatewayRouteController{
 		client:              client,
 		kube:                kube,
-		logger:              logger.WithName("eaig-route-controller"),
+		logger:              logger.WithName("ai-eg-route-controller"),
 		defaultExtProcImage: options.ExtProcImage,
 		eventChan:           ch,
 	}
@@ -270,7 +270,7 @@ func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Contex
 }
 
 func extProcName(route *aigv1a1.AIGatewayRoute) string {
-	return fmt.Sprintf("eaig-route-extproc-%s", route.Name)
+	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
 }
 
 func ownerReferenceForAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {

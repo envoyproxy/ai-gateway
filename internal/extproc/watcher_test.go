@@ -44,7 +44,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+selectedBackendHeaderKey: x-ai-eg-selected-backend
 modelNameHeaderKey: x-model-name
 rules:
 - backends:
@@ -84,7 +84,7 @@ rules:
 	cfg = `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+selectedBackendHeaderKey: x-ai-eg-selected-backend
 modelNameHeaderKey: x-model-name
 rules:
 - backends:

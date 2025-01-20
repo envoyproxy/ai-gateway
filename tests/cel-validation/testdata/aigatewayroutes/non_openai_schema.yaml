@@ -15,7 +15,7 @@ spec:
     - matches:
         - headers:
             - type: Exact
-              name: x-envoy-ai-gateway-model
+              name: x-ai-eg-model
               value: llama3-70b
       backendRefs:
         - name: kserve

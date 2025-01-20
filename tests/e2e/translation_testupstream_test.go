@@ -32,22 +32,25 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {
-			name             string
-			modelName        string
-			expPath          string
-			fakeResponseBody string
+			name              string
+			modelName         string
+			expTestUpstreamID string
+			expPath           string
+			fakeResponseBody  string
 		}{
 			{
-				name:             "openai",
-				modelName:        "some-cool-model",
-				expPath:          "/v1/chat/completions",
-				fakeResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+				name:              "openai",
+				modelName:         "some-cool-model",
+				expTestUpstreamID: "primary",
+				expPath:           "/v1/chat/completions",
+				fakeResponseBody:  `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			},
 			{
-				name:             "aws-bedrock",
-				modelName:        "another-cool-model",
-				expPath:          "/model/another-cool-model/converse",
-				fakeResponseBody: `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+				name:              "aws-bedrock",
+				modelName:         "another-cool-model",
+				expTestUpstreamID: "canary",
+				expPath:           "/model/another-cool-model/converse",
+				fakeResponseBody:  `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -58,7 +61,7 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 					t.Logf("modelName: %s", tc.modelName)
 					client := openai.NewClient(option.WithBaseURL(fwd.address()+"/v1/"),
 						option.WithHeader(
-							"x-test-case-name", tc.name),
+							"x-expected-testupstream-id", tc.expTestUpstreamID),
 						option.WithHeader(
 							"x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
 						option.WithHeader("x-response-body",
