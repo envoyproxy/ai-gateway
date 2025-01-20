@@ -874,6 +874,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		{
 			name: "test tool use",
 			input: awsbedrock.ConverseOutput{
+				StopReason: ptr.To(awsbedrock.StopReasonToolUse),
 				Output: &awsbedrock.ConverseOutput_{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
@@ -895,7 +896,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+						FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
 							Role:    awsbedrock.ConversationRoleAssistant,
