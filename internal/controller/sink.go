@@ -234,7 +234,6 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 				if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
 					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						Type:   filterconfig.AuthTypeAPIKey,
 						APIKey: &filterconfig.APIKeyAuth{Filename: getBackendSecurityMountPath(bspKey)},
 					}
 				} else {
@@ -427,6 +426,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 	// Only keep the original mount which should be the config volume.
 	spec.Volumes = spec.Volumes[:1]
 	container := &spec.Containers[0]
+	container.VolumeMounts = container.VolumeMounts[:1]
 
 	mountedSecrets := make(map[string]bool)
 

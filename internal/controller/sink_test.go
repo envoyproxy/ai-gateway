@@ -108,8 +108,22 @@ func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	backend := aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "tomato", Namespace: "ns"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "new-backend-security-policy"},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
+
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
-	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
+	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+
+	var aiServiceBackends aigv1a1.AIServiceBackendList
+	require.NoError(t, fakeClient.List(context.Background(), &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key}))
+	require.Len(t, aiServiceBackends.Items, 1)
 }
 
 func Test_newHTTPRoute(t *testing.T) {
@@ -305,7 +319,6 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					{
 						Backends: []filterconfig.Backend{
 							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
-								Type: filterconfig.AuthTypeAPIKey,
 								APIKey: &filterconfig.APIKeyAuth{
 									Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
 								},
@@ -316,7 +329,6 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					},
 					{
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
-							Type: filterconfig.AuthTypeAPIKey,
 							APIKey: &filterconfig.APIKeyAuth{
 								Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
 							},
