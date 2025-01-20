@@ -33,10 +33,12 @@ help:
 	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
 	@echo "                  	 This will be needed when changing API definitions."
 	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
-	@echo "                  	 Note that this requires some credentials."
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
+	@echo "  test-e2e          	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
 	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc."
+	@echo "Note that some cases run by 'make test-e2e' or 'make test-extproc' use credentials and these will be skipped when not available."
+	@echo ""
 	@echo ""
 
 # This runs the linter, formatter, and tidy on the codebase.
@@ -51,6 +53,11 @@ CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
 codespell: $(CODESPELL)
 	@echo "spell => ./..."
 	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
+
+.PHONY: yamllint
+yamllint: $(YAMLLINT)
+	@echo "yamllint => ./..."
+	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
@@ -77,7 +84,7 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen format lint editorconfig helm-lint
+precommit: tidy codespell apigen format lint editorconfig yamllint helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
