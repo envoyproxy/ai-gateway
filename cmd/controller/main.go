@@ -56,7 +56,7 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	// Start the extension server running alongside the controller.
+	// Start the ext ension server running alongside the controller.
 	s := grpc.NewServer()
 	extSrv := extensionserver.New(setupLog)
 	extension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
