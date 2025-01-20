@@ -37,7 +37,10 @@ const (
 	// nonExpectedHeadersKey is the key for the non-expected request headers.
 	// The value is a base64 encoded string of comma separated header keys expected to be absent.
 	nonExpectedRequestHeadersKey = "x-non-expected-request-headers"
-
+	// expectedTestUpstreamIDKey is the key for the expected testupstream-id in the request,
+	// and the value will be compared with the TESTUPSTREAM_ID environment variable.
+	// If the values do not match, the request will be rejected, meaning that the request
+	// was routed to the wrong upstream.
 	expectedTestUpstreamIDKey = "x-expected-testupstream-id"
 )
 
