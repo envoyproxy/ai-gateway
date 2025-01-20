@@ -287,7 +287,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	} else {
 		err = fmt.Errorf("unexpected content type for system message")
 	}
-	return bedrockSystem, err
+	return
 }
 
 // openAIMessageToBedrockMessageRoleTool converts openai tool role message
