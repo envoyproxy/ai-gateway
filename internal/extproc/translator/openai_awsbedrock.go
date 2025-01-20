@@ -274,7 +274,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 // openAIMessageToBedrockMessageRoleSystem converts openai system role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleSystem(
-	openAiMessage *openai.ChatCompletionSystemMessageParam, bedrockSystem *[]*awsbedrock.SystemContentBlock) (err error) {
+	openAiMessage *openai.ChatCompletionSystemMessageParam, bedrockSystem *[]*awsbedrock.SystemContentBlock,
+) error {
 	if v, ok := openAiMessage.Content.Value.(string); ok {
 		*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
 			Text: v,
@@ -287,9 +288,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			})
 		}
 	} else {
-		err = fmt.Errorf("unexpected content type for system message")
+		return fmt.Errorf("unexpected content type for system message")
 	}
-	return
+	return nil
 }
 
 // openAIMessageToBedrockMessageRoleTool converts openai tool role message.
