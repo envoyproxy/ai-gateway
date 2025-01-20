@@ -584,7 +584,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 
 	require.NoError(t, fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{}))
 
-	// update to new security policy
+	// Update to new security policy.
 	backend = aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
