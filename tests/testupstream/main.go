@@ -37,6 +37,8 @@ const (
 	// nonExpectedHeadersKey is the key for the non-expected request headers.
 	// The value is a base64 encoded string of comma separated header keys expected to be absent.
 	nonExpectedRequestHeadersKey = "x-non-expected-request-headers"
+
+	expectedTestUpstreamIDKey = "x-expected-testupstream-id"
 )
 
 // main starts a server that listens on port 1063 and responds with the expected response body and headers
@@ -168,6 +170,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		fmt.Println("no non-expected headers in the request")
+	}
+
+	if v := r.Header.Get(expectedTestUpstreamIDKey); v != "" {
+		if os.Getenv("TESTUPSTREAM_ID") != v {
+			msg := fmt.Sprintf("unexpected testupstream-id: received by '%s' but expected '%s'\n", os.Getenv("TESTUPSTREAM_ID"), v)
+			fmt.Println(msg)
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		} else {
+			fmt.Println("testupstream-id matched:", v)
+		}
+	} else {
+		fmt.Println("no expected testupstream-id")
 	}
 
 	expectedPath, err := base64.StdEncoding.DecodeString(r.Header.Get(expectedPathHeaderKey))
