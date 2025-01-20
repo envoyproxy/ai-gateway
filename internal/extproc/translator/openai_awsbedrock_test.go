@@ -578,7 +578,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 		},
 		{
-			name: "test structured tool choices",
+			name: "test tool choices for anthropic claude model",
 			input: openai.ChatCompletionRequest{
 				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
 				Messages: []openai.ChatCompletionMessageParamUnion{
