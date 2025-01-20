@@ -28,7 +28,6 @@ jobs:
             release
             api
             deps
-            
             e2e
             extproc
             controller
