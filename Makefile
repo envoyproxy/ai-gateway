@@ -54,6 +54,11 @@ codespell: $(CODESPELL)
 	@echo "spell => ./..."
 	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
 
+.PHONY: yamllint
+yamllint: $(YAMLLINT)
+	@echo "yamllint => ./..."
+	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
+
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
 format: gci gofumpt
@@ -79,7 +84,7 @@ apigen: controller-gen
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen format lint editorconfig helm-lint
+precommit: tidy codespell apigen format lint editorconfig yamllint helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check

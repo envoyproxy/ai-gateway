@@ -12,10 +12,10 @@ spec:
       group: gateway.networking.k8s.io
   rules:
     - matches:
-      - headers:
-        - type: Exact
-          name: x-eaig-model
-          value: llama3-70b
+        - headers:
+            - type: Exact
+              name: x-eaig-model
+              value: llama3-70b
       backendRefs:
         - name: kserve
           weight: 20
