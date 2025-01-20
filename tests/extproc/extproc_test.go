@@ -157,7 +157,55 @@ func TestE2E(t *testing.T) {
 		}, 10*time.Second, 1*time.Second)
 	})
 
-	// TODO: add streaming endpoints.
+	t.Run("streaming", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+		for _, tc := range []struct {
+			testCaseName,
+			modelName string
+		}{
+			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				require.Eventually(t, func() bool {
+					stream := client.Chat.Completions.NewStreaming(context.Background(), openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage("Say this is a test"),
+						}),
+						Model: openai.F(tc.modelName),
+					})
+					defer func() {
+						_ = stream.Close()
+					}()
+
+					acc := openai.ChatCompletionAccumulator{}
+
+					for stream.Next() {
+						chunk := stream.Current()
+						if !acc.AddChunk(chunk) {
+							t.Log("error adding chunk")
+							return false
+						}
+					}
+
+					if err := stream.Err(); err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+
+					nonEmptyCompletion := false
+					for _, choice := range acc.Choices {
+						t.Logf("choice: %s", choice.Message.Content)
+						if choice.Message.Content != "" {
+							nonEmptyCompletion = true
+						}
+					}
+					return nonEmptyCompletion
+				}, 10*time.Second, 1*time.Second)
+			})
+		}
+	})
+
 	// TODO: add more tests like updating the config, signal handling, etc.
 }
 
