@@ -114,6 +114,9 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	for k, v := range r.Header {
+		fmt.Printf("header %q: %s\n", k, v)
+	}
 	if v := r.Header.Get(expectedHeadersKey); v != "" {
 		expectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {

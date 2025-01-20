@@ -57,13 +57,21 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
-		inBody := &extprocv3.HttpBody{Body: []byte("some-body")}
+		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
-		mt := &mockTranslator{t: t, expResponseBody: inBody, retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut, retUsedToken: 123}
-		p := &Processor{translator: mt, config: &processorConfig{tokenUsageMetadata: &filterconfig.TokenUsageMetadata{
-			Namespace: "ai_gateway_llm_ns", Key: "token_usage",
-		}}}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
+			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
+		}
+		p := &Processor{translator: mt, config: &processorConfig{
+			metadataNamespace: "ai_gateway_llm_ns",
+			requestCosts: []filterconfig.LLMRequestCost{
+				{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"},
+				{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"},
+			},
+		}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
@@ -72,7 +80,10 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["token_usage"].GetNumberValue())
+		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["output_token_usage"].GetNumberValue())
+		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["input_token_usage"].GetNumberValue())
 	})
 }
 
@@ -96,7 +107,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
@@ -110,13 +121,13 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retErr: errors.New("test error"), expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
-				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
+				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
@@ -127,13 +138,13 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retTranslator: mockTranslator{t: t, retErr: errors.New("test error")}, expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
-				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
+				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
@@ -145,7 +156,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo", retRb: someBody}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Schema: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		headerMut := &extprocv3.HeaderMutation{}
 		bodyMut := &extprocv3.BodyMutation{}
@@ -154,7 +165,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
-				{Schema: "some-schema", Version: "v10.0"}: factory.impl,
+				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
 			ModelNameHeaderKey:       "x-ai-gateway-model-key",

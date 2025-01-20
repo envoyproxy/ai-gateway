@@ -21,6 +21,14 @@ const (
 	egDefaultPort = 10080
 )
 
+var egVersion = func() string {
+	if v, ok := os.LookupEnv("EG_VERSION"); ok {
+		return v
+	} else {
+		return "v0.0.0-latest" // This defaults to the latest dev version.
+	}
+}()
+
 func initLog(msg string) {
 	fmt.Printf("\u001b[32m=== INIT LOG: %s\u001B[0m\n", msg)
 }
@@ -113,7 +121,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	}()
 	initLog("\tHelm Install")
 	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "eg",
-		"oci://docker.io/envoyproxy/gateway-helm", "--version", "v0.0.0-latest",
+		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
@@ -168,7 +176,7 @@ func initTestupstream(ctx context.Context) (err error) {
 	if err = kubectlApplyManifest(ctx, "./init/testupstream/"); err != nil {
 		return
 	}
-	initLog("\t--- waiting for deployment")
+	initLog("\twaiting for deployment")
 	return kubectlWaitForDeploymentReady("default", "testupstream")
 }
 

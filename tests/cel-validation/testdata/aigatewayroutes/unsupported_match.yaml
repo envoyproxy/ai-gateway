@@ -4,12 +4,12 @@ metadata:
   name: apple
   namespace: default
 spec:
+  schema:
+    name: OpenAI
   targetRefs:
     - name: some-gateway
       kind: Gateway
       group: gateway.networking.k8s.io
-  inputSchema:
-    schema: OpenAI
   rules:
     - matches:
       - headers:

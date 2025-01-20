@@ -19,7 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +32,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests"
 )
 
-var defaultSchema = aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v1"}
+var defaultSchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"}
 
 func extProcName(aiGatewayRouteName string) string {
 	return fmt.Sprintf("ai-eg-route-extproc-%s", aiGatewayRouteName)

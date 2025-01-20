@@ -61,7 +61,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
 					},
 				},
-				APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
 		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
@@ -256,7 +256,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
-					Schema: aigv1a1.APISchemaAWSBedrock,
+					Name: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
@@ -291,7 +291,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+					APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -309,21 +309,31 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							},
 						},
 					},
+					LLMRequestCosts: []aigv1a1.LLMRequestCost{
+						{
+							Type:        aigv1a1.LLMRequestCostTypeOutputToken,
+							MetadataKey: "output-token",
+						},
+						{
+							Type:        aigv1a1.LLMRequestCostTypeInputToken,
+							MetadataKey: "input-token",
+						},
+					},
 				},
 			},
 			exp: &filterconfig.Config{
-				InputSchema:              filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
+				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
 				Rules: []filterconfig.RouteRule{
 					{
 						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, OutputSchema: filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
+							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
 								APIKey: &filterconfig.APIKeyAuth{
 									Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
 								},
-							}},
-							{Name: "pineapple.ns", Weight: 2},
+							}}, {Name: "pineapple.ns", Weight: 2},
 						},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
@@ -335,6 +345,10 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						}}},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
+				},
+				LLMRequestCosts: []filterconfig.LLMRequestCost{
+					{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
+					{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
 				},
 			},
 		},

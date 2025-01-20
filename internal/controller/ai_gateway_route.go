@@ -136,6 +136,9 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 						Port:      &port,
 					},
 				}}},
+				Metadata: &egv1a1.ExtProcMetadata{
+					WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+				},
 			}},
 		},
 	}
@@ -193,8 +196,5 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	}
 	if replica := extProc.Replicas; replica != nil {
 		d.Replicas = replica
-	}
-	if image := extProc.Image; image != "" {
-		d.Template.Spec.Containers[0].Image = image
 	}
 }

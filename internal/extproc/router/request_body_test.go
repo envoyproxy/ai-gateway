@@ -13,12 +13,12 @@ import (
 
 func TestNewRequestBodyParser(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
-		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Schema: filterconfig.APISchemaOpenAI})
+		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI})
 		require.NotNil(t, res)
 		require.NoError(t, err)
 	})
 	t.Run("error", func(t *testing.T) {
-		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Schema: "foo"})
+		res, err := NewRequestBodyParser(filterconfig.VersionedAPISchema{Name: "foo"})
 		require.Nil(t, res)
 		require.Error(t, err)
 	})

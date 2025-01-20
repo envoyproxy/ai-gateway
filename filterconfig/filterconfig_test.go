@@ -29,30 +29,31 @@ func TestDefaultConfig(t *testing.T) {
 func TestUnmarshalConfigYaml(t *testing.T) {
 	configPath := path.Join(t.TempDir(), "config.yaml")
 	const config = `
-inputSchema:
-  schema: OpenAI
+schema:
+  name: OpenAI
 selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
 modelNameHeaderKey: x-envoy-ai-gateway-model
-tokenUsageMetadata:
-  namespace: ai_gateway_llm_ns
-  key: token_usage_key
+metadataNamespace: ai_gateway_llm_ns
+llmRequestCosts:
+- metadataKey: token_usage_key
+  type: OutputToken
 rules:
 - backends:
   - name: kserve
     weight: 1
-    outputSchema:
-      schema: OpenAI
+    schema:
+      name: OpenAI
   - name: awsbedrock
     weight: 10
-    outputSchema:
-      schema: AWSBedrock
+    schema:
+      name: AWSBedrock
   headers:
   - name: x-envoy-ai-gateway-model
     value: llama3.3333
 - backends:
   - name: openai
-    outputSchema:
-      schema: OpenAI
+    schema:
+      name: OpenAI
   headers:
   - name: x-envoy-ai-gateway-model
     value: gpt4.4444
@@ -60,9 +61,10 @@ rules:
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 	cfg, err := filterconfig.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
-	require.Equal(t, "ai_gateway_llm_ns", cfg.TokenUsageMetadata.Namespace)
-	require.Equal(t, "token_usage_key", cfg.TokenUsageMetadata.Key)
-	require.Equal(t, "OpenAI", string(cfg.InputSchema.Schema))
+	require.Equal(t, "ai_gateway_llm_ns", cfg.MetadataNamespace)
+	require.Equal(t, "token_usage_key", cfg.LLMRequestCosts[0].MetadataKey)
+	require.Equal(t, "OutputToken", string(cfg.LLMRequestCosts[0].Type))
+	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
 	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)
 	require.Len(t, cfg.Rules, 2)
@@ -70,7 +72,7 @@ rules:
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
 	require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
 	require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
-	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].OutputSchema.Schema))
+	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Name))
 	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].OutputSchema.Schema))
+	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
 }

@@ -288,13 +288,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 
 // ResponseBody implements [Translator.ResponseBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, usedToken uint32, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
 		buf, err := io.ReadAll(body)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to read body: %w", err)
+			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 		}
 		o.bufferedBody = append(o.bufferedBody, buf...)
 		o.extractAmazonEventStreamEvents()
@@ -302,7 +302,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				usedToken = uint32(usage.TotalTokens) //nolint:gosec
+				tokenUsage = LLMTokenUsage{
+					InputTokens:  uint32(usage.InputTokens),  //nolint:gosec
+					OutputTokens: uint32(usage.OutputTokens), //nolint:gosec
+					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
+				}
 			}
 
 			oaiEvent, ok := o.convertEvent(event)
@@ -321,27 +325,29 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
 		}
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, usedToken, nil
+		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 	}
 
 	var bedrockResp awsbedrock.ConverseOutput
 	if err := json.NewDecoder(body).Decode(&bedrockResp); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-
-	usedToken = uint32(bedrockResp.Usage.TotalTokens) //nolint:gosec
 
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0, len(bedrockResp.Output.Message.Content)),
 	}
 	if bedrockResp.Usage != nil {
+		tokenUsage = LLMTokenUsage{
+			InputTokens:  uint32(bedrockResp.Usage.InputTokens),  //nolint:gosec
+			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
+			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
+		}
 		openAIResp.Usage = openai.ChatCompletionResponseUsage{
 			TotalTokens:      bedrockResp.Usage.TotalTokens,
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
-		usedToken = uint32(bedrockResp.Usage.TotalTokens) //nolint:gosec
 	}
 	for i, output := range bedrockResp.Output.Message.Content {
 		choice := openai.ChatCompletionResponseChoice{
@@ -367,13 +373,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Read
 	}
 
 	if body, err := json.Marshal(openAIResp); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, tokenUsage, fmt.Errorf("failed to marshal body: %w", err)
 	} else {
 		mut.Body = body
 	}
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, usedToken, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 }
 
 // extractAmazonEventStreamEvents extracts [awsbedrock.ConverseStreamEvent] from the buffered body.

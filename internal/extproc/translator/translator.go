@@ -20,9 +20,9 @@ type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
 func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
-	if in.Schema == filterconfig.APISchemaOpenAI {
+	if in.Name == filterconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
-		switch out.Schema {
+		switch out.Name {
 		case filterconfig.APISchemaOpenAI:
 			return newOpenAIToOpenAITranslator, nil
 		case filterconfig.APISchemaAWSBedrock:
@@ -62,10 +62,12 @@ type Translator interface {
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `usedToken` that is extracted from the body and will be used to do token rate limiting.
+	//
+	// TODO: this is coupled with "LLM" specific. Once we have another use case, we need to refactor this.
 	ResponseBody(body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
-		usedToken uint32,
+		tokenUsage LLMTokenUsage,
 		err error,
 	)
 }
@@ -95,4 +97,14 @@ func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
 			RawValue: []byte(fmt.Sprintf("%d", len(body))),
 		},
 	})
+}
+
+// LLMTokenUsage represents the token usage reported usually by the backend API in the response body.
+type LLMTokenUsage struct {
+	// InputTokens is the number of tokens consumed from the input.
+	InputTokens uint32
+	// OutputTokens is the number of tokens consumed from the output.
+	OutputTokens uint32
+	// TotalTokens is the total number of tokens consumed.
+	TotalTokens uint32
 }

@@ -95,22 +95,15 @@ data: [DONE]
 `)
 
 		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
-		var usedToken uint32
 		for i := 0; i < len(wholeBody); i++ {
-			hm, bm, _usedToken, err := o.ResponseBody(bytes.NewReader(wholeBody[i:i+1]), false)
+			hm, bm, tokenUsage, err := o.ResponseBody(bytes.NewReader(wholeBody[i:i+1]), false)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
-			if _usedToken > 0 {
-				usedToken = _usedToken
-			}
-			if usedToken > 0 {
-				require.True(t, o.bufferingDone)
-			} else {
-				require.False(t, o.bufferingDone)
+			if tokenUsage.OutputTokens > 0 {
+				require.Equal(t, uint32(12), tokenUsage.OutputTokens)
 			}
 		}
-		require.Equal(t, uint32(25), usedToken)
 	})
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
@@ -126,7 +119,7 @@ data: [DONE]
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
 			_, _, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
 			require.NoError(t, err)
-			require.Equal(t, uint32(42), usedToken)
+			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		})
 	})
 }
@@ -136,7 +129,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent()
-		require.Equal(t, uint32(42), usedToken)
+		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.True(t, o.bufferingDone)
 		require.Nil(t, o.buffered)
 	})
@@ -145,7 +138,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\ndata: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent()
-		require.Equal(t, uint32(42), usedToken)
+		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.True(t, o.bufferingDone)
 		require.Nil(t, o.buffered)
 	})
@@ -154,13 +147,13 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {}\n\ndata: ")
 		usedToken := o.extractUsageFromBufferEvent()
-		require.Equal(t, uint32(0), usedToken)
+		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.False(t, o.bufferingDone)
 		require.NotNil(t, o.buffered)
 
 		o.buffered = append(o.buffered, []byte("{\"usage\": {\"total_tokens\": 42}}\n")...)
 		usedToken = o.extractUsageFromBufferEvent()
-		require.Equal(t, uint32(42), usedToken)
+		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.True(t, o.bufferingDone)
 		require.Nil(t, o.buffered)
 	})
@@ -169,7 +162,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\n")
 		usedToken := o.extractUsageFromBufferEvent()
-		require.Equal(t, uint32(0), usedToken)
+		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.False(t, o.bufferingDone)
 		require.NotNil(t, o.buffered)
 	})
