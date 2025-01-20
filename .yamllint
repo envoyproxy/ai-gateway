@@ -1,7 +1,6 @@
 ---
 
-ignore: |
-  manifests/charts/ai-gateway-helm
+ignore-from-file: [.gitignore, .yamllint.ignore]
 
 rules:
   braces:
