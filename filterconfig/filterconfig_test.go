@@ -31,8 +31,8 @@ func TestUnmarshalConfigYaml(t *testing.T) {
 	const config = `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
-modelNameHeaderKey: x-envoy-ai-gateway-model
+selectedBackendHeaderKey: x-eaig-selected-backend
+modelNameHeaderKey: x-eaig-model
 metadataNamespace: ai_gateway_llm_ns
 llmRequestCosts:
 - metadataKey: token_usage_key
@@ -48,14 +48,14 @@ rules:
     schema:
       name: AWSBedrock
   headers:
-  - name: x-envoy-ai-gateway-model
+  - name: x-eaig-model
     value: llama3.3333
 - backends:
   - name: openai
     schema:
       name: OpenAI
   headers:
-  - name: x-envoy-ai-gateway-model
+  - name: x-eaig-model
     value: gpt4.4444
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
@@ -65,8 +65,8 @@ rules:
 	require.Equal(t, "token_usage_key", cfg.LLMRequestCosts[0].MetadataKey)
 	require.Equal(t, "OutputToken", string(cfg.LLMRequestCosts[0].Type))
 	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
-	require.Equal(t, "x-envoy-ai-gateway-selected-backend", cfg.SelectedBackendHeaderKey)
-	require.Equal(t, "x-envoy-ai-gateway-model", cfg.ModelNameHeaderKey)
+	require.Equal(t, "x-eaig-selected-backend", cfg.SelectedBackendHeaderKey)
+	require.Equal(t, "x-eaig-model", cfg.ModelNameHeaderKey)
 	require.Len(t, cfg.Rules, 2)
 	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)

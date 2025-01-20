@@ -61,7 +61,7 @@ type AIGatewayRouteSpec struct {
 	// modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
 	// the transformation of the request and response, etc.
 	//
-	// In the matching conditions in the AIGatewayRouteRule, `x-envoy-ai-gateway-model` header is available
+	// In the matching conditions in the AIGatewayRouteRule, `x-eaig-model` header is available
 	// if we want to describe the routing behavior based on the model name. The model name is extracted
 	// from the request content before the routing decision.
 	//
@@ -355,7 +355,7 @@ const (
 const (
 	// AIModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
 	// This can be used to describe the routing behavior in HTTPRoute referenced by AIGatewayRoute.
-	AIModelHeaderKey = "x-envoy-ai-gateway-model"
+	AIModelHeaderKey = "x-eaig-model"
 )
 
 // BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.

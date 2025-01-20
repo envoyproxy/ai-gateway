@@ -16,7 +16,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
-const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
+const selectedBackendHeaderKey = "x-eaig-selected-backend"
 
 // ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an AIServiceBackend, an AIGatewayRoute, or a deletion event.
