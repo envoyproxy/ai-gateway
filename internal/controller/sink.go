@@ -426,7 +426,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 	// Mount from scratch to avoid secrets that should be unmounted.
 	// Only keep the original mount which should be the config volume.
 	spec.Volumes = spec.Volumes[:1]
-	spec.Containers[0].VolumeMounts = []corev1.VolumeMount{spec.Containers[0].VolumeMounts[0]}
+	container := &spec.Containers[0]
 
 	mountedSecrets := make(map[string]bool)
 
@@ -461,7 +461,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 						},
 					})
 
-					spec.Containers[0].VolumeMounts = append(spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+					container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 						Name:      bspKey,
 						MountPath: getBackendSecurityMountPath(bspKey),
 					})
@@ -471,6 +471,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 			}
 		}
 	}
+
 	return spec, nil
 }
 
