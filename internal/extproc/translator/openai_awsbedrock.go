@@ -98,23 +98,29 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
 }
 
-// openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations
+// openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolConfiguration(openAIReq *openai.ChatCompletionRequest,
 	bedrockReq *awsbedrock.ConverseInput,
 ) error {
 	bedrockReq.ToolConfig = &awsbedrock.ToolConfiguration{}
 	tools := make([]*awsbedrock.Tool, 0, len(openAIReq.Tools))
 	for _, toolDefinition := range openAIReq.Tools {
-		tool := &awsbedrock.Tool{
-			ToolSpec: &awsbedrock.ToolSpecification{
-				Name:        &toolDefinition.Function.Name,
-				Description: &toolDefinition.Function.Description,
-				InputSchema: &awsbedrock.ToolInputSchema{
-					JSON: toolDefinition.Function.Parameters,
+		if toolDefinition.Function != nil {
+			var toolName, toolDes string
+			toolName = toolDefinition.Function.Name
+			toolDes = toolDefinition.Function.Description
+
+			tool := &awsbedrock.Tool{
+				ToolSpec: &awsbedrock.ToolSpecification{
+					Name:        &toolName,
+					Description: &toolDes,
+					InputSchema: &awsbedrock.ToolInputSchema{
+						JSON: toolDefinition.Function.Parameters,
+					},
 				},
-			},
+			}
+			tools = append(tools, tool)
 		}
-		tools = append(tools, tool)
 	}
 	bedrockReq.ToolConfig.Tools = tools
 
@@ -133,10 +139,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 				}
 			default:
 				// Anthropic Claude supports tool_choice parameter with three options.
-				// auto: allows Claude to decide whether to call any provided tools or not.
-				// any tells Claude that it must use one of the provided tools, but doesn't force a particular tool.
-				// tool allows us to force Claude to always use a particular tool.
-				// The tool option is only applied to Anthropic Claude
+				// * `auto` allows Claude to decide whether to call any provided tools or not.
+				// * `any` tells Claude that it must use one of the provided tools, but doesn't force a particular tool.
+				// * `tool` allows us to force Claude to always use a particular tool.
+				// The tool option is only applied to Anthropic Claude.
 				if strings.Contains(openAIReq.Model, "anthropic") && strings.Contains(openAIReq.Model, "claude") {
 					bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
 						Tool: &awsbedrock.SpecificToolChoice{
@@ -160,10 +166,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 	return nil
 }
 
+// regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
 var regDataURI = regexp.MustCompile(`\Adata:(.+?)?(;base64)?,`)
 
-// parseDataURI parse data uri example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD
+// parseDataURI parse data uri example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD.
 func parseDataURI(uri string) (string, []byte, error) {
 	matches := regDataURI.FindStringSubmatch(uri)
 	if len(matches) != 3 {
@@ -178,9 +185,7 @@ func parseDataURI(uri string) (string, []byte, error) {
 	return contentType, bin, nil
 }
 
-// openAIMessageToBedrockMessageRoleUser converts openai user role message
-// returns a list of bedrock message and error
-// the tool content is appended to the list of bedrock message list if tool_call is in openai message.
+// openAIMessageToBedrockMessageRoleUser converts openai user role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleUser(
 	openAiMessage *openai.ChatCompletionUserMessageParam, role string,
 ) (*awsbedrock.Message, error) {
@@ -238,8 +243,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 }
 
 // openAIMessageToBedrockMessageRoleAssistant converts openai assistant role message
-// returns a list of bedrock message and error
-// the tool content is appended to the list of bedrock message list if tool_call is in openai message
+// The tool content is appended to the bedrock message content list if tool_call is in openai message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleAssistant(
 	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
@@ -268,8 +272,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	return bedrockMessage, nil
 }
 
-// openAIMessageToBedrockMessageRoleSystem converts openai system role message
-// returns a list of bedrock system content and error
+// openAIMessageToBedrockMessageRoleSystem converts openai system role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleSystem(
 	openAiMessage *openai.ChatCompletionSystemMessageParam,
 ) (bedrockSystem []*awsbedrock.SystemContentBlock, err error) {
@@ -290,7 +293,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	return
 }
 
-// openAIMessageToBedrockMessageRoleTool converts openai tool role message
+// openAIMessageToBedrockMessageRoleTool converts openai tool role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
