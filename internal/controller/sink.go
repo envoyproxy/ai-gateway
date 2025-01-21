@@ -147,11 +147,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	var httpRoute gwapiv1.HTTPRoute
 	err = c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
-	if client.IgnoreNotFound(err) != nil {
-		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
-		return
-	}
-	if !existingRoute {
+	if apierrors.IsNotFound(err) {
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
@@ -161,6 +157,9 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
+	} else {
+		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		return
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
