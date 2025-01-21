@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_newCelProgram(t *testing.T) {
+func TestNewProgram(t *testing.T) {
 	t.Run("int", func(t *testing.T) {
 		_, err := NewProgram("1 + 1")
 		require.NoError(t, err)
@@ -16,28 +16,16 @@ func Test_newCelProgram(t *testing.T) {
 		_, err := NewProgram("uint(1) + uint(1)")
 		require.NoError(t, err)
 	})
-	t.Run("use cool_model", func(t *testing.T) {
+	t.Run("variables", func(t *testing.T) {
 		prog, err := NewProgram("model == 'cool_model' ?  input_tokens * output_tokens : total_tokens")
 		require.NoError(t, err)
-		out, _, err := prog.Eval(map[string]interface{}{
-			celModelNameKey:    "cool_model",
-			celBackendKey:      "cool_backend",
-			celInputTokensKey:  uint(100),
-			celOutputTokensKey: uint(2),
-			celTotalTokensKey:  uint(3),
-		})
+		v, err := EvaluateProgram(prog, "cool_model", "cool_backend", 100, 2, 3)
 		require.NoError(t, err)
-		require.Equal(t, uint64(200), out.Value().(uint64))
+		require.Equal(t, uint64(200), v)
 
-		out, _, err = prog.Eval(map[string]interface{}{
-			celModelNameKey:    "not_cool_model",
-			celBackendKey:      "cool_backend",
-			celInputTokensKey:  uint(1),
-			celOutputTokensKey: uint(2),
-			celTotalTokensKey:  uint(3),
-		})
+		v, err = EvaluateProgram(prog, "not_cool_model", "cool_backend", 100, 2, 3)
 		require.NoError(t, err)
-		require.Equal(t, uint64(3), out.Value().(uint64))
+		require.Equal(t, uint64(3), v)
 	})
 
 	t.Run("ensure concurrency safety", func(t *testing.T) {
