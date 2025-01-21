@@ -50,6 +50,16 @@ func TestE2E(t *testing.T) {
 	openAIAPIKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
 	requireRunEnvoy(t, accessLogPath, openAIAPIKey)
 	configPath := t.TempDir() + "/extproc-config.yaml"
+
+	// Test with APIKey.
+	apiKeyFilePath := t.TempDir() + "/open-ai-api-key"
+	file, err := os.Create(apiKeyFilePath)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, file.Close()) }()
+	_, err = file.WriteString(openAIAPIKey)
+	require.NoError(t, err)
+	require.NoError(t, file.Sync())
+
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
@@ -62,8 +72,10 @@ func TestE2E(t *testing.T) {
 		ModelNameHeaderKey:       "x-model-name",
 		Rules: []filterconfig.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema}},
-				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterconfig.BackendAuth{
+					APIKey: &filterconfig.APIKeyAuth{Filename: apiKeyFilePath},
+				}}},
+				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
 				Backends: []filterconfig.Backend{
@@ -73,6 +85,7 @@ func TestE2E(t *testing.T) {
 			},
 		},
 	})
+
 	requireExtProcWithAWSCredentials(t, configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
@@ -238,8 +251,7 @@ func requireTestUpstream(t *testing.T) {
 // requireRunEnvoy starts the Envoy proxy with the provided configuration.
 func requireRunEnvoy(t *testing.T, accessLogPath string, openAIAPIKey string) {
 	tmpDir := t.TempDir()
-	envoyYaml := strings.Replace(envoyYamlBase, "TEST_OPENAI_API_KEY", openAIAPIKey, 1)
-	envoyYaml = strings.Replace(envoyYaml, "ACCESS_LOG_PATH", accessLogPath, 1)
+	envoyYaml := strings.Replace(envoyYamlBase, "ACCESS_LOG_PATH", accessLogPath, 1)
 
 	// Write the envoy.yaml file.
 	envoyYamlPath := tmpDir + "/envoy.yaml"

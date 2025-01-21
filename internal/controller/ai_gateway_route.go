@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -43,24 +42,22 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 //
 // This handles the AIGatewayRoute resource and creates the necessary resources for the external process.
 type aiGatewayRouteController struct {
-	client              client.Client
-	kube                kubernetes.Interface
-	logger              logr.Logger
-	defaultExtProcImage string
-	eventChan           chan ConfigSinkEvent
+	client    client.Client
+	kube      kubernetes.Interface
+	logger    logr.Logger
+	eventChan chan ConfigSinkEvent
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	options Options, ch chan ConfigSinkEvent,
+	ch chan ConfigSinkEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &aiGatewayRouteController{
-		client:              client,
-		kube:                kube,
-		logger:              logger.WithName("ai-eg-route-controller"),
-		defaultExtProcImage: options.ExtProcImage,
-		eventChan:           ch,
+		client:    client,
+		kube:      kube,
+		logger:    logger.WithName("ai-gateway-route-controller"),
+		eventChan: ch,
 	}
 }
 
@@ -97,10 +94,7 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		logger.Error(err, "Failed to reconcile extProc config map")
 		return ctrl.Result{}, err
 	}
-	if err := c.reconcileExtProcDeployment(ctx, &aiGatewayRoute, ownerRef); err != nil {
-		logger.Error(err, "Failed to reconcile extProc deployment")
-		return ctrl.Result{}, err
-	}
+
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute, ownerRef); err != nil {
 		logger.Error(err, "Failed to reconcile extension policy")
 		return ctrl.Result{}, err
@@ -122,6 +116,7 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 	} else if client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("failed to get extension policy: %w", err)
 	}
+
 	pm := egv1a1.BufferedExtProcBodyProcessingMode
 	port := gwapiv1.PortNumber(1063)
 	objNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
@@ -174,97 +169,6 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-// reconcileExtProcDeployment reconciles the external processor's Deployment and Service.
-func (c *aiGatewayRouteController) reconcileExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
-	name := extProcName(aiGatewayRoute)
-	labels := map[string]string{"app": name, managedByLabel: "envoy-ai-gateway"}
-
-	deployment, err := c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Get(ctx, extProcName(aiGatewayRoute), metav1.GetOptions{})
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			deployment = &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            name,
-					Namespace:       aiGatewayRoute.Namespace,
-					OwnerReferences: ownerRef,
-					Labels:          labels,
-				},
-				Spec: appsv1.DeploymentSpec{
-					Selector: &metav1.LabelSelector{MatchLabels: labels},
-					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: labels},
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:            name,
-									Image:           c.defaultExtProcImage,
-									ImagePullPolicy: corev1.PullIfNotPresent,
-									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
-									Args: []string{
-										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", "info", // TODO: this should be configurable via FilterConfig API.
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "config",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: extProcName(aiGatewayRoute)},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
-			_, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to create deployment: %w", err)
-			}
-			c.logger.Info("Created deployment", "name", name)
-		} else {
-			return fmt.Errorf("failed to get deployment: %w", err)
-		}
-	} else {
-		applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
-		if _, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update deployment: %w", err)
-		}
-	}
-
-	// This is static, so we don't need to update it.
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       aiGatewayRoute.Namespace,
-			OwnerReferences: ownerRef,
-			Labels:          labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: labels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:        "grpc",
-					Protocol:    corev1.ProtocolTCP,
-					Port:        1063,
-					AppProtocol: ptr.To("grpc"),
-				},
-			},
-		},
-	}
-	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
-		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)
 	}
 	return nil
 }

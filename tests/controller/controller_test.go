@@ -219,12 +219,9 @@ func TestStartControllers(t *testing.T) {
 
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := tests.NewEnvTest(t)
-	opts := controller.Options{
-		ExtProcImage:         "envoyproxy/ai-gateway-extproc:foo",
-		EnableLeaderElection: false,
-	}
 	ch := make(chan controller.ConfigSinkEvent)
-	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), opts, ch)
+
+	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
@@ -288,24 +285,11 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		// Verify that they are the same.
 		created := item.(*aigv1a1.AIGatewayRoute)
+		require.Equal(t, "myroute", created.Name)
+		require.Equal(t, "AIGatewayRoute", created.Kind)
+
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
-
-		// Deployment must be created.
-		require.Eventually(t, func() bool {
-			deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName("myroute"), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName("myroute"), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, deployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", deployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(5), *deployment.Spec.Replicas)
-			require.Equal(t, resourceReq, &deployment.Spec.Template.Spec.Containers[0].Resources)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -328,22 +312,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 		created := item.(*aigv1a1.AIGatewayRoute)
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
-
-		// Deployment must be updated.
-		require.Eventually(t, func() bool {
-			deployment, err := k.AppsV1().Deployments("default").Get(ctx, extProcName("myroute"), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName("myroute"), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", deployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, deployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", deployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", deployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(3), *deployment.Spec.Replicas)
-			require.Equal(t, newResource, &deployment.Spec.Template.Spec.Containers[0].Resources)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
 
