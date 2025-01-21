@@ -3,10 +3,10 @@
 package extproc
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -36,8 +36,13 @@ func TestExtProcCustomRouter(t *testing.T) {
 			},
 		},
 	})
-	stdout := &bytes.Buffer{}
-	requireExtProc(t, stdout, fmt.Sprintf("../../out/extproc_custom_router-%s-%s",
+	stdoutPath := t.TempDir() + "/extproc-stdout.log"
+	f, err := os.Create(stdoutPath)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	requireExtProc(t, f, fmt.Sprintf("../../out/extproc_custom_router-%s-%s",
 		runtime.GOOS, runtime.GOARCH), configPath)
 
 	require.Eventually(t, func() bool {
@@ -63,5 +68,12 @@ func TestExtProcCustomRouter(t *testing.T) {
 		return true
 	}, 10*time.Second, 1*time.Second)
 
-	require.Contains(t, stdout.String(), "model name: something-cool") // This must be logged by the custom router.
+	// Check that the custom router logs the model name after the file is closed.
+	defer func() {
+
+		stdout, err := os.ReadFile(stdoutPath)
+		require.NoError(t, err)
+		t.Logf("stdout: %s", stdout)
+		require.Contains(t, string(stdout), "model name: something-cool") // This must be logged by the custom router.
+	}()
 }
