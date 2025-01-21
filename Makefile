@@ -19,8 +19,10 @@ ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
 
 # Arguments for go test. This can be used, for example, to run specific tests via
-# `GO_TEST_EXTRA_ARGS="-run TestName/foo/etc"`.
-GO_TEST_EXTRA_ARGS ?=
+# `GO_TEST_ARGS="-run TestName/foo/etc" -v -race`.
+GO_TEST_ARGS ?= -v -race
+# Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
+GO_TEST_E2E_ARGS ?= -count=1
 
 # This will print out the help message for contributing to the project.
 .PHONY: help
@@ -115,7 +117,7 @@ test-cel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/cel-validation $(GO_TEST_EXTRA_ARGS) --tags test_cel_validation -v -count=1; \
+                 go test ./tests/cel-validation $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_cel_validation; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
@@ -127,7 +129,7 @@ test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_EXTRA_ARGS) -tags test_extproc -v -count=1
+	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc -v
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
@@ -135,7 +137,7 @@ test-controller: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/controller $(GO_TEST_EXTRA_ARGS) --tags test_controller -v -count=1; \
+                 go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
@@ -146,7 +148,7 @@ test-e2e: kind
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
-	@go test ./tests/e2e/... $(GO_TEST_EXTRA_ARGS) -tags test_e2e -v -count=1
+	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
 # This builds a binary for the given command under the internal/cmd directory.
 #
