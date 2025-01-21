@@ -60,8 +60,8 @@ func TestWithTestUpstream(t *testing.T) {
 		method,
 		// requestBody is the request requestBody.
 		requestBody,
-		// respBody is the response body to return from the test upstream.
-		respBody,
+		// responseBody is the response body to return from the test upstream.
+		responseBody,
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
 		// expStatus is the expected status code from the gateway.
@@ -70,24 +70,35 @@ func TestWithTestUpstream(t *testing.T) {
 		expBody string
 	}{
 		{
-			name:        "unknown path",
-			backend:     "openai",
-			path:        "/unknown",
-			method:      http.MethodPost,
-			requestBody: `{"prompt": "hello"}`,
-			respBody:    `{"error": "unknown path"}`,
-			expPath:     "/unknown",
-			expStatus:   http.StatusInternalServerError,
+			name:         "unknown path",
+			backend:      "openai",
+			path:         "/unknown",
+			method:       http.MethodPost,
+			requestBody:  `{"prompt": "hello"}`,
+			responseBody: `{"error": "unknown path"}`,
+			expPath:      "/unknown",
+			expStatus:    http.StatusInternalServerError,
 		},
 		{
-			name:        "aws - /v1/chat/completions",
-			backend:     "aws-bedrock",
-			path:        "/v1/chat/completions",
-			requestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
-			expPath:     "/model/something/converse",
-			respBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
-			expStatus:   http.StatusOK,
-			expBody:     `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"response","role":"assistant"}},{"finish_reason":"stop","index":1,"logprobs":{},"message":{"content":"from","role":"assistant"}},{"finish_reason":"stop","index":2,"logprobs":{},"message":{"content":"assistant","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			name:         "aws - /v1/chat/completions",
+			backend:      "aws-bedrock",
+			path:         "/v1/chat/completions",
+			requestBody:  `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:      "/model/something/converse",
+			responseBody: `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expStatus:    http.StatusOK,
+			expBody:      `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"response","role":"assistant"}},{"finish_reason":"stop","index":1,"logprobs":{},"message":{"content":"from","role":"assistant"}},{"finish_reason":"stop","index":2,"logprobs":{},"message":{"content":"assistant","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+		},
+		{
+			name:         "openai - /v1/chat/completions",
+			backend:      "openai",
+			path:         "/v1/chat/completions",
+			method:       http.MethodPost,
+			requestBody:  `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:      "/v1/chat/completions",
+			responseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:    http.StatusOK,
+			expBody:      `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,7 +106,7 @@ func TestWithTestUpstream(t *testing.T) {
 				req, err := http.NewRequest(tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 				require.NoError(t, err)
 				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(tc.respBody)))
+				req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 
 				resp, err := http.DefaultClient.Do(req)
@@ -113,7 +124,7 @@ func TestWithTestUpstream(t *testing.T) {
 					body, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
 					if string(body) != tc.expBody {
-						t.Logf("unexpected requestBody: %s", body)
+						t.Logf("unexpected response:\ngot: %s\nexp: %s", body, tc.expBody)
 						return false
 					}
 				}
