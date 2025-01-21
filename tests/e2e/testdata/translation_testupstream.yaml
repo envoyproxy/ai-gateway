@@ -59,7 +59,6 @@ spec:
     name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
-    port: 80
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -73,7 +72,6 @@ spec:
     name: testupstream-canary
     kind: Backend
     group: gateway.envoyproxy.io
-    port: 80
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
