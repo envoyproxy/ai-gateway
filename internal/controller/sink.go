@@ -190,8 +190,9 @@ func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolic
 		c.logger.Error(err, "failed to list AIServiceBackendList", "backendSecurityPolicy", key)
 		return
 	}
-	for _, aiBackend := range aiServiceBackends.Items {
-		c.syncAIServiceBackend(&aiBackend)
+	for i := range aiServiceBackends.Items {
+		aiBackend := &aiServiceBackends.Items[i]
+		c.syncAIServiceBackend(aiBackend)
 	}
 }
 
