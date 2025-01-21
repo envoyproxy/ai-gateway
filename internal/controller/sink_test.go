@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"testing"
 	"time"
 
@@ -455,6 +456,13 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
+					},
+				},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
 					},
 				},
 			},

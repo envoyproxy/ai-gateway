@@ -27,7 +27,7 @@ func Test_extProcName(t *testing.T) {
 			Name: "myroute",
 		},
 	})
-	require.Equal(t, "ai-eg-route-extproc-myroute", actual)
+	require.Equal(t, "ai-gateway-route-extproc-myroute", actual)
 }
 
 func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {

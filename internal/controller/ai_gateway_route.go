@@ -174,7 +174,7 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 }
 
 func extProcName(route *aigv1a1.AIGatewayRoute) string {
-	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
+	return fmt.Sprintf("ai-gateway-route-extproc-%s", route.Name)
 }
 
 func ownerReferenceForAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {
