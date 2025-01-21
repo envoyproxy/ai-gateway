@@ -285,6 +285,9 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		// Verify that they are the same.
 		created := item.(*aigv1a1.AIGatewayRoute)
+		require.Equal(t, "myroute", created.Name)
+		require.Equal(t, "AIGatewayRoute", created.Kind)
+
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
 	})
