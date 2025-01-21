@@ -10,6 +10,7 @@ GO_FUMPT = $(LOCALBIN)/gofumpt
 GCI = $(LOCALBIN)/gci
 EDITORCONFIG_CHECKER = $(LOCALBIN)/editorconfig-checker
 CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
+YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 KIND ?= $(LOCALBIN)/kind
 
 ## Tool versions.
@@ -62,6 +63,8 @@ $(KIND): $(LOCALBIN)
 	$@/bin/pip3 install $$(echo $* | sed 's/@/==/')
 
 $(CODESPELL): .bin/.venv/codespell@v2.3.0
+
+$(YAMLLINT): .bin/.venv/yamllint@1.35.1
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

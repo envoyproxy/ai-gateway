@@ -205,11 +205,11 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, httpRoute.Spec.Rules, 3) // 2 for backends, 1 for the default backend.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-envoy-ai-gateway-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend1.default", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 				require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
-				require.Equal(t, "x-envoy-ai-gateway-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
+				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
 				return true
 			}, 30*time.Second, 200*time.Millisecond)

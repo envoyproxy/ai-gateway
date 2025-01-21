@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,12 +20,16 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
+const (
+	defaultAddress  = ":1063"
+	defaultLogLevel = "info"
+)
+
 var (
 	configPath = flag.String("configPath", "", "path to the configuration file. "+
 		"The file must be in YAML format specified in extprocconfig.Config type. The configuration file is watched for changes.")
-	// TODO: unix domain socket support.
-	extProcPort = flag.String("extProcPort", ":1063", "gRPC port for the external processor")
-	logLevel    = flag.String("logLevel", "info", "log level")
+	extProcAddr = flag.String("extProcAddr", defaultAddress, "gRPC address for the external processor")
+	logLevel    = flag.String("logLevel", defaultLogLevel, "log level")
 )
 
 // Main is a main function for the external processor exposed
@@ -40,7 +45,9 @@ func Main() {
 		Level: level,
 	}))
 
-	l.Info("starting external processor", slog.String("version", version.Version))
+	l.Info("starting external processor",
+		slog.String("version", version.Version),
+		slog.String("address", *extProcAddr))
 
 	if *configPath == "" {
 		log.Fatal("configPath must be provided")
@@ -54,8 +61,7 @@ func Main() {
 		cancel()
 	}()
 
-	// TODO: unix domain socket support.
-	lis, err := net.Listen("tcp", *extProcPort)
+	lis, err := net.Listen(listenAddress(*extProcAddr))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -77,4 +83,15 @@ func Main() {
 		s.GracefulStop()
 	}()
 	_ = s.Serve(lis)
+}
+
+// listenAddress returns the network and address for the given address flag.
+func listenAddress(addrFlag string) (string, string) {
+	if addrFlag == "" {
+		return "tcp", defaultAddress
+	}
+	if strings.HasPrefix(addrFlag, "unix://") {
+		return "unix", strings.TrimPrefix(addrFlag, "unix://")
+	}
+	return "tcp", addrFlag
 }

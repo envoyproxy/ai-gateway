@@ -229,7 +229,7 @@ spec:
                   modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
                   the transformation of the request and response, etc.
 
-                  In the matching conditions in the AIGatewayRouteRule, `x-envoy-ai-gateway-model` header is available
+                  In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available
                   if we want to describe the routing behavior based on the model name. The model name is extracted
                   from the request content before the routing decision.
 

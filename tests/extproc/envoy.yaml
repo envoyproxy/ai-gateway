@@ -55,8 +55,6 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                       allow_mode_override: true
-                      mutation_rules:
-                        allow_all_routing: true
                       processing_mode:
                         request_header_mode: "SEND"
                         response_header_mode: "SEND"

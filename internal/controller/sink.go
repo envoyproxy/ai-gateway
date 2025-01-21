@@ -18,7 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
-const selectedBackendHeaderKey = "x-envoy-ai-gateway-selected-backend"
+const selectedBackendHeaderKey = "x-ai-eg-selected-backend"
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
 //
