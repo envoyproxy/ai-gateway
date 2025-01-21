@@ -55,10 +55,10 @@ func TestE2E(t *testing.T) {
 	apiKeyFilePath := t.TempDir() + "/open-ai-api-key"
 	file, err := os.Create(apiKeyFilePath)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, file.Close()) }()
 	_, err = file.WriteString(openAIAPIKey)
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
-	require.NoError(t, file.Close())
 
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
