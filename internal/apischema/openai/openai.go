@@ -695,7 +695,7 @@ type ChatCompletionResponseChunkChoice struct {
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
 	Content   *string                              `json:"content,omitempty"`
-	Role      *string                              `json:"role,omitempty"`
+	Role      string                               `json:"role"`
 	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 }
 

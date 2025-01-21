@@ -389,6 +389,7 @@ type ConverseStreamEvent struct {
 	Role              *string                               `json:"role,omitempty"`
 	StopReason        *string                               `json:"stopReason,omitempty"`
 	Usage             *TokenUsage                           `json:"usage,omitempty"`
+	Start             *ContentBlockStart                    `json:"start,omitempty"`
 }
 
 // String implements fmt.Stringer.
@@ -400,7 +401,27 @@ func (c ConverseStreamEvent) String() string {
 // ConverseStreamEventContentBlockDelta is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlockDelta.html
 type ConverseStreamEventContentBlockDelta struct {
-	Text string `json:"text,omitempty"`
+	Text    *string            `json:"text,omitempty"`
+	ToolUse *ToolUseBlockDelta `json:"toolUse,omitempty"`
+}
+
+// ContentBlockStart is the start information.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlockStart.html
+type ContentBlockStart struct {
+	ToolUse *ToolUseBlockStart `json:"toolUse,omitempty"`
+}
+
+// ToolUseBlockStart is the start of a tool use block.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolUseBlockStart.html
+type ToolUseBlockStart struct {
+	Name      string `json:"name"`
+	ToolUseID string `json:"toolUseId"`
+}
+
+// ToolUseBlockDelta is the delta for a tool use block.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolUseBlockDelta.html
+type ToolUseBlockDelta struct {
+	Input string `json:"input"`
 }
 
 type BedrockException struct {
