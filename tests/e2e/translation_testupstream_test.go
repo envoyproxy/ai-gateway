@@ -70,7 +70,7 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 						option.WithHeader("x-response-body",
 							base64.StdEncoding.EncodeToString([]byte(tc.fakeResponseBody)),
 						),
-						option.WithHeader("x-expected-host", "testupstream"),
+						option.WithHeader("x-expected-host", tc.expHost),
 					)
 
 					chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
