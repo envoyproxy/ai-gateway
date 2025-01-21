@@ -105,7 +105,7 @@ editorconfig: editorconfig-checker
 .PHONY: test
 test:
 	@echo "test => ./..."
-	@go test -v -race ./...
+	@go test $(GO_TEST_ARGS) ./...
 
 ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 
