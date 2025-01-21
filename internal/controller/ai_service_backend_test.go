@@ -110,7 +110,7 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 
 	require.NoError(t, c.List(context.Background(), &aiServiceBackend,
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-2.ns"}))
-	require.Len(t, aiServiceBackend.Items, 0)
+	require.Empty(t, aiServiceBackend.Items)
 
 	require.NoError(t, c.List(context.Background(), &aiServiceBackend,
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-3.ns"}))

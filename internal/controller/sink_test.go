@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
@@ -375,7 +376,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "envoyproxy/ai-gateway-extproc:foo")
 	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
 	require.NoError(t, err)
 
@@ -399,7 +400,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
-					Schema: aigv1a1.APISchemaAWSBedrock,
+					Name: aigv1a1.APISchemaAWSBedrock,
 				},
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
@@ -439,7 +440,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 					},
 				},
 			},
-			APISchema: aigv1a1.VersionedAPISchema{Schema: aigv1a1.APISchemaOpenAI, Version: "v123"},
+			APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -463,33 +464,65 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 	err = fakeClient.Create(context.Background(), aiGatewayRoute, &client.CreateOptions{})
 	require.NoError(t, err)
 
-	err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
-	require.NoError(t, err)
+	t.Run("create", func(t *testing.T) {
+		err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+		require.NoError(t, err)
 
-	extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.NotNil(t, extProcDeployment)
-	require.Equal(t, extProcName(aiGatewayRoute), extProcDeployment.Name)
-	require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
-	require.Equal(t, ownerReferenceForAIGatewayRoute(aiGatewayRoute), extProcDeployment.OwnerReferences)
-	require.Equal(t, corev1.ResourceRequirements{
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("200m"),
-			corev1.ResourceMemory: resource.MustParse("100Mi"),
-		},
-	}, extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
-	service, err := s.kube.CoreV1().Services("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, extProcName(aiGatewayRoute), service.Name)
+		resourceLimits := &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+			},
+		}
+		require.Eventually(t, func() bool {
+			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+			if err != nil {
+				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
+				return false
+			}
+			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+			require.Len(t, extProcDeployment.OwnerReferences, 1)
+			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+			require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
+			require.Equal(t, resourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
 
-	// Update fields in resource again
-	// Doing it again should not fail and update the deployment.
-	aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
-	require.NoError(t, s.syncExtProcDeployment(context.Background(), aiGatewayRoute))
-	// Check the deployment is updated.
-	extProcDeployment, err = s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
+		service, err := s.kube.CoreV1().Services("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, extProcName(aiGatewayRoute), service.Name)
+	})
+
+	t.Run("update", func(t *testing.T) {
+		// Update fields in resource again
+		// Doing it again should not fail and update the deployment.
+		newResourceLimits := &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("300m"),
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+		}
+		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Resources = newResourceLimits
+		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
+
+		require.NoError(t, s.syncExtProcDeployment(context.Background(), aiGatewayRoute))
+		// Check the deployment is updated.
+		require.Eventually(t, func() bool {
+			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+			if err != nil {
+				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
+				return false
+			}
+			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+			require.Len(t, extProcDeployment.OwnerReferences, 1)
+			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+			require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
+			require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
+	})
 }
 
 func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
@@ -541,7 +574,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			APISchema: aigv1a1.VersionedAPISchema{
-				Schema: aigv1a1.APISchemaAWSBedrock,
+				Name: aigv1a1.APISchemaAWSBedrock,
 			},
 			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-1"},
@@ -611,7 +644,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			APISchema: aigv1a1.VersionedAPISchema{
-				Schema: aigv1a1.APISchemaAWSBedrock,
+				Name: aigv1a1.APISchemaAWSBedrock,
 			},
 			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-2"},
