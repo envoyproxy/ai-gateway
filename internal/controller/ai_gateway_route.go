@@ -56,7 +56,7 @@ func NewAIGatewayRouteController(
 	return &aiGatewayRouteController{
 		client:    client,
 		kube:      kube,
-		logger:    logger.WithName("ai-eg-route-controller"),
+		logger:    logger.WithName("ai-gateway-route-controller"),
 		eventChan: ch,
 	}
 }
