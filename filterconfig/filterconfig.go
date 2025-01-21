@@ -161,7 +161,6 @@ type Backend struct {
 
 // BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type BackendAuth struct {
-
 	AWSAuth *AWSAuth `yaml:"aws,omitempty"`
 
 	// APIKey is a location of the api key secret file.
