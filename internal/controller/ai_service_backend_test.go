@@ -44,7 +44,7 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		WithIndex(&aigv1a1.AIServiceBackend{}, k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc).
 		Build()
 
-	// Create Backend Security Policies
+	// Create Backend Security Policies.
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-1", Namespace: "ns"},
