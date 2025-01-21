@@ -151,6 +151,7 @@ func Test_main(t *testing.T) {
 		expectedHeaders := []byte("x-foo:bar,x-baz:qux")
 		request.Header.Set(expectedHeadersKey,
 			base64.StdEncoding.EncodeToString(expectedHeaders))
+		request.Header.Set(responseStatusKey, "404")
 		request.Header.Set("x-foo", "bar")
 		request.Header.Set("x-baz", "qux")
 
@@ -169,7 +170,7 @@ func Test_main(t *testing.T) {
 			_ = response.Body.Close()
 		}()
 
-		require.Equal(t, http.StatusOK, response.StatusCode)
+		require.Equal(t, http.StatusNotFound, response.StatusCode)
 
 		responseBody, err := io.ReadAll(response.Body)
 		require.NoError(t, err)
