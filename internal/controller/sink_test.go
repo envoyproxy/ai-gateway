@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"testing"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
