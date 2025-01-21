@@ -42,6 +42,8 @@ const (
 	// If the values do not match, the request will be rejected, meaning that the request
 	// was routed to the wrong upstream.
 	expectedTestUpstreamIDKey = "x-expected-testupstream-id"
+	// expectedHostKey is the key for the expected host in the request.
+	expectedHostKey = "x-expected-host"
 )
 
 // main starts a server that listens on port 1063 and responds with the expected response body and headers
@@ -122,6 +124,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range r.Header {
 		fmt.Printf("header %q: %s\n", k, v)
 	}
+	if v := r.Header.Get(expectedHostKey); v != "" {
+		if r.Host != v {
+			fmt.Printf("unexpected host: got %q, expected %q\n", r.Host, v)
+			http.Error(w, "unexpected host: got "+r.Host+", expected "+v, http.StatusBadRequest)
+			return
+		}
+		fmt.Println("host matched:", v)
+	} else {
+		fmt.Println("no expected host: got", r.Host)
+	}
 	if v := r.Header.Get(expectedHeadersKey); v != "" {
 		expectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
@@ -146,6 +158,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unexpected header "+key+": got "+r.Header.Get(key)+", expected "+value, http.StatusBadRequest)
 				return
 			}
+
 			fmt.Printf("header %q matched %s\n", key, value)
 		}
 	} else {

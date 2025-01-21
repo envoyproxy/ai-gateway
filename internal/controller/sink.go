@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +19,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 )
 
-const selectedBackendHeaderKey = "x-ai-eg-selected-backend"
+const (
+	selectedBackendHeaderKey  = "x-ai-eg-selected-backend"
+	hostRewriteHTTPFilterName = "ai-eg-host-rewrite"
+)
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
 //
@@ -110,10 +114,37 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 }
 
 func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
+	// Check if the HTTPRouteFilter exists in the namespace.
+	var httpRouteFilter egv1a1.HTTPRouteFilter
+	err := c.client.Get(context.Background(),
+		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
+	if client.IgnoreNotFound(err) != nil {
+		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
+		return
+	} else if err != nil {
+		httpRouteFilter = egv1a1.HTTPRouteFilter{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hostRewriteHTTPFilterName,
+				Namespace: aiGatewayRoute.Namespace,
+			},
+			Spec: egv1a1.HTTPRouteFilterSpec{
+				URLRewrite: &egv1a1.HTTPURLRewriteFilter{
+					Hostname: &egv1a1.HTTPHostnameModifier{
+						Type: egv1a1.BackendHTTPHostnameModifier,
+					},
+				},
+			},
+		}
+		if err := c.client.Create(context.Background(), &httpRouteFilter); err != nil {
+			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
+			return
+		}
+	}
+
 	// Check if the HTTPRoute exists.
 	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
-	err := c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
+	err = c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
 	if client.IgnoreNotFound(err) != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
@@ -309,6 +340,16 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 			},
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
+			},
+			Filters: []gwapiv1.HTTPRouteFilter{
+				{
+					Type: gwapiv1.HTTPRouteFilterExtensionRef,
+					ExtensionRef: &gwapiv1.LocalObjectReference{
+						Group: "gateway.envoyproxy.io",
+						Kind:  "HTTPRouteFilter",
+						Name:  hostRewriteHTTPFilterName,
+					},
+				},
 			},
 		}
 		rules[i] = rule
