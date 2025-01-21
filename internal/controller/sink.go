@@ -331,6 +331,16 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 	}
 
+	rewriteFitlers := []gwapiv1.HTTPRouteFilter{
+		{
+			Type: gwapiv1.HTTPRouteFilterExtensionRef,
+			ExtensionRef: &gwapiv1.LocalObjectReference{
+				Group: "gateway.envoyproxy.io",
+				Kind:  "HTTPRouteFilter",
+				Name:  hostRewriteHTTPFilterName,
+			},
+		},
+	}
 	rules := make([]gwapiv1.HTTPRouteRule, len(backends))
 	for i, b := range backends {
 		key := fmt.Sprintf("%s.%s", b.Name, b.Namespace)
@@ -341,16 +351,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
 			},
-			Filters: []gwapiv1.HTTPRouteFilter{
-				{
-					Type: gwapiv1.HTTPRouteFilterExtensionRef,
-					ExtensionRef: &gwapiv1.LocalObjectReference{
-						Group: "gateway.envoyproxy.io",
-						Kind:  "HTTPRouteFilter",
-						Name:  hostRewriteHTTPFilterName,
-					},
-				},
-			},
+			Filters: rewriteFitlers,
 		}
 		rules[i] = rule
 	}
@@ -363,6 +364,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		BackendRefs: []gwapiv1.HTTPBackendRef{
 			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 		},
+		Filters: rewriteFitlers,
 	})
 
 	dst.Spec.Rules = rules

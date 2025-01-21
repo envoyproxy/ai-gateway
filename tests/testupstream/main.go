@@ -158,7 +158,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unexpected header "+key+": got "+r.Header.Get(key)+", expected "+value, http.StatusBadRequest)
 				return
 			}
-
 			fmt.Printf("header %q matched %s\n", key, value)
 		}
 	} else {
