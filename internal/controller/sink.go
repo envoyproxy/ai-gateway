@@ -8,6 +8,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -118,10 +119,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	err := c.client.Get(context.Background(),
 		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
-	if client.IgnoreNotFound(err) != nil {
-		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
-		return
-	} else if err != nil {
+	if apierrors.IsNotFound(err) {
 		httpRouteFilter = egv1a1.HTTPRouteFilter{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      hostRewriteHTTPFilterName,
@@ -139,6 +137,9 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
 			return
 		}
+	} else if err != nil {
+		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
+		return
 	}
 
 	// Check if the HTTPRoute exists.
