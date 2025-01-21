@@ -82,10 +82,8 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		// Then sync.
+		// Then sync, which should update the HTTPRoute.
 		s.syncAIGatewayRoute(route)
-		// Referencing backends should be updated.
-		// Also HTTPRoute should be updated.
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
