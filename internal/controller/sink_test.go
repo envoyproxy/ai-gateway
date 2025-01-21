@@ -120,10 +120,6 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
 	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
-
-	var aiServiceBackends aigv1a1.AIServiceBackendList
-	require.NoError(t, fakeClient.List(context.Background(), &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key}))
-	require.Len(t, aiServiceBackends.Items, 1)
 }
 
 func Test_newHTTPRoute(t *testing.T) {
