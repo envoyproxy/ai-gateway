@@ -68,12 +68,12 @@ func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, o
 	case cel.IntType:
 		result := out.Value().(int64)
 		if result < 0 {
-			return 0, fmt.Errorf("CEL expression result is negative")
+			return 0, fmt.Errorf("CEL expression result is negative (%d)", result)
 		}
 		return uint64(result), nil
 	case cel.UintType:
 		return out.Value().(uint64), nil
 	default:
-		return 0, fmt.Errorf("CEL expression result is not an integer")
+		return 0, fmt.Errorf("CEL expression result is not an integer, got %v", out.Type())
 	}
 }
