@@ -72,7 +72,6 @@ func TestE2E(t *testing.T) {
 		Rules: []filterconfig.RouteRule{
 			{
 				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterconfig.BackendAuth{
-					Type:   filterconfig.AuthTypeAPIKey,
 					APIKey: &filterconfig.APIKeyAuth{Filename: apiKeyFilePath},
 				}}},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
