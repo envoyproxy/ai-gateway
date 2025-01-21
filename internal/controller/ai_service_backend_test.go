@@ -68,7 +68,7 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		require.NoError(t, c.Create(context.Background(), bsp, &client.CreateOptions{}))
 	}
 
-	// Create Ai Service Backends
+	// Create AI Service Backends.
 	for _, backend := range []*aigv1a1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"},
