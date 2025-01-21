@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -27,6 +28,8 @@ const (
 	// expectedRequestBodyHeaderKey is the key for the expected request body in the request.
 	// The value is a base64 encoded.
 	expectedRequestBodyHeaderKey = "x-expected-request-body"
+	// responseStatusKey is the key for the response status in the response, default is 200 if not set.
+	responseStatusKey = "x-response-status"
 	// responseHeadersKey is the key for the response headers in the response.
 	// The value is a base64 encoded string of comma separated key-value pairs.
 	// E.g. "key1:value1,key2:value2".
@@ -258,11 +261,20 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
-	w.WriteHeader(http.StatusOK)
+	status := http.StatusOK
+	if v := r.Header.Get(responseStatusKey); v != "" {
+		status, err = strconv.Atoi(v)
+		if err != nil {
+			fmt.Println("failed to parse the response status")
+			http.Error(w, "failed to parse the response status", http.StatusBadRequest)
+			return
+		}
+	}
+	w.WriteHeader(status)
 	if _, err := w.Write(responseBody); err != nil {
 		log.Println("failed to write the response body")
 	}
-	fmt.Println("response sent")
+	fmt.Println("response sent:", string(responseBody))
 }
 
 func awsEventStreamHandler(w http.ResponseWriter, r *http.Request) {
