@@ -29,6 +29,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
+		{name: "llmcosts.yaml"},
 		{
 			name:   "non_openai_schema.yaml",
 			expErr: `spec.schema: Invalid value: "object": failed rule: self.name == 'OpenAI'`,

@@ -54,6 +54,7 @@ func TestE2E(t *testing.T) {
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
+			{MetadataKey: "some_cel", Type: filterconfig.LLMRequestCostTypeCELExpression, CELExpression: "1 + 1"},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
@@ -118,6 +119,7 @@ func TestE2E(t *testing.T) {
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
 				UsedToken any `json:"used_token"`
+				SomeCel   any `json:"some_cel"`
 			}
 			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
 			for scanner.Scan() {
@@ -130,14 +132,15 @@ func TestE2E(t *testing.T) {
 				t.Logf("line: %s", line)
 				// The access formatter somehow changed its behavior sometimes between 1.31 and the latest Envoy,
 				// so we need to check for both float64 and string.
-				if num, ok := l.UsedToken.(float64); ok && num > 0 {
-					return true
-				} else if str, ok := l.UsedToken.(string); ok {
-					if num, err := strconv.Atoi(str); err == nil && num > 0 {
-						return true
-					}
+				if !anyCostGreaterThanZero(l.SomeCel) {
+					t.Log("some_cel is not existent or greater than zero")
+					continue
 				}
-				t.Log("cannot find used token in line")
+				if !anyCostGreaterThanZero(l.UsedToken) {
+					t.Log("used_token is not existent or greater than zero")
+					continue
+				}
+				return true
 			}
 			return false
 		}, 10*time.Second, 1*time.Second)
@@ -272,6 +275,19 @@ func requireBinaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s binary not found in the root of the repository", testUpstreamExecutablePath())
 	}
+}
+
+func anyCostGreaterThanZero(cost any) bool {
+	// The access formatter somehow changed its behavior sometimes between 1.31 and the latest Envoy,
+	// so we need to check for both float64 and string.
+	if num, ok := cost.(float64); ok && num > 0 {
+		return true
+	} else if str, ok := cost.(string); ok {
+		if num, err := strconv.Atoi(str); err == nil && num > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // getEnvVarOrSkip requires an environment variable to be set.

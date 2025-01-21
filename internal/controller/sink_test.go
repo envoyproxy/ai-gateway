@@ -276,6 +276,15 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							Type:        aigv1a1.LLMRequestCostTypeInputToken,
 							MetadataKey: "input-token",
 						},
+						{
+							Type:        aigv1a1.LLMRequestCostTypeTotalToken,
+							MetadataKey: "total-token",
+						},
+						{
+							Type:          aigv1a1.LLMRequestCostTypeCEL,
+							MetadataKey:   "cel-token",
+							CELExpression: ptr.To("model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"),
+						},
 					},
 				},
 			},
@@ -299,6 +308,8 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				LLMRequestCosts: []filterconfig.LLMRequestCost{
 					{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
 					{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
+					{Type: filterconfig.LLMRequestCostTypeTotalToken, MetadataKey: "total-token"},
+					{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel-token", CELExpression: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
 				},
 			},
 		},
