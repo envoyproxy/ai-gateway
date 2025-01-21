@@ -47,6 +47,7 @@ func TestWithRealProviders(t *testing.T) {
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
+			{MetadataKey: "some_cel", Type: filterconfig.LLMRequestCostTypeCELExpression, CELExpression: "1+1"},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
