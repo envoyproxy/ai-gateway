@@ -428,6 +428,9 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+		TypeMeta: metav1.TypeMeta{
+			Kind: "AIGatewayRoute", // aiGatewayRoute controller typically adds these type meta
+		},
 		Spec: aigv1a1.AIGatewayRouteSpec{
 			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
 				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
@@ -469,8 +472,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 		},
 	}
 
-	err = fakeClient.Create(context.Background(), aiGatewayRoute, &client.CreateOptions{})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), aiGatewayRoute, &client.CreateOptions{}))
 
 	t.Run("create", func(t *testing.T) {
 		err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
