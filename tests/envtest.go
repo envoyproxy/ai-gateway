@@ -28,12 +28,15 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	for _, file := range files {
 		crds = append(crds, filepath.Join(crdPath, file.Name()))
 	}
-	const (
-		extensionPolicyURL = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.4/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_envoyextensionpolicies.yaml"
-		httpRouteURL       = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml"
-	)
-	crds = append(crds, requireThirdPartyCRDDownloaded(t, "envoyextensionpolicies_crd_for_tests.yaml", extensionPolicyURL))
-	crds = append(crds, requireThirdPartyCRDDownloaded(t, "httproutes_crd_for_tests.yaml", httpRouteURL))
+
+	for _, url := range []string{
+		"https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.4/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_envoyextensionpolicies.yaml",
+		"https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.5/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_httproutefilters.yaml",
+		"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml",
+	} {
+		path := filepath.Base(url) + "_for_tests.yaml"
+		crds = append(crds, requireThirdPartyCRDDownloaded(t, path, url))
+	}
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
 	cfg, err = env.Start()
