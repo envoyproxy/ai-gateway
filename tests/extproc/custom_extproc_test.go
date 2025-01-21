@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	openai "github.com/openai/openai-go"
+	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
@@ -70,7 +70,6 @@ func TestExtProcCustomRouter(t *testing.T) {
 
 	// Check that the custom router logs the model name after the file is closed.
 	defer func() {
-
 		stdout, err := os.ReadFile(stdoutPath)
 		require.NoError(t, err)
 		t.Logf("stdout: %s", stdout)
