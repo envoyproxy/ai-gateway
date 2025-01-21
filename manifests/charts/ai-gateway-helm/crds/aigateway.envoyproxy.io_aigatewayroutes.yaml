@@ -254,15 +254,17 @@ spec:
                             minLength: 1
                             type: string
                           weight:
+                            default: 1
                             description: |-
                               Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
                               the BackendRef in the Gateway API. See for the details:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
+
+                              Default is 1.
                             minimum: 0
                             type: integer
                         required:
                         - name
-                        - weight
                         type: object
                       maxItems: 128
                       type: array

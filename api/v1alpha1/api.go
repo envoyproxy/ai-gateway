@@ -207,9 +207,12 @@ type AIGatewayRouteRuleBackendRef struct {
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 	//
-	// +kubebuilder:validation:Required
+	// Default is 1.
+	//
+	// +optional
 	// +kubebuilder:validation:Minimum=0
-	Weight int `json:"weight"`
+	// +kubebuilder:default=1
+	Weight int `json:"weight,omitempty"`
 }
 
 type AIGatewayRouteRuleMatch struct {
