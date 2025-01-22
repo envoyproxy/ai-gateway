@@ -24,9 +24,6 @@ func TestAWSHandler_Do(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 
-	envHandler, err := newAWSHandler(nil)
-	require.NoError(t, err)
-
 	// Test AWS credential file.
 	awsFileBody := "[default]\nAWS_ACCESS_KEY_ID=test\nAWS_SECRET_ACCESS_KEY=secret\n"
 	awsCredentialFile := t.TempDir() + "/aws_handler"
@@ -47,10 +44,6 @@ func TestAWSHandler_Do(t *testing.T) {
 		name    string
 		handler *awsHandler
 	}{
-		{
-			name:    "Using ENV",
-			handler: envHandler,
-		},
 		{
 			name:    "Using AWS Credential File",
 			handler: credentialFileHandler,

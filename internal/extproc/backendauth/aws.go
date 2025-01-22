@@ -48,14 +48,8 @@ func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 				return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
 			}
 		}
-	}
-
-	if !credentials.HasKeys() {
-		cfg, err := config.NewEnvConfig()
-		if err != nil {
-			return nil, fmt.Errorf("cannot create AWS config: %w", err)
-		}
-		credentials = cfg.Credentials
+	} else {
+		return nil, fmt.Errorf("aws auth configuration is required")
 	}
 
 	signer := v4.NewSigner()
