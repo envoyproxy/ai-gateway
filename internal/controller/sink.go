@@ -331,7 +331,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 	}
 
-	rewriteFitlers := []gwapiv1.HTTPRouteFilter{
+	rewriteFilters := []gwapiv1.HTTPRouteFilter{
 		{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
 			ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -351,7 +351,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
 			},
-			Filters: rewriteFitlers,
+			Filters: rewriteFilters,
 		}
 		rules[i] = rule
 	}
