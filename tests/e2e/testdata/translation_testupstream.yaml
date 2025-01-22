@@ -57,8 +57,8 @@ spec:
     name: OpenAI
   backendRef:
     name: testupstream
-    kind: Service
-    port: 80
+    kind: Backend
+    group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -70,5 +70,27 @@ spec:
     name: AWSBedrock
   backendRef:
     name: testupstream-canary
-    kind: Service
-    port: 80
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: testupstream-canary
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream-canary.default.svc.cluster.local
+        port: 80
