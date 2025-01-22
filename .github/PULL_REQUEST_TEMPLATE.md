@@ -31,7 +31,7 @@ Fixes #12345
 
 - [ ] The PR title follows the same format as the merged PRs.
 - [ ] I have read the [CONTRIBUTING.md](../CONTRIBUTING.md) (for first-time contributors).
-- [ ] I have made sure that `make precommit test` passes.
-- [ ] I have written added for any new code unless there's existing tests that cover the changes.
+- [ ] I have made sure that `make precommit test` passes locally.
+- [ ] I have written tests for any new line of code unless there's existing tests that cover the changes.
 - [ ] I have updated the documentation accordingly.
 - [ ] I am sure the coding style is consistent with the rest of the codebase.
