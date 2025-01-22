@@ -364,7 +364,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		BackendRefs: []gwapiv1.HTTPBackendRef{
 			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 		},
-		Filters: rewriteFitlers,
+		Filters: rewriteFilters,
 	})
 
 	dst.Spec.Rules = rules
