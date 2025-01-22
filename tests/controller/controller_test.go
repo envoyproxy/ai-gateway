@@ -211,10 +211,32 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
 				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+
+				// Check all rule has the host rewrite filter.
+				for _, rule := range httpRoute.Spec.Rules {
+					require.Len(t, rule.Filters, 1)
+					require.NotNil(t, rule.Filters[0].ExtensionRef)
+					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
+				}
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
 	}
+
+	// Check if the host rewrite filter exists in the default namespace.
+	t.Run("verify host rewrite filter", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var filter egv1a1.HTTPRouteFilter
+			err := c.Get(ctx, client.ObjectKey{Name: "ai-eg-host-rewrite", Namespace: "default"}, &filter)
+			if err != nil {
+				t.Logf("failed to get filter: %v", err)
+				return false
+			}
+			require.Equal(t, "default", filter.Namespace)
+			require.Equal(t, "ai-eg-host-rewrite", filter.Name)
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
+	})
 }
 
 func TestAIGatewayRouteController(t *testing.T) {
