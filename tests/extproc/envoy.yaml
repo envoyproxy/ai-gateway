@@ -42,10 +42,6 @@ static_resources:
                           route:
                             host_rewrite_literal: api.openai.com
                             cluster: openai
-                          request_headers_to_add:
-                            - header:
-                                key: 'Authorization'
-                                value: 'Bearer TEST_OPENAI_API_KEY'
                         - match:
                             prefix: "/"
                             headers:

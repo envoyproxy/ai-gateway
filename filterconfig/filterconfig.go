@@ -161,11 +161,18 @@ type Backend struct {
 
 // BackendAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type BackendAuth struct {
-	AWSAuth *AWSAuth `json:"aws,omitempty"`
+	// APIKey is a location of the api key secret file.
+	APIKey  *APIKeyAuth `json:"apiKey,omitempty"`
+	AWSAuth *AWSAuth    `json:"aws,omitempty"`
 }
 
 // AWSAuth ... TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 type AWSAuth struct{}
+
+// APIKeyAuth defines the file that will be mounted to the external proc.
+type APIKeyAuth struct {
+	Filename string `json:"filename"`
+}
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, error) {

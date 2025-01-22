@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	openai "github.com/openai/openai-go"
+	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +21,7 @@ import (
 // TestExtProcCustomRouter tests examples/extproc_custom_router.
 func TestExtProcCustomRouter(t *testing.T) {
 	requireBinaries(t)
-	requireRunEnvoy(t, "/dev/null", "dummy")
+	requireRunEnvoy(t, "/dev/null")
 	requireTestUpstream(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
