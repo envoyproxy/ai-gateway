@@ -70,6 +70,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIGatewayRoute{}).
+		Owns(&gwapiv1.HTTPRoute{}).
 		Complete(routeC); err != nil {
 		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
 	}
