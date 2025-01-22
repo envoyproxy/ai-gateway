@@ -49,7 +49,7 @@ func TestWithRealProviders(t *testing.T) {
 	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
 	awsCredentialsBody := fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n", awsAccessKeyID, awsSecretAccessKey)
 
-	// Test with AWS Credential File
+	// Test with AWS Credential File.
 	awsFilePath := t.TempDir() + "/aws-credential-file"
 	awsFile, err := os.Create(awsFilePath)
 	require.NoError(t, err)
