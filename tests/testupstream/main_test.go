@@ -30,6 +30,7 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/sse", nil)
 		require.NoError(t, err)
+		request.Header.Set(responseTypeKey, "sse")
 		request.Header.Set(responseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
@@ -43,11 +44,6 @@ func Test_main(t *testing.T) {
 
 		reader := bufio.NewReader(response.Body)
 		for i := 0; i < 5; i++ {
-			eventLine, err := reader.ReadString('\n')
-			require.NoError(t, err)
-			require.NoError(t, err)
-			require.Equal(t, "event: some event in testupstream\n", eventLine)
-
 			dataLine, err := reader.ReadString('\n')
 			require.NoError(t, err)
 			require.Equal(t, fmt.Sprintf("data: %d\n", i+1), dataLine)
@@ -182,8 +178,9 @@ func Test_main(t *testing.T) {
 
 	t.Run("aws-event-stream", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/aws-event-stream", nil)
+		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/", nil)
 		require.NoError(t, err)
+		request.Header.Set(responseTypeKey, "aws-event-stream")
 		request.Header.Set(responseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 

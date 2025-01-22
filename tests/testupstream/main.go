@@ -20,6 +20,14 @@ import (
 var logger = log.New(os.Stdout, "[testupstream] ", 0)
 
 const (
+	// responseTypeKey is the key for the response type in the request.
+	// This can be either empty, "sse", or "aws-event-stream".
+	//	* If this is "sse", the response body is expected to be a Server-Sent Event stream.
+	// 	Each line in x-response-body is treated as a separate [data] payload.
+	//	* If this is "aws-event-stream", the response body is expected to be an AWS Event Stream.
+	// 	Each line in x-response-body is treated as a separate event payload.
+	//	* If this is empty, the response body is expected to be a regular JSON response.
+	responseTypeKey = "x-response-type"
 	// expectedHeadersKey is the key for the expected headers in the request.
 	// The value is a base64 encoded string of comma separated key-value pairs.
 	// E.g. "key1:value1,key2:value2".
@@ -68,7 +76,7 @@ func main() {
 	doMain(l)
 }
 
-var streamingInterval = time.Second
+var streamingInterval = 200 * time.Millisecond
 
 func doMain(l net.Listener) {
 	if raw := os.Getenv("STREAMING_INTERVAL"); raw != "" {
@@ -79,50 +87,9 @@ func doMain(l net.Listener) {
 	defer l.Close()
 	http.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) { writer.WriteHeader(http.StatusOK) })
 	http.HandleFunc("/", handler)
-	http.HandleFunc("/sse", sseHandler)
-	http.HandleFunc("/aws-event-stream", awsEventStreamHandler)
 	if err := http.Serve(l, nil); err != nil { // nolint: gosec
 		logger.Printf("failed to serve: %v", err)
 	}
-}
-
-func sseHandler(w http.ResponseWriter, r *http.Request) {
-	expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
-	if err != nil {
-		logger.Println("failed to decode the response body")
-		http.Error(w, "failed to decode the response body", http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
-
-	for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
-		line := string(line)
-		time.Sleep(streamingInterval)
-
-		if _, err = w.Write([]byte("event: some event in testupstream\n")); err != nil {
-			logger.Println("failed to write the response body")
-			return
-		}
-
-		if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
-			logger.Println("failed to write the response body")
-			return
-		}
-
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
-		} else {
-			panic("expected http.ResponseWriter to be an http.Flusher")
-		}
-		logger.Println("response line sent:", line)
-	}
-
-	logger.Println("response sent")
-	r.Context().Done()
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -205,17 +172,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no expected testupstream-id")
 	}
 
-	expectedPath, err := base64.StdEncoding.DecodeString(r.Header.Get(expectedPathHeaderKey))
-	if err != nil {
-		logger.Println("failed to decode the expected path")
-		http.Error(w, "failed to decode the expected path", http.StatusBadRequest)
-		return
-	}
+	if expectedPath := r.Header.Get(expectedPathHeaderKey); expectedPath != "" {
+		expectedPath, err := base64.StdEncoding.DecodeString(expectedPath)
+		if err != nil {
+			logger.Println("failed to decode the expected path")
+			http.Error(w, "failed to decode the expected path", http.StatusBadRequest)
+			return
+		}
 
-	if r.URL.Path != string(expectedPath) {
-		logger.Printf("unexpected path: got %q, expected %q\n", r.URL.Path, string(expectedPath))
-		http.Error(w, "unexpected path: got "+r.URL.Path+", expected "+string(expectedPath), http.StatusBadRequest)
-		return
+		if r.URL.Path != string(expectedPath) {
+			logger.Printf("unexpected path: got %q, expected %q\n", r.URL.Path, string(expectedPath))
+			http.Error(w, "unexpected path: got "+r.URL.Path+", expected "+string(expectedPath), http.StatusBadRequest)
+			return
+		}
 	}
 
 	requestBody, err := io.ReadAll(r.Body)
@@ -225,8 +194,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get(expectedRequestBodyHeaderKey) != "" {
-		expectedBody, err := base64.StdEncoding.DecodeString(r.Header.Get(expectedRequestBodyHeaderKey))
+	if expectedReqBody := r.Header.Get(expectedRequestBodyHeaderKey); expectedReqBody != "" {
+		expectedBody, err := base64.StdEncoding.DecodeString(expectedReqBody)
 		if err != nil {
 			logger.Println("failed to decode the expected request body")
 			http.Error(w, "failed to decode the expected request body", http.StatusBadRequest)
@@ -273,7 +242,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Println("no response headers")
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
 	status := http.StatusOK
 	if v := r.Header.Get(responseStatusKey); v != "" {
@@ -284,46 +252,84 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.WriteHeader(status)
-	if _, err := w.Write(responseBody); err != nil {
-		logger.Println("failed to write the response body")
-	}
-	logger.Println("response sent:", string(responseBody))
-}
 
-func awsEventStreamHandler(w http.ResponseWriter, r *http.Request) {
-	expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
-	if err != nil {
-		logger.Println("failed to decode the response body")
-		http.Error(w, "failed to decode the response body", http.StatusBadRequest)
-		return
-	}
+	switch r.Header.Get(responseTypeKey) {
+	case "sse":
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(status)
 
-	w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
-	w.Header().Set("Transfer-Encoding", "chunked")
-	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
+		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
+		if err != nil {
+			logger.Println("failed to decode the response body")
+			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			return
+		}
 
-	e := eventstream.NewEncoder()
-	for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
-		// Write each line as a chunk with AWS Event Stream format.
-		time.Sleep(streamingInterval)
+		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
+			line := string(line)
+			if line == "" {
+				continue
+			}
+			time.Sleep(streamingInterval)
+
+			if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
+				logger.Println("failed to write the response body")
+				return
+			}
+
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			} else {
+				panic("expected http.ResponseWriter to be an http.Flusher")
+			}
+			logger.Println("response line sent:", line)
+		}
+		logger.Println("response sent")
+		r.Context().Done()
+	case "aws-event-stream":
+		// w.Header().Set("Transfer-Encoding", "chunked")
+		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
+		w.WriteHeader(status)
+
+		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
+		if err != nil {
+			logger.Println("failed to decode the response body")
+			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			return
+		}
+
+		e := eventstream.NewEncoder()
+		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
+			// Write each line as a chunk with AWS Event Stream format.
+			if len(line) == 0 {
+				continue
+			}
+			time.Sleep(streamingInterval)
+			if err := e.Encode(w, eventstream.Message{
+				Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
+				Payload: line,
+			}); err != nil {
+				logger.Println("failed to encode the response body")
+			}
+			w.(http.Flusher).Flush()
+			logger.Println("response line sent:", string(line))
+		}
+
 		if err := e.Encode(w, eventstream.Message{
-			Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
-			Payload: line,
+			Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("end")}},
+			Payload: []byte("this-is-end"),
 		}); err != nil {
 			logger.Println("failed to encode the response body")
 		}
-		w.(http.Flusher).Flush()
-		logger.Println("response line sent:", string(line))
-	}
 
-	if err := e.Encode(w, eventstream.Message{
-		Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("end")}},
-		Payload: []byte("this-is-end"),
-	}); err != nil {
-		logger.Println("failed to encode the response body")
+		logger.Println("response sent")
+		r.Context().Done()
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if _, err := w.Write(responseBody); err != nil {
+			logger.Println("failed to write the response body")
+		}
+		logger.Println("response sent:", string(responseBody))
 	}
-
-	logger.Println("response sent")
-	r.Context().Done()
 }
