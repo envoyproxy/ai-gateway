@@ -114,7 +114,7 @@ const (
 	LLMRequestCostTypeCELExpression LLMRequestCostType = "CEL"
 )
 
-// VersionedAPISchema corresponds to LLMAPISchema in api/v1alpha1/api.go.
+// VersionedAPISchema corresponds to VersionedAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {
 	// Name is the name of the API schema.
 	Name APISchemaName `json:"name"`
@@ -133,7 +133,7 @@ const (
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
 type HeaderMatch = gwapiv1.HTTPHeaderMatch
 
-// RouteRule corresponds to LLMRouteRule in api/v1alpha1/api.go
+// RouteRule corresponds to AIGatewayRoute in api/v1alpha1/api.go
 // besides the `Backends` field is modified to abstract the concept of a backend
 // at Envoy Gateway level to a simple name.
 type RouteRule struct {
@@ -144,7 +144,7 @@ type RouteRule struct {
 	Backends []Backend `json:"backends"`
 }
 
-// Backend corresponds to LLMRouteRuleBackendRef in api/v1alpha1/api.go
+// Backend corresponds to AIGatewayRouteRuleBackendRef in api/v1alpha1/api.go
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
