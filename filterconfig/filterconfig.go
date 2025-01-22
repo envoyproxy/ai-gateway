@@ -169,8 +169,8 @@ type BackendAuth struct {
 
 // AWSAuth defines the credentials needed to access AWS.
 type AWSAuth struct {
-	CredentialFileName *string `json:"credentialFileName,omitempty"`
-	Region             string  `json:"region"`
+	CredentialFileName string `json:"credentialFileName,omitempty"`
+	Region             string `json:"region"`
 }
 
 // APIKeyAuth defines the file that will be mounted to the external proc.

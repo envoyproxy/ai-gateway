@@ -93,10 +93,8 @@ func TestE2E(t *testing.T) {
 			{
 				Backends: []filterconfig.Backend{
 					{Name: "aws-bedrock-credentials-file", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{
-						AwsAuth: &filterconfig.AWSAuth{
-							CredentialFileName: awsFilePath,
-							Region:             "us-east-1",
-						},
+						CredentialFileName: awsFilePath,
+						Region:             "us-east-1",
 					}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},

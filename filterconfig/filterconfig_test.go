@@ -83,6 +83,6 @@ rules:
 	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
 	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
 	require.Equal(t, "apikey.txt", cfg.Rules[0].Backends[0].Auth.APIKey.Filename)
-	require.Equal(t, "aws.txt", *cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
+	require.Equal(t, "aws.txt", cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
 	require.Equal(t, "us-east-1", cfg.Rules[0].Backends[1].Auth.AWSAuth.Region)
 }

@@ -39,7 +39,7 @@ func TestAWSHandler_Do(t *testing.T) {
 	require.NoError(t, file.Sync())
 
 	credentialFileHandler, err := newAWSHandler(&filterconfig.AWSAuth{
-		CredentialFileName: &awsCredentialFile,
+		CredentialFileName: awsCredentialFile,
 		Region:             "us-east-1",
 	})
 
