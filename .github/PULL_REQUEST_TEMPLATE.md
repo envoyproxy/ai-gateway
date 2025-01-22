@@ -6,7 +6,7 @@ draft PRs would be ideal for discussing the approach to a problem or the design 
 
 Also, please make sure that you can check off all the items on the checklist below.
 
-Otherwise, you might unnecessarily consume the time of the maintainers unless there's 
+Otherwise, you might unnecessarily consume the time of the maintainers unless there's
 a specific reason for not doing so.
 ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 -->
