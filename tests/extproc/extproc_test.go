@@ -60,6 +60,20 @@ func TestE2E(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
 
+	// Set up credential file for AWS
+	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+	awsCredentialsBody := fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n", awsAccessKeyID, awsSecretAccessKey)
+
+	// Test with AWS Credential File
+	awsFilePath := t.TempDir() + "/aws-credential-file"
+	awsFile, err := os.Create(awsFilePath)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, awsFile.Close()) }()
+	_, err = awsFile.WriteString(awsCredentialsBody)
+	require.NoError(t, err)
+	require.NoError(t, awsFile.Sync())
+
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
@@ -78,7 +92,18 @@ func TestE2E(t *testing.T) {
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+					{Name: "aws-bedrock-credentials-file", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{
+						AwsAuth: &filterconfig.AWSAuth{
+							CredentialFileName: awsFilePath,
+							Region:             "us-east-1",
+						},
+					}}},
+				},
+				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
+			},
+			{
+				Backends: []filterconfig.Backend{
+					{Name: "aws-bedrock-env", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
@@ -93,8 +118,9 @@ func TestE2E(t *testing.T) {
 			testCaseName,
 			modelName string
 		}{
-			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
-			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+			{testCaseName: "openai", modelName: "gpt-4o-mini"},                                             // This will go to "openai"
+			{testCaseName: "aws-bedrock-credentials-file", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+			{testCaseName: "aws-bedrock-env", modelName: "us.meta.llama3-2-1b-instruct-v1:0"},              // This will go to "aws-bedrock" using env.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				require.Eventually(t, func() bool {
@@ -162,8 +188,9 @@ func TestE2E(t *testing.T) {
 			testCaseName,
 			modelName string
 		}{
-			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
-			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+			{testCaseName: "openai", modelName: "gpt-4o-mini"},                                             // This will go to "openai"
+			{testCaseName: "aws-bedrock-credentials-file", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+			{testCaseName: "aws-bedrock-env", modelName: "us.meta.llama3-2-1b-instruct-v1:0"},              // This will go to "aws-bedrock" using env.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				require.Eventually(t, func() bool {
