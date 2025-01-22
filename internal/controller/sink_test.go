@@ -368,7 +368,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						Backends: []filterconfig.Backend{
 							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
 								APIKey: &filterconfig.APIKeyAuth{
-									Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
+									Filename: "/etc/backend_security_policy/rule0-backRef0-some-backend-security-policy-1/apiKey",
 								},
 							}}, {Name: "pineapple.ns", Weight: 2},
 						},
@@ -377,7 +377,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					{
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
 							APIKey: &filterconfig.APIKeyAuth{
-								Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
+								Filename: "/etc/backend_security_policy/rule1-backRef0-some-backend-security-policy-1/apiKey",
 							},
 						}}},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
@@ -385,7 +385,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					{
 						Backends: []filterconfig.Backend{{Name: "pen.ns", Weight: 2, Auth: &filterconfig.BackendAuth{
 							AWSAuth: &filterconfig.AWSAuth{
-								CredentialFileName: "/etc/backend_security_policy/some-backend-security-policy-2.ns",
+								CredentialFileName: "/etc/backend_security_policy/rule2-backRef0-some-backend-security-policy-2/credentials",
 								Region:             "us-east-1",
 							},
 						}}},
@@ -727,16 +727,16 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 
 	require.Len(t, updatedSpec.Volumes, 3)
 	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
-	// API Key
+	// API Key.
 	require.Equal(t, "some-secret-policy-1", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
-	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Volumes[1].Name)
-	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)
-	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
-	// AWS
+	require.Equal(t, "rule0-backRef0-some-other-backend-security-policy-1", updatedSpec.Volumes[1].Name)
+	require.Equal(t, "rule0-backRef0-some-other-backend-security-policy-1", updatedSpec.Containers[0].VolumeMounts[1].Name)
+	require.Equal(t, "/etc/backend_security_policy/rule0-backRef0-some-other-backend-security-policy-1", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
+	// AWS.
 	require.Equal(t, "some-secret-policy-3", updatedSpec.Volumes[2].VolumeSource.Secret.SecretName)
-	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Volumes[2].Name)
-	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].Name)
-	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
+	require.Equal(t, "rule1-backRef0-some-other-backend-security-policy-aws", updatedSpec.Volumes[2].Name)
+	require.Equal(t, "rule1-backRef0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].Name)
+	require.Equal(t, "/etc/backend_security_policy/rule1-backRef0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
 
 	require.NoError(t, fakeClient.Delete(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
 
@@ -761,12 +761,12 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Len(t, updatedSpec.Volumes, 3)
 	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
-	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Volumes[1].Name)
-	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)
-	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-2.ns", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
+	require.Equal(t, "rule0-backRef0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
+	require.Equal(t, "rule0-backRef0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
+	require.Equal(t, "/etc/backend_security_policy/rule0-backRef0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
 }
 
-func Test_GetBackendSecurityMountPath(t *testing.T) {
-	mountPath := getBackendSecurityMountPath("policyName")
-	require.Equal(t, "/etc/backend_security_policy/policyName", mountPath)
+func Test_backendSecurityPolicyVolumeName(t *testing.T) {
+	mountPath := backendSecurityPolicyVolumeName(1, 2, "name")
+	require.Equal(t, "rule1-backRef2-name", mountPath)
 }

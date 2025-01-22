@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -243,9 +244,11 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
 	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
-	for i, rule := range spec.Rules {
+	for i := range spec.Rules {
+		rule := &spec.Rules[i]
 		ec.Rules[i].Backends = make([]filterconfig.Backend, len(rule.BackendRefs))
-		for j, backend := range rule.BackendRefs {
+		for j := range rule.BackendRefs {
+			backend := &rule.BackendRefs[j]
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
 			ec.Rules[i].Backends[j].Name = key
 			ec.Rules[i].Backends[j].Weight = backend.Weight
@@ -258,7 +261,9 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			}
 
 			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-				bspKey := fmt.Sprintf("%s.%s", bspRef.Name, aiGatewayRoute.Namespace)
+				volumeName := backendSecurityPolicyVolumeName(
+					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
+				)
 				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(bspRef.Name))
 				if err != nil {
 					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
@@ -267,22 +272,23 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						APIKey: &filterconfig.APIKeyAuth{Filename: getBackendSecurityMountPath(bspKey)},
+						APIKey: &filterconfig.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
-						return fmt.Errorf("AWSCredentials type selected but not defined %s", bspKey)
+						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
 							AWSAuth: &filterconfig.AWSAuth{
-								CredentialFileName: getBackendSecurityMountPath(bspKey),
+								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
 						}
 					}
 				default:
-					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type, bspKey)
+					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
+						backendSecurityPolicy.Name)
 				}
 			}
 		}
@@ -505,15 +511,14 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 
 	mountedSecrets := make(map[string]bool)
 
-	for _, rule := range aiGatewayRoute.Spec.Rules {
-		for _, backendRef := range rule.BackendRefs {
+	for i, rule := range aiGatewayRoute.Spec.Rules {
+		for j, backendRef := range rule.BackendRefs {
 			backend, err := c.backend(aiGatewayRoute.Namespace, backendRef.Name)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
 			}
 
 			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-				bspKey := fmt.Sprintf("%s.%s", backend.Spec.BackendSecurityPolicyRef.Name, aiGatewayRoute.Namespace)
 				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
 				if err != nil {
 					return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
@@ -535,8 +540,9 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				}
 
 				if _, ok := mountedSecrets[secretName]; !ok {
+					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
 					spec.Volumes = append(spec.Volumes, corev1.Volume{
-						Name: bspKey,
+						Name: volumeName,
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: secretName,
@@ -545,8 +551,8 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					})
 
 					container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-						Name:      bspKey,
-						MountPath: getBackendSecurityMountPath(bspKey),
+						Name:      volumeName,
+						MountPath: backendSecurityMountPath(volumeName),
 					})
 
 					mountedSecrets[secretName] = true
@@ -558,6 +564,11 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 	return spec, nil
 }
 
-func getBackendSecurityMountPath(backendSecurityPolicyKey string) string {
+func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string) string {
+	// Note: do not use "." as it's not allowed in the volume name.
+	return fmt.Sprintf("rule%d-backRef%d-%s", ruleIndex, backendRefIndex, name)
+}
+
+func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
 }
