@@ -560,7 +560,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 
 func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string) string {
 	// Note: do not use "." as it's not allowed in the volume name.
-	return fmt.Sprintf("rule%d-backRef%d-%s", ruleIndex, backendRefIndex, name)
+	return fmt.Sprintf("rule%d-backref%d-%s", ruleIndex, backendRefIndex, name)
 }
 
 func backendSecurityMountPath(backendSecurityPolicyKey string) string {
