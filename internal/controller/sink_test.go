@@ -258,7 +258,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-2", Namespace: "ns"},
 			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 					Region: "us-east-1",
 					CredentialsFile: &aigv1a1.AWSCredentialsFile{
@@ -337,6 +337,14 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
 						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								{Name: "pen", Weight: 2},
+							},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}}},
+							},
+						},
 					},
 					LLMRequestCosts: []aigv1a1.LLMRequestCost{
 						{
@@ -375,13 +383,13 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
 					{
-						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
+						Backends: []filterconfig.Backend{{Name: "pen.ns", Weight: 2, Auth: &filterconfig.BackendAuth{
 							AWSAuth: &filterconfig.AWSAuth{
 								CredentialFileName: "/etc/backend_security_policy/some-backend-security-policy-2.ns",
 								Region:             "us-east-1",
 							},
 						}}},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
 					},
 				},
 				LLMRequestCosts: []filterconfig.LLMRequestCost{
@@ -593,6 +601,9 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(context.Background(), secret, &client.CreateOptions{}))
 	}
@@ -622,7 +633,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 					CredentialsFile: &aigv1a1.AWSCredentialsFile{
-						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 						Profile:   "default",
 					},
 					Region: "us-east-1",
@@ -722,12 +733,12 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
 	// AWS
-	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[2].VolumeSource.Secret.SecretName)
+	require.Equal(t, "some-secret-policy-3", updatedSpec.Volumes[2].VolumeSource.Secret.SecretName)
 	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Volumes[2].Name)
 	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].Name)
 	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
 
-	//require.NoError(t, fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{}))
+	require.NoError(t, fakeClient.Delete(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
 
 	// Update to new security policy.
 	backend := aigv1a1.AIServiceBackend{
