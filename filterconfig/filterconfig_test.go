@@ -43,10 +43,17 @@ rules:
     weight: 1
     schema:
       name: OpenAI
+    auth:
+      apiKey:
+        filename: apikey.txt
   - name: awsbedrock
     weight: 10
     schema:
       name: AWSBedrock
+    auth:
+      aws:
+        credentialFileName: aws.txt
+        region: us-east-1
   headers:
   - name: x-ai-eg-model
     value: llama3.3333
@@ -75,4 +82,7 @@ rules:
 	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Name))
 	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
 	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
+	require.Equal(t, "apikey.txt", cfg.Rules[0].Backends[0].Auth.APIKey.Filename)
+	require.Equal(t, "aws.txt", *cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
+	require.Equal(t, "us-east-1", cfg.Rules[0].Backends[1].Auth.AWSAuth.Region)
 }
