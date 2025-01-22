@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -81,10 +82,8 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		// Then sync.
+		// Then sync, which should update the HTTPRoute.
 		s.syncAIGatewayRoute(route)
-		// Referencing backends should be updated.
-		// Also HTTPRoute should be updated.
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
@@ -98,6 +97,12 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
 	})
+
+	// Check the namespace has the default host rewrite filter.
+	var f egv1a1.HTTPRouteFilter
+	err := s.client.Get(context.Background(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
+	require.NoError(t, err)
+	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
 }
 
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
@@ -221,6 +226,12 @@ func Test_newHTTPRoute(t *testing.T) {
 				require.Equal(t, expRules[i].Matches, r.Matches)
 				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
 			}
+
+			// Each rule should have a host rewrite filter by default.
+			require.Len(t, r.Filters, 1)
+			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+			require.NotNil(t, r.Filters[0].ExtensionRef)
+			require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 		})
 	}
 }
