@@ -17,11 +17,15 @@ import (
 // TestExamplesBasic tests the basic example in examples/basic directory.
 //
 // This requires the following environment variables to be set:
+//   - TEST_AWS_ACCESS_KEY_ID
+//   - TEST_AWS_SECRET_ACCESS_KEY
 //   - TEST_OPENAI_API_KEY
 //
 // The test will be skipped if any of these are not set.
 func Test_Examples_Basic(t *testing.T) {
 	openAiApiKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
+	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -31,6 +35,8 @@ func Test_Examples_Basic(t *testing.T) {
 	require.NoError(t, err)
 	// Replace the placeholder with the actual API key.
 	replaced := strings.ReplaceAll(string(read), "OPEN_AI_API_KEY", openAiApiKey)
+	replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", awsAccessKeyID)
+	replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey)
 	require.NoError(t, kubectlApplyManifestStdin(ctx, replaced))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
@@ -47,6 +53,10 @@ func Test_Examples_Basic(t *testing.T) {
 			{
 				name:      "openai",
 				modelName: "gpt-4o-mini",
+			},
+			{
+				name:      "aws",
+				modelName: "us.meta.llama3-2-1b-instruct-v1:0",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
