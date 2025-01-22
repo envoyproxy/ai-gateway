@@ -4,6 +4,7 @@ package extproc
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
@@ -62,12 +64,17 @@ func TestWithTestUpstream(t *testing.T) {
 		requestBody,
 		// responseBody is the response body to return from the test upstream.
 		responseBody,
+		// responseType is either empty, "sse" or "aws-event-stream" as implemented by the test upstream.
+		responseType,
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
+		// expRequestBody is the expected body to be sent to the test upstream.
+		// This can be used to test the request body translation.
+		expRequestBody string
 		// expStatus is the expected status code from the gateway.
 		expStatus int
-		// expBody is the expected body from the gateway.
-		expBody string
+		// expResponseBody is the expected body from the gateway to the client.
+		expResponseBody string
 	}{
 		{
 			name:         "unknown path",
@@ -80,25 +87,78 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:    http.StatusInternalServerError,
 		},
 		{
-			name:         "aws - /v1/chat/completions",
-			backend:      "aws-bedrock",
-			path:         "/v1/chat/completions",
-			requestBody:  `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
-			expPath:      "/model/something/converse",
-			responseBody: `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
-			expStatus:    http.StatusOK,
-			expBody:      `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"response","role":"assistant"}},{"finish_reason":"stop","index":1,"logprobs":{},"message":{"content":"from","role":"assistant"}},{"finish_reason":"stop","index":2,"logprobs":{},"message":{"content":"assistant","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			name:            "aws - /v1/chat/completions",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/model/something/converse",
+			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expRequestBody:  `{"inferenceConfig":{},"messages":[],"modelId":null,"system":[{"text":"You are a chatbot."}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"response","role":"assistant"}},{"finish_reason":"stop","index":1,"logprobs":{},"message":{"content":"from","role":"assistant"}},{"finish_reason":"stop","index":2,"logprobs":{},"message":{"content":"assistant","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
 		},
 		{
-			name:         "openai - /v1/chat/completions",
+			name:            "openai - /v1/chat/completions",
+			backend:         "openai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:           "aws - /v1/chat/completions - streaming",
+			backend:        "aws-bedrock",
+			path:           "/v1/chat/completions",
+			responseType:   "aws-event-stream",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody: `{"inferenceConfig":{},"messages":[],"modelId":null,"system":[{"text":"You are a chatbot."}]}`,
+			expPath:        "/model/something/converse-stream",
+			responseBody: `{"role":"assistant"}
+{"delta":{"text":"Don"}}
+{"delta":{"text":"'t worry,  I'm here to help. It"}}
+{"delta":{"text":" seems like you're testing my ability to respond appropriately"}}
+{"stopReason":"end_turn"}
+{"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"Don"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"'t worry,  I'm here to help. It"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" seems like you're testing my ability to respond appropriately"}}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77}}
+
+data: [DONE]
+`,
+		},
+		{
+			name:         "openai - /v1/chat/completions - streaming",
 			backend:      "openai",
 			path:         "/v1/chat/completions",
+			responseType: "sse",
 			method:       http.MethodPost,
-			requestBody:  `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			requestBody:  `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
 			expPath:      "/v1/chat/completions",
-			responseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
-			expStatus:    http.StatusOK,
-			expBody:      `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,6 +168,12 @@ func TestWithTestUpstream(t *testing.T) {
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
+				if tc.responseType != "" {
+					req.Header.Set("x-response-type", tc.responseType)
+				}
+				if tc.expRequestBody != "" {
+					req.Header.Set("x-expected-request-body", base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+				}
 
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
@@ -120,11 +186,11 @@ func TestWithTestUpstream(t *testing.T) {
 					t.Logf("unexpected status code: %d", resp.StatusCode)
 					return false
 				}
-				if tc.expBody != "" {
+				if tc.expResponseBody != "" {
 					body, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
-					if string(body) != tc.expBody {
-						t.Logf("unexpected response:\ngot: %s\nexp: %s", body, tc.expBody)
+					if string(body) != tc.expResponseBody {
+						fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), tc.expResponseBody))
 						return false
 					}
 				}

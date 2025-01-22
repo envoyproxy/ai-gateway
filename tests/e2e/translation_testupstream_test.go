@@ -34,6 +34,7 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 		for _, tc := range []struct {
 			name              string
 			modelName         string
+			expHost           string
 			expTestUpstreamID string
 			expPath           string
 			fakeResponseBody  string
@@ -43,12 +44,14 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 				modelName:         "some-cool-model",
 				expTestUpstreamID: "primary",
 				expPath:           "/v1/chat/completions",
+				expHost:           "testupstream.default.svc.cluster.local",
 				fakeResponseBody:  `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			},
 			{
 				name:              "aws-bedrock",
 				modelName:         "another-cool-model",
 				expTestUpstreamID: "canary",
+				expHost:           "testupstream-canary.default.svc.cluster.local",
 				expPath:           "/model/another-cool-model/converse",
 				fakeResponseBody:  `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
 			},
@@ -66,7 +69,9 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 							"x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
 						option.WithHeader("x-response-body",
 							base64.StdEncoding.EncodeToString([]byte(tc.fakeResponseBody)),
-						))
+						),
+						option.WithHeader("x-expected-host", tc.expHost),
+					)
 
 					chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
