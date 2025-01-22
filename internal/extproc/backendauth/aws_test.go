@@ -15,7 +15,7 @@ func TestNewAWSHandler(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 
-	handler, err := newAWSHandler(nil)
+	handler, err := newAWSHandler(&filterconfig.AWSAuth{})
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }

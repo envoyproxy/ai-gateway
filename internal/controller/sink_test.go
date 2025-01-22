@@ -242,8 +242,8 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
-	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
-	require.NoError(t, err)
+	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
+	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}}))
 
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
 		{
@@ -252,6 +252,19 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
 				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-2", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					Region: "us-east-1",
+					CredentialsFile: &aigv1a1.AWSCredentialsFile{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+						Profile:   "default",
+					},
 				},
 			},
 		},
@@ -282,6 +295,13 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "pen", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-2"},
 			},
 		},
 	} {
@@ -350,6 +370,15 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
 							APIKey: &filterconfig.APIKeyAuth{
 								Filename: "/etc/backend_security_policy/some-backend-security-policy-1.ns",
+							},
+						}}},
+						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+					},
+					{
+						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
+							AWSAuth: &filterconfig.AWSAuth{
+								CredentialFileName: "/etc/backend_security_policy/some-backend-security-policy-2.ns",
+								Region:             "us-east-1",
 							},
 						}}},
 						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
@@ -587,23 +616,49 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-other-backend-security-policy-aws", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					CredentialsFile: &aigv1a1.AWSCredentialsFile{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+						Profile:   "default",
+					},
+					Region: "us-east-1",
+				},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(context.Background(), bsp, &client.CreateOptions{}))
 	}
 
-	backend := aigv1a1.AIServiceBackend{
-		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
-		Spec: aigv1a1.AIServiceBackendSpec{
-			APISchema: aigv1a1.VersionedAPISchema{
-				Name: aigv1a1.APISchemaAWSBedrock,
+	for _, backend := range []*aigv1a1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaAWSBedrock,
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-1"},
 			},
-			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-1"},
 		},
-	}
 
-	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
-	require.NotNil(t, s)
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaAWSBedrock,
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-aws"},
+			},
+		},
+	} {
+		require.NoError(t, fakeClient.Create(context.Background(), backend, &client.CreateOptions{}))
+		require.NotNil(t, s)
+	}
 
 	aiGateway := aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
@@ -615,6 +670,14 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
+					},
+				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "pineapple", Weight: 1},
+					},
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-2"}}},
 					},
 				},
 			},
@@ -651,17 +714,23 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	updatedSpec, err := s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 2)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 2)
+	require.Len(t, updatedSpec.Volumes, 3)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
+	// API Key
 	require.Equal(t, "some-secret-policy-1", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-1.ns", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
+	// AWS
+	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[2].VolumeSource.Secret.SecretName)
+	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Volumes[2].Name)
+	require.Equal(t, "some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].Name)
+	require.Equal(t, "/etc/backend_security_policy/some-other-backend-security-policy-aws.ns", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
 
-	require.NoError(t, fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{}))
+	//require.NoError(t, fakeClient.Delete(context.Background(), &backend, &client.DeleteOptions{}))
 
 	// Update to new security policy.
-	backend = aigv1a1.AIServiceBackend{
+	backend := aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			APISchema: aigv1a1.VersionedAPISchema{
@@ -678,8 +747,8 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	updatedSpec, err = s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 2)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 2)
+	require.Len(t, updatedSpec.Volumes, 3)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "some-other-backend-security-policy-2.ns", updatedSpec.Containers[0].VolumeMounts[1].Name)

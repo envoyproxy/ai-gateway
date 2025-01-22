@@ -268,6 +268,18 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
 						APIKey: &filterconfig.APIKeyAuth{Filename: getBackendSecurityMountPath(bspKey)},
 					}
+				} else if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
+					if backendSecurityPolicy.Spec.AWSCredentials == nil {
+						return fmt.Errorf("AWSCredentials type selected but not defined %s", bspKey)
+					}
+					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
+							AWSAuth: &filterconfig.AWSAuth{
+								CredentialFileName: getBackendSecurityMountPath(bspKey),
+								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
+							},
+						}
+					}
 				} else {
 					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type, bspKey)
 				}
@@ -509,6 +521,13 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				var secretName string
 				if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAPIKey {
 					secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
+				} else if backendSecurityPolicy.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
+					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
+					} else {
+						// Will introduce OIDC in a following PR
+						continue
+					}
 				} else {
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}
