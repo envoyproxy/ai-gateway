@@ -44,7 +44,7 @@ func TestWithRealProviders(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
 
-	// Set up credential file for AWS
+	// Set up credential file for AWS.
 	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
 	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
 	awsCredentialsBody := fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n", awsAccessKeyID, awsSecretAccessKey)
