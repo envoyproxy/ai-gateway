@@ -509,10 +509,10 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 	container := &spec.Containers[0]
 	container.VolumeMounts = container.VolumeMounts[:1]
 
-	mountedSecrets := make(map[string]bool)
-
-	for i, rule := range aiGatewayRoute.Spec.Rules {
-		for j, backendRef := range rule.BackendRefs {
+	for i := range aiGatewayRoute.Spec.Rules {
+		rule := &aiGatewayRoute.Spec.Rules[i]
+		for j := range rule.BackendRefs {
+			backendRef := &rule.BackendRefs[j]
 			backend, err := c.backend(aiGatewayRoute.Namespace, backendRef.Name)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
@@ -539,24 +539,18 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}
 
-				if _, ok := mountedSecrets[secretName]; !ok {
-					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					spec.Volumes = append(spec.Volumes, corev1.Volume{
-						Name: volumeName,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: secretName,
-							},
-						},
-					})
+				volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
+				spec.Volumes = append(spec.Volumes, corev1.Volume{
+					Name: volumeName,
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+					},
+				})
 
-					container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-						Name:      volumeName,
-						MountPath: backendSecurityMountPath(volumeName),
-					})
-
-					mountedSecrets[secretName] = true
-				}
+				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+					Name:      volumeName,
+					MountPath: backendSecurityMountPath(volumeName),
+				})
 			}
 		}
 	}
