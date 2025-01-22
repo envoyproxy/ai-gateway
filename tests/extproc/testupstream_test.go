@@ -87,7 +87,7 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:    http.StatusInternalServerError,
 		},
 		{
-			name:            "aws - /v1/chat/completions",
+			name:            "aws system role - /v1/chat/completions",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
@@ -118,20 +118,25 @@ func TestWithTestUpstream(t *testing.T) {
 			expRequestBody: `{"inferenceConfig":{},"messages":[],"modelId":null,"system":[{"text":"You are a chatbot."}]}`,
 			expPath:        "/model/something/converse-stream",
 			responseBody: `{"role":"assistant"}
+{"start":{"toolUse":{"name":"cosine","toolUseId":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"}}}
 {"delta":{"text":"Don"}}
 {"delta":{"text":"'t worry,  I'm here to help. It"}}
 {"delta":{"text":" seems like you're testing my ability to respond appropriately"}}
-{"stopReason":"end_turn"}
+{"stopReason":"tool_use"}
 {"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
 `,
 			expStatus: http.StatusOK,
 			expResponseBody: `data: {"choices":[{"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
 data: {"object":"chat.completion.chunk","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77}}
 

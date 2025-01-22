@@ -112,7 +112,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 			var toolName, toolDes string
 			toolName = toolDefinition.Function.Name
 			toolDes = toolDefinition.Function.Description
-
 			tool := &awsbedrock.Tool{
 				ToolSpec: &awsbedrock.ToolSpecification{
 					Name:        &toolName,
@@ -617,6 +616,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				},
 			})
 		}
+	case event.StopReason != nil:
+		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+				Role:    o.role,
+				Content: ptr.To(emptyString),
+			},
+			FinishReason: o.bedrockStopReasonToOpenAIStopReason(event.StopReason),
+		})
 	default:
 		return chunk, false
 	}
