@@ -5,6 +5,7 @@ package extproc
 import (
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -28,32 +29,33 @@ var (
 	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
 )
 
-//// requireExtProcWithAWSCredentials starts the external processor with the provided executable and configPath
-//// with additional environment variables for AWS credentials.
-////
-//// The config must be in YAML format specified in [filterconfig.Config] type.
-//func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
-//	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
-//	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
-//	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
-//		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
-//		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
-//	)
-//}
+// // requireExtProcWithAWSCredentials starts the external processor with the provided executable and configPath
+// // with additional environment variables for AWS credentials.
+// //
+// // The config must be in YAML format specified in [filterconfig.Config] type.
 //
-//// requireExtProc starts the external processor with the provided executable and configPath
-//// with additional environment variables.
-////
-//// The config must be in YAML format specified in [filterconfig.Config] type.
-//func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath string, envs ...string) {
-//	cmd := exec.Command(executable)
-//	cmd.Stdout = stdout
-//	cmd.Stderr = os.Stderr
-//	cmd.Args = append(cmd.Args, "-configPath", configPath)
-//	cmd.Env = append(os.Environ(), envs...)
-//	require.NoError(t, cmd.Start())
-//	t.Cleanup(func() { _ = cmd.Process.Signal(os.Interrupt) })
-//}
+//	func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
+//		awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+//		awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+//		requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
+//			fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
+//			fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
+//		)
+//	}
+//
+// requireExtProc starts the external processor with the provided executable and configPath
+// with additional environment variables.
+//
+// The config must be in YAML format specified in [filterconfig.Config] type.
+func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath string, envs ...string) {
+	cmd := exec.Command(executable)
+	cmd.Stdout = stdout
+	cmd.Stderr = os.Stderr
+	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Env = append(os.Environ(), envs...)
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Signal(os.Interrupt) })
+}
 
 func requireTestUpstream(t *testing.T) {
 	// Starts the Envoy proxy.
