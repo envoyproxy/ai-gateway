@@ -33,16 +33,15 @@ var (
 // // with additional environment variables for AWS credentials.
 // //
 // // The config must be in YAML format specified in [filterconfig.Config] type.
-//
-//	func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
-//		awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
-//		awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
-//		requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
-//			fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
-//			fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
-//		)
-//	}
-//
+// func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
+//	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+//	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+//	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
+//		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
+//		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
+//	)
+//}
+
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
 //

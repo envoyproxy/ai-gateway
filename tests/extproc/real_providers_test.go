@@ -86,7 +86,7 @@ func TestWithRealProviders(t *testing.T) {
 		},
 	})
 
-	// requireExtProcWithAWSCredentials(t, configPath)
+	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
