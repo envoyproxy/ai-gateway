@@ -234,6 +234,12 @@ func kubectlRestartDeployment(ctx context.Context, namespace, deployment string)
 
 func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	cmd := kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"deployment/"+deployment, "--for=create")
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
+	}
+
+	cmd = kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
