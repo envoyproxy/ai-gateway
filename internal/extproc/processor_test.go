@@ -65,7 +65,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
 			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
 		}
-		p := &Processor{translator: mt, config: &processorConfig{
+		p := &Processor{translator: mt, logger: slog.Default(), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
 			requestCosts: []filterconfig.LLMRequestCost{
 				{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"},

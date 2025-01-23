@@ -7,14 +7,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/openai/openai-go"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/openai/openai-go"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Examples_TokenRateLimit(t *testing.T) {

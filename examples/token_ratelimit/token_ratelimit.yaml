@@ -40,12 +40,12 @@ spec:
           weight: 100
   # The following metadata keys are used to store the costs from the LLM request.
   llmRequestCosts:
-  - metadataKey: llm_input_token
-    type: InputToken
-  - metadataKey: llm_output_token
-    type: OutputToken
-  - metadataKey: llm_total_token
-    type: TotalToken
+    - metadataKey: llm_input_token
+      type: InputToken
+    - metadataKey: llm_output_token
+      type: OutputToken
+    - metadataKey: llm_total_token
+      type: TotalToken
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
