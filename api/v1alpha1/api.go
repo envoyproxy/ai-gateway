@@ -440,7 +440,9 @@ type BackendSecurityPolicyAWSCredentials struct {
 // AWSCredentialsFile specifies the credentials file to use for the AWS provider.
 // Envoy reads the secret file, and the profile to use is specified by the Profile field.
 type AWSCredentialsFile struct {
-	// SecretRef is the reference to the credential file
+	// SecretRef is the reference to the credential file.
+	//
+	// The secret should contain the AWS credentials file keyed on "credentials".
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 
 	// Profile is the profile to use in the credentials file.

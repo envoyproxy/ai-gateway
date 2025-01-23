@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -43,6 +44,20 @@ func TestWithRealProviders(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
 
+	// Set up credential file for AWS.
+	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+	awsCredentialsBody := fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n", awsAccessKeyID, awsSecretAccessKey)
+
+	// Test with AWS Credential File.
+	awsFilePath := t.TempDir() + "/aws-credential-file"
+	awsFile, err := os.Create(awsFilePath)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, awsFile.Close()) }()
+	_, err = awsFile.WriteString(awsCredentialsBody)
+	require.NoError(t, err)
+	require.NoError(t, awsFile.Sync())
+
 	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
@@ -61,14 +76,17 @@ func TestWithRealProviders(t *testing.T) {
 			},
 			{
 				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{}}},
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{
+						CredentialFileName: awsFilePath,
+						Region:             "us-east-1",
+					}}},
 				},
 				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
 			},
 		},
 	})
 
-	requireExtProcWithAWSCredentials(t, configPath)
+	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
@@ -77,7 +95,7 @@ func TestWithRealProviders(t *testing.T) {
 			modelName string
 		}{
 			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
-			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				require.Eventually(t, func() bool {
@@ -146,7 +164,7 @@ func TestWithRealProviders(t *testing.T) {
 			modelName string
 		}{
 			{testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
-			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock".
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				require.Eventually(t, func() bool {

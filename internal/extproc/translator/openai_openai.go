@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -48,10 +49,52 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 	return nil, nil, override, nil
 }
 
+// ResponseError implements [Translator.ResponseError]
+// For OpenAI based backend we return the OpenAI error type as is.
+// If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	statusCode := respHeaders[statusHeaderName]
+	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
+		var openaiError openai.Error
+		buf, err := io.ReadAll(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+		}
+		openaiError = openai.Error{
+			Type: "error",
+			Error: openai.ErrorType{
+				Type:    openAIBackendError,
+				Message: string(buf),
+				Code:    &statusCode,
+			},
+		}
+		mut := &extprocv3.BodyMutation_Body{}
+		if errBody, err := json.Marshal(openaiError); err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+		} else {
+			mut.Body = errBody
+		}
+		headerMutation = &extprocv3.HeaderMutation{}
+		setContentLength(headerMutation, mut.Body)
+		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	}
+	return nil, nil, nil
+}
+
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
+	if v, ok := respHeaders[statusHeaderName]; ok {
+		if v, err := strconv.Atoi(v); err == nil {
+			if !isGoodStatusCode(v) {
+				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
+				return headerMutation, bodyMutation, LLMTokenUsage{}, err
+			}
+		}
+	}
 	if o.stream {
 		if !o.bufferingDone {
 			buf, err := io.ReadAll(body)

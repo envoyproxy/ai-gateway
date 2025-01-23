@@ -404,6 +404,11 @@ type ConverseStreamEventContentBlockDelta struct {
 }
 
 type BedrockException struct {
+	// Status code of the aws error response.
+	Code string `json:"code,omitempty"`
+	// Error type of the aws response.
+	Type string `json:"type,omitempty"`
+	// Error message of the aws response
 	Message string `json:"message"`
 }
 

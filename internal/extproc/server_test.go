@@ -161,6 +161,23 @@ func TestServer_processMsg(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
+	t.Run("error response headers", func(t *testing.T) {
+		s := requireNewServerWithMockProcessor(t)
+		p := s.newProcessor(nil, slog.Default())
+
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", Value: "504"}}}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
+		p.t = t
+		p.expHeaderMap = hm
+		p.retProcessingResponse = expResponse
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
+		}
+		resp, err := s.processMsg(context.Background(), p, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expResponse, resp)
+	})
 	t.Run("response body", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 		p := s.newProcessor(nil, slog.Default())
