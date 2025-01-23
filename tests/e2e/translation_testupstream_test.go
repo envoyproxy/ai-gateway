@@ -24,9 +24,6 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
 	requireWaitForPodReady(t, egNamespace, egSelector)
 
-	fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
-	defer fwd.kill()
-
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {
 			name              string
@@ -55,6 +52,9 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {
+					fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+					defer fwd.kill()
+
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
 
