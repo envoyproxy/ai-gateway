@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
-	"github.com/envoyproxy/ai-gateway/test-agent/agent"
 )
 
 // TestWithTestUpstream tests the end-to-end flow of the external processor with Envoy and the test upstream.
@@ -172,6 +171,7 @@ data: [DONE]
 			name:            "openai - /v1/chat/completions - error response",
 			backend:         "openai",
 			path:            "/v1/chat/completions",
+			responseType:    "",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
 			expPath:         "/v1/chat/completions",
@@ -184,6 +184,7 @@ data: [DONE]
 			name:            "aws-bedrock - /v1/chat/completions - error response",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",
+			responseType:    "",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
 			expPath:         "/model/something/converse-stream",
