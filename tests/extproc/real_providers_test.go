@@ -222,23 +222,21 @@ func TestWithRealProviders(t *testing.T) {
 							openai.UserMessage("What is the weather like in Paris today?"),
 						}),
 						Tools: openai.F([]openai.ChatCompletionToolParam{
-							Function: openai.FunctionDefinitionParam{
+							Function: openai.F(openai.FunctionDefinition{
 								Name:        "get_weather",
 								Description: "Get current temperature for a given location.",
-								Parameters: []openai.FunctionParameters{
-									map[string]interface{}{
-										"type": "object",
-										"properties": map[string]interface{}{
-											"location": map[string]interface{}{
-												"type":        "string",
-												"description": "City and country e.g. Paris, France",
-											},
+								Parameters: map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"location": map[string]interface{}{
+											"type":        "string",
+											"description": "City and country e.g. Paris, France",
 										},
-										"required":             []interface{}{"location"},
-										"additionalProperties": false,
 									},
+									"required":             []interface{}{"location"},
+									"additionalProperties": false,
 								},
-							},
+							}),
 						}),
 						Model: openai.F(tc.modelName),
 					})
