@@ -1,0 +1,141 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway-token-ratelimit
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-token-ratelimit
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway-token-ratelimit
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-token-ratelimit
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: envoy-ai-gateway-token-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: envoy-ai-gateway-token-ratelimit-testupstream
+          weight: 100
+  # The following metadata keys are used to store the costs from the LLM request.
+  llmRequestCosts:
+  - metadataKey: llm_input_token
+    type: InputToken
+  - metadataKey: llm_output_token
+    type: OutputToken
+  - metadataKey: llm_total_token
+    type: TotalToken
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-token-ratelimit-testupstream
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: testupstream
+    kind: Service
+    port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: envoy-ai-gateway-token-ratelimit-policy
+  namespace: default
+spec:
+  # Applies the rate limit policy to the gateway.
+  targetRefs:
+    - name: envoy-ai-gateway-token-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        # This configures the input token limit, and it has a different budget than others,
+        # so it will be rate limited separately.
+        - clientSelectors:
+            - headers:
+                # Have the rate limit budget be per unique "x-user-id" header value.
+                - name: x-user-id
+                  type: Distinct
+          limit:
+            # Configures the number of "tokens" allowed per hour, per user.
+            requests: 10
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              # Setting the request cost to zero allows to only check the rate limit budget,
+              # and not consume the budget on the request path.
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                # This is the fixed namespace for the metadata used by AI Gateway.
+                namespace: io.envoy.ai_gateway
+                # Limit on the input token.
+                key: llm_input_token
+
+        # Repeat the same configuration for a different token type.
+        # This configures the output token limit, and it has a different budget than others,
+        # so it will be rate limited separately.
+        - clientSelectors:
+            - headers:
+                - name: x-user-id
+                  type: Distinct
+          limit:
+            requests: 100
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_output_token
+
+        # Repeat the same configuration for a different token type.
+        # This configures the total token limit, and it has a different budget than others,
+        # so it will be rate limited separately.
+        - clientSelectors:
+            - headers:
+                - name: x-user-id
+                  type: Distinct
+          limit:
+            requests: 1000
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token

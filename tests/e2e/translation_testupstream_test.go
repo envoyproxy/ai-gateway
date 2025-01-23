@@ -20,9 +20,6 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 
 	const manifest = "testdata/translation_testupstream.yaml"
 	require.NoError(t, kubectlApplyManifest(ctx, manifest))
-	defer func() {
-		// require.NoError(t, kubectlDeleteManifest(context.Background(), manifest))
-	}()
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
 	requireWaitForPodReady(t, egNamespace, egSelector)
