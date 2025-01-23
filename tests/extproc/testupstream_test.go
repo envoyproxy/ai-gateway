@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/test-agent/agent"
 )
 
 // TestWithTestUpstream tests the end-to-end flow of the external processor with Envoy and the test upstream.
@@ -171,7 +172,6 @@ data: [DONE]
 			name:            "openai - /v1/chat/completions - error response",
 			backend:         "openai",
 			path:            "/v1/chat/completions",
-			responseType:    "",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
 			expPath:         "/v1/chat/completions",
@@ -184,7 +184,6 @@ data: [DONE]
 			name:            "aws-bedrock - /v1/chat/completions - error response",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",
-			responseType:    "",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
 			expPath:         "/model/something/converse-stream",
@@ -193,17 +192,6 @@ data: [DONE]
 			responseHeaders: "x-amzn-errortype:ThrottledException",
 			responseBody:    `{"message": "aws bedrock rate limit exceeded"}`,
 			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
-		},
-		{
-			name:            "agent calls bedrock model and then a tool",
-			backend:         "aws-bedrock",
-			path:            "/v1/agent/call",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"bedrock-model","action":"call-tool","parameters":{"tool":"example-tool"}}`,
-			expPath:         "/v1/agent/call",
-			responseBody:    `{"result":"tool called successfully"}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"result":"tool called successfully"}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

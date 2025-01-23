@@ -205,4 +205,87 @@ func TestWithRealProviders(t *testing.T) {
 			})
 		}
 	})
+
+	// t.Run("agent calls bedrock model and then a tool", func(t *testing.T) {
+	// 	require.Eventually(t, func() bool {
+	// 		reqBody := `{"model":"bedrock-model","action":"call-tool","parameters":{"tool":"get_weather","location":"Bogotá, Colombia"}}`
+	// 		req, err := http.NewRequest(http.MethodPost, listenerAddress+"/v1/agent/call", strings.NewReader(reqBody))
+	// 		require.NoError(t, err)
+	// 		req.Header.Set("x-test-backend", "aws-bedrock")
+	// 		req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(`{"result":"tool called successfully"}`)))
+	// 		req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte("/v1/agent/call")))
+	// 		req.Header.Set("x-response-status", "200")
+
+	// 		resp, err := http.DefaultClient.Do(req)
+	// 		if err != nil {
+	// 			t.Logf("error: %v", err)
+	// 			return false
+	// 		}
+	// 		defer func() { _ = resp.Body.Close() }()
+	// 		if resp.StatusCode != http.StatusOK {
+	// 			t.Logf("unexpected status code: %d", resp.StatusCode)
+	// 			return false
+	// 		}
+	// 		body, err := io.ReadAll(resp.Body)
+	// 		require.NoError(t, err)
+	// 		if string(body) != `{"result":"tool called successfully"}` {
+	// 			fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), `{"result":"tool called successfully"}`))
+	// 			return false
+	// 		}
+	// 		return true
+	// 	}, 10*time.Second, 500*time.Millisecond)
+	// })
+
+	t.Run("Bedrock calls tool get_weather function", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+		for _, tc := range []struct {
+			testCaseName,
+			modelName string
+		}{
+			// {testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
+			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				require.Eventually(t, func() bool {
+					chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage("What is the weather like in Paris today?"),
+						}),
+						Tools: openai.F([]openai.ChatCompletionToolParam{
+							Function: openai.FunctionDefinitionParam{
+								Name:        "get_weather",
+								Description: "Get current temperature for a given location.",
+								Parameters: []openai.FunctionParameters{
+									map[string]interface{}{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"location": map[string]interface{}{
+												"type":        "string",
+												"description": "City and country e.g. Paris, France",
+											},
+										},
+										"required":             []interface{}{"location"},
+										"additionalProperties": false,
+									},
+								},
+							},
+						}),
+						Model: openai.F(tc.modelName),
+					})
+					if err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+					returnsToolCall := false
+					for _, choice := range chatCompletion.Choices {
+						t.Logf("choice: %s", choice.Message.Content)
+						if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonToolCalls {
+							returnsToolCall = true
+						}
+					}
+					return returnsToolCall
+				}, 10*time.Second, 500*time.Millisecond)
+			})
+		}
+	})
 }
