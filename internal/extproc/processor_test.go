@@ -84,6 +84,21 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 			GetStructValue().Fields["output_token_usage"].GetNumberValue())
 		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
+
+		// Process a new body to verify that the costs are properly accounted for and not accumulated.
+		mt.retUsedToken = translator.LLMTokenUsage{OutputTokens: 200, InputTokens: 2}
+		res, err = p.ProcessResponseBody(context.Background(), inBody)
+		require.NoError(t, err)
+		commonRes = res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		require.Equal(t, expBodyMut, commonRes.BodyMutation)
+		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+
+		md = res.DynamicMetadata
+		require.NotNil(t, md)
+		require.Equal(t, float64(200), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["output_token_usage"].GetNumberValue())
+		require.Equal(t, float64(2), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["input_token_usage"].GetNumberValue())
 	})
 }
 

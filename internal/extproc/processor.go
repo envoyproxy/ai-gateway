@@ -58,8 +58,6 @@ type Processor struct {
 	responseHeaders  map[string]string
 	responseEncoding string
 	translator       translator.Translator
-	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -193,11 +191,12 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	}
 
 	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
-	p.costs.InputTokens += tokenUsage.InputTokens
-	p.costs.OutputTokens += tokenUsage.OutputTokens
-	p.costs.TotalTokens += tokenUsage.TotalTokens
 	if body.EndOfStream && len(p.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = p.maybeBuildDynamicMetadata()
+		resp.DynamicMetadata, err = p.maybeBuildDynamicMetadata(translator.LLMTokenUsage{
+			InputTokens:  tokenUsage.InputTokens,
+			OutputTokens: tokenUsage.OutputTokens,
+			TotalTokens:  tokenUsage.TotalTokens,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -205,17 +204,17 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	return resp, nil
 }
 
-func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
+func (p *Processor) maybeBuildDynamicMetadata(costs translator.LLMTokenUsage) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(p.config.requestCosts))
 	for _, c := range p.config.requestCosts {
 		var cost uint32
 		switch c.Type {
 		case filterconfig.LLMRequestCostTypeInputToken:
-			cost = p.costs.InputTokens
+			cost = costs.InputTokens
 		case filterconfig.LLMRequestCostTypeOutputToken:
-			cost = p.costs.OutputTokens
+			cost = costs.OutputTokens
 		case filterconfig.LLMRequestCostTypeTotalToken:
-			cost = p.costs.TotalTokens
+			cost = costs.TotalTokens
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}
