@@ -206,36 +206,6 @@ func TestWithRealProviders(t *testing.T) {
 		}
 	})
 
-	// t.Run("agent calls bedrock model and then a tool", func(t *testing.T) {
-	// 	require.Eventually(t, func() bool {
-	// 		reqBody := `{"model":"bedrock-model","action":"call-tool","parameters":{"tool":"get_weather","location":"Bogotá, Colombia"}}`
-	// 		req, err := http.NewRequest(http.MethodPost, listenerAddress+"/v1/agent/call", strings.NewReader(reqBody))
-	// 		require.NoError(t, err)
-	// 		req.Header.Set("x-test-backend", "aws-bedrock")
-	// 		req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(`{"result":"tool called successfully"}`)))
-	// 		req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte("/v1/agent/call")))
-	// 		req.Header.Set("x-response-status", "200")
-
-	// 		resp, err := http.DefaultClient.Do(req)
-	// 		if err != nil {
-	// 			t.Logf("error: %v", err)
-	// 			return false
-	// 		}
-	// 		defer func() { _ = resp.Body.Close() }()
-	// 		if resp.StatusCode != http.StatusOK {
-	// 			t.Logf("unexpected status code: %d", resp.StatusCode)
-	// 			return false
-	// 		}
-	// 		body, err := io.ReadAll(resp.Body)
-	// 		require.NoError(t, err)
-	// 		if string(body) != `{"result":"tool called successfully"}` {
-	// 			fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), `{"result":"tool called successfully"}`))
-	// 			return false
-	// 		}
-	// 		return true
-	// 	}, 10*time.Second, 500*time.Millisecond)
-	// })
-
 	t.Run("Bedrock calls tool get_weather function", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []struct {
