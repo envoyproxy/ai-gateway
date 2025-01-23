@@ -192,6 +192,12 @@ func kubectlApplyManifest(ctx context.Context, manifest string) (err error) {
 	return cmd.Run()
 }
 
+func kubectlApplyManifestStdin(ctx context.Context, manifest string) (err error) {
+	cmd := kubectl(ctx, "apply", "--server-side", "-f", "-")
+	cmd.Stdin = bytes.NewReader([]byte(manifest))
+	return cmd.Run()
+}
+
 func kubectlDeleteManifest(ctx context.Context, manifest string) (err error) {
 	cmd := kubectl(ctx, "delete", "-f", manifest)
 	return cmd.Run()
@@ -288,4 +294,13 @@ func (f portForwarder) kill() {
 // address returns the address of the port forwarder.
 func (f portForwarder) address() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
+}
+
+// getEnvVarOrSkip requires an environment variable to be set.
+func getEnvVarOrSkip(t *testing.T, envVar string) string {
+	value := os.Getenv(envVar)
+	if value == "" {
+		t.Skipf("Environment variable %s is not set", envVar)
+	}
+	return value
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -21,21 +22,39 @@ import (
 
 // awsHandler implements [Handler] for AWS Bedrock authz.
 type awsHandler struct {
-	envCfg config.EnvConfig
-	signer *v4.Signer
-	region string
+	credentials aws.Credentials
+	signer      *v4.Signer
+	region      string
 }
 
-func newAWSHandler(_ *filterconfig.AWSAuth) (*awsHandler, error) {
-	cfg, err := config.NewEnvConfig()
-	if err != nil {
-		return nil, fmt.Errorf("cannot create AWS config: %w", err)
+func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
+	var credentials aws.Credentials
+	var region string
+
+	// TODO: refactor to work with refreshing credentials (similar to API Key)
+	if awsAuth != nil {
+		region = awsAuth.Region
+		if len(awsAuth.CredentialFileName) != 0 {
+			cfg, err := config.LoadDefaultConfig(
+				context.Background(),
+				config.WithSharedCredentialsFiles([]string{awsAuth.CredentialFileName}),
+				config.WithRegion(awsAuth.Region),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("cannot load from credentials file: %w", err)
+			}
+			credentials, err = cfg.Credentials.Retrieve(context.Background())
+			if err != nil {
+				return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("aws auth configuration is required")
 	}
+
 	signer := v4.NewSigner()
 
-	// TODO: configurable region during the implementation of https://github.com/envoyproxy/ai-gateway/pull/43.
-	const region = "us-east-1"
-	return &awsHandler{envCfg: cfg, signer: signer, region: region}, nil
+	return &awsHandler{credentials: credentials, signer: signer, region: region}, nil
 }
 
 // Do implements [Handler.Do].
@@ -72,7 +91,7 @@ func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.H
 		return fmt.Errorf("cannot create request: %w", err)
 	}
 
-	err = a.signer.SignHTTP(context.Background(), a.envCfg.Credentials, req,
+	err = a.signer.SignHTTP(context.Background(), a.credentials, req,
 		hex.EncodeToString(payloadHash[:]), "bedrock", a.region, time.Now())
 	if err != nil {
 		return fmt.Errorf("cannot sign request: %w", err)

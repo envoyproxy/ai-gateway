@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
 	"testing"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
@@ -56,6 +60,83 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 	})
 }
 
+func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
+	tests := []struct {
+		name            string
+		responseHeaders map[string]string
+		input           io.Reader
+		contentType     string
+		output          openai.Error
+	}{
+		{
+			name:        "test unhealthy upstream",
+			contentType: "text/plain",
+			responseHeaders: map[string]string{
+				":status":      "503",
+				"content-type": "text/plain",
+			},
+			input: bytes.NewBuffer([]byte("service not available")),
+			output: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    openAIBackendError,
+					Code:    ptr.To("503"),
+					Message: "service not available",
+				},
+			},
+		},
+		{
+			name: "test OpenAI missing required field error",
+			responseHeaders: map[string]string{
+				":status":      "400",
+				"content-type": "application/json",
+			},
+			contentType: "application/json",
+			input:       bytes.NewBuffer([]byte(`{"error": {"message": "missing required field", "type": "BadRequestError", "code": "400"}}`)),
+			output: openai.Error{
+				Error: openai.ErrorType{
+					Type:    "BadRequestError",
+					Code:    ptr.To("400"),
+					Message: "missing required field",
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+			fmt.Println(string(body))
+
+			o := &openAIToOpenAITranslatorV1ChatCompletion{}
+			hm, bm, err := o.ResponseError(tt.responseHeaders, tt.input)
+			require.NoError(t, err)
+			var newBody []byte
+			if tt.contentType == jsonContentType {
+				newBody = tt.input.(*bytes.Buffer).Bytes()
+			} else {
+				require.NotNil(t, bm)
+				require.NotNil(t, bm.Mutation)
+				require.NotNil(t, bm.Mutation.(*extprocv3.BodyMutation_Body))
+				newBody = bm.Mutation.(*extprocv3.BodyMutation_Body).Body
+				require.NotNil(t, newBody)
+				require.NotNil(t, hm)
+				require.NotNil(t, hm.SetHeaders)
+				require.Len(t, hm.SetHeaders, 1)
+				require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
+				require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			}
+
+			var openAIError openai.Error
+			err = json.Unmarshal(newBody, &openAIError)
+			require.NoError(t, err)
+			if !cmp.Equal(openAIError, tt.output) {
+				t.Errorf("ConvertAWSBedrockErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
+			}
+		})
+	}
+}
+
 func TestOpenAIToOpenAITranslatorV1ChatCompletionResponseBody(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		// This is the real event stream from OpenAI.
@@ -96,7 +177,7 @@ data: [DONE]
 
 		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
 		for i := 0; i < len(wholeBody); i++ {
-			hm, bm, tokenUsage, err := o.ResponseBody(bytes.NewReader(wholeBody[i:i+1]), false)
+			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
@@ -108,7 +189,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
+			_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -117,7 +198,7 @@ data: [DONE]
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
+			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		})
