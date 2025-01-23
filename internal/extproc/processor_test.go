@@ -71,7 +71,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
 		require.NoError(t, err)
-		p := &Processor{translator: mt, config: &processorConfig{
+		p := &Processor{translator: mt, logger: slog.Default(), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
 			requestCosts: []processorConfigRequestCost{
 				{LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},

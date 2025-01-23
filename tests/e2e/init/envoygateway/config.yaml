@@ -21,8 +21,6 @@ data:
     provider:
       kubernetes:
         rateLimitDeployment:
-          container:
-            image: docker.io/envoyproxy/ratelimit:master
           patch:
             type: StrategicMerge
             value:
@@ -32,8 +30,14 @@ data:
                     containers:
                     - imagePullPolicy: IfNotPresent
                       name: envoy-ratelimit
+                      image: docker.io/envoyproxy/ratelimit:60d8e81b
       type: Kubernetes
     extensionApis:
       enableEnvoyPatchPolicy: true
       enableBackend: true
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: redis.redis-system.svc.cluster.local:6379
 ---

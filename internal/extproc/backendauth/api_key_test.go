@@ -12,8 +12,17 @@ import (
 )
 
 func TestNewAPIKeyHandler(t *testing.T) {
-	auth := filterconfig.APIKeyAuth{Filename: "test"}
-	handler, err := NewAPIKeyHandler(&auth)
+	apiKeyFile := t.TempDir() + "/test"
+
+	f, err := os.Create(apiKeyFile)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, f.Close()) }()
+	_, err = f.WriteString("test")
+	require.NoError(t, err)
+	require.NoError(t, f.Sync())
+
+	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
+	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
@@ -23,16 +32,13 @@ func TestApiKeyHandler_Do(t *testing.T) {
 
 	f, err := os.Create(apiKeyFile)
 	require.NoError(t, err)
-
+	defer func() { require.NoError(t, f.Close()) }()
 	_, err = f.WriteString("test")
 	require.NoError(t, err)
-	err = f.Sync()
-	require.NoError(t, err)
-	err = f.Close()
-	require.NoError(t, err)
+	require.NoError(t, f.Sync())
 
 	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
-	handler, err := NewAPIKeyHandler(&auth)
+	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 

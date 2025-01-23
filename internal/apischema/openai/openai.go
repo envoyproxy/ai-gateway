@@ -702,15 +702,23 @@ type ChatCompletionResponseChunkChoiceDelta struct {
 // Error is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/realtime-server-events/error
 type Error struct {
-	EventID *string   `json:"event_id,omitempty"`
-	Type    string    `json:"type"`
-	Error   ErrorType `json:"error"`
+	// The unique ID of the server event.
+	EventID *string `json:"event_id,omitempty"`
+	// The event type, must be error.
+	Type string `json:"type"`
+	// Details of the error.
+	Error ErrorType `json:"error"`
 }
 
 type ErrorType struct {
-	Type    string  `json:"type"`
-	Code    *string `json:"code,omitempty"`
-	Message string  `json:"message,omitempty"`
-	Param   *string `json:"param,omitempty"`
+	// The type of error (e.g., "invalid_request_error", "server_error").
+	Type string `json:"type"`
+	// Error code, if any.
+	Code *string `json:"code,omitempty"`
+	// A human-readable error message.
+	Message string `json:"message,omitempty"`
+	// Parameter related to the error, if any.
+	Param *string `json:"param,omitempty"`
+	// The event_id of the client event that caused the error, if applicable.
 	EventID *string `json:"event_id,omitempty"`
 }
