@@ -93,8 +93,8 @@ func getEnvVarOrSkip(t *testing.T, envVar string) string {
 	return value
 }
 
-// requireWriteExtProcConfig writes the provided config to the configPath in YAML format.
-func requireWriteExtProcConfig(t *testing.T, configPath string, config *filterconfig.Config) {
+// requireWriteFilterConfig writes the provided [filterconfig.Config] to the configPath in YAML format.
+func requireWriteFilterConfig(t *testing.T, configPath string, config *filterconfig.Config) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))

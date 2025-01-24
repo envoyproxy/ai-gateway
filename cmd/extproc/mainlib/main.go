@@ -27,7 +27,7 @@ const (
 
 var (
 	configPath = flag.String("configPath", "", "path to the configuration file. "+
-		"The file must be in YAML format specified in extprocconfig.Config type. The configuration file is watched for changes.")
+		"The file must be in YAML format specified in filterconfig.Config type. The configuration file is watched for changes.")
 	extProcAddr = flag.String("extProcAddr", defaultAddress, "gRPC address for the external processor")
 	logLevel    = flag.String("logLevel", defaultLogLevel, "log level")
 )
