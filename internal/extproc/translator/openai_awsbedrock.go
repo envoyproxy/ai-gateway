@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -389,16 +390,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 ) {
 	if o.stream {
 		contentType := headers["content-type"]
-		if contentType != "application/vnd.amazon.eventstream" {
-			return nil, fmt.Errorf("unexpected content-type for streaming: %s", contentType)
+		if contentType == "application/vnd.amazon.eventstream" {
+			// We need to change the content-type to text/event-stream for streaming responses.
+			return &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{
+					{Header: &corev3.HeaderValue{Key: "content-type", Value: "text/event-stream"}},
+				},
+			}, nil
 		}
-
-		// We need to change the content-type to text/event-stream for streaming responses.
-		return &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: "content-type", Value: "text/event-stream"}},
-			},
-		}, nil
 	}
 	return nil, nil
 }
@@ -440,10 +439,65 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 	}
 }
 
+// ResponseError implements [Translator.ResponseError]
+// Translate AWS Bedrock exceptions to OpenAI error type.
+// The error type is stored in the "x-amzn-errortype" HTTP header for AWS error responses.
+// If AWS Bedrock connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	statusCode := respHeaders[statusHeaderName]
+	var openaiError openai.Error
+	if v, ok := respHeaders[contentTypeHeaderName]; ok && v == jsonContentType {
+		var bedrockError awsbedrock.BedrockException
+		if err := json.NewDecoder(body).Decode(&bedrockError); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal error body: %w", err)
+		}
+		openaiError = openai.Error{
+			Type: "error",
+			Error: openai.ErrorType{
+				Type:    respHeaders[awsErrorTypeHeaderName],
+				Message: bedrockError.Message,
+				Code:    &statusCode,
+			},
+		}
+	} else {
+		buf, err := io.ReadAll(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+		}
+		openaiError = openai.Error{
+			Type: "error",
+			Error: openai.ErrorType{
+				Type:    awsBedrockBackendError,
+				Message: string(buf),
+				Code:    &statusCode,
+			},
+		}
+	}
+	mut := &extprocv3.BodyMutation_Body{}
+	if errBody, err := json.Marshal(openaiError); err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+	} else {
+		mut.Body = errBody
+	}
+	headerMutation = &extprocv3.HeaderMutation{}
+	setContentLength(headerMutation, mut.Body)
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+}
+
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(body io.Reader, endOfStream bool) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
+	if v, ok := respHeaders[statusHeaderName]; ok {
+		if v, err := strconv.Atoi(v); err == nil {
+			if !isGoodStatusCode(v) {
+				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
+				return headerMutation, bodyMutation, LLMTokenUsage{}, err
+			}
+		}
+	}
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
 		buf, err := io.ReadAll(body)

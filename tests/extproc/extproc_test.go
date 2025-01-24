@@ -29,19 +29,6 @@ var (
 	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
 )
 
-// requireExtProcWithAWSCredentials starts the external processor with the provided executable and configPath
-// with additional environment variables for AWS credentials.
-//
-// The config must be in YAML format specified in [filterconfig.Config] type.
-func requireExtProcWithAWSCredentials(t *testing.T, configPath string) {
-	awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
-		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", awsAccessKeyID),
-		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", awsSecretAccessKey),
-	)
-}
-
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
 //
@@ -106,8 +93,8 @@ func getEnvVarOrSkip(t *testing.T, envVar string) string {
 	return value
 }
 
-// requireWriteExtProcConfig writes the provided config to the configPath in YAML format.
-func requireWriteExtProcConfig(t *testing.T, configPath string, config *filterconfig.Config) {
+// requireWriteFilterConfig writes the provided [filterconfig.Config] to the configPath in YAML format.
+func requireWriteFilterConfig(t *testing.T, configPath string, config *filterconfig.Config) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))

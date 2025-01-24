@@ -32,3 +32,4 @@ jobs:
             extproc
             controller
             translator
+            examples

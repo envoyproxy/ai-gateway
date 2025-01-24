@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"testing"
@@ -734,7 +735,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, tokenUsage, err := o.ResponseBody(bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
+			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -802,10 +803,81 @@ data: [DONE]
 	})
 }
 
+func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
+	tests := []struct {
+		name            string
+		responseHeaders map[string]string
+		input           io.Reader
+		output          openai.Error
+	}{
+		{
+			name: "test unhealthy upstream",
+			responseHeaders: map[string]string{
+				":status":      "503",
+				"content-type": "text/plain",
+			},
+			input: bytes.NewBuffer([]byte("service not available")),
+			output: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    awsBedrockBackendError,
+					Code:    ptr.To("503"),
+					Message: "service not available",
+				},
+			},
+		},
+		{
+			name: "test AWS throttled error response",
+			responseHeaders: map[string]string{
+				":status":              "429",
+				"content-type":         "application/json",
+				awsErrorTypeHeaderName: "ThrottledException",
+			},
+			input: bytes.NewBuffer([]byte(`{"message": "aws bedrock rate limit exceeded"}`)),
+			output: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    "ThrottledException",
+					Code:    ptr.To("429"),
+					Message: "aws bedrock rate limit exceeded",
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+			fmt.Println(string(body))
+
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			hm, bm, err := o.ResponseError(tt.responseHeaders, tt.input)
+			require.NoError(t, err)
+			require.NotNil(t, bm)
+			require.NotNil(t, bm.Mutation)
+			require.NotNil(t, bm.Mutation.(*extprocv3.BodyMutation_Body))
+			newBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
+			require.NotNil(t, newBody)
+			require.NotNil(t, hm)
+			require.NotNil(t, hm.SetHeaders)
+			require.Len(t, hm.SetHeaders, 1)
+			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
+			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+
+			var openAIError openai.Error
+			err = json.Unmarshal(newBody, &openAIError)
+			require.NoError(t, err)
+			if !cmp.Equal(openAIError, tt.output) {
+				t.Errorf("ConvertAWSBedrockErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
+			}
+		})
+	}
+}
+
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.ResponseBody(bytes.NewBuffer([]byte("invalid")), false)
+		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false)
 		require.Error(t, err)
 	})
 	tests := []struct {
@@ -957,7 +1029,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			fmt.Println(string(body))
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(bytes.NewBuffer(body), false)
+			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false)
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)

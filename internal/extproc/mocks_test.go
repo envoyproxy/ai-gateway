@@ -86,8 +86,18 @@ func (m mockTranslator) ResponseHeaders(headers map[string]string) (headerMutati
 	return m.retHeaderMutation, m.retErr
 }
 
+// ResponseError implements [translator.Translator.ResponseError].
+func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+	if m.expResponseBody != nil {
+		buf, err := io.ReadAll(body)
+		require.NoError(m.t, err)
+		require.Equal(m.t, m.expResponseBody.Body, buf)
+	}
+	return m.retHeaderMutation, m.retBodyMutation, m.retErr
+}
+
 // ResponseBody implements [translator.Translator.ResponseBody].
-func (m mockTranslator) ResponseBody(body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m mockTranslator) ResponseBody(respHeader map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)

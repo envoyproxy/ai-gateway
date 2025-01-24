@@ -28,7 +28,7 @@ func TestWithTestUpstream(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireTestUpstream(t)
 
-	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
@@ -66,6 +66,12 @@ func TestWithTestUpstream(t *testing.T) {
 		responseBody,
 		// responseType is either empty, "sse" or "aws-event-stream" as implemented by the test upstream.
 		responseType,
+		// responseStatus is the HTTP status code of the response.
+		responseStatus,
+		// responseHeaders are the headers sent in the HTTP response
+		// The value is a base64 encoded string of comma separated key-value pairs.
+		// E.g. "key1:value1,key2:value2".
+		responseHeaders,
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
 		// expRequestBody is the expected body to be sent to the test upstream.
@@ -77,14 +83,15 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBody string
 	}{
 		{
-			name:         "unknown path",
-			backend:      "openai",
-			path:         "/unknown",
-			method:       http.MethodPost,
-			requestBody:  `{"prompt": "hello"}`,
-			responseBody: `{"error": "unknown path"}`,
-			expPath:      "/unknown",
-			expStatus:    http.StatusInternalServerError,
+			name:           "unknown path",
+			backend:        "openai",
+			path:           "/unknown",
+			method:         http.MethodPost,
+			requestBody:    `{"prompt": "hello"}`,
+			responseBody:   `{"error": "unknown path"}`,
+			expPath:        "/unknown",
+			responseStatus: "500",
+			expStatus:      http.StatusInternalServerError,
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",
@@ -165,6 +172,33 @@ data: [DONE]
 
 `,
 		},
+		{
+			name:            "openai - /v1/chat/completions - error response",
+			backend:         "openai",
+			path:            "/v1/chat/completions",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expPath:         "/v1/chat/completions",
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			responseBody:    `{"error": {"message": "missing required field", "type": "BadRequestError", "code": "400"}}`,
+			expResponseBody: `{"error": {"message": "missing required field", "type": "BadRequestError", "code": "400"}}`,
+		},
+		{
+			name:            "aws-bedrock - /v1/chat/completions - error response",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expPath:         "/model/something/converse-stream",
+			responseStatus:  "429",
+			expStatus:       http.StatusTooManyRequests,
+			responseHeaders: "x-amzn-errortype:ThrottledException",
+			responseBody:    `{"message": "aws bedrock rate limit exceeded"}`,
+			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {
@@ -173,8 +207,12 @@ data: [DONE]
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
+				req.Header.Set("x-response-status", tc.responseStatus)
 				if tc.responseType != "" {
 					req.Header.Set("x-response-type", tc.responseType)
+				}
+				if tc.responseHeaders != "" {
+					req.Header.Set("x-response-headers", base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
 				}
 				if tc.expRequestBody != "" {
 					req.Header.Set("x-expected-request-body", base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
@@ -186,7 +224,6 @@ data: [DONE]
 					return false
 				}
 				defer func() { _ = resp.Body.Close() }()
-
 				if resp.StatusCode != tc.expStatus {
 					t.Logf("unexpected status code: %d", resp.StatusCode)
 					return false
