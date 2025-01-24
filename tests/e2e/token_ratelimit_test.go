@@ -32,10 +32,10 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	requireWaitForPodReady(t, egNamespace, egSelector)
 
-	fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
-	defer fwd.kill()
-
 	makeRequest := func(usedID string, input, output, total int, expStatus int) {
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+		defer fwd.kill()
+
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"gpt-4o-mini"}`)
 
 		const fakeResponseBodyTemplate = `{"choices":[{"message":{"content":"This is a test.","role":"assistant"}}],"stopReason":null,"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d}}`
