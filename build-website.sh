@@ -1,8 +1,8 @@
 #!/usr/bin/bash -e
 
 build_site () {
-    mkdir _site
-    echo "HELO, WORLD" > _site/index.html
+    mkdir build
+    echo "HELO, WORLD" > build/index.html
 }
 
 build_site

@@ -1,5 +1,5 @@
 [build]
-publish = "_site"
+publish = "build"
 command = "./build-website.sh"
 ignore = "git diff -q $CACHED_COMMIT_REF $COMMIT_REF docs/"
 
