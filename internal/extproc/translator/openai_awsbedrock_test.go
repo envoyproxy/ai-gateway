@@ -150,7 +150,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -956,7 +956,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -1174,4 +1174,56 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion(t *testing.T) {
+	translator, err := newOpenAIToAWSBedrockTranslator("/v1/chat/completions")
+	require.NoError(t, err)
+
+	t.Run("translate tool use block input", func(t *testing.T) {
+		openAIReq := &openai.ChatCompletionRequest{
+			Model: "test-model",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.ChatCompletionMessageParamUnion{
+					Type: openai.ChatMessageRoleAssistant,
+					Value: openai.ChatCompletionAssistantMessageParam{
+						Content: openai.ChatCompletionAssistantMessageParamContent{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+							Text: ptr.To("This is a test"),
+						},
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID: "tool-call-id",
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name:      "test-function",
+									Arguments: `{"location": "Paris"}`,
+								},
+								Type: openai.ChatCompletionMessageToolCallTypeFunction,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		headerMutation, bodyMutation, override, err := translator.RequestBody(openAIReq)
+		require.NoError(t, err)
+		require.NotNil(t, bodyMutation)
+
+		var bedrockReq awsbedrock.ConverseInput
+		err = json.Unmarshal(bodyMutation.Mutation.Body, &bedrockReq)
+		require.NoError(t, err)
+
+		require.Len(t, bedrockReq.Messages, 1)
+		require.Len(t, bedrockReq.Messages[0].Content, 2) // One for text, one for tool use
+
+		toolUseBlock := bedrockReq.Messages[0].Content[1].ToolUse
+		require.NotNil(t, toolUseBlock)
+		require.Equal(t, "test-function", toolUseBlock.Name)
+		require.Equal(t, "tool-call-id", toolUseBlock.ToolUseID)
+
+		input, err := json.Marshal(toolUseBlock.Input)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"location": "Paris"}`, string(input))
+	})
 }
