@@ -1,0 +1,8 @@
+[build]
+publish = "_site"
+command = "./build-website.sh"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors 'self';"
