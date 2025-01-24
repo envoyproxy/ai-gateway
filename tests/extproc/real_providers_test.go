@@ -83,7 +83,7 @@ func TestWithRealProviders(t *testing.T) {
 				},
 				Headers: []filterconfig.HeaderMatch{
 					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
-					{Name: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
+					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
 				},
 			},
 		},
