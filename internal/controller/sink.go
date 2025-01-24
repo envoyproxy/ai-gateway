@@ -40,7 +40,7 @@ type ConfigSinkEvent any
 
 // configSink centralizes the AIGatewayRoute and AIServiceBackend objects handling
 // which requires to be done in a single goroutine since we need to
-// consolidate the information from both objects to generate the ExtProcConfig
+// consolidate the information from both objects to generate the ExtProc ConfigMap
 // and HTTPRoute objects.
 type configSink struct {
 	client                        client.Client

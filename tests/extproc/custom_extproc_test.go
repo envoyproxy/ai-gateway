@@ -24,7 +24,7 @@ func TestExtProcCustomRouter(t *testing.T) {
 	requireRunEnvoy(t, "/dev/null")
 	requireTestUpstream(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",

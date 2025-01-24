@@ -28,7 +28,7 @@ func TestWithTestUpstream(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireTestUpstream(t)
 
-	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
