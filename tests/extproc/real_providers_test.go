@@ -212,8 +212,7 @@ func TestWithRealProviders(t *testing.T) {
 			testCaseName,
 			modelName string
 		}{
-			// {testCaseName: "openai", modelName: "gpt-4o-mini"},                            // This will go to "openai"
-			{testCaseName: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+			{testCaseName: "aws-bedrock-anthropic", modelName: "bedrock.us.anthropic.claude-3-5-sonnet-20240620-v1:0"}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				require.Eventually(t, func() bool {
