@@ -17,3 +17,5 @@ updates:
       golang.org:
         patterns:
           - "golang.org/*"
+    ignore:
+      - dependency-name: "github.com/envoyproxy/gateway"

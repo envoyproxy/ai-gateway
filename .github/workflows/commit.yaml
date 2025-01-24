@@ -156,8 +156,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.2.5
-            envoy_gateway_version: v1.2.5
+          - name: v1.3.0-rc.1
+            envoy_gateway_version: v1.3.0-rc.1
           - name: latest
             envoy_gateway_version: v0.0.0-latest
     steps:

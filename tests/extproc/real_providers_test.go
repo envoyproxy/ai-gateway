@@ -58,7 +58,7 @@ func TestWithRealProviders(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, awsFile.Sync())
 
-	requireWriteExtProcConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterconfig.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},

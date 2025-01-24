@@ -219,6 +219,7 @@ func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}
+		p.logger.Info("Setting request cost metadata", "type", c.Type, "cost", cost, "metadataKey", c.MetadataKey)
 		metadata[c.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 	if len(metadata) == 0 {
