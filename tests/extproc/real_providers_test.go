@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
@@ -249,7 +249,9 @@ func TestWithRealProviders(t *testing.T) {
 					}
 					returnsToolCall := false
 					for _, choice := range chatCompletion.Choices {
-						t.Logf("choice: %s", choice.Message.Content)
+						t.Logf("choice content: %s", choice.Message.Content)
+						t.Logf("finish reason: %s", choice.FinishReason)
+						t.Logf("choice toolcall: %s", choice.Message.ToolCalls)
 						if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonFunctionCall {
 							returnsToolCall = true
 						}
