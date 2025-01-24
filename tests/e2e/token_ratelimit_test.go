@@ -19,10 +19,6 @@ import (
 )
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
-	if egVersion != egLatest {
-		t.Skip("TODO: enable this by default after v1.3.0rc1 is released")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
