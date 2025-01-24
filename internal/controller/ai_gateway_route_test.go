@@ -81,6 +81,11 @@ func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) 
 	require.Len(t, extPolicy.Spec.ExtProc, 1)
 	require.NotNil(t, extPolicy.Spec.ExtProc[0].Metadata)
 	require.NotEmpty(t, extPolicy.Spec.ExtProc[0].Metadata.WritableNamespaces)
+	require.Equal(t, &egv1a1.ExtProcProcessingMode{
+		AllowModeOverride: true,
+		Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
+		Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
+	}, extPolicy.Spec.ExtProc[0].ProcessingMode)
 	require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, extPolicy.Spec.ExtProc[0].Metadata.WritableNamespaces[0])
 
 	// Update the policy.
