@@ -102,8 +102,8 @@ func (s *Server[P]) process(p P, stream extprocv3.ExternalProcessor_ProcessServe
 
 		resp, err := s.processMsg(ctx, p, req)
 		if err != nil {
-			s.logger.Error("cannot process request", slog.String("error", err.Error()))
-			return status.Errorf(codes.Unknown, "cannot process request: %v", err)
+			s.logger.Error("error processing request message", slog.String("error", err.Error()), slog.Any("request", req))
+			return status.Errorf(codes.Unknown, "error processing request message: %v", err)
 		}
 		if err := stream.Send(resp); err != nil {
 			s.logger.Error("cannot send response", slog.String("error", err.Error()))
