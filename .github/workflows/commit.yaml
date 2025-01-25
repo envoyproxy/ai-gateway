@@ -3,6 +3,10 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
   push:
     branches:
       - main
@@ -13,6 +17,10 @@ on:
     types: [labeled]
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
 
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
