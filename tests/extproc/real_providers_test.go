@@ -253,7 +253,7 @@ func TestWithRealProviders(t *testing.T) {
 					for _, choice := range chatCompletion.Choices {
 						t.Logf("choice content: %s", choice.Message.Content)
 						t.Logf("finish reason: %s", choice.FinishReason)
-						t.Logf("choice toolcall: %s", choice.Message.ToolCalls)
+						t.Logf("choice toolcall: %v", choice.Message.ToolCalls)
 						if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonFunctionCall {
 							returnsToolCall = true
 						}
