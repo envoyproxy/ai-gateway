@@ -237,6 +237,30 @@ func TestStartControllers(t *testing.T) {
 			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
+
+	t.Run("verify http route 'route1' is recreated if deleted", func(t *testing.T) {
+		// When the HTTPRoute resource is deleted, the AIGatewayRoute controller should recreate it.
+		routeName := "route1"
+		routeNamespace := "default"
+
+		// Delete the HTTPRoute resource.
+		err := c.Delete(ctx, &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: routeName, Namespace: routeNamespace}})
+		require.NoError(t, err)
+
+		// Verify that the HTTPRoute resource is recreated.
+		require.Eventually(t, func() bool {
+			var httpRoute gwapiv1.HTTPRoute
+			err := c.Get(ctx, client.ObjectKey{Name: routeName, Namespace: routeNamespace}, &httpRoute)
+			if err != nil {
+				t.Logf("failed to get http route %s: %v", routeName, err)
+				return false
+			} else if httpRoute.DeletionTimestamp != nil {
+				// Make sure it is not the HTTPRoute resource that is being deleted.
+				return false
+			}
+			return true
+		}, 30*time.Second, 200*time.Millisecond)
+	})
 }
 
 func TestAIGatewayRouteController(t *testing.T) {

@@ -5,6 +5,7 @@ out/
 .terraform
 .idea
 *for_tests.yaml
+.vscode
 
 # Files and directories to ignore in the site directory
 # dependencies
