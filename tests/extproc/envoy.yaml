@@ -18,6 +18,7 @@ static_resources:
                       path: ACCESS_LOG_PATH
                       json_format:
                         "used_token": "%DYNAMIC_METADATA(ai_gateway_llm_ns:used_token)%"
+                        "some_cel": "%DYNAMIC_METADATA(ai_gateway_llm_ns:some_cel)%"
                 route_config:
                   virtual_hosts:
                     - name: local_route

@@ -36,6 +36,9 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	stream       bool
 	bufferedBody []byte
 	events       []awsbedrock.ConverseStreamEvent
+	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
+	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams
+	role string
 }
 
 // RequestBody implements [Translator.RequestBody].
@@ -110,7 +113,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 			var toolName, toolDes string
 			toolName = toolDefinition.Function.Name
 			toolDes = toolDefinition.Function.Description
-
 			tool := &awsbedrock.Tool{
 				ToolSpec: &awsbedrock.ToolSpecification{
 					Name:        &toolName,
@@ -530,7 +532,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
 				}
 			}
-
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
 				continue
@@ -640,15 +641,58 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	case event.Role != nil:
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-				Role:    event.Role,
+				Role:    *event.Role,
 				Content: &emptyString,
 			},
 		})
+		o.role = *event.Role
 	case event.Delta != nil:
+		if event.Delta.Text != nil {
+			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+					Role:    o.role,
+					Content: event.Delta.Text,
+				},
+			})
+		} else if event.Delta.ToolUse != nil {
+			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+					Role: o.role,
+					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+						{
+							Function: openai.ChatCompletionMessageToolCallFunctionParam{
+								Arguments: event.Delta.ToolUse.Input,
+							},
+							Type: openai.ChatCompletionMessageToolCallTypeFunction,
+						},
+					},
+				},
+			})
+		}
+	case event.Start != nil:
+		if event.Start.ToolUse != nil {
+			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+					Role: o.role,
+					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+						{
+							ID: event.Start.ToolUse.ToolUseID,
+							Function: openai.ChatCompletionMessageToolCallFunctionParam{
+								Name: event.Start.ToolUse.Name,
+							},
+							Type: openai.ChatCompletionMessageToolCallTypeFunction,
+						},
+					},
+				},
+			})
+		}
+	case event.StopReason != nil:
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-				Content: &event.Delta.Text,
+				Role:    o.role,
+				Content: ptr.To(emptyString),
 			},
+			FinishReason: o.bedrockStopReasonToOpenAIStopReason(event.StopReason),
 		})
 	default:
 		return chunk, false

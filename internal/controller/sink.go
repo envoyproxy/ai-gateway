@@ -19,6 +19,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 const (
@@ -311,6 +312,13 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			fc.Type = filterconfig.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
 			fc.Type = filterconfig.LLMRequestCostTypeCELExpression
+			expr := *cost.CELExpression
+			// Sanity check the CEL expression.
+			_, err := llmcostcel.NewProgram(expr)
+			if err != nil {
+				return fmt.Errorf("invalid CEL expression: %w", err)
+			}
+			fc.CELExpression = expr
 		default:
 			return fmt.Errorf("unknown request cost type: %s", cost.Type)
 		}

@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
@@ -36,8 +37,11 @@ func TestServer_LoadConfig(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		config := &filterconfig.Config{
-			MetadataNamespace:        "ns",
-			LLMRequestCosts:          []filterconfig.LLMRequestCost{{MetadataKey: "key", Type: filterconfig.LLMRequestCostTypeOutputToken}},
+			MetadataNamespace: "ns",
+			LLMRequestCosts: []filterconfig.LLMRequestCost{
+				{MetadataKey: "key", Type: filterconfig.LLMRequestCostTypeOutputToken},
+				{MetadataKey: "cel_key", Type: filterconfig.LLMRequestCostTypeCELExpression, CELExpression: "1 + 1"},
+			},
 			Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
@@ -72,17 +76,25 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
-		require.NotEmpty(t, s.config.requestCosts)
 		require.Equal(t, "ns", s.config.metadataNamespace)
-		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterconfig.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.NotNil(t, s.config.router)
 		require.NotNil(t, s.config.bodyParser)
 		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
-		require.Equal(t, "x-model-name", s.config.ModelNameHeaderKey)
+		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
 		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}])
 		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}])
+
+		require.Len(t, s.config.requestCosts, 2)
+		require.Equal(t, filterconfig.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
+		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
+		require.Equal(t, filterconfig.LLMRequestCostTypeCELExpression, s.config.requestCosts[1].Type)
+		require.Equal(t, "1 + 1", s.config.requestCosts[1].CELExpression)
+		prog := s.config.requestCosts[1].celProg
+		require.NotNil(t, prog)
+		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), val)
 	})
 }
 

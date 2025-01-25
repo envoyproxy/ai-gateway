@@ -11,6 +11,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/google/cel-go/cel"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/extprocapi"
@@ -18,6 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 // processorConfig is the configuration for the processor.
@@ -25,11 +27,16 @@ import (
 type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
 	router                                       extprocapi.Router
-	ModelNameHeaderKey, selectedBackendHeaderKey string
+	modelNameHeaderKey, selectedBackendHeaderKey string
 	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
 	metadataNamespace                            string
-	requestCosts                                 []filterconfig.LLMRequestCost
+	requestCosts                                 []processorConfigRequestCost
+}
+
+type processorConfigRequestCost struct {
+	*filterconfig.LLMRequestCost
+	celProg cel.Program
 }
 
 // ProcessorIface is the interface for the processor.
@@ -80,7 +87,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 	p.logger.Info("Processing request", "path", path, "model", model)
 
-	p.requestHeaders[p.config.ModelNameHeaderKey] = model
+	p.requestHeaders[p.config.modelNameHeaderKey] = model
 	b, err := p.config.router.Calculate(p.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
@@ -108,7 +115,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.ModelNameHeaderKey, RawValue: []byte(model)},
+		Header: &corev3.HeaderValue{Key: p.config.modelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
 	})
@@ -207,7 +214,8 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 
 func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(p.config.requestCosts))
-	for _, c := range p.config.requestCosts {
+	for i := range p.config.requestCosts {
+		c := &p.config.requestCosts[i]
 		var cost uint32
 		switch c.Type {
 		case filterconfig.LLMRequestCostTypeInputToken:
@@ -216,6 +224,19 @@ func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 			cost = p.costs.OutputTokens
 		case filterconfig.LLMRequestCostTypeTotalToken:
 			cost = p.costs.TotalTokens
+		case filterconfig.LLMRequestCostTypeCELExpression:
+			costU64, err := llmcostcel.EvaluateProgram(
+				c.celProg,
+				p.requestHeaders[p.config.modelNameHeaderKey],
+				p.requestHeaders[p.config.selectedBackendHeaderKey],
+				p.costs.InputTokens,
+				p.costs.OutputTokens,
+				p.costs.TotalTokens,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+			}
+			cost = uint32(costU64) //nolint:gosec
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
 		}

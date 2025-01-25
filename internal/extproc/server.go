@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/google/cel-go/cel"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -17,6 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 // Server implements the external process server.
@@ -64,14 +66,27 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 		}
 	}
 
+	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
+	for i := range config.LLMRequestCosts {
+		c := &config.LLMRequestCosts[i]
+		var prog cel.Program
+		if c.CELExpression != "" {
+			prog, err = llmcostcel.NewProgram(c.CELExpression)
+			if err != nil {
+				return fmt.Errorf("cannot create CEL program for cost: %w", err)
+			}
+		}
+		costs = append(costs, processorConfigRequestCost{LLMRequestCost: c, celProg: prog})
+	}
+
 	newConfig := &processorConfig{
 		bodyParser: bodyParser, router: rt,
 		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
-		ModelNameHeaderKey:       config.ModelNameHeaderKey,
+		modelNameHeaderKey:       config.ModelNameHeaderKey,
 		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
 		metadataNamespace:        config.MetadataNamespace,
-		requestCosts:             config.LLMRequestCosts,
+		requestCosts:             costs,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

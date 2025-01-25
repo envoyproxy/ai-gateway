@@ -196,10 +196,21 @@ spec:
                   description: LLMRequestCost configures each request cost.
                   properties:
                     celExpression:
-                      description: |-
-                        CELExpression is the CEL expression to calculate the cost of the request.
-                        The CEL expression must return an integer value. The CEL expression should be
-                        able to access the request headers, model name, backend name, input/output tokens etc.
+                      description: "CELExpression is the CEL expression to calculate
+                        the cost of the request.\nThe CEL expression must return a
+                        signed or unsigned integer. If the\nreturn value is negative,
+                        it will be error.\n\nThe expression can use the following
+                        variables:\n\n\t* model: the model name extracted from the
+                        request content. Type: string.\n\t* backend: the backend name
+                        in the form of \"name.namespace\". Type: string.\n\t* input_tokens:
+                        the number of input tokens. Type: unsigned integer.\n\t* output_tokens:
+                        the number of output tokens. Type: unsigned integer.\n\t*
+                        total_tokens: the total number of tokens. Type: unsigned integer.\n\nFor
+                        example, the following expressions are valid:\n\n\t* \"model
+                        == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens\"\n\t*
+                        \"backend == 'foo.default' ?  input_tokens + output_tokens
+                        : total_tokens\"\n\t* \"input_tokens + output_tokens + total_tokens\"\n\t*
+                        \"input_tokens * output_tokens\""
                       type: string
                     metadataKey:
                       description: MetadataKey is the key of the metadata to store
@@ -208,11 +219,13 @@ spec:
                     type:
                       description: |-
                         Type specifies the type of the request cost. The default is "OutputToken",
-                        and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
+                        and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
+                        and "CEL".
                       enum:
                       - OutputToken
                       - InputToken
                       - TotalToken
+                      - CEL
                       type: string
                   required:
                   - metadataKey
@@ -254,15 +267,17 @@ spec:
                             minLength: 1
                             type: string
                           weight:
+                            default: 1
                             description: |-
                               Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
                               the BackendRef in the Gateway API. See for the details:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
+
+                              Default is 1.
                             minimum: 0
                             type: integer
                         required:
                         - name
-                        - weight
                         type: object
                       maxItems: 128
                       type: array

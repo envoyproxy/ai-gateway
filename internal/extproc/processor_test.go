@@ -13,6 +13,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterconfig"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 func TestProcessor_ProcessRequestHeaders(t *testing.T) {
@@ -65,11 +66,24 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
 			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
 		}
+
+		celProgInt, err := llmcostcel.NewProgram("54321")
+		require.NoError(t, err)
+		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
+		require.NoError(t, err)
 		p := &Processor{translator: mt, logger: slog.Default(), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
-			requestCosts: []filterconfig.LLMRequestCost{
-				{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"},
-				{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"},
+			requestCosts: []processorConfigRequestCost{
+				{LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+				{LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
+				{
+					celProg:        celProgInt,
+					LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel_int"},
+				},
+				{
+					celProg:        celProgUint,
+					LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel_uint"},
+				},
 			},
 		}}
 		res, err := p.ProcessResponseBody(context.Background(), inBody)
@@ -84,6 +98,10 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 			GetStructValue().Fields["output_token_usage"].GetNumberValue())
 		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
+		require.Equal(t, float64(54321), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["cel_int"].GetNumberValue())
+		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
+			GetStructValue().Fields["cel_uint"].GetNumberValue())
 	})
 }
 
@@ -168,7 +186,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
-			ModelNameHeaderKey:       "x-ai-gateway-model-key",
+			modelNameHeaderKey:       "x-ai-gateway-model-key",
 		}, requestHeaders: headers, logger: slog.Default()}
 		resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.NoError(t, err)

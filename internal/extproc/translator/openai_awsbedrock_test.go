@@ -745,25 +745,58 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 				results = append(results, string(newBody))
 			}
 			if tokenUsage.OutputTokens > 0 {
-				require.Equal(t, uint32(36), tokenUsage.OutputTokens)
+				require.Equal(t, uint32(75), tokenUsage.OutputTokens)
 			}
 		}
 
 		result := strings.Join(results, "")
 
-		require.Equal(t, `data: {"choices":[{"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+		require.Equal(t,
+			`data: {"choices":[{"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"Don"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":"To","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"'t worry, I'm here to help. It"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":" calculate the cosine","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" seems like you're testing my ability to respond appropriately"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":" of 7,","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":". If you'd like to continue the test,"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":" we can use the","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" I'm ready."}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":" \"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77}}
+data: {"choices":[{"delta":{"content":"cosine\" function","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" that","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" is","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" available to","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" us.","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" Let","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"'s use","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" this","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" function to","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" get","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" the result","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":".","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"","function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"","function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"completion_tokens":75,"prompt_tokens":386,"total_tokens":461}}
 
 data: [DONE]
 `, result)
@@ -1025,16 +1058,52 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 	}
 }
 
-const base64RealStreamingEvents = "AAAAnwAAAFKzEV9wCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0giLCJyb2xlIjoiYXNzaXN0YW50In0i9wVBAAAAxQAAAFex2HyVCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IkRvbiJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk8ifb/whawAAADAAAAAV3k48+ULOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiJ3Qgd29ycnksIEknbSBoZXJlIHRvIGhlbHAuIEl0In0sInAiOiJhYmNkZWZnaGkifenahv0AAADgAAAAV7j53OELOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiIHNlZW1zIGxpa2UgeW91J3JlIHRlc3RpbmcgbXkgYWJpbGl0eSB0byByZXNwb25kIGFwcHJvcHJpYXRlbHkifSwicCI6ImFiY2RlZmdoaSJ9dNZCqAAAAM8AAABX+2hkNAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIuIElmIHlvdSdkIGxpa2UgdG8gY29udGludWUgdGhlIHRlc3QsIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcSJ9xQJqAgAAALUAAABXSAqcWgs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgSSdtIHJlYWR5LiJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHEifTOb7esAAAC5AAAAVvr9Qc0LOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaMCJ9iABE1AAAAI0AAABRMDjKKAs6ZXZlbnQtdHlwZQcAC21lc3NhZ2VTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbCIsInN0b3BSZWFzb24iOiJlbmRfdHVybiJ9LttU3QAAAPoAAABO9sL7Ags6ZXZlbnQtdHlwZQcACG1ldGFkYXRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsibWV0cmljcyI6eyJsYXRlbmN5TXMiOjQ1Mn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaMDEyMzQ1IiwidXNhZ2UiOnsiaW5wdXRUb2tlbnMiOjQxLCJvdXRwdXRUb2tlbnMiOjM2LCJ0b3RhbFRva2VucyI6Nzd9fX96gYI="
+// base64RealStreamingEvents is the base64 encoded raw binary response from bedrock anthropic.claude model.
+// The request is to find the cosine of number 7 with a tool configuration.
+/*
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"text": "What is the cosine of 7?"}]
+    }
+  ],
+  "toolConfig": {
+    "tools": [
+      {
+        "toolSpec": {
+          "name": "cosine",
+          "description": "Calculate the cosine of x.",
+          "inputSchema": {
+            "json": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "The number to pass to the function."
+                }
+              },
+              "required": ["x"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "system": [{"text": "You must only do math by using a tool."}]
+}
+*/
+
+const base64RealStreamingEvents = "AAAAmwAAAFJGkfmwCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDRCIsInJvbGUiOiJhc3Npc3RhbnQifbCidJ0AAACpAAAAV+0a5tkLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiVG8ifSwicCI6ImFiY2RlZmdoaWprbG1uIn0rY75JAAAAsQAAAFe9ijqaCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBjYWxjdWxhdGUgdGhlIGNvc2luZSJ9LCJwIjoiYWJjIn3hywqfAAAA2gAAAFdTaHzGCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBvZiA3LCJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxMjM0NTYifUsRwHsAAADXAAAAV6v4uHcLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiIHdlIGNhbiB1c2UgdGhlIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVSJ9jBuxjAAAALwAAABXRRr+Kws6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgXCIifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGIn3SOp66AAAA2wAAAFduCFV2CzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6ImNvc2luZVwiIGZ1bmN0aW9uIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXIn2f+1UQAAAA2QAAAFcUyAYWCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiB0aGF0In0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaMDEyMzQ1NiJ9uD7t8wAAAM8AAABX+2hkNAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgaXMifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWSJ9p52nrQAAAMQAAABXjLhVJQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgYXZhaWxhYmxlIHRvIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0QifYC08b0AAADTAAAAV154HrcLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiIHVzLiJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxIn0mTm4jAAAAtAAAAFd1arXqCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBMZXQifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3In34BFwTAAAA0AAAAFcZ2GRnCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IidzIHVzZSJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWVyJ9vfdBjQAAALwAAABXRRr+Kws6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgdGhpcyJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNEIn1Xtb4jAAAAuAAAAFewmljrCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBmdW5jdGlvbiB0byJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFycyJ9GYv84AAAALQAAABXdWq16gs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgZ2V0In0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2dyJ99bdUOgAAAN4AAABXpujaBgs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgdGhlIHJlc3VsdCJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxMjM0NSJ9niPS/gAAAM0AAABXgag3VAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIuIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFkifRc68JQAAACuAAAAVig9Cl8LOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1AifY2eizoAAAEEAAAAV67xblsLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tTdGFydA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjoxLCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVIiLCJzdGFydCI6eyJ0b29sVXNlIjp7Im5hbWUiOiJjb3NpbmUiLCJ0b29sVXNlSWQiOiJ0b29sdXNlX1FrbHJFSEtqUnU2T2M0QlFVZnk3WlEifX19kpNGawAAAK0AAABXGJpAGQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjEsImRlbHRhIjp7InRvb2xVc2UiOnsiaW5wdXQiOiIifX0sInAiOiJhYmNkZWZnIn3XeK+kAAAAswAAAFfHSmn6CzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MSwiZGVsdGEiOnsidG9vbFVzZSI6eyJpbnB1dCI6IntcInhcIjogN30ifX0sInAiOiJhYmMifaN4jhsAAACxAAAAVsqNCgwLOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjEsInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlMifUJp3UkAAACFAAAAUQBIgekLOmV2ZW50LXR5cGUHAAttZXNzYWdlU3RvcA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7InAiOiJhYmNkIiwic3RvcFJlYXNvbiI6InRvb2xfdXNlIn3ejv14AAAAygAAAE5X40OECzpldmVudC10eXBlBwAIbWV0YWRhdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJtZXRyaWNzIjp7ImxhdGVuY3lNcyI6MTk1N30sInAiOiJhYmNkZWZnIiwidXNhZ2UiOnsiaW5wdXRUb2tlbnMiOjM4Niwib3V0cHV0VG9rZW5zIjo3NSwidG90YWxUb2tlbnMiOjQ2MX19Ke/W4Q=="
 
 func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	e := eventstream.NewEncoder()
 	var offsets []int
 	for _, data := range []awsbedrock.ConverseStreamEvent{
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "1"}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "2"}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "3"}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("1")}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("2")}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("3")}},
 	} {
 		offsets = append(offsets, buf.Len())
 		eventPayload, err := json.Marshal(data)
@@ -1055,7 +1124,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		require.Len(t, o.events, 3)
 		require.Empty(t, o.bufferedBody)
 		for i, text := range []string{"1", "2", "3"} {
-			require.Equal(t, text, o.events[i].Delta.Text)
+			require.Equal(t, text, *o.events[i].Delta.Text)
 		}
 	})
 
@@ -1089,19 +1158,19 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		var usage *awsbedrock.TokenUsage
 		for _, event := range o.events {
 			t.Log(event.String())
-			if delta := event.Delta; delta != nil && delta.Text != "" {
-				texts = append(texts, event.Delta.Text)
+			if delta := event.Delta; delta != nil && delta.Text != nil && *delta.Text != "" {
+				texts = append(texts, *event.Delta.Text)
 			}
 			if u := event.Usage; u != nil {
 				usage = u
 			}
 		}
 		require.Equal(t,
-			"Don't worry, I'm here to help. It seems like you're testing my ability to respond appropriately. If you'd like to continue the test, I'm ready.",
+			"To calculate the cosine of 7, we can use the \"cosine\" function that is available to us. Let's use this function to get the result.",
 			strings.Join(texts, ""),
 		)
 		require.NotNil(t, usage)
-		require.Equal(t, 77, usage.TotalTokens)
+		require.Equal(t, 461, usage.TotalTokens)
 	})
 }
 
@@ -1140,7 +1209,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							Role:    ptrOf("assistant"),
+							Role:    "assistant",
 							Content: &emptyString,
 						},
 					},
@@ -1150,7 +1219,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "delta",
 			in: awsbedrock.ConverseStreamEvent{
-				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: "response"},
+				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("response")},
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
