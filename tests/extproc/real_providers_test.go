@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
+	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
@@ -82,7 +82,10 @@ func TestWithRealProviders(t *testing.T) {
 						Region:             "us-east-1",
 					}}},
 				},
-				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"}},
+				Headers: []filterconfig.HeaderMatch{
+					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
+					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
+				},
 			},
 		},
 	})
@@ -204,6 +207,59 @@ func TestWithRealProviders(t *testing.T) {
 					}
 					return nonEmptyCompletion
 				}, 10*time.Second, 1*time.Second)
+			})
+		}
+	})
+
+	t.Run("Bedrock calls tool get_weather function", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+		for _, tc := range []struct {
+			testCaseName,
+			modelName string
+		}{
+			{testCaseName: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				require.Eventually(t, func() bool {
+					chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage("What is the weather like in Paris today?"),
+						}),
+						Tools: openai.F([]openai.ChatCompletionToolParam{
+							{
+								Type: openai.F(openai.ChatCompletionToolTypeFunction),
+								Function: openai.F(openai.FunctionDefinitionParam{
+									Name:        openai.String("get_weather"),
+									Description: openai.String("Get weather at the given location"),
+									Parameters: openai.F(openai.FunctionParameters{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"location": map[string]string{
+												"type": "string",
+											},
+										},
+										"required": []string{"location"},
+									}),
+								}),
+							},
+						}),
+						Model: openai.F(tc.modelName),
+					})
+					if err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+					returnsToolCall := false
+					for _, choice := range chatCompletion.Choices {
+						t.Logf("choice content: %s", choice.Message.Content)
+						t.Logf("finish reason: %s", choice.FinishReason)
+						t.Logf("choice toolcall: %v", choice.Message.ToolCalls)
+						if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonFunctionCall {
+							returnsToolCall = true
+						}
+					}
+					return returnsToolCall
+				}, 10*time.Second, 500*time.Millisecond)
 			})
 		}
 	})

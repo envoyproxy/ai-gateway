@@ -95,7 +95,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								{
 									ID: "call_6g7a",
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
-										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
 										Name:      "exec_python_code",
 									},
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
@@ -150,7 +150,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -989,7 +989,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -1010,7 +1010,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 									ID: "call_6g7a",
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Name:      "exec_python_code",
-										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}}",
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
 									},
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},

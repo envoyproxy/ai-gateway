@@ -245,6 +245,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	}
 }
 
+// unmarshalToolCallArguments is a helper method to unmarshal tool call arguments.
+func unmarshalToolCallArguments(arguments string) (map[string]interface{}, error) {
+	var input map[string]interface{}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
+	}
+	return input, nil
+}
+
 // openAIMessageToBedrockMessageRoleAssistant converts openai assistant role message
 // The tool content is appended to the bedrock message content list if tool_call is in openai message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleAssistant(
@@ -261,14 +270,17 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		Role:    role,
 		Content: contentBlocks,
 	}
-	// Process tool_calls.
 	for _, toolCall := range openAiMessage.ToolCalls {
+		input, err := unmarshalToolCallArguments(toolCall.Function.Arguments)
+		if err != nil {
+			return nil, err
+		}
 		bedrockMessage.Content = append(bedrockMessage.Content,
 			&awsbedrock.ContentBlock{
 				ToolUse: &awsbedrock.ToolUseBlock{
 					Name:      toolCall.Function.Name,
 					ToolUseID: toolCall.ID,
-					Input:     toolCall.Function.Arguments,
+					Input:     input,
 				},
 			})
 	}
@@ -429,11 +441,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 	if toolUse == nil {
 		return nil
 	}
+	arguments, err := json.Marshal(toolUse.Input)
+	if err != nil {
+		return nil
+	}
 	return &openai.ChatCompletionMessageToolCallParam{
 		ID: toolUse.ToolUseID,
 		Function: openai.ChatCompletionMessageToolCallFunctionParam{
 			Name:      toolUse.Name,
-			Arguments: toolUse.Input,
+			Arguments: string(arguments),
 		},
 		Type: openai.ChatCompletionMessageToolCallTypeFunction,
 	}
