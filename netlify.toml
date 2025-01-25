@@ -1,9 +1,30 @@
 [build]
+base = "site"
 publish = "build"
-command = "./build-website.sh"
-ignore = "git diff -q $CACHED_COMMIT_REF $COMMIT_REF docs/"
+command = "npm run build"
+
+[context.deploy-preview]
+base = "site"
+publish = "build"
+command = "npm run build"
 
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "frame-ancestors 'self';"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: https: blob:;
+      font-src 'self' data: https://fonts.gstatic.com;
+      connect-src 'self' https:;
+      manifest-src 'self';
+      media-src 'self';
+      worker-src 'self' blob:;
+      frame-ancestors 'none';
+    """
