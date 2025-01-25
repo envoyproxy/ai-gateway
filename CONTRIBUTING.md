@@ -4,9 +4,10 @@ We welcome contributions from the community. Please read the following guideline
 
 # Local development of Envoy AI Gateway project
 
-First of all, there are only two minimal prerequisites to contribute to the project:
-* The latest Go toolchain.
-* `make` commands.
+First of all, there are only three minimal prerequisites to contribute to the project:
+* The latest Go toolchain
+* `make`
+* `docker`
 
 which we assume you already have installed on your machine.
 
@@ -30,8 +31,9 @@ All test targets are prefixed with `test-*` and can be run via `make test-<targe
 Some test commands might require additional dependencies to be installed on your machine.
 For example,
 
-* The latest `kubectl` binary for running `make test-e2e`.
-  * See: https://kubernetes.io/docs/tasks/tools/
+* The latest `kubectl` and `helm` binary for running `make test-e2e`.
+  * kubectl: https://kubernetes.io/docs/tasks/tools/
+  * helm: https://helm.sh/docs/intro/install/
 * The latest `envoy` binary for running `make test-extproc`.
   * See: https://www.envoyproxy.io/docs/envoy/latest/start/install
 
