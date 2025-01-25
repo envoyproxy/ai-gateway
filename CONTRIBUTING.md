@@ -17,21 +17,23 @@ the only make targets you would need to run are listed via
 make help
 ```
 
-and everything will be done via `make` targets. You don't need to run anything else manually. 
+and everything will be done via `make` targets. You don't need to run anything else manually.
 Anything necessary should go through `make` targets.
 
 Please check out the output of the above command to see
 the list of commands that you can run to build, test, and run the project.
 
 For example, `make precommit test` will run the precommit checks and the unit tests.
-These are the must-run commands before you submit or pushing commits to a PR. 
+These are the must-run commands before you submit or pushing commits to a PR.
 All test targets are prefixed with `test-*` and can be run via `make test-<target>`.
 
 Some test commands might require additional dependencies to be installed on your machine.
 For example,
 
 * The latest `kubectl` binary for running `make test-e2e`.
+  * See: https://kubernetes.io/docs/tasks/tools/
 * The latest `envoy` binary for running `make test-extproc`.
+  * See: https://www.envoyproxy.io/docs/envoy/latest/start/install
 
 Other than that, everything will be automatically managed and installed via `make` targets,
 and you should not need to worry about the dependencies (tell us if you do).
