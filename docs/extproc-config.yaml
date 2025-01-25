@@ -1,0 +1,32 @@
+llmRequestCosts:
+- metadataKey: used_token
+  type: InputToken
+metadataNamespace: ai_gateway_llm_ns
+modelNameHeaderKey: x-model-name
+rules:
+- backends:
+  - auth:
+      apiKey:
+        filename: /tmp/TestWithRealProviders3286901600/004/open-ai-api-key
+    name: openai
+    schema:
+      name: OpenAI
+    weight: 0
+  headers:
+  - name: x-model-name
+    value: gpt-4o-mini
+- backends:
+  - auth:
+      aws:
+        credentialFileName: /tmp/TestWithRealProviders3286901600/005/aws-credential-file
+        region: us-east-1
+    name: aws-bedrock
+    schema:
+      name: AWSBedrock
+    weight: 0
+  headers:
+  - name: x-model-name
+    value: us.meta.llama3-2-1b-instruct-v1:0
+schema:
+  name: OpenAI
+selectedBackendHeaderKey: x-selected-backend-name
