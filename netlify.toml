@@ -1,6 +1,6 @@
 [build]
 base = "site/"
-publish = "build/"
+publish = "site/build/"
 command = "npm run build"
 
 [context.deploy-preview]
