@@ -1,0 +1,33 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: llmcosts
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: some-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: llama3-70b
+      backendRefs:
+        - name: kserve
+          weight: 20
+        - name: aws-bedrock
+          weight: 80
+  llmRequestCosts:
+    - metadataKey: llm_input_token
+      type: InputToken
+    - metadataKey: llm_output_token
+      type: OutputToken
+    - metadataKey: llm_total_token
+      type: TotalToken
+    - metadataKey: some_cel_cost
+      type: CEL
+      celExpression: "llm_input_token + llm_output_token + llm_total_token"

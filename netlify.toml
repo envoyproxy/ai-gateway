@@ -1,0 +1,9 @@
+[build]
+publish = "build"
+command = "./build-website.sh"
+ignore = "git diff -q $CACHED_COMMIT_REF $COMMIT_REF docs/"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors 'self';"

@@ -126,8 +126,9 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: aiGatewayRoute.Spec.TargetRefs},
 			ExtProc: []egv1a1.ExtProc{{
 				ProcessingMode: &egv1a1.ExtProcProcessingMode{
-					Request:  &egv1a1.ProcessingModeOptions{Body: &pm},
-					Response: &egv1a1.ProcessingModeOptions{Body: &pm},
+					AllowModeOverride: true, // Streaming completely overrides the buffered mode.
+					Request:           &egv1a1.ProcessingModeOptions{Body: &pm},
+					Response:          &egv1a1.ProcessingModeOptions{Body: &pm},
 				},
 				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{

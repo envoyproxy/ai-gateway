@@ -480,17 +480,32 @@ type LLMRequestCost struct {
 	// +kubebuilder:validation:Required
 	MetadataKey string `json:"metadataKey"`
 	// Type specifies the type of the request cost. The default is "OutputToken",
-	// and it uses "output token" as the cost. The other types are "InputToken" and "TotalToken".
+	// and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
+	// and "CEL".
 	//
-	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken;CEL
 	Type LLMRequestCostType `json:"type"`
 	// CELExpression is the CEL expression to calculate the cost of the request.
-	// The CEL expression must return an integer value. The CEL expression should be
-	// able to access the request headers, model name, backend name, input/output tokens etc.
+	// The CEL expression must return a signed or unsigned integer. If the
+	// return value is negative, it will be error.
+	//
+	// The expression can use the following variables:
+	//
+	//	* model: the model name extracted from the request content. Type: string.
+	//	* backend: the backend name in the form of "name.namespace". Type: string.
+	//	* input_tokens: the number of input tokens. Type: unsigned integer.
+	//	* output_tokens: the number of output tokens. Type: unsigned integer.
+	//	* total_tokens: the total number of tokens. Type: unsigned integer.
+	//
+	// For example, the following expressions are valid:
+	//
+	// 	* "model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens"
+	//	* "backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens"
+	//	* "input_tokens + output_tokens + total_tokens"
+	//	* "input_tokens * output_tokens"
 	//
 	// +optional
-	// +notImplementedHide https://github.com/envoyproxy/ai-gateway/issues/97
-	CELExpression *string `json:"celExpression"`
+	CELExpression *string `json:"celExpression,omitempty"`
 }
 
 // LLMRequestCostType specifies the type of the LLMRequestCost.
