@@ -1,11 +1,11 @@
 [build]
 base = "site/"
-publish = "site/build/"
+publish = "build/"
 command = "npm run build"
 
 [context.deploy-preview]
-base = "site"
-publish = "build"
+base = "site/"
+publish = "build/"
 command = "npm run build"
 
 [[headers]]
