@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -158,6 +159,10 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 				OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
+		}
+		err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme())
+		if err != nil {
+			c.logger.Error(err, "failed to set controller reference", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
