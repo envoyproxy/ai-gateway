@@ -2,9 +2,48 @@
 
 We welcome contributions from the community. Please read the following guidelines carefully to maximize the chances of your PR being merged.
 
-## Development
+# Local development of Envoy AI Gateway project
 
-See `make help`.
+First of all, there are only three minimal prerequisites to contribute to the project:
+* The latest Go toolchain
+* `make`
+* `docker`
+
+which we assume you already have installed on your machine.
+
+Assuming you have already cloned the repository on a local machine either MacOS or some Linux distribution,
+the only make targets you would need to run are listed via
+
+```
+make help
+```
+
+and everything will be done via `make` targets. You don't need to run anything else manually.
+Anything necessary should go through `make` targets.
+
+Please check out the output of the above command to see
+the list of commands that you can run to build, test, and run the project.
+
+For example, `make precommit test` will run the precommit checks and the unit tests.
+These are the must-run commands before you submit or pushing commits to a PR.
+All test targets are prefixed with `test-*` and can be run via `make test-<target>`.
+
+Some test commands might require additional dependencies to be installed on your machine.
+For example,
+
+* The latest `kubectl` and `helm` binary for running `make test-e2e`.
+  * kubectl: https://kubernetes.io/docs/tasks/tools/
+  * helm: https://helm.sh/docs/intro/install/
+* The latest `envoy` binary for running `make test-extproc`.
+  * See: https://www.envoyproxy.io/docs/envoy/latest/start/install
+
+Other than that, everything will be automatically managed and installed via `make` targets,
+and you should not need to worry about the dependencies (tell us if you do).
+
+Additionally, some of the test cases in `test-e2e` and `test-extproc` might require some credentials.
+You will find which credentials are required in the output of the test command. All test cases requiring
+credentials are skipped by default when the credentials are not provided. If you
+want to run these tests locally, please prepare the necessary credentials by yourself.
 
 ## DCO
 
