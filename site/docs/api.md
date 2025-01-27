@@ -1,7 +1,7 @@
-+++
-title = "API Reference"
-+++
-
+---
+id: api_references
+title: API Reference
+---
 
 ## Packages
 - [aigateway.envoyproxy.io/v1alpha1](#aigatewayenvoyproxyiov1alpha1)
