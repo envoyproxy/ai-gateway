@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
+	"golang.org/x/exp/rand"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
@@ -172,12 +173,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no expected request body")
 	}
 
-	responseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
-	if err != nil {
-		logger.Println("failed to decode the response body")
-		http.Error(w, "failed to decode the response body", http.StatusBadRequest)
-		return
-	}
 	if v := r.Header.Get(testupstreamlib.ResponseHeadersKey); v != "" {
 		responseHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
@@ -248,7 +243,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("response sent")
 		r.Context().Done()
 	case "aws-event-stream":
-		// w.Header().Set("Transfer-Encoding", "chunked")
 		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
 		w.WriteHeader(status)
 
@@ -288,9 +282,82 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
+
+		var responseBody []byte
+		if expResponseBody := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); expResponseBody == "" {
+			// If the expected response body is not set, get the fake response if the path is known.
+			responseBody, err = getFakeResponse(r.URL.Path)
+			if err != nil {
+				logger.Println("failed to get the fake response")
+				http.Error(w, "failed to get the fake response", http.StatusBadRequest)
+				return
+			}
+		} else {
+			responseBody, err = base64.StdEncoding.DecodeString(expResponseBody)
+			if err != nil {
+				logger.Println("failed to decode the response body")
+				http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+				return
+			}
+		}
+
 		if _, err := w.Write(responseBody); err != nil {
 			logger.Println("failed to write the response body")
 		}
 		logger.Println("response sent:", string(responseBody))
+	}
+}
+
+var (
+	r                           = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	chatCompletionFakeResponses = []string{
+		`This is a test.`,
+		`The quick brown fox jumps over the lazy dog.`,
+		`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+		`To be or not to be, that is the question.`,
+		`All your base are belong to us.`,
+		`I am the bone of my sword.`,
+		`I am the master of my fate.`,
+		`I am the captain of my soul.`,
+		`I am the master of my fate, I am the captain of my soul.`,
+		`I am the bone of my sword, steel is my body, and fire is my blood.`,
+		`The quick brown fox jumps over the lazy dog.`,
+		`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+		`To be or not to be, that is the question.`,
+		`All your base are belong to us.`,
+		`Omae wa mou shindeiru.`,
+		`Nani?`,
+		`I am inevitable.`,
+		`May the Force be with you.`,
+		`Houston, we have a problem.`,
+		`I'll be back.`,
+		`You can't handle the truth!`,
+		`Here's looking at you, kid.`,
+		`Go ahead, make my day.`,
+		`I see dead people.`,
+		`Hasta la vista, baby.`,
+		`You're gonna need a bigger boat.`,
+		`E.T. phone home.`,
+		`I feel the need - the need for speed.`,
+		`I'm king of the world!`,
+		`Show me the money!`,
+		`You had me at hello.`,
+		`I'm the king of the world!`,
+		`To infinity and beyond!`,
+		`You're a wizard, Harry.`,
+		`I solemnly swear that I am up to no good.`,
+		`Mischief managed.`,
+		`Expecto Patronum!`,
+	}
+)
+
+func getFakeResponse(path string) ([]byte, error) {
+	switch path {
+	case "/v1/chat/completions":
+		const template = `{"choices":[{"message":{"content":"%s"}}]}`
+		msg := fmt.Sprintf(template, chatCompletionFakeResponses[r.Intn(len(chatCompletionFakeResponses))])
+		return []byte(msg), nil
+	default:
+		return nil, fmt.Errorf("unknown path: %s", path)
 	}
 }

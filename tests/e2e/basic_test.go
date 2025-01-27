@@ -55,6 +55,10 @@ func Test_Examples_Basic(t *testing.T) {
 				name:      "aws",
 				modelName: "us.meta.llama3-2-1b-instruct-v1:0",
 			},
+			{
+				name:      "testupsream",
+				modelName: "some-cool-self-hosted-model",
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {

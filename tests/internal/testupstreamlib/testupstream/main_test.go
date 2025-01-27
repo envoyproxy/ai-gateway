@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
+	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
@@ -176,6 +177,34 @@ func Test_main(t *testing.T) {
 		require.Equal(t, "response_value", response.Header.Get("response_header"))
 
 		require.Equal(t, "aaaaaaaaa", response.Header.Get("testupstream-id"))
+	})
+
+	t.Run("fake response", func(t *testing.T) {
+		t.Parallel()
+		request, err := http.NewRequest("GET",
+			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
+		require.NoError(t, err)
+
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("expected request body")))
+
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		require.Equal(t, http.StatusOK, response.StatusCode)
+
+		responseBody, err := io.ReadAll(response.Body)
+		require.NoError(t, err)
+
+		var chat openai.ChatCompletion
+		require.NoError(t, chat.UnmarshalJSON(responseBody))
+		// Ensure that the response is one of the fake responses.
+		require.Contains(t, chatCompletionFakeResponses, chat.Choices[0].Message.Content)
 	})
 
 	t.Run("aws-event-stream", func(t *testing.T) {

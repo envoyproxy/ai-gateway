@@ -9,9 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
+        include:
           - command_name: "controller"
+            cmd_path_prefix: cmd
           - command_name: "extproc"
+            cmd_path_prefix: cmd
+          - command_name: "testupstream"
+            cmd_path_prefix: tests/internal/testupstreamlib
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -53,4 +57,4 @@ jobs:
           else
             TAG="latest"
           fi
-          make docker-build.${{ matrix.target.command_name }} ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
+          make docker-build.${{ matrix.include.command_name }} CMD_PATH_PREFIX=${{ matrix.include.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
