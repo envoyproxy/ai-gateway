@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// TestGettingStarted tests the code blocks of docs/getting_started.md file.
 func TestGettingStarted(t *testing.T) {
 	requireNewKindCluster(t, "envoy-ai-gateway-getting-started")
 	requireExecutableInPath(t, "curl", "helm", "kubectl")
