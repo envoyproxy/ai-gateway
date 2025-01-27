@@ -64,8 +64,8 @@ _Appears in:_
 
 | Value | Description |
 | ----- | ----------- |
-| `ExternalProcess` |  | 
-| `DynamicModule` |  | 
+| `ExternalProcess` |  |
+| `DynamicModule` |  |
 
 
 #### AIGatewayRoute
@@ -246,8 +246,8 @@ _Appears in:_
 
 | Value | Description |
 | ----- | ----------- |
-| `OpenAI` | APISchemaOpenAI is the OpenAI schema.<br />https://github.com/openai/openai-openapi<br /> | 
-| `AWSBedrock` | APISchemaAWSBedrock is the AWS Bedrock schema.<br />https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html<br /> | 
+| `OpenAI` | APISchemaOpenAI is the OpenAI schema.<br />https://github.com/openai/openai-openapi<br /> |
+| `AWSBedrock` | APISchemaAWSBedrock is the AWS Bedrock schema.<br />https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html<br /> |
 
 
 #### AWSCredentialsFile
@@ -380,8 +380,8 @@ _Appears in:_
 
 | Value | Description |
 | ----- | ----------- |
-| `APIKey` |  | 
-| `AWSCredentials` |  | 
+| `APIKey` |  |
+| `AWSCredentials` |  |
 
 
 #### LLMRequestCost
@@ -411,10 +411,10 @@ _Appears in:_
 
 | Value | Description |
 | ----- | ----------- |
-| `InputToken` | LLMRequestCostTypeInputToken is the cost type of the input token.<br /> | 
-| `OutputToken` | LLMRequestCostTypeOutputToken is the cost type of the output token.<br /> | 
-| `TotalToken` | LLMRequestCostTypeTotalToken is the cost type of the total token.<br /> | 
-| `CEL` | LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br /> | 
+| `InputToken` | LLMRequestCostTypeInputToken is the cost type of the input token.<br /> |
+| `OutputToken` | LLMRequestCostTypeOutputToken is the cost type of the output token.<br /> |
+| `TotalToken` | LLMRequestCostTypeTotalToken is the cost type of the total token.<br /> |
+| `CEL` | LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br /> |
 
 
 #### VersionedAPISchema

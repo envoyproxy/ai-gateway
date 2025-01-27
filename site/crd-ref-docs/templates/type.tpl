@@ -34,7 +34,7 @@ _Appears in:_
 | Value | Description |
 | ----- | ----------- |
 {{ range $type.EnumValues -}}
-| `{{ .Name }}` | {{ markdownRenderFieldDoc .Doc }} | 
+| `{{ .Name }}` | {{ markdownRenderFieldDoc .Doc }} |
 {{ end -}}
 {{- end -}}
 {{- end -}}
