@@ -3,8 +3,9 @@
 package doctest
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGettingStarted(t *testing.T) {
@@ -31,4 +32,6 @@ func TestGettingStarted(t *testing.T) {
 	})
 
 	// TODO: more verifications on making requests, etc.
+
+	// TODO: we can add any tutorials/docs that depend on the getting started guide setuop here.
 }

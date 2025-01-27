@@ -13,6 +13,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.49
 	github.com/stretchr/testify v1.10.0
+	github.com/yuin/goldmark v1.7.8
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
@@ -83,7 +84,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/yuin/goldmark v1.7.8 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.34.0 // indirect

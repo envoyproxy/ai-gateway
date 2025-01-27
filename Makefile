@@ -48,7 +48,7 @@ help:
 .PHONY: lint
 lint: golangci-lint
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc ./...
+	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc,test_doctest ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
