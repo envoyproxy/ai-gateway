@@ -1,4 +1,4 @@
-//go:build test_docutest
+//go:build test_doctest
 
 package doctest
 
@@ -25,10 +25,16 @@ func TestGettingStarted(t *testing.T) {
 		egInstallBlock.requireRunAllLines(t)
 	})
 
-	t.Run("EG configuration install", func(t *testing.T) {
+	t.Run("AI Gateway install", func(t *testing.T) {
 		aiGatewayBlock := codeBlocks[1]
 		require.Len(t, aiGatewayBlock.lines, 3)
 		aiGatewayBlock.requireRunAllLines(t)
+	})
+
+	t.Run("AI Gateway EG config", func(t *testing.T) {
+		aiGatewayEGConfigBlock := codeBlocks[2]
+		require.Len(t, aiGatewayEGConfigBlock.lines, 4)
+		aiGatewayEGConfigBlock.requireRunAllLines(t)
 	})
 
 	// TODO: more verifications on making requests, etc.

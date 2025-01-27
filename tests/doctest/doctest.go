@@ -1,4 +1,4 @@
-//go:build test_e2e
+//go:build test_doctest
 
 package doctest
 

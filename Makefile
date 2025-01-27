@@ -157,7 +157,7 @@ test-e2e: kind
 .PHONY: test-doctest
 test-doctest: kind
 	@echo "Run doctest"
-	@go test ./tests/doctest/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_docutest
+	@go test ./tests/doctest/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_doctest
 
 # This builds a binary for the given command under the internal/cmd directory.
 #

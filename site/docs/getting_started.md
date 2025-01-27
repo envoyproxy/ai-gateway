@@ -34,7 +34,8 @@ In addition, we need to apply the AI Gateway specific configuration for the Envo
 
 ```
 # Apply the Envoy Gateway configuration specific to AI Gateway.
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/configs/envoy-ai-gateway.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/rbac.yaml
 # Restart the Envoy Gateway deployment.
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 # Wait for the deployment to be ready.
@@ -42,6 +43,8 @@ kubectl wait --timeout=30s -n envoy-gateway-system deployment/envoy-gateway --fo
 ```
 
 ## Install basic AI Gateway setup
+
+TODO: this is not tested.
 
 In the `examples/basic` directory, you can find a basic setup for the AI Gateway. To install it, you can run:
 
