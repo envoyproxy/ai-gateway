@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -88,14 +89,13 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if !unversioned && len(gvks) == 1 {
 		aiGatewayRoute.SetGroupVersionKind(gvks[0])
 	}
-	ownerRef := ownerReferenceForAIGatewayRoute(&aiGatewayRoute)
 
-	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute, ownerRef); err != nil {
+	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "Failed to reconcile extProc config map")
 		return ctrl.Result{}, err
 	}
 
-	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute, ownerRef); err != nil {
+	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "Failed to reconcile extension policy")
 		return ctrl.Result{}, err
 	}
@@ -106,7 +106,7 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 
 // reconcileExtProcExtensionPolicy creates or updates the extension policy for the external process.
 // It only changes the target references.
-func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
+func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var existingPolicy egv1a1.EnvoyExtensionPolicy
 	if err := c.client.Get(ctx, client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace}, &existingPolicy); err == nil {
 		existingPolicy.Spec.PolicyTargetReferences.TargetRefs = aiGatewayRoute.Spec.TargetRefs
@@ -121,7 +121,7 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 	port := gwapiv1.PortNumber(1063)
 	objNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	extPolicy := &egv1a1.EnvoyExtensionPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace, OwnerReferences: ownerRef},
+		ObjectMeta: metav1.ObjectMeta{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace},
 		Spec: egv1a1.EnvoyExtensionPolicySpec{
 			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: aiGatewayRoute.Spec.TargetRefs},
 			ExtProc: []egv1a1.ExtProc{{
@@ -143,6 +143,9 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 			}},
 		},
 	}
+	if err := ctrlutil.SetControllerReference(aiGatewayRoute, extPolicy, c.client.Scheme()); err != nil {
+		c.logger.Error(err, "failed to set controller reference for envoy extension policy", "namespace", extPolicy.Namespace, "name", extPolicy.Name)
+	}
 	if err := c.client.Create(ctx, extPolicy); client.IgnoreAlreadyExists(err) != nil {
 		return fmt.Errorf("failed to create extension policy: %w", err)
 	}
@@ -151,7 +154,7 @@ func (c *aiGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 
 // ensuresExtProcConfigMapExists ensures that a configmap exists for the external process.
 // This must happen before the external process deployment is created.
-func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, ownerRef []metav1.OwnerReference) error {
+func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	name := extProcName(aiGatewayRoute)
 	// Check if a configmap exists for extproc exists, and if not, create one with the default config.
 	_, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(ctx, name, metav1.GetOptions{})
@@ -159,11 +162,13 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 		if client.IgnoreNotFound(err) == nil {
 			configMap := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:            name,
-					Namespace:       aiGatewayRoute.Namespace,
-					OwnerReferences: ownerRef,
+					Name:      name,
+					Namespace: aiGatewayRoute.Namespace,
 				},
 				Data: map[string]string{expProcConfigFileName: filterconfig.DefaultConfig},
+			}
+			if err := ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
+				c.logger.Error(err, "failed to set controller reference for service", "namespace", configMap.Namespace, "name", configMap.Name)
 			}
 			_, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {
@@ -176,15 +181,6 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 
 func extProcName(route *aigv1a1.AIGatewayRoute) string {
 	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
-}
-
-func ownerReferenceForAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) []metav1.OwnerReference {
-	return []metav1.OwnerReference{{
-		APIVersion: aiGatewayRoute.APIVersion,
-		Kind:       aiGatewayRoute.Kind,
-		Name:       aiGatewayRoute.Name,
-		UID:        aiGatewayRoute.UID,
-	}}
 }
 
 func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {

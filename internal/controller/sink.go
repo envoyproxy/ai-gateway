@@ -154,15 +154,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:            aiGatewayRoute.Name,
-				Namespace:       aiGatewayRoute.Namespace,
-				OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
+				Name:      aiGatewayRoute.Name,
+				Namespace: aiGatewayRoute.Namespace,
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
-		err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme())
-		if err != nil {
-			c.logger.Error(err, "failed to set controller reference", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
+			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
@@ -425,10 +423,9 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 		if client.IgnoreNotFound(err) == nil {
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:            name,
-					Namespace:       aiGatewayRoute.Namespace,
-					OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
-					Labels:          labels,
+					Name:      name,
+					Namespace: aiGatewayRoute.Namespace,
+					Labels:    labels,
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: labels},
@@ -464,6 +461,9 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 					},
 				},
 			}
+			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
+				c.logger.Error(err, "failed to set controller reference for deployment", "namespace", deployment.Namespace, "name", deployment.Name)
+			}
 			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
@@ -491,10 +491,9 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 	// This is static, so we don't need to update it.
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       aiGatewayRoute.Namespace,
-			OwnerReferences: ownerReferenceForAIGatewayRoute(aiGatewayRoute),
-			Labels:          labels,
+			Name:      name,
+			Namespace: aiGatewayRoute.Namespace,
+			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: labels,
@@ -507,6 +506,9 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 				},
 			},
 		},
+	}
+	if err = ctrlutil.SetControllerReference(aiGatewayRoute, service, c.client.Scheme()); err != nil {
+		c.logger.Error(err, "failed to set controller reference for service", "namespace", service.Namespace, "name", service.Name)
 	}
 	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
 		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)
