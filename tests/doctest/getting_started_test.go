@@ -3,9 +3,10 @@
 package doctest
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestGettingStarted tests the code blocks of docs/getting_started.md file.

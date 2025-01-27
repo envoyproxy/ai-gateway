@@ -68,7 +68,7 @@ and you should see a response from the AI Gateway similar to this:
 {"completions":[{"role":"system","content":"I am a chatbot."}]}
 ```
 
-Note that the backend LLM selected for the model `some-cool-self-hosted-model` is a fake one, 
+Note that the backend LLM selected for the model `some-cool-self-hosted-model` is a fake one,
 so the response doesn't make much sense. To get a real response, you either need to deploy
 a real model by yourself or follow the instructions in the next section:
 
