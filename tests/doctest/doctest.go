@@ -85,10 +85,23 @@ func requireExecutableInPath(t *testing.T, executables ...string) {
 // requireRunBashCommand runs a bash command. This is used to run the code blocks in the markdown file.
 func requireRunBashCommand(t *testing.T, command string) {
 	fmt.Printf("\u001b[32m=== Running command: %s\u001B[0m\n", command)
-	cmd := exec.Command("bash", "-c", command)
+	cmd := newBashCommand(command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	require.NoError(t, cmd.Run())
+}
+
+func requireRunBashCommandEventually(t *testing.T, command string, timeout, interval time.Duration) {
+	require.Eventually(t, func() bool {
+		cmd := newBashCommand(command)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run() == nil
+	}, timeout, interval)
+}
+
+func newBashCommand(command string) *exec.Cmd {
+	return exec.Command("bash", "-c", command)
 }
 
 // requireNewKindCluster creates a new kind cluster if it does not already exist.

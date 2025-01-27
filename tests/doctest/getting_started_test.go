@@ -3,9 +3,9 @@
 package doctest
 
 import (
-	"testing"
-
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
 func TestGettingStarted(t *testing.T) {
@@ -37,7 +37,26 @@ func TestGettingStarted(t *testing.T) {
 		aiGatewayEGConfigBlock.requireRunAllLines(t)
 	})
 
-	// TODO: more verifications on making requests, etc.
+	t.Run("Deploy Basic Gateway", func(t *testing.T) {
+		deployGatewayBlock := codeBlocks[3]
+		require.Len(t, deployGatewayBlock.lines, 2)
+		requireRunBashCommand(t, deployGatewayBlock.lines[0])
+		// Gateway deployment may take a while to be ready (managed by the EG operator).
+		requireRunBashCommandEventually(t, deployGatewayBlock.lines[1], time.Minute, 2*time.Second)
+	})
+
+	t.Run("Make a request", func(t *testing.T) {
+		makeRequestBlock := codeBlocks[4]
+		require.Len(t, makeRequestBlock.lines, 2)
+		// Run the port-forward command in the background.
+		portForward := newBashCommand(makeRequestBlock.lines[0])
+		require.NoError(t, portForward.Start())
+		defer func() {
+			require.NoError(t, portForward.Process.Kill())
+		}()
+		// Then make the request.
+		requireRunBashCommandEventually(t, makeRequestBlock.lines[1], time.Minute, 2*time.Second)
+	})
 
 	// TODO: we can add any tutorials/docs that depend on the getting started guide setuop here.
 }
