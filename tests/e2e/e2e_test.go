@@ -136,7 +136,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	}
 
 	initLog("\tApplying Patch for Envoy Gateway")
-	if err = kubectlApplyManifest(ctx, "./init/envoygateway/"); err != nil {
+	if err = kubectlApplyManifest(ctx, "../../manifests/envoy-gateway-config/"); err != nil {
 		return
 	}
 	initLog("\tRestart Envoy Gateway deployment")
