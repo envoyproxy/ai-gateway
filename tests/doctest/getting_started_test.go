@@ -51,11 +51,7 @@ func TestGettingStarted(t *testing.T) {
 		makeRequestBlock := codeBlocks[4]
 		require.Len(t, makeRequestBlock.lines, 2)
 		// Run the port-forward command in the background.
-		portForward := newBashCommand(makeRequestBlock.lines[0])
-		require.NoError(t, portForward.Start())
-		defer func() {
-			require.NoError(t, portForward.Process.Kill())
-		}()
+		requireStartBackgroundBashCommand(t, makeRequestBlock.lines[0])
 		// Then make the request.
 		requireRunBashCommandEventually(t, makeRequestBlock.lines[1], time.Minute, 2*time.Second)
 	})

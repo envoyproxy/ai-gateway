@@ -92,12 +92,25 @@ func requireRunBashCommand(t *testing.T, command string) {
 }
 
 func requireRunBashCommandEventually(t *testing.T, command string, timeout, interval time.Duration) {
+	fmt.Printf("\u001b[32m=== Running command eventually (timeout=%s,interval=%s): %s\u001B[0m\n",
+		timeout, interval, command)
 	require.Eventually(t, func() bool {
 		cmd := newBashCommand(command)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run() == nil
 	}, timeout, interval)
+}
+
+func requireStartBackgroundBashCommand(t *testing.T, command string) {
+	fmt.Printf("\u001b[32m=== Starting background command: %s\u001B[0m\n", command)
+	cmd := newBashCommand(command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		require.NoError(t, cmd.Process.Kill())
+	})
 }
 
 func newBashCommand(command string) *exec.Cmd {

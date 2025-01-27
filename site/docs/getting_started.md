@@ -59,7 +59,7 @@ Now, let's make a request to the AI Gateway:
 # Get the service name of the AI Gateway.
 ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}') && kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 # Open a new terminal and run the following command to make a request to the AI Gateway.
-curl -q -d '{"model":"some-cool-self-hosted-model","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8888/v1/chat/completions
+curl -q -d '{"model":"some-cool-self-hosted-model","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8080/v1/chat/completions
 ```
 
 and you should see a response from the AI Gateway similar to this:
