@@ -98,6 +98,6 @@ kubectl wait pods --timeout=30s -l gateway.envoyproxy.io/owning-gateway-name=env
 # Get the service name of the AI Gateway.
 ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}') && exec kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8081:80
 # Open a new terminal and run the following command to make a request to OpenAI and AWS Bedrock through the AI Gateway.
-curl --fail -H "Content-Type: application/json" -d '{"model":"gpt-4o-mini","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
-curl --fail -H "Content-Type: application/json" -d '{"model":"us.meta.llama3-2-1b-instruct-v1:0","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
+curl --fail -H "Content-Type: application/json" -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
+curl --fail -H "Content-Type: application/json" -d '{"model":"us.meta.llama3-2-1b-instruct-v1:0","messages":[{"role":"user","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
 ```
