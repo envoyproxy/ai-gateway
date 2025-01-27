@@ -181,7 +181,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err := c.newHTTPRoute(&httpRoute, aiGatewayRoute); err != nil {
+	if err := c.updateHTTPRoute(&httpRoute, aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -363,8 +363,8 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 	return nil
 }
 
-// newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+// updateHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
+func (c *configSink) updateHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range aiGatewayRoute.Spec.Rules {
@@ -423,11 +423,24 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	targetRefs := aiGatewayRoute.Spec.TargetRefs
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
+	parentStatus := make([]gwapiv1.RouteParentStatus, len(targetRefs))
 	for i, egRef := range targetRefs {
 		egName := egRef.Name
 		parentRefs[i] = gwapiv1.ParentReference{
 			Name:      egName,
 			Namespace: &egNs,
+		}
+		parentStatus[i] = gwapiv1.RouteParentStatus{
+			ParentRef: parentRefs[i],
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Accepted",
+					Status:             metav1.ConditionTrue,
+					Reason:             "RouteAccepted",
+					Message:            fmt.Sprintf("The route has been accepted by the %s.%s", egName, egNs),
+					LastTransitionTime: metav1.Now(),
+				},
+			},
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs

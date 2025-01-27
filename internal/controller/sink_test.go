@@ -131,7 +131,7 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
 }
 
-func Test_newHTTPRoute(t *testing.T) {
+func Test_updateHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
@@ -155,6 +155,23 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
+				},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw1", Kind: "Gateway1", Group: "gateway.networking.k8s.io",
+					},
+				},
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw2", Kind: "Gateway2", Group: "gateway.networking.k8s.io",
+					},
+				},
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw3", Kind: "Gateway3", Group: "gateway.networking.k8s.io",
+					},
 				},
 			},
 		},
@@ -188,7 +205,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		err := s.client.Create(context.Background(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-	err := s.newHTTPRoute(httpRoute, aiGatewayRoute)
+	err := s.updateHTTPRoute(httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expRules := []gwapiv1.HTTPRouteRule{
@@ -234,6 +251,16 @@ func Test_newHTTPRoute(t *testing.T) {
 			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
 			require.NotNil(t, r.Filters[0].ExtensionRef)
 			require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
+		})
+	}
+
+	for i, p := range httpRoute.Status.Parents {
+		t.Run(fmt.Sprintf("parent-status-%d", i), func(t *testing.T) {
+			require.Equal(t, fmt.Sprintf("gtw%d", i+1), p.ParentRef.Name)
+			require.Equal(t, "ns1", p.ParentRef.Namespace)
+			require.Equal(t, 1, len(p.Conditions))
+			require.Equal(t, fmt.Sprintf("The route has been accepted by the gtw%d.ns1", i+1), p.Conditions[0].Message)
+
 		})
 	}
 }

@@ -79,15 +79,44 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "Failed to reconcile extProc config map")
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "ConfigMapError",
+			Message: fmt.Sprintf("Failed to reconcile config map: %v", err),
+		})
+		if updateErr := c.client.Status().Update(ctx, &aiGatewayRoute); updateErr != nil {
+			c.logger.Error(updateErr, "Failed to update AIGatewayRoute status")
+		}
+
 		return ctrl.Result{}, err
 	}
 
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "Failed to reconcile extension policy")
+
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "ExtensionPolicyError",
+			Message: fmt.Sprintf("Failed to reconcile extension policy: %v", err),
+		})
+
 		return ctrl.Result{}, err
 	}
 	// Send a copy to the config sink for a full reconciliation on HTTPRoute as well as the extproc config.
 	c.eventChan <- aiGatewayRoute.DeepCopy()
+
+	aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+		Type:    "Reconciled",
+		Status:  metav1.ConditionTrue,
+		Reason:  "ReconciliationSucceeded",
+		Message: "Reconciliation completed successfully",
+	})
+	if err := c.client.Status().Update(ctx, &aiGatewayRoute); err != nil {
+		c.logger.Error(err, "Failed to update AIGatewayRoute status")
+	}
+
 	return reconcile.Result{}, nil
 }
 
