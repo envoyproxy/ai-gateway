@@ -56,6 +56,6 @@ for the "getting started" doc.
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
 ```
 
-TODO: aaaaaaaaaaaaaaaaaaaaa getting the IP address of the AI Gateway.
+TODO: getting the IP address of the AI Gateway.
 TODO: making requests to the AI Gateway via curl
 

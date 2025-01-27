@@ -12,6 +12,7 @@ EDITORCONFIG_CHECKER = $(LOCALBIN)/editorconfig-checker
 CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
 YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 KIND ?= $(LOCALBIN)/kind
+CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
 
 ## Tool versions.
 CONTROLLER_TOOLS_VERSION ?= v0.17.1
@@ -21,6 +22,7 @@ GO_FUMPT_VERSION ?= v0.7.0
 GCI_VERSION ?= v0.13.5
 EDITORCONFIG_CHECKER_VERSION ?= v3.1.2
 KIND_VERSION ?= v0.26.0
+CRD_REF_DOCS_VERSION ?= v0.1.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -53,9 +55,15 @@ $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
 .PHONY: kind
-kind: $(KIND) ## Download kind locally if necessary.
+kind: $(KIND)
 $(KIND): $(LOCALBIN)
 	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
+
+.PHONY:
+crd-ref-docs: $(CRD_REF_DOCS)
+$(CRD_REF_DOCS): $(LOCALBIN)
+	$(call go-install-tool,$(CRD_REF_DOCS),github.com/elastic/crd-ref-docs,$(CRD_REF_DOCS_VERSION))
+
 
 .bin/.venv/%:
 	mkdir -p $(@D)
