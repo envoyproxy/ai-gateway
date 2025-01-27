@@ -1,0 +1,53 @@
+name: Doc Test
+on:
+  pull_request:
+    branches:
+      - main
+      - wipgettingstarteddoctest  # TODO: delete
+  push:
+    branches:
+      - main
+  # If the PR is coming from a fork, they are not allowed to access secrets by default.
+  # This even is triggered only if the PR gets labeled with 'safe to test' which can only be added by the maintainers.
+  # Jobs do not use secrets in the workflow will ignore this event.
+  pull_request_target:
+    types: [labeled]
+    branches:
+      - main
+
+concurrency:
+  # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  test_e2e:
+    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request_target'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+        if: github.event_name == 'pull_request_target'
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: doctest-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Run doctest tests
+        env:
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+        run: make test-doctest
