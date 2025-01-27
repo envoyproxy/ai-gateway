@@ -65,7 +65,8 @@ func TestGettingStarted(t *testing.T) {
 	t.Run("Delete Gateway", func(t *testing.T) {
 		deleteGatewayBlock := codeBlocks[6]
 		require.Len(t, deleteGatewayBlock.lines, 2)
-		deleteGatewayBlock.requireRunAllLines(t)
+		requireRunBashCommand(t, deleteGatewayBlock.lines[0])     // Delete the Gateway.
+		runBashCommandAndIgnoreError(deleteGatewayBlock.lines[1]) // Wait for the Gateway to be deleted.
 	})
 
 	t.Run("OpenAI and AWS", func(t *testing.T) {

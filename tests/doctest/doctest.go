@@ -111,6 +111,13 @@ func requireStartBackgroundBashCommand(t *testing.T, command string) (kill func(
 	return func() { _ = cmd.Process.Signal(os.Interrupt) }
 }
 
+func runBashCommandAndIgnoreError(command string) {
+	cmd := newBashCommand(command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	_ = cmd.Run()
+}
+
 func newBashCommand(command string) *exec.Cmd {
 	return exec.Command("bash", "-c", command)
 }

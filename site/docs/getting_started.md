@@ -84,7 +84,7 @@ First, let's delete the existing manifest:
 # Delete the existing AI Gateway setup.
 kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
 # Wait for the Gateway pod to be deleted (it may take a few seconds).
-kubectl wait pods --timeout=2m -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -n envoy-gateway-system --for=delete
+kubectl wait pods --timeout=15s -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -n envoy-gateway-system --for=delete
 ```
 
 After replacing the variables, you can re-apply the manifest. These credentials are stored in Kubernetes secrets,
