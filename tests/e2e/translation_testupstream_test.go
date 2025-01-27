@@ -11,6 +11,8 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestTranslationWithTestUpstream tests the translation with the test upstream.
@@ -61,13 +63,13 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 					t.Logf("modelName: %s", tc.modelName)
 					client := openai.NewClient(option.WithBaseURL(fwd.address()+"/v1/"),
 						option.WithHeader(
-							testupstream.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID),
+							testupstreamlib.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID),
 						option.WithHeader(
-							testupstream.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
-						option.WithHeader(testupstream.ResponseBodyHeaderKey,
+							testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
+						option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
 							base64.StdEncoding.EncodeToString([]byte(tc.fakeResponseBody)),
 						),
-						option.WithHeader(testupstream.ExpectedHostKey, tc.expHost),
+						option.WithHeader(testupstreamlib.ExpectedHostKey, tc.expHost),
 					)
 
 					chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{

@@ -16,6 +16,8 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
@@ -39,8 +41,8 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
-		req.Header.Set(testupstream.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
-		req.Header.Set(testupstream.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
+		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
 		req.Header.Set("x-user-id", usedID)
 		req.Header.Set("Host", "openai.com")
 
