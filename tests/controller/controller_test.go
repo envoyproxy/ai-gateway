@@ -29,7 +29,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
-	"github.com/envoyproxy/ai-gateway/tests"
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
 var defaultSchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"}
@@ -40,7 +40,7 @@ func extProcName(aiGatewayRouteName string) string {
 
 // TestStartControllers tests the [controller.StartControllers] function.
 func TestStartControllers(t *testing.T) {
-	c, cfg, k := tests.NewEnvTest(t)
+	c, cfg, k := testsinternal.NewEnvTest(t)
 	opts := controller.Options{
 		ExtProcImage:         "envoyproxy/ai-gateway-extproc:foo",
 		EnableLeaderElection: false,
@@ -240,7 +240,7 @@ func TestStartControllers(t *testing.T) {
 }
 
 func TestAIGatewayRouteController(t *testing.T) {
-	c, cfg, k := tests.NewEnvTest(t)
+	c, cfg, k := testsinternal.NewEnvTest(t)
 	ch := make(chan controller.ConfigSinkEvent)
 
 	rc := controller.NewAIGatewayRouteController(c, k, logr.Discard(), ch)
@@ -338,7 +338,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 }
 
 func TestAIServiceBackendController(t *testing.T) {
-	c, cfg, k := tests.NewEnvTest(t)
+	c, cfg, k := testsinternal.NewEnvTest(t)
 
 	ch := make(chan controller.ConfigSinkEvent)
 	bc := controller.NewAIServiceBackendController(c, k, logr.Discard(), ch)

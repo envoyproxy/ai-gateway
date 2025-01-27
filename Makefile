@@ -127,7 +127,7 @@ test-cel: envtest apigen
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
-	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
 	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc -v
 
@@ -146,7 +146,7 @@ test-controller: envtest apigen
 .PHONY: test-e2e
 test-e2e: kind
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
-	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
@@ -156,7 +156,7 @@ test-e2e: kind
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
 # - `make build.extproc_custom_router CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_router directory.
-# - `make build.testupstream CMD_PATH_PREFIX=tests`: will build the tests/testupstream directory.
+# - `make build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib`: will build the tests/internal/testupstreamlib/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
 # To build for multiple platforms, set the GOOS_LIST and GOARCH_LIST variables.
@@ -206,7 +206,6 @@ build.%:
 #
 # Example:
 # - `make docker-build.extproc_custom_router CMD_PATH_PREFIX=examples`
-# - `make docker-build.testupstream CMD_PATH_PREFIX=tests`
 .PHONY: docker-build.%
 ifeq ($(ENABLE_MULTI_PLATFORMS),true)
 docker-build.%: GOARCH_LIST = amd64 arm64

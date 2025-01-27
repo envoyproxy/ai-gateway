@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestExtProcCustomRouter tests examples/extproc_custom_router.
@@ -48,8 +49,8 @@ func TestExtProcCustomRouter(t *testing.T) {
 	require.Eventually(t, func() bool {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"),
 			option.WithHeader(
-				"x-expected-path", base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions"))),
-			option.WithHeader("x-response-body",
+				testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions"))),
+			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
 				base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"This is a test."}}]}`)),
 			))
 		chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{

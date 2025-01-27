@@ -14,6 +14,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 func Test_main(t *testing.T) {
@@ -30,8 +32,8 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/sse", nil)
 		require.NoError(t, err)
-		request.Header.Set(responseTypeKey, "sse")
-		request.Header.Set(responseBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
 		now := time.Now()
@@ -76,10 +78,10 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/thisisrealpath", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(expectedPathHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foobar")))
 
-		request.Header.Set(expectedRequestBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -101,9 +103,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("not expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(expectedRequestBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(expectedPathHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -124,9 +126,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(expectedPathHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(nonExpectedRequestHeadersKey,
+		request.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("x-foo")))
 		request.Header.Set("x-foo", "not-bar")
 
@@ -145,19 +147,19 @@ func Test_main(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedHeaders := []byte("x-foo:bar,x-baz:qux")
-		request.Header.Set(expectedHeadersKey,
+		request.Header.Set(testupstreamlib.ExpectedHeadersKey,
 			base64.StdEncoding.EncodeToString(expectedHeaders))
-		request.Header.Set(responseStatusKey, "404")
+		request.Header.Set(testupstreamlib.ResponseStatusKey, "404")
 		request.Header.Set("x-foo", "bar")
 		request.Header.Set("x-baz", "qux")
 
-		request.Header.Set(expectedPathHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foobar")))
-		request.Header.Set(expectedRequestBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(responseBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("response body")))
-		request.Header.Set(responseHeadersKey,
+		request.Header.Set(testupstreamlib.ResponseHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("response_header:response_value")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -180,8 +182,8 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/", nil)
 		require.NoError(t, err)
-		request.Header.Set(responseTypeKey, "aws-event-stream")
-		request.Header.Set(responseBodyHeaderKey,
+		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
 		now := time.Now()

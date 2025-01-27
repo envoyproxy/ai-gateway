@@ -15,49 +15,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 var logger = log.New(os.Stdout, "[testupstream] ", 0)
-
-const (
-	// responseTypeKey is the key for the response type in the request.
-	// This can be either empty, "sse", or "aws-event-stream".
-	//	* If this is "sse", the response body is expected to be a Server-Sent Event stream.
-	// 	Each line in x-response-body is treated as a separate [data] payload.
-	//	* If this is "aws-event-stream", the response body is expected to be an AWS Event Stream.
-	// 	Each line in x-response-body is treated as a separate event payload.
-	//	* If this is empty, the response body is expected to be a regular JSON response.
-	responseTypeKey = "x-response-type"
-	// expectedHeadersKey is the key for the expected headers in the request.
-	// The value is a base64 encoded string of comma separated key-value pairs.
-	// E.g. "key1:value1,key2:value2".
-	expectedHeadersKey = "x-expected-headers"
-	// expectedPathHeaderKey is the key for the expected path in the request.
-	// The value is a base64 encoded.
-	expectedPathHeaderKey = "x-expected-path"
-	// expectedRequestBodyHeaderKey is the key for the expected request body in the request.
-	// The value is a base64 encoded.
-	expectedRequestBodyHeaderKey = "x-expected-request-body"
-	// responseStatusKey is the key for the response status in the response, default is 200 if not set.
-	responseStatusKey = "x-response-status"
-	// responseHeadersKey is the key for the response headers in the response.
-	// The value is a base64 encoded string of comma separated key-value pairs.
-	// E.g. "key1:value1,key2:value2".
-	responseHeadersKey = "x-response-headers"
-	// responseBodyHeaderKey is the key for the response body in the response.
-	// The value is a base64 encoded.
-	responseBodyHeaderKey = "x-response-body"
-	// nonExpectedHeadersKey is the key for the non-expected request headers.
-	// The value is a base64 encoded string of comma separated header keys expected to be absent.
-	nonExpectedRequestHeadersKey = "x-non-expected-request-headers"
-	// expectedTestUpstreamIDKey is the key for the expected testupstream-id in the request,
-	// and the value will be compared with the TESTUPSTREAM_ID environment variable.
-	// If the values do not match, the request will be rejected, meaning that the request
-	// was routed to the wrong upstream.
-	expectedTestUpstreamIDKey = "x-expected-testupstream-id"
-	// expectedHostKey is the key for the expected host in the request.
-	expectedHostKey = "x-expected-host"
-)
 
 // main starts a server that listens on port 1063 and responds with the expected response body and headers
 // set via responseHeadersKey and responseBodyHeaderKey.
@@ -96,7 +57,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range r.Header {
 		logger.Printf("header %q: %s\n", k, v)
 	}
-	if v := r.Header.Get(expectedHostKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.ExpectedHostKey); v != "" {
 		if r.Host != v {
 			fmt.Printf("unexpected host: got %q, expected %q\n", r.Host, v)
 			http.Error(w, "unexpected host: got "+r.Host+", expected "+v, http.StatusBadRequest)
@@ -106,7 +67,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		fmt.Println("no expected host: got", r.Host)
 	}
-	if v := r.Header.Get(expectedHeadersKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.ExpectedHeadersKey); v != "" {
 		expectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			logger.Println("failed to decode the expected headers")
@@ -136,7 +97,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no expected headers")
 	}
 
-	if v := r.Header.Get(nonExpectedRequestHeadersKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.NonExpectedRequestHeadersKey); v != "" {
 		nonExpectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			logger.Println("failed to decode the non-expected headers")
@@ -159,7 +120,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no non-expected headers in the request")
 	}
 
-	if v := r.Header.Get(expectedTestUpstreamIDKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.ExpectedTestUpstreamIDKey); v != "" {
 		if os.Getenv("TESTUPSTREAM_ID") != v {
 			msg := fmt.Sprintf("unexpected testupstream-id: received by '%s' but expected '%s'\n", os.Getenv("TESTUPSTREAM_ID"), v)
 			logger.Println(msg)
@@ -172,7 +133,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no expected testupstream-id")
 	}
 
-	if expectedPath := r.Header.Get(expectedPathHeaderKey); expectedPath != "" {
+	if expectedPath := r.Header.Get(testupstreamlib.ExpectedPathHeaderKey); expectedPath != "" {
 		expectedPath, err := base64.StdEncoding.DecodeString(expectedPath)
 		if err != nil {
 			logger.Println("failed to decode the expected path")
@@ -194,7 +155,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if expectedReqBody := r.Header.Get(expectedRequestBodyHeaderKey); expectedReqBody != "" {
+	if expectedReqBody := r.Header.Get(testupstreamlib.ExpectedRequestBodyHeaderKey); expectedReqBody != "" {
 		expectedBody, err := base64.StdEncoding.DecodeString(expectedReqBody)
 		if err != nil {
 			logger.Println("failed to decode the expected request body")
@@ -211,13 +172,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("no expected request body")
 	}
 
-	responseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
+	responseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 	if err != nil {
 		logger.Println("failed to decode the response body")
 		http.Error(w, "failed to decode the response body", http.StatusBadRequest)
 		return
 	}
-	if v := r.Header.Get(responseHeadersKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.ResponseHeadersKey); v != "" {
 		responseHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			logger.Println("failed to decode the response headers")
@@ -244,7 +205,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
 	status := http.StatusOK
-	if v := r.Header.Get(responseStatusKey); v != "" {
+	if v := r.Header.Get(testupstreamlib.ResponseStatusKey); v != "" {
 		status, err = strconv.Atoi(v)
 		if err != nil {
 			logger.Println("failed to parse the response status")
@@ -253,12 +214,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	switch r.Header.Get(responseTypeKey) {
+	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(status)
 
-		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
+		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
 			logger.Println("failed to decode the response body")
 			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
@@ -291,7 +252,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
 		w.WriteHeader(status)
 
-		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(responseBodyHeaderKey))
+		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
 			logger.Println("failed to decode the response body")
 			http.Error(w, "failed to decode the response body", http.StatusBadRequest)

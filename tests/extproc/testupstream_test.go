@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestWithTestUpstream tests the end-to-end flow of the external processor with Envoy and the test upstream.
@@ -205,11 +206,11 @@ data: [DONE]
 				req, err := http.NewRequest(tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 				require.NoError(t, err)
 				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
-				req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 				req.Header.Set("x-response-status", tc.responseStatus)
 				if tc.responseType != "" {
-					req.Header.Set("x-response-type", tc.responseType)
+					req.Header.Set("testupstream.ResponseTypeKey", tc.responseType)
 				}
 				if tc.responseHeaders != "" {
 					req.Header.Set("x-response-headers", base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))

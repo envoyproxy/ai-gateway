@@ -1,0 +1,41 @@
+package testupstreamlib
+
+const (
+	// ResponseTypeKey is the key for the response type in the request.
+	// This can be either empty, "sse", or "aws-event-stream".
+	//	* If this is "sse", the response body is expected to be a Server-Sent Event stream.
+	// 	Each line in x-response-body is treated as a separate [data] payload.
+	//	* If this is "aws-event-stream", the response body is expected to be an AWS Event Stream.
+	// 	Each line in x-response-body is treated as a separate event payload.
+	//	* If this is empty, the response body is expected to be a regular JSON response.
+	ResponseTypeKey = "testupstream.ResponseTypeKey"
+	// ExpectedHeadersKey is the key for the expected headers in the request.
+	// The value is a base64 encoded string of comma separated key-value pairs.
+	// E.g. "key1:value1,key2:value2".
+	ExpectedHeadersKey = "x-expected-headers"
+	// ExpectedPathHeaderKey is the key for the expected path in the request.
+	// The value is a base64 encoded.
+	ExpectedPathHeaderKey = "x-expected-path"
+	// ExpectedRequestBodyHeaderKey is the key for the expected request body in the request.
+	// The value is a base64 encoded.
+	ExpectedRequestBodyHeaderKey = "x-expected-request-body"
+	// ResponseStatusKey is the key for the response status in the response, default is 200 if not set.
+	ResponseStatusKey = "x-response-status"
+	// ResponseHeadersKey is the key for the response headers in the response.
+	// The value is a base64 encoded string of comma separated key-value pairs.
+	// E.g. "key1:value1,key2:value2".
+	ResponseHeadersKey = "x-response-headers"
+	// ResponseBodyHeaderKey is the key for the response body in the response.
+	// The value is a base64 encoded.
+	ResponseBodyHeaderKey = "x-response-body"
+	// NonExpectedRequestHeadersKey is the key for the non-expected request headers.
+	// The value is a base64 encoded string of comma separated header keys expected to be absent.
+	NonExpectedRequestHeadersKey = "x-non-expected-request-headers"
+	// ExpectedTestUpstreamIDKey is the key for the expected testupstream-id in the request,
+	// and the value will be compared with the TESTUPSTREAM_ID environment variable.
+	// If the values do not match, the request will be rejected, meaning that the request
+	// was routed to the wrong upstream.
+	ExpectedTestUpstreamIDKey = "x-expected-testupstream-id"
+	// ExpectedHostKey is the key for the expected host in the request.
+	ExpectedHostKey = "x-expected-host"
+)

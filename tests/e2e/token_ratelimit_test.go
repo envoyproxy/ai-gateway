@@ -39,8 +39,8 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
-		req.Header.Set("x-response-body", base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
-		req.Header.Set("x-expected-path", base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+		req.Header.Set(testupstream.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
+		req.Header.Set(testupstream.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
 		req.Header.Set("x-user-id", usedID)
 		req.Header.Set("Host", "openai.com")
 

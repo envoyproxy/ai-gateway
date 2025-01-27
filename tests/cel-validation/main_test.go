@@ -13,14 +13,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/tests"
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
 //go:embed testdata
 var testdata embed.FS
 
 func TestAIGatewayRoutes(t *testing.T) {
-	c, _, _ := tests.NewEnvTest(t)
+	c, _, _ := testsinternal.NewEnvTest(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
 
@@ -66,7 +66,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 }
 
 func TestAIServiceBackends(t *testing.T) {
-	c, _, _ := tests.NewEnvTest(t)
+	c, _, _ := testsinternal.NewEnvTest(t)
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()
@@ -101,7 +101,7 @@ func TestAIServiceBackends(t *testing.T) {
 }
 
 func TestBackendSecurityPolicies(t *testing.T) {
-	c, _, _ := tests.NewEnvTest(t)
+	c, _, _ := testsinternal.NewEnvTest(t)
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
 	defer cancel()

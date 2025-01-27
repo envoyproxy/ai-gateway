@@ -61,13 +61,13 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 					t.Logf("modelName: %s", tc.modelName)
 					client := openai.NewClient(option.WithBaseURL(fwd.address()+"/v1/"),
 						option.WithHeader(
-							"x-expected-testupstream-id", tc.expTestUpstreamID),
+							testupstream.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID),
 						option.WithHeader(
-							"x-expected-path", base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
-						option.WithHeader("x-response-body",
+							testupstream.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath))),
+						option.WithHeader(testupstream.ResponseBodyHeaderKey,
 							base64.StdEncoding.EncodeToString([]byte(tc.fakeResponseBody)),
 						),
-						option.WithHeader("x-expected-host", tc.expHost),
+						option.WithHeader(testupstream.ExpectedHostKey, tc.expHost),
 					)
 
 					chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
