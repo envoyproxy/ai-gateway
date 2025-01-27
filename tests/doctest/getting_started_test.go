@@ -77,10 +77,10 @@ func TestGettingStarted(t *testing.T) {
 		// Replace the placeholders with the actual values.
 		_f, err := os.ReadFile("../../examples/basic/basic.yaml")
 		require.NoError(t, err)
-		f := strings.Replace(string(_f), "OPENAI_API_KEY", openAIAPIKey, -1)
-		f = strings.Replace(f, "AWS_ACCESS_KEY_ID", awsAccessKeyID, -1)
-		f = strings.Replace(f, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey, -1)
-		require.NoError(t, os.WriteFile(tmpFile, []byte(f), 0644))
+		f := strings.ReplaceAll(string(_f), "OPENAI_API_KEY", openAIAPIKey)
+		f = strings.ReplaceAll(f, "AWS_ACCESS_KEY_ID", awsAccessKeyID)
+		f = strings.ReplaceAll(f, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey)
+		require.NoError(t, os.WriteFile(tmpFile, []byte(f), 0o600))
 
 		// Apply the configuration.
 		requireRunBashCommand(t, "kubectl apply -f "+tmpFile)
