@@ -102,15 +102,13 @@ func requireRunBashCommandEventually(t *testing.T, command string, timeout, inte
 	}, timeout, interval)
 }
 
-func requireStartBackgroundBashCommand(t *testing.T, command string) {
+func requireStartBackgroundBashCommand(t *testing.T, command string) (kill func()) {
 	fmt.Printf("\u001b[32m=== Starting background command: %s\u001B[0m\n", command)
 	cmd := newBashCommand(command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	require.NoError(t, cmd.Start())
-	t.Cleanup(func() {
-		require.NoError(t, cmd.Process.Kill())
-	})
+	return func() { _ = cmd.Process.Signal(os.Interrupt) }
 }
 
 func newBashCommand(command string) *exec.Cmd {
@@ -133,4 +131,13 @@ func requireNewKindCluster(t *testing.T, clusterName string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	require.NoError(t, cmd.Run())
+}
+
+// getEnvVarOrSkip requires an environment variable to be set.
+func getEnvVarOrSkip(t *testing.T, envVar string) string {
+	value := os.Getenv(envVar)
+	if value == "" {
+		t.Skipf("Environment variable %s is not set", envVar)
+	}
+	return value
 }

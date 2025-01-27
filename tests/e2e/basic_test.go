@@ -34,7 +34,7 @@ func Test_Examples_Basic(t *testing.T) {
 	read, err := os.ReadFile(manifest)
 	require.NoError(t, err)
 	// Replace the placeholder with the actual API key.
-	replaced := strings.ReplaceAll(string(read), "OPEN_AI_API_KEY", openAiApiKey)
+	replaced := strings.ReplaceAll(string(read), "OPENAI_API_KEY", openAiApiKey)
 	replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", awsAccessKeyID)
 	replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey)
 	require.NoError(t, kubectlApplyManifestStdin(ctx, replaced))

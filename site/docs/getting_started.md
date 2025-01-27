@@ -57,9 +57,9 @@ Now, let's make a request to the AI Gateway:
 
 ```
 # Get the service name of the AI Gateway.
-ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}') && kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
+export ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}') && exec kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 # Open a new terminal and run the following command to make a request to the AI Gateway.
-curl -q -d '{"model":"some-cool-self-hosted-model","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8080/v1/chat/completions
+curl --fail -H "Content-Type: application/json" -d '{"model":"some-cool-self-hosted-model","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8080/v1/chat/completions
 ```
 
 and you should see a response from the AI Gateway similar to this:
@@ -70,8 +70,34 @@ and you should see a response from the AI Gateway similar to this:
 
 Note that the backend LLM selected for the model `some-cool-self-hosted-model` is a fake one,
 so the response doesn't make much sense. To get a real response, you either need to deploy
-a real model by yourself or follow the instructions in the next section:
+a real backend by yourself or follow the instructions in the next section:
 
 ## (Optional) accessing OpenAI and AWS Bedrock
 
-TODO:
+The deployed example yaml in the `examples/basic` directory contains the configuration to access OpenAI and AWS Bedrock.
+However, you need to provider the credentials for these services. To do so, you can download the manifest and replace
+the variables `OPENAI_API_KEY`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` with your own credentials.
+
+First, let's delete the existing manifest:
+
+```
+# Delete the existing AI Gateway setup.
+kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
+# Wait for the Gateway pod to be deleted (it may take a few seconds).
+kubectl wait pods --timeout=30s -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -n envoy-gateway-system --for=delete
+```
+
+After replacing the variables, you can re-apply the manifest. These credentials are stored in Kubernetes secrets,
+so to trigger the AI Gateway to reload the configuration, you have to add the annotation to AIGatewayRoute resource:
+
+Then, you can make a request to the OpenAI and AWS Bedrock models.
+
+```
+# Wait for the Gateway pod to be ready (it may take a few seconds).
+kubectl wait pods --timeout=30s -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -n envoy-gateway-system --for=condition=Ready
+# Get the service name of the AI Gateway.
+ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}') && exec kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8081:80
+# Open a new terminal and run the following command to make a request to OpenAI and AWS Bedrock through the AI Gateway.
+curl --fail -H "Content-Type: application/json" -d '{"model":"gpt-4o-mini","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
+curl --fail -H "Content-Type: application/json" -d '{"model":"us.meta.llama3-2-1b-instruct-v1:0","messages":[{"role":"system","content":"Hi."}]}' http://localhost:8081/v1/chat/completions
+```

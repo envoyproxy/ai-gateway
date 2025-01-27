@@ -3,6 +3,8 @@
 package doctest
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,10 +53,47 @@ func TestGettingStarted(t *testing.T) {
 		makeRequestBlock := codeBlocks[4]
 		require.Len(t, makeRequestBlock.lines, 2)
 		// Run the port-forward command in the background.
-		requireStartBackgroundBashCommand(t, makeRequestBlock.lines[0])
+		kill := requireStartBackgroundBashCommand(t, makeRequestBlock.lines[0])
+		defer kill()
 		// Then make the request.
 		requireRunBashCommandEventually(t, makeRequestBlock.lines[1], time.Minute, 2*time.Second)
 	})
 
-	// TODO: we can add any tutorials/docs that depend on the getting started guide setuop here.
+	// The next code block is just the example output of the previous code block.
+	_ = codeBlocks[5]
+
+	t.Run("Delete Gateway", func(t *testing.T) {
+		deleteGatewayBlock := codeBlocks[6]
+		require.Len(t, deleteGatewayBlock.lines, 2)
+		deleteGatewayBlock.requireRunAllLines(t)
+	})
+
+	t.Run("OpenAI and AWS", func(t *testing.T) {
+		openAIAPIKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
+		awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
+		awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
+
+		tmpFile := t.TempDir() + "/openai-and-aws.yaml"
+		// Replace the placeholders with the actual values.
+		_f, err := os.ReadFile("../../examples/basic/basic.yaml")
+		require.NoError(t, err)
+		f := strings.Replace(string(_f), "OPENAI_API_KEY", openAIAPIKey, -1)
+		f = strings.Replace(f, "AWS_ACCESS_KEY_ID", awsAccessKeyID, -1)
+		f = strings.Replace(f, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey, -1)
+		require.NoError(t, os.WriteFile(tmpFile, []byte(f), 0644))
+
+		// Apply the configuration.
+		requireRunBashCommand(t, "kubectl apply -f "+tmpFile)
+
+		openAIAndAWSBlock := codeBlocks[7]
+		require.Len(t, openAIAndAWSBlock.lines, 4)
+		// Wait for the gateway to be ready.
+		requireRunBashCommandEventually(t, openAIAndAWSBlock.lines[0], time.Minute, 2*time.Second)
+		// Run the port-forward command in the background.
+		kill := requireStartBackgroundBashCommand(t, openAIAndAWSBlock.lines[1])
+		defer kill()
+		// Then make the request to OpenAI and AWS.
+		requireRunBashCommandEventually(t, openAIAndAWSBlock.lines[2], 30*time.Second, 2*time.Second)
+		requireRunBashCommandEventually(t, openAIAndAWSBlock.lines[3], 30*time.Second, 2*time.Second)
+	})
 }

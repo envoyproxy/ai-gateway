@@ -168,7 +168,7 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  apiKey: OPEN_AI_API_KEY  # Replace with your OpenAI API key.
+  apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
 ---
 apiVersion: v1
 kind: Secret
