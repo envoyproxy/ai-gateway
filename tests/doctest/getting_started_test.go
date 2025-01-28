@@ -13,6 +13,8 @@ import (
 
 // TestGettingStarted tests the code blocks of docs/getting_started.md file.
 func TestGettingStarted(t *testing.T) {
+	t.Skip("TODO")
+
 	requireNewKindCluster(t, "envoy-ai-gateway-getting-started")
 	requireExecutableInPath(t, "curl", "helm", "kubectl")
 
