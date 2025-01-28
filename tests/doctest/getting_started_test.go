@@ -21,7 +21,7 @@ func TestGettingStarted(t *testing.T) {
 	}
 
 	t.Run("AI GW Quickstart", func(t *testing.T) {
-		aiGatewayQuickstartBlock := block[0]
+		aiGatewayQuickstartBlock := indexCodeBlocks[0]
 		require.Greater(t, len(aiGatewayQuickstartBlock.lines), 2)
 		aiGatewayQuickstartBlock.requireRunAllLines(t)
 	})
