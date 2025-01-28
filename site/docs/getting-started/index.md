@@ -6,7 +6,7 @@ sidebar_position: 2
 
 # Getting Started with Envoy AI Gateway
 
-Welcome to the Envoy AI Gateway getting started guide! 
+Welcome to the Envoy AI Gateway getting started guide!
 
 This guide will walk you through setting up and using Envoy AI Gateway, a tool for managing GenAI traffic using Envoy.
 
@@ -67,4 +67,4 @@ For detailed instructions and explanations, start with the [Prerequisites](./pre
 
 If you run into any issues:
 - Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
-- File an issue on [GitHub](https://github.com/envoyproxy/ai-gateway/issues) 
+- File an issue on [GitHub](https://github.com/envoyproxy/ai-gateway/issues)

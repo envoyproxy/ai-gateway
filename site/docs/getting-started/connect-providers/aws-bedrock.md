@@ -57,7 +57,7 @@ kubectl wait pods --timeout=2m \
   -n envoy-gateway-system \
   --for=condition=Ready
 
-kubectl rollout restart deployment/ai-eg-route-extproc-envoy-ai-gateway-basic 
+kubectl rollout restart deployment/ai-eg-route-extproc-envoy-ai-gateway-basic
 ```
 
 ### 4. Test the Configuration

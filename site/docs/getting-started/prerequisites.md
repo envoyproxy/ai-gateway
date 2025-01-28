@@ -6,7 +6,7 @@ sidebar_position: 2
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
- 
+
 Before you begin using Envoy AI Gateway, you'll need to ensure you have the following prerequisites in place:
 
 ## Kubernetes Cluster

@@ -23,7 +23,7 @@ Before configuring any provider:
 2. Remove the basic configuration with the mock backend:
    ```shell
    kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-   
+
    kubectl wait pods --timeout=15s \
      -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
      -n envoy-gateway-system \
