@@ -2,7 +2,7 @@
 
 We welcome contributions from the community. Please read the following guidelines carefully to maximize the chances of your PR being merged.
 
-# Local development of Envoy AI Gateway project
+## Local development of Envoy AI Gateway project
 
 First of all, there are only three minimal prerequisites to contribute to the project:
 * The latest Go toolchain
@@ -71,8 +71,8 @@ review, please keep the title and description updated accordingly.
 changes in a PR they should be addressed before the PR is merged,
 even if another reviewer has already approved the PR.
 * During the review, address the comments and commit the changes
-**without squashing the commits**. This facilitates incremental reviews
-since the reviewer does not go through all the code again to find out
+**without squashing the commits, force pushing, or rebasing the branch**.
+This facilitates incremental reviews since the reviewer does not go through all the code again to find out
 what has changed since the last review. When a change goes out of sync with main,
 please rebase and force push, keeping the original commits where practical.
 * Commits are squashed prior to merging a pull request, using the title and PR description
