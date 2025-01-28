@@ -187,11 +187,21 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	if filterConfig == nil || filterConfig.ExternalProcess == nil {
 		return
 	}
+
 	extProc := filterConfig.ExternalProcess
+	c := &d.Template.Spec.Containers[0]
 	if resource := extProc.Resources; resource != nil {
-		d.Template.Spec.Containers[0].Resources = *resource
+		c.Resources = *resource
 	}
 	if replica := extProc.Replicas; replica != nil {
 		d.Replicas = replica
+	}
+	if logLevel := extProc.LogLevel; logLevel != "" {
+		for i, arg := range c.Args {
+			if arg == "-logLevel" {
+				c.Args[i+1] = logLevel
+				return
+			}
+		}
 	}
 }

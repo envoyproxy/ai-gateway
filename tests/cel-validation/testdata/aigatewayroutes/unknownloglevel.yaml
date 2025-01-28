@@ -9,15 +9,7 @@ spec:
   filterConfig:
     type: ExternalProcess
     externalProcess:
-      logLevel: info
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 200m
-          memory: 256Mi
+      logLevel: someLogLevel
   targetRefs:
     - name: some-gateway
       kind: Gateway
@@ -29,7 +21,4 @@ spec:
               name: x-ai-eg-model
               value: llama3-70b
       backendRefs:
-        - name: kserve
-          weight: 20
         - name: aws-bedrock
-          weight: 80

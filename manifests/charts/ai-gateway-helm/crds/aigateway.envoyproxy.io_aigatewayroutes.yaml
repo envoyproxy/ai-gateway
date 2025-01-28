@@ -66,6 +66,16 @@ spec:
                       ExternalProcess is the configuration for the external process filter.
                       This is optional, and if not set, the default values of Deployment spec will be used.
                     properties:
+                      logLevel:
+                        default: info
+                        description: LogLevel is the log level of the external process
+                          filter.
+                        enum:
+                        - debug
+                        - info
+                        - warn
+                        - error
+                        type: string
                       replicas:
                         description: Replicas is the number of desired pods of the
                           external process deployment.

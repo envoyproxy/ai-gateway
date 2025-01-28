@@ -49,6 +49,7 @@ _Appears in:_
 
 | Field | Type | Required | Description |
 | ---   | ---  | ---      | ---         |
+| `logLevel` | _string_ |  true  | LogLevel is the log level of the external process filter. |
 | `replicas` | _integer_ |  false  | Replicas is the number of desired pods of the external process deployment. |
 | `resources` | _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)_ |  false  | Resources required by the external process container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ |
 

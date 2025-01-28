@@ -46,6 +46,10 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "no_target_refs.yaml",
 			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
 		},
+		{
+			name:   "unknownloglevel.yaml",
+			expErr: "AIGatewayRoute.aigateway.envoyproxy.io \"apple\" is invalid: [spec.filterConfig.externalProcess.logLevel: Unsupported value: \"someLogLevel\": supported values: \"debug\", \"info\", \"warn\", \"error\"",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
