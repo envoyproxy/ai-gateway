@@ -255,6 +255,12 @@ const (
 )
 
 type AIGatewayFilterConfigExternalProcess struct {
+	// LogLevel is the log level of the external process filter.
+	//
+	// +kubebuilder:default=info
+	// +kubebuilder:validation:Enum=debug;info;warn;error
+	LogLevel string `json:"logLevel,omitempty"`
+
 	// Replicas is the number of desired pods of the external process deployment.
 	//
 	// +optional

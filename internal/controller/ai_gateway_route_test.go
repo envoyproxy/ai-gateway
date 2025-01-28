@@ -137,11 +137,17 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
+				LogLevel:  "debug",
 			},
 		},
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
+		for _, arg := range dep.Template.Spec.Containers[0].Args {
+			if arg == "-logLevel" {
+				require.Equal(t, "debug", dep.Template.Spec.Containers[0].Args[1])
+			}
+		}
 	})
 }
 
