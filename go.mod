@@ -1,6 +1,6 @@
 module github.com/envoyproxy/ai-gateway
 
-go 1.23.4
+go 1.23.5
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.34.0
@@ -14,7 +14,7 @@ require (
 	github.com/openai/openai-go v0.1.0-alpha.49
 	github.com/stretchr/testify v1.10.0
 	github.com/yuin/goldmark v1.7.8
-	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
+	golang.org/x/exp v0.0.0-20250128144449-3edf0e91c1ae
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
 	k8s.io/api v0.32.1

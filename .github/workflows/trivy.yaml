@@ -17,6 +17,7 @@ jobs:
     name: Scan ${{ matrix.target.command_name }} Image
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         target:
           - command_name: "controller"
