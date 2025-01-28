@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/filterconfig"
@@ -21,6 +22,7 @@ type configWatcher struct {
 	path    string
 	rcv     ConfigReceiver
 	l       *slog.Logger
+	current string
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
@@ -28,7 +30,7 @@ type configWatcher struct {
 func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration) error {
 	cw := &configWatcher{rcv: rcv, l: l, path: path}
 
-	if err := cw.loadConfig(); err != nil {
+	if err := cw.loadConfig(ctx); err != nil {
 		return fmt.Errorf("failed to load initial config: %w", err)
 	}
 
@@ -47,7 +49,7 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 			cw.l.Info("stop watching the config file", slog.String("path", cw.path))
 			return
 		case <-ticker.C:
-			if err := cw.loadConfig(); err != nil {
+			if err := cw.loadConfig(ctx); err != nil {
 				cw.l.Error("failed to update config", slog.String("error", err.Error()))
 			}
 		}
@@ -56,7 +58,7 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 
 // loadConfig loads a new config from the given path and updates the Receiver by
 // calling the [Receiver.Load].
-func (cw *configWatcher) loadConfig() error {
+func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	stat, err := os.Stat(cw.path)
 	if err != nil {
 		return err
@@ -66,9 +68,56 @@ func (cw *configWatcher) loadConfig() error {
 	}
 	cw.lastMod = stat.ModTime()
 	cw.l.Info("loading a new config", slog.String("path", cw.path))
+
+	// Re-hydrate the current config file for later diffing.
+	previous := cw.current
+	current, err := cw.getConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read the config file: %w", err)
+	}
+
+	// Print the diff between the old and new config.
+	if cw.l.Enabled(ctx, slog.LevelDebug) {
+		cw.diff(previous, current)
+	}
+
 	cfg, err := filterconfig.UnmarshalConfigYaml(cw.path)
 	if err != nil {
 		return err
 	}
 	return cw.rcv.LoadConfig(cfg)
+}
+
+func (cw *configWatcher) getConfig() (string, error) {
+	currentByte, err := os.ReadFile(cw.path)
+	if err != nil {
+		return "", err
+	}
+	current := string(currentByte)
+	cw.current = current
+
+	return current, nil
+}
+
+func (cw *configWatcher) diff(oldConfig, newConfig string) {
+	if oldConfig == "" {
+		return
+	}
+
+	oldLines := strings.Split(oldConfig, "\n")
+	newLines := strings.Split(newConfig, "\n")
+
+	for i := 0; i < len(oldLines) || i < len(newLines); i++ {
+		var oldLine, newLine string
+		if i < len(oldLines) {
+			oldLine = strings.TrimSpace(oldLines[i])
+		}
+		if i < len(newLines) {
+			newLine = strings.TrimSpace(newLines[i])
+		}
+
+		if oldLine != newLine {
+			cw.l.Debug("config line changed", slog.Int("line", i+1), slog.String("path", cw.path), slog.String("old", oldLine), slog.String("new", newLine))
+		}
+	}
 }

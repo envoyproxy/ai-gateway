@@ -1,9 +1,11 @@
 package extproc
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +33,15 @@ func (m *mockReceiver) getConfig() *filterconfig.Config {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	return m.cfg
+}
+
+// NewTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
+func NewTestLoggerWithBuffer() (*slog.Logger, *bytes.Buffer) {
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	return logger, buf
 }
 
 func TestStartConfigWatcher(t *testing.T) {
@@ -70,7 +81,8 @@ rules:
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := StartConfigWatcher(ctx, path, rcv, slog.Default(), time.Millisecond*100)
+	logger, buf := NewTestLoggerWithBuffer()
+	err := StartConfigWatcher(ctx, path, rcv, logger, time.Millisecond*100)
 	require.NoError(t, err)
 
 	// Initial loading should have happened.
@@ -98,9 +110,19 @@ rules:
 
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
 
-	// Log should contain the updated loading.
+	// Verify the config has been updated.
 	require.Eventually(t, func() bool {
 		return rcv.getConfig() != firstCfg
 	}, 1*time.Second, 100*time.Millisecond)
 	require.NotEqual(t, firstCfg, rcv.getConfig())
+
+	// Verify the buffer contains the updated loading.
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "loading a new config")
+	}, 1*time.Second, 100*time.Millisecond, buf.String())
+
+	// Verify the buffer contains the config line changed
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "config line changed")
+	}, 1*time.Second, 100*time.Millisecond, buf.String())
 }
