@@ -74,11 +74,6 @@ const config: Config = {
         //   position: 'left',
         //   label: 'Tutorial',
         // },
-          {
-         label: 'Overview',
-          to: '/docs/overview', // Path to your Overview page
-          position: 'left',
-        },
         {
           label: 'Community',
           position: 'left',
@@ -102,6 +97,11 @@ const config: Config = {
           to: '/blog',
           position: 'left',
         },
+        {
+          label: 'Docs',
+           to: '/docs', // Path to your Overview page
+           position: 'right',
+         },
         {
           href: 'https://github.com/envoyproxy/ai-gateway',
           label: 'GitHub',

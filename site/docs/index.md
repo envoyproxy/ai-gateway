@@ -1,6 +1,7 @@
 ---
-id: overview
-title: Overview
+id: home
+title: Home
+sidebar_position: 1
 ---
 
 # Envoy AI Gateway Overview
@@ -23,8 +24,7 @@ The **Envoy AI Gateway** was created to address the complexity of connecting app
 
 The initial release focuses on key foundational features to provide LLM/AI traffic management:
 
-- **Request Routing and Failover**: Directs API requests to appropriate GenAI services and switches providers based on availability and performance.
-- **Load Balancing**: Distributes incoming requests to maintain optimal system performance.
+- **Request Routing**: Directs API requests to appropriate GenAI services
 - **Authentication and Authorization**: Implement API key validation to secure communication.
 - **Backend Security Policy**: Introduces fine-grained access control for backend services.
 This also controls LLM/AI backend usage using token-per-second (TPS) policies to prevent overuse.
@@ -53,6 +53,3 @@ Refer to the contribution guide in the GitHub repository for detailed instructio
 ---
 
 The **Envoy AI Gateway** addresses the growing demand for secure, scalable, and efficient AI/LLM traffic management. Your contributions and feedback are key to its success and to advancing the future of AI service integration.
-
-
-
