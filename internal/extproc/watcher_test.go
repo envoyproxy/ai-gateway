@@ -35,8 +35,8 @@ func (m *mockReceiver) getConfig() *filterconfig.Config {
 	return m.cfg
 }
 
-// NewTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
-func NewTestLoggerWithBuffer() (*slog.Logger, *bytes.Buffer) {
+// newTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
+func newTestLoggerWithBuffer() (*slog.Logger, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -81,7 +81,7 @@ rules:
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	logger, buf := NewTestLoggerWithBuffer()
+	logger, buf := newTestLoggerWithBuffer()
 	err := StartConfigWatcher(ctx, path, rcv, logger, time.Millisecond*100)
 	require.NoError(t, err)
 
@@ -124,5 +124,23 @@ rules:
 	// Verify the buffer contains the config line changed
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "config line changed")
+	}, 1*time.Second, 100*time.Millisecond, buf.String())
+}
+
+func TestDiff(t *testing.T) {
+	logger, buf := newTestLoggerWithBuffer()
+	cw := &configWatcher{
+		l: logger,
+	}
+
+	oldConfig := `schema:
+	name: Foo`
+	newConfig := `schema:
+	name: Bar`
+
+	expectedLog := `msg="config line changed" line=2 path="" old="name: Foo" new="name: Bar"`
+	cw.diff(oldConfig, newConfig)
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), expectedLog)
 	}, 1*time.Second, 100*time.Millisecond, buf.String())
 }

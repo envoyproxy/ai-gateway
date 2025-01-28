@@ -69,15 +69,15 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	cw.lastMod = stat.ModTime()
 	cw.l.Info("loading a new config", slog.String("path", cw.path))
 
-	// Re-hydrate the current config file for later diffing.
-	previous := cw.current
-	current, err := cw.getConfig()
-	if err != nil {
-		return fmt.Errorf("failed to read the config file: %w", err)
-	}
-
 	// Print the diff between the old and new config.
 	if cw.l.Enabled(ctx, slog.LevelDebug) {
+		// Re-hydrate the current config file for later diffing.
+		previous := cw.current
+		current, err := cw.getConfigString()
+		if err != nil {
+			return fmt.Errorf("failed to read the config file: %w", err)
+		}
+
 		cw.diff(previous, current)
 	}
 
@@ -88,7 +88,9 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	return cw.rcv.LoadConfig(cfg)
 }
 
-func (cw *configWatcher) getConfig() (string, error) {
+// getConfigString gets a string representation of the current config
+// read from the path. This is only used for debug log path for diff prints.
+func (cw *configWatcher) getConfigString() (string, error) {
 	currentByte, err := os.ReadFile(cw.path)
 	if err != nil {
 		return "", err
