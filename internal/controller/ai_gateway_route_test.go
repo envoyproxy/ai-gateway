@@ -33,9 +33,11 @@ func Test_extProcName(t *testing.T) {
 func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	c.kube = fake2.NewClientset()
-
-	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}}
+	name := "myroute"
+	ownerRef := []metav1.OwnerReference{
+		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
+	}
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
 
 	err := c.ensuresExtProcConfigMapExists(context.Background(), aiGatewayRoute)
 	require.NoError(t, err)
@@ -54,10 +56,13 @@ func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 
 func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
-	ownerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Kind", Name: "Name"}}
+	name := "myroute"
+	ownerRef := []metav1.OwnerReference{
+		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
+	}
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myroute",
+			Name:      name,
 			Namespace: "default",
 		},
 		Spec: aigv1a1.AIGatewayRouteSpec{
