@@ -50,8 +50,3 @@ When configuring AI providers, keep these security considerations in mind:
 Choose your provider to get started:
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)
-
-After configuring your providers, you can:
-- Learn about [rate limiting and quotas](../../configuration/rate-limiting.md)
-- Explore [model routing configurations](../../configuration/routing.md)
-- Set up [monitoring and logging](../../operations/monitoring.md) 

@@ -124,7 +124,7 @@ You should receive a response like:
 
 :::note
 This response comes from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
-For real AI model responses, see the [Advanced Configuration](./advanced-configuration.md) guide.
+For real AI model responses, see the [Connect Providers](./connect-providers) guide.
 :::
 
 ### Understanding the Response Format
@@ -136,5 +136,5 @@ The basic setup includes a mock backend that demonstrates the API structure but 
 ## Next Steps
 
 Now that you've tested the basic setup, you can:
-- Configure [real AI model backends](./connect-providers.md) like OpenAI or AWS Bedrock
-- Explore the [API Reference](../api/api.md) for more details about available endpoints
+- Configure [real AI model backends](./connect-providers) like OpenAI or AWS Bedrock
+- Explore the [API Reference](../api.md) for more details about available endpoints

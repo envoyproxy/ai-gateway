@@ -55,4 +55,4 @@ kubectl get pods -n envoy-gateway-system
 
 After completing the installation:
 - Continue to [Basic Usage](./basic-usage.md) to learn how to make your first request
-- Or jump to [Connect Providers](./connect-providers.md) to set up OpenAI and AWS Bedrock integration 
+- Or jump to [Connect Providers](./connect-providers) to set up OpenAI and AWS Bedrock integration 
