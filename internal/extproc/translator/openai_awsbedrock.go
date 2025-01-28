@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -108,7 +107,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 ) error {
 	bedrockReq.ToolConfig = &awsbedrock.ToolConfiguration{}
 	tools := make([]*awsbedrock.Tool, 0, len(openAIReq.Tools))
-	for _, toolDefinition := range openAIReq.Tools {
+	for i := range openAIReq.Tools {
+		toolDefinition := &openAIReq.Tools[i]
 		if toolDefinition.Function != nil {
 			var toolName, toolDes string
 			toolName = toolDefinition.Function.Name
@@ -128,9 +128,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 	bedrockReq.ToolConfig.Tools = tools
 
 	if openAIReq.ToolChoice != nil {
-		switch reflect.TypeOf(openAIReq.ToolChoice).Kind() {
-		case reflect.String:
-			toolChoice := openAIReq.ToolChoice.(string)
+		if toolChoice, ok := openAIReq.ToolChoice.(string); ok {
 			switch toolChoice {
 			case "auto":
 				bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
@@ -154,16 +152,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 					}
 				}
 			}
-		case reflect.Struct:
-			toolChoice := openAIReq.ToolChoice.(openai.ToolChoice)
-			tool := (string)(toolChoice.Type)
+		} else if toolChoice, ok := openAIReq.ToolChoice.(openai.ToolChoice); ok {
+			tool := string(toolChoice.Type)
 			bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
 				Tool: &awsbedrock.SpecificToolChoice{
 					Name: &tool,
 				},
 			}
-		default:
-			return fmt.Errorf("unexpected type: %s", reflect.TypeOf(openAIReq.ToolChoice).Kind())
+		} else {
+			return fmt.Errorf("unexpected type: %T", openAIReq.ToolChoice)
 		}
 	}
 	return nil
@@ -202,7 +199,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam); ok {
 		chatMessage := &awsbedrock.Message{Role: role}
 		chatMessage.Content = make([]*awsbedrock.ContentBlock, 0, len(contents))
-		for _, contentPart := range contents {
+		for i := range contents {
+			contentPart := &contents[i]
 			if contentPart.TextContent != nil {
 				textContentPart := contentPart.TextContent
 				chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
@@ -270,7 +268,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		Role:    role,
 		Content: contentBlocks,
 	}
-	for _, toolCall := range openAiMessage.ToolCalls {
+	for i := range openAiMessage.ToolCalls {
+		toolCall := &openAiMessage.ToolCalls[i]
 		input, err := unmarshalToolCallArguments(toolCall.Function.Arguments)
 		if err != nil {
 			return nil, err
@@ -296,7 +295,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			Text: v,
 		})
 	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
-		for _, contentPart := range contents {
+		for i := range contents {
+			contentPart := &contents[i]
 			textContentPart := contentPart.Text
 			*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
 				Text: textContentPart,
@@ -334,7 +334,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) error {
 	// Convert Messages.
 	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(openAIReq.Messages))
-	for _, msg := range openAIReq.Messages {
+	for i := range openAIReq.Messages {
+		msg := &openAIReq.Messages[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleUser:
 			userMessage := msg.Value.(openai.ChatCompletionUserMessageParam)
@@ -365,13 +366,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				bedrockReq.System = []*awsbedrock.SystemContentBlock{}
 			}
 
-			if _, ok := message.Content.Value.(string); ok {
+			if text, ok := message.Content.Value.(string); ok {
 				bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
-					Text: message.Content.Value.(string),
+					Text: text,
 				})
 			} else {
 				if contents, ok := message.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
-					for _, contentPart := range contents {
+					for i := range contents {
+						contentPart := &contents[i]
 						textContentPart := contentPart.Text
 						bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
 							Text: textContentPart,
