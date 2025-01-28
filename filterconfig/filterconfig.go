@@ -71,6 +71,13 @@ type Config struct {
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
+	// MonitorContinuousUsageStats flag controls if external process monitors every response-body chunk for usage stats
+	// when true, it will monitor for token metadata usage in every response-body chunk received during request in streaming mode
+	// compatible with vllm's 'continuous_usage_stats' flag
+	// when false, it will stop monitoring after detecting token metadata usage after finding it for the first time.
+	// compatible with OpenAI's streaming response (https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage)
+	// Only affects request in streaming mode
+	MonitorContinuousUsageStats bool `yaml:"monitorContinuousUsageStats,omitempty"`
 	// InputSchema specifies the API schema of the input format of requests to the filter.
 	Schema VersionedAPISchema `json:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.

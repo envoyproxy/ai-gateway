@@ -246,6 +246,7 @@ func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 	if len(metadata) == 0 {
 		return nil, nil
 	}
+
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			p.config.metadataNamespace: {

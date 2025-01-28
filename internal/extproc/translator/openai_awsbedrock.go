@@ -555,7 +555,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if err := json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0, len(bedrockResp.Output.Message.Content)),

@@ -13,6 +13,7 @@ func TestNewFactory(t *testing.T) {
 		_, err := NewFactory(
 			filterconfig.VersionedAPISchema{Name: "Foo", Version: "v100"},
 			filterconfig.VersionedAPISchema{Name: "Bar", Version: "v123"},
+			false,
 		)
 		require.ErrorContains(t, err, "unsupported API schema combination: client={Foo v100}, backend={Bar v123}")
 	})
@@ -20,6 +21,7 @@ func TestNewFactory(t *testing.T) {
 		f, err := NewFactory(
 			filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
 			filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
+			false,
 		)
 		require.NoError(t, err)
 		require.NotNil(t, f)
@@ -34,6 +36,7 @@ func TestNewFactory(t *testing.T) {
 		f, err := NewFactory(
 			filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
 			filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock},
+			false,
 		)
 		require.NoError(t, err)
 		require.NotNil(t, f)

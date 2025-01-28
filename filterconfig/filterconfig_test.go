@@ -74,6 +74,7 @@ rules:
 	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
 	require.Equal(t, "x-ai-eg-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-ai-eg-model", cfg.ModelNameHeaderKey)
+
 	require.Len(t, cfg.Rules, 2)
 	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)

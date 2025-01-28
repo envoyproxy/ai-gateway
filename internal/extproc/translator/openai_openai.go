@@ -14,21 +14,24 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [TranslatorFactory] for OpenAI to OpenAI translation.
-func newOpenAIToOpenAITranslator(path string) (Translator, error) {
-	if path == "/v1/chat/completions" {
-		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
-	} else {
-		return nil, fmt.Errorf("unsupported path: %s", path)
+// newOpenAIToOpenAITranslatorFactory implements [TranslatorFactory] for OpenAI to OpenAI translation.
+func newOpenAIToOpenAITranslatorFactory(monitorContinuousUsageStats bool) Factory {
+	return func(path string) (Translator, error) {
+		if path == "/v1/chat/completions" {
+			return &openAIToOpenAITranslatorV1ChatCompletion{monitorContinuousUsageStats: monitorContinuousUsageStats}, nil
+		} else {
+			return nil, fmt.Errorf("unsupported path: %s", path)
+		}
 	}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
 	defaultTranslator
-	stream        bool
-	buffered      []byte
-	bufferingDone bool
+	stream                      bool
+	buffered                    []byte
+	bufferingDone               bool
+	monitorContinuousUsageStats bool
 }
 
 // RequestBody implements [RequestBody].
@@ -96,8 +99,12 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(respHeaders map[
 		}
 	}
 	if o.stream {
-		if !o.bufferingDone {
-			buf, err := io.ReadAll(body)
+		if !o.bufferingDone || o.monitorContinuousUsageStats {
+			// OpenAI's api suggests that usage info will only be sent in the last chunk (https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage)
+			// whereas vllm model server supports including usage-info in each returned chunk.
+			// To incorporate both approaches, we check for usage-info in each chunk
+			var buf []byte
+			buf, err = io.ReadAll(body)
 			if err != nil {
 				return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 			}

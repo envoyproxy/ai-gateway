@@ -35,12 +35,12 @@ func isGoodStatusCode(code int) bool {
 type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
+func NewFactory(in, out filterconfig.VersionedAPISchema, monitorContinuousUsageStats bool) (Factory, error) {
 	if in.Name == filterconfig.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
 		switch out.Name {
 		case filterconfig.APISchemaOpenAI:
-			return newOpenAIToOpenAITranslator, nil
+			return newOpenAIToOpenAITranslatorFactory(monitorContinuousUsageStats), nil
 		case filterconfig.APISchemaAWSBedrock:
 			return newOpenAIToAWSBedrockTranslator, nil
 		}
