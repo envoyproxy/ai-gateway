@@ -581,6 +581,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 	return spec, nil
 }
 
+// syncSecret syncs the state of all resource referencing the given secret.
 func (c *configSink) syncSecret(namespace, name string) {
 	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
 	err := c.client.List(context.Background(), &backendSecurityPolicies,
