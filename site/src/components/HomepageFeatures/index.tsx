@@ -4,14 +4,14 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  image: string;
   description: JSX.Element;
 };
 
 const FeatureList: FeatureItem[] = [
   {
     title: 'Built together. Built in the open.',
-    Svg: require('@site/static/img/2.svg').default,
+    image: require('@site/static/img/1.png').default,
     description: (
       <>
         Envoy AI Gateway is the result of the community coming together to address GenAI traffic handling needs using Envoy.
@@ -20,7 +20,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: 'Get involved in the community',
-    Svg: require('@site/static/img/1.svg').default,
+    image: require('@site/static/img/2.png').default,
     description: (
       <>
         Join our community on Slack, join the conversation on GitHub, and attend our Thursday community meetings. See links in footer.
@@ -28,21 +28,21 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
-    title: 'Coming January 2025',
-    Svg: require('@site/static/img/3.svg').default,
+    title: 'Coming February 2025',
+    image: require('@site/static/img/3.png').default,
     description: (
       <>
-        The v0.1 Release of Envoy AI Gateway coming end of January. Including features such as Unified LLM API and LLM token usage limiting.
+        The v0.1 Release of Envoy AI Gateway coming in February 2025. Including features such as Unified LLM API and LLM token usage limiting.
       </>
     ),
   },
 ];
 
-function Feature({title, Svg, description}: FeatureItem) {
+function Feature({title, image, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
+        <img src={image} className={styles.featureSvg} alt={title} />
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>

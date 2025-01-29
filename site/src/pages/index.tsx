@@ -5,16 +5,14 @@ import Layout from '@theme/Layout';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
 
-import styles from './index.module.css';
-
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
-    <header className={clsx('hero hero--primary', styles.heroBanner)}>
+    <header className="heroBanner">
       <div className="container">
-        <img className={clsx(styles.heroImage)} src="./img/ai-gw-logo.svg" alt="Envoy AI Gateway"/>
+        <img className="heroImage" src="./img/ai-gw-logo.svg" alt="Envoy AI Gateway"/>
         <p className="hero__subtitle">{siteConfig.tagline}</p>
-        <div className={styles.buttons}>
+        <div className="buttons">
           <Link
             className="button button--secondary button--lg"
             href="https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?pli=1&tab=t.0">
@@ -30,7 +28,7 @@ export default function Home(): JSX.Element {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title={`Hello from ${siteConfig.title}`}
+      title={`${siteConfig.title}`}
       description="Description will go into a meta tag in <head />">
       <HomepageHeader />
       <main>

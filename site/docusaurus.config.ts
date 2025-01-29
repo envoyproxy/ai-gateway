@@ -65,7 +65,7 @@ const config: Config = {
       title: 'Envoy AI Gateway',
       logo: {
         alt: 'Envoy',
-        src: 'img/logo.svg',
+        src: 'img/logo-white.svg',
       },
       items: [
         // {
@@ -76,7 +76,7 @@ const config: Config = {
         // },
         {
           label: 'Community',
-          position: 'left',
+          position: 'right',
            items: [
              {
               label: 'Join us on Slack',
@@ -100,7 +100,7 @@ const config: Config = {
         {
           label: 'Docs',
            to: '/docs', // Path to your Overview page
-           position: 'right',
+           position: 'left',
          },
         {
           href: 'https://github.com/envoyproxy/ai-gateway',
