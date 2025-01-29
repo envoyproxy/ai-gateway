@@ -1,3 +1,8 @@
 ./manifests/charts/ai-gateway-helm/crds/*
 ./site/package-lock.json
 ./site/package.json
+./site/node_modules/*
+./site/build/*
+./site/npm-debug.log*
+./site/yarn-debug.log*
+./site/yarn-error.log*
