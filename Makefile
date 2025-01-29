@@ -34,13 +34,12 @@ help:
 	@echo "  test            	 Run the unit tests for the codebase."
 	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
 	@echo "                  	 This will be needed when changing API definitions."
-	@echo "  test-doctest    	 Run the integration tests for documentation site."
 	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
 	@echo "  test-e2e          	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
 	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
-	@echo "Note that some cases run by test-e2e, test-extproc, and test-doctest use credentials and these will be skipped when not available."
+	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
 	@echo ""
 
@@ -48,7 +47,7 @@ help:
 .PHONY: lint
 lint: golangci-lint
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc,test_doctest ./...
+	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -162,14 +161,6 @@ test-e2e: kind
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
-
-# This runs the integration tests for the documentation site.
-#
-# The dependencies for this target depends on the test case being run.
-.PHONY: test-doctest
-test-doctest: kind
-	@echo "Run doctest"
-	@go test ./tests/doctest/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_doctest
 
 # This builds a binary for the given command under the internal/cmd directory.
 #
