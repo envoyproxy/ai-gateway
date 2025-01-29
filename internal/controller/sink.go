@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,6 +39,12 @@ const mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
 //
 // Exported for internal testing purposes.
 type ConfigSinkEvent any
+
+// ConfigSinkEventSecretUpdate is an event that indicates that a secret has been updated.
+// It only contains the namespace and the name of the secret that has been updated.
+type ConfigSinkEventSecretUpdate struct {
+	Namespace, Name string
+}
 
 // configSink centralizes the AIGatewayRoute and AIServiceBackend objects handling
 // which requires to be done in a single goroutine since we need to
@@ -112,6 +119,8 @@ func (c *configSink) handleEvent(event ConfigSinkEvent) {
 		c.syncAIGatewayRoute(e)
 	case *aigv1a1.BackendSecurityPolicy:
 		c.syncBackendSecurityPolicy(e)
+	case ConfigSinkEventSecretUpdate:
+		c.syncSecret(e.Namespace, e.Name)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
 	}
@@ -188,7 +197,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the extproc configmap.
-	if err := c.updateExtProcConfigMap(aiGatewayRoute); err != nil {
+	if err := c.updateExtProcConfigMap(aiGatewayRoute, string(uuid2.NewUUID())); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -233,14 +242,14 @@ func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolic
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
-func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {
 		// This is a bug since we should have created the configmap before sending the AIGatewayRoute to the configSink.
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(aiGatewayRoute), err))
 	}
 
-	ec := &filterconfig.Config{}
+	ec := &filterconfig.Config{UUID: uuid}
 	spec := &aiGatewayRoute.Spec
 
 	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
@@ -569,8 +578,24 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 			}
 		}
 	}
-
 	return spec, nil
+}
+
+func (c *configSink) syncSecret(namespace, name string) {
+	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
+	err := c.client.List(context.Background(), &backendSecurityPolicies,
+		client.MatchingFields{
+			k8sClientIndexSecretToReferencingBackendSecurityPolicy: fmt.Sprintf("%s.%s", name, namespace),
+		},
+	)
+	if err != nil {
+		c.logger.Error(err, "failed to list BackendSecurityPolicy", "secret", name, "namespace", namespace)
+		return
+	}
+	for i := range backendSecurityPolicies.Items {
+		backendSecurityPolicy := &backendSecurityPolicies.Items[i]
+		c.syncBackendSecurityPolicy(backendSecurityPolicy)
+	}
 }
 
 func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string) string {

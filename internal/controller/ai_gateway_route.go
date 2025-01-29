@@ -22,22 +22,9 @@ import (
 )
 
 const (
-	managedByLabel                                   = "app.kubernetes.io/managed-by"
-	expProcConfigFileName                            = "extproc-config.yaml"
-	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
+	managedByLabel        = "app.kubernetes.io/managed-by"
+	expProcConfigFileName = "extproc-config.yaml"
 )
-
-func aiGatewayRouteIndexFunc(o client.Object) []string {
-	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
-	var ret []string
-	for _, rule := range aiGatewayRoute.Spec.Rules {
-		for _, backend := range rule.BackendRefs {
-			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
-			ret = append(ret, key)
-		}
-	}
-	return ret
-}
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
 //

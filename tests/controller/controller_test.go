@@ -464,3 +464,60 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.Equal(t, origin, created)
 	})
 }
+
+func TestSecretController(t *testing.T) {
+	c, cfg, k := testsinternal.NewEnvTest(t)
+
+	ch := make(chan controller.ConfigSinkEvent)
+	sc := controller.NewSecretController(c, k, logr.Discard(), ch)
+
+	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
+	mgr, err := ctrl.NewManager(cfg, opt)
+	require.NoError(t, err)
+
+	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
+	defer cancel()
+	go func() {
+		err := mgr.Start(ctx)
+		require.NoError(t, err)
+	}()
+
+	t.Run("create secret", func(t *testing.T) {
+		origin := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
+			StringData: map[string]string{
+				"key": "value",
+			},
+		}
+		err := c.Create(ctx, origin)
+		require.NoError(t, err)
+
+		item, ok := <-ch
+		require.True(t, ok)
+		event, ok := item.(controller.ConfigSinkEventSecretUpdate)
+		require.True(t, ok)
+		require.Equal(t, "default", event.Namespace)
+		require.Equal(t, "mysecret", event.Name)
+	})
+
+	t.Run("update secret", func(t *testing.T) {
+		origin := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
+			StringData: map[string]string{
+				"key": "value2",
+			},
+		}
+		err := c.Update(ctx, origin)
+		require.NoError(t, err)
+
+		item, ok := <-ch
+		require.True(t, ok)
+		event, ok := item.(controller.ConfigSinkEventSecretUpdate)
+		require.True(t, ok)
+		require.Equal(t, "default", event.Namespace)
+		require.Equal(t, "mysecret", event.Name)
+	})
+}

@@ -94,6 +94,13 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
+	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	if err = ctrl.NewControllerManagedBy(mgr).
+		For(&corev1.Secret{}).
+		Complete(secretC); err != nil {
+		return fmt.Errorf("failed to create controller for Secret: %w", err)
+	}
+
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan, options.ExtProcImage)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
@@ -109,6 +116,18 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	return nil
 }
 
+const (
+	// k8sClientIndexSecretToReferencingBackendSecurityPolicy is the index name that maps
+	// from a Secret to the BackendSecurityPolicy that references it.
+	k8sClientIndexSecretToReferencingBackendSecurityPolicy = "SecretToReferencingBackendSecurityPolicy"
+	// k8sClientIndexBackendToReferencingAIGatewayRoute is the index name that maps from a Backend to the
+	// AIGatewayRoute that references it.
+	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
+	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
+	// to the AIServiceBackend that references it.
+	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+)
+
 func applyIndexing(indexer client.FieldIndexer) error {
 	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
@@ -120,6 +139,55 @@ func applyIndexing(indexer client.FieldIndexer) error {
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
 	}
-
+	err = indexer.IndexField(context.Background(), &aigv1a1.BackendSecurityPolicy{},
+		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)
+	}
 	return nil
+}
+
+func aiGatewayRouteIndexFunc(o client.Object) []string {
+	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+	var ret []string
+	for _, rule := range aiGatewayRoute.Spec.Rules {
+		for _, backend := range rule.BackendRefs {
+			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
+			ret = append(ret, key)
+		}
+	}
+	return ret
+}
+
+func aiServiceBackendIndexFunc(o client.Object) []string {
+	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
+	var ret []string
+	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
+	}
+	return ret
+}
+
+func backendSecurityPolicyIndexFunc(o client.Object) []string {
+	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
+	var key string
+	switch backendSecurityPolicy.Spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+		apiKey := backendSecurityPolicy.Spec.APIKey
+		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		awsCreds := backendSecurityPolicy.Spec.AWSCredentials
+		if awsCreds.CredentialsFile != nil {
+			key = getSecretNameAndNamespace(awsCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
+		}
+		// TODO: OIDC.
+	}
+	return []string{key}
+}
+
+func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespace string) string {
+	if secretRef.Namespace != nil {
+		return fmt.Sprintf("%s.%s", secretRef.Name, *secretRef.Namespace)
+	}
+	return fmt.Sprintf("%s.%s", secretRef.Name, namespace)
 }

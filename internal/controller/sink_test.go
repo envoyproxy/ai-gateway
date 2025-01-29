@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -368,6 +369,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterconfig.Config{
+				UUID:                     string(uuid2.NewUUID()),
 				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
 				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
@@ -416,7 +418,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			}, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			err = s.updateExtProcConfigMap(tc.route)
+			err = s.updateExtProcConfigMap(tc.route, tc.exp.UUID)
 			require.NoError(t, err)
 
 			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(context.Background(), extProcName(tc.route), metav1.GetOptions{})

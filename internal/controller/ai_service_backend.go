@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
@@ -11,10 +10,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-)
-
-const (
-	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 )
 
 // aiBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
@@ -51,13 +46,4 @@ func (l *aiBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 	// Send the AIServiceBackend to the config sink so that it can modify the configuration together with the state of other resources.
 	l.eventChan <- aiBackend.DeepCopy()
 	return ctrl.Result{}, nil
-}
-
-func aiServiceBackendIndexFunc(o client.Object) []string {
-	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
-	var ret []string
-	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
-	}
-	return ret
 }

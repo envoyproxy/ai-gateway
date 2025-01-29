@@ -66,6 +66,8 @@ modelNameHeaderKey: x-ai-eg-model
 // From Envoy configuration perspective, configuring the header matching based on `x-ai-eg-selected-backend` is enough to route the request to the selected backend.
 // That is because the matching decision is made by the filter and the selected backend is populated in the header `x-ai-eg-selected-backend`.
 type Config struct {
+	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
+	UUID string `json:"uuid,omitempty"`
 	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
 	MetadataNamespace string `json:"metadataNamespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate

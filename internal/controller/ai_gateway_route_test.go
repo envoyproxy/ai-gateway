@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -143,51 +142,4 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
 	})
-}
-
-func Test_aiGatewayRouteIndexFunc(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, aigv1a1.AddToScheme(scheme))
-
-	c := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc).
-		Build()
-
-	// Create a AIGatewayRoute.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myroute",
-			Namespace: "default",
-		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
-				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
-			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
-				{
-					Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "backend1", Weight: 1},
-						{Name: "backend2", Weight: 1},
-					},
-				},
-			},
-		},
-	}
-	require.NoError(t, c.Create(context.Background(), aiGatewayRoute))
-
-	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
-	err := c.List(context.Background(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend1.default"})
-	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
-
-	err = c.List(context.Background(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
-	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
 }
