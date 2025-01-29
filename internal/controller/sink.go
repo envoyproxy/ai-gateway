@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -25,8 +26,9 @@ import (
 )
 
 const (
-	selectedBackendHeaderKey  = "x-ai-eg-selected-backend"
-	hostRewriteHTTPFilterName = "ai-eg-host-rewrite"
+	selectedBackendHeaderKey   = "x-ai-eg-selected-backend"
+	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
+	extProcConfigAnnotationKey = "aigateway.envoyproxy.io/extproc-config-uuid"
 )
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
@@ -211,7 +213,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Annotate all pods with the new config.
-	err = c.annotateAllExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	err = c.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
 	if err != nil {
 		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
@@ -430,7 +432,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	return nil
 }
 
-func (c *configSink) annotateAllExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+func (c *configSink) annotateExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	pods, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", extProcName(aiGatewayRoute)),
 	})
@@ -440,13 +442,12 @@ func (c *configSink) annotateAllExtProcPods(ctx context.Context, aiGatewayRoute 
 
 	for _, pod := range pods.Items {
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
-		if pod.Annotations == nil {
-			pod.Annotations = make(map[string]string)
-		}
-
-		pod.Annotations["aigateway.envoyproxy.io/extproc-config-uuid"] = uuid
-		if _, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).Update(ctx, &pod, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update pod %s: %w", pod.Name, err)
+		_, err = c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+			[]byte(fmt.Sprintf(
+				`{"metadata":{"annotations":{"%s":"%s"}}}`, extProcConfigAnnotationKey, uuid),
+			), metav1.PatchOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
 		}
 	}
 	return nil

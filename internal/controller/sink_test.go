@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -782,4 +783,40 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 func Test_backendSecurityPolicyVolumeName(t *testing.T) {
 	mountPath := backendSecurityPolicyVolumeName(1, 2, "name")
 	require.Equal(t, "rule1-backref2-name", mountPath)
+}
+
+func Test_annotateExtProcPods(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	kube := fake2.NewClientset()
+
+	eventChan := make(chan ConfigSinkEvent)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "foons"},
+	}
+
+	for i := range 5 {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "somepod" + strconv.Itoa(i),
+				Namespace: "foons",
+				Labels:    map[string]string{"app": extProcName(aiGatewayRoute)},
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "someapp"}}},
+		}
+		_, err := kube.CoreV1().Pods("foons").Create(context.Background(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+
+	uuid := string(uuid2.NewUUID())
+	err := s.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	require.NoError(t, err)
+
+	// Check that all pods have been annotated.
+	for i := range 5 {
+		pod, err := kube.CoreV1().Pods("foons").Get(context.Background(), "somepod"+strconv.Itoa(i), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, uuid, pod.Annotations[extProcConfigAnnotationKey])
+	}
 }
