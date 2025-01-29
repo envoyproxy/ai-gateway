@@ -57,7 +57,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 			}
 
 			if b.Auth != nil {
-				h, err := backendauth.NewHandler(b.Auth)
+				h, err := backendauth.NewHandler(b.Auth, s.logger)
 				if err != nil {
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
 				}

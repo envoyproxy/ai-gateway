@@ -2,7 +2,9 @@ package backendauth
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -15,12 +17,17 @@ type apiKeyHandler struct {
 	apiKey string
 }
 
-func newAPIKeyHandler(auth *filterconfig.APIKeyAuth) (Handler, error) {
+func newAPIKeyHandler(auth *filterconfig.APIKeyAuth, logger *slog.Logger) (Handler, error) {
 	secret, err := os.ReadFile(auth.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read api key file: %w", err)
 	}
-	return &apiKeyHandler{apiKey: string(secret)}, nil
+	trimmedKey := strings.TrimSpace(string(secret))
+	if trimmedKey != string(secret) {
+		logger.Debug("api key contained leading/trailing whitespace and was trimmed", slog.String("filename", auth.Filename))
+	}
+
+	return &apiKeyHandler{apiKey: trimmedKey}, nil
 }
 
 // Do implements [Handler.Do].

@@ -2,6 +2,7 @@ package backendauth
 
 import (
 	"errors"
+	"log/slog"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
@@ -17,11 +18,11 @@ type Handler interface {
 }
 
 // NewHandler returns a new implementation of [Handler] based on the configuration.
-func NewHandler(config *filterconfig.BackendAuth) (Handler, error) {
+func NewHandler(config *filterconfig.BackendAuth, logger *slog.Logger) (Handler, error) {
 	if config.AWSAuth != nil {
 		return newAWSHandler(config.AWSAuth)
 	} else if config.APIKey != nil {
-		return newAPIKeyHandler(config.APIKey)
+		return newAPIKeyHandler(config.APIKey, logger)
 	}
 	return nil, errors.New("no backend auth handler found")
 }
