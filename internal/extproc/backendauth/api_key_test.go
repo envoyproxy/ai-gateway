@@ -25,7 +25,7 @@ func TestNewAPIKeyHandler(t *testing.T) {
 	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
-	// apiKey should be trimmed
+	// apiKey should be trimmed.
 	require.Equal(t, "test", handler.(*apiKeyHandler).apiKey)
 }
 
