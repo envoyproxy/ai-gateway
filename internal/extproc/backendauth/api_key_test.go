@@ -1,12 +1,8 @@
 package backendauth
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
-	"strings"
 	"testing"
-	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -26,16 +22,11 @@ func TestNewAPIKeyHandler(t *testing.T) {
 	require.NoError(t, f.Sync())
 
 	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
-	logger, buf := newTestLoggerWithBuffer()
-	handler, err := newAPIKeyHandler(&auth, logger)
+	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 	// apiKey should be trimmed
 	require.Equal(t, "test", handler.(*apiKeyHandler).apiKey)
-	// logger should have logged the trimming
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "api key contained leading/trailing whitespace and was trimmed")
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
 }
 
 func TestApiKeyHandler_Do(t *testing.T) {
@@ -49,7 +40,7 @@ func TestApiKeyHandler_Do(t *testing.T) {
 	require.NoError(t, f.Sync())
 
 	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
-	handler, err := newAPIKeyHandler(&auth, slog.Default())
+	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 
@@ -81,13 +72,4 @@ func TestApiKeyHandler_Do(t *testing.T) {
 	require.Len(t, headerMut.SetHeaders, 2)
 	require.Equal(t, "Authorization", headerMut.SetHeaders[1].Header.Key)
 	require.Equal(t, []byte("Bearer test"), headerMut.SetHeaders[1].Header.GetRawValue())
-}
-
-// newTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
-func newTestLoggerWithBuffer() (*slog.Logger, *bytes.Buffer) {
-	buf := &bytes.Buffer{}
-	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
-	return logger, buf
 }

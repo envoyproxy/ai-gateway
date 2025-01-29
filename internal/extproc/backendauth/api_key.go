@@ -2,7 +2,6 @@ package backendauth
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 
@@ -17,17 +16,12 @@ type apiKeyHandler struct {
 	apiKey string
 }
 
-func newAPIKeyHandler(auth *filterconfig.APIKeyAuth, logger *slog.Logger) (Handler, error) {
+func newAPIKeyHandler(auth *filterconfig.APIKeyAuth) (Handler, error) {
 	secret, err := os.ReadFile(auth.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read api key file: %w", err)
 	}
-	trimmedKey := strings.TrimSpace(string(secret))
-	if trimmedKey != string(secret) {
-		logger.Debug("api key contained leading/trailing whitespace and was trimmed", slog.String("filename", auth.Filename))
-	}
-
-	return &apiKeyHandler{apiKey: trimmedKey}, nil
+	return &apiKeyHandler{apiKey: strings.TrimSpace(string(secret))}, nil
 }
 
 // Do implements [Handler.Do].
