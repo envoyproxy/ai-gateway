@@ -197,7 +197,8 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the extproc configmap.
-	if err := c.updateExtProcConfigMap(aiGatewayRoute, string(uuid2.NewUUID())); err != nil {
+	uuid := string(uuid2.NewUUID())
+	if err := c.updateExtProcConfigMap(aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -206,6 +207,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		return
+	}
+
+	// Annotate all pods with the new config.
+	err = c.annotateAllExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	if err != nil {
+		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 }
@@ -419,6 +427,28 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
+	return nil
+}
+
+func (c *configSink) annotateAllExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+	pods, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", extProcName(aiGatewayRoute)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+
+		pod.Annotations["aigateway.envoyproxy.io/extproc-config-uuid"] = uuid
+		if _, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).Update(ctx, &pod, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update pod %s: %w", pod.Name, err)
+		}
+	}
 	return nil
 }
 

@@ -25,6 +25,7 @@ import (
 // processorConfig is the configuration for the processor.
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
+	uuid                                         string
 	bodyParser                                   router.RequestBodyParser
 	router                                       extprocapi.Router
 	modelNameHeaderKey, selectedBackendHeaderKey string
