@@ -46,7 +46,7 @@ func Test_Examples_Basic(t *testing.T) {
 		replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey)
 		require.NoError(t, kubectlApplyManifestStdin(ctx, replaced))
 
-		time.Sleep(5 * time.Second) // At least 10 seconds for the updated secret to be propagated.
+		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
 		for _, tc := range []examplesBasicTestCase{
 			{
