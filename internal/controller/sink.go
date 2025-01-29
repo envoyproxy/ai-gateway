@@ -298,6 +298,17 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
 						}
+					} else if backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
+						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
+							AWSAuth: &filterconfig.AWSAuth{
+								SecretKeyFileName: path.Join(backendSecurityMountPath(volumeName), "/client-secret"),
+								OIDC:              backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC,
+								RoleARN:           backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,
+								Audience:          backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.Aud,
+								GrantType:         backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.GrantType,
+								Region:            backendSecurityPolicy.Spec.AWSCredentials.Region,
+							},
+						}
 					}
 				default:
 					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
@@ -556,8 +567,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
-						// Will introduce OIDC in a following PR
-						continue
+						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC.ClientSecret.Name)
 					}
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
