@@ -20,7 +20,8 @@ Currently, Envoy AI Gateway supports the following providers:
 Before configuring any provider:
 
 1. Complete the [Basic Usage](../basic-usage.md) guide
-2. Remove the basic configuration with the mock backend:
+2. Remove the basic configuration with the mock backend
+
    ```shell
    kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
 
@@ -29,11 +30,12 @@ Before configuring any provider:
      -n envoy-gateway-system \
      --for=delete
    ```
-3.  Download Configuration Template:
 
-```shell
-curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-```
+3.  Download configuration template
+
+    ```shell
+    curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
+    ```
 
 ## Security Best Practices
 
