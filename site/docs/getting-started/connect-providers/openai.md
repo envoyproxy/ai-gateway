@@ -32,7 +32,8 @@ The key will be stored in a Kubernetes secret.
 
 ### 2. Apply Configuration
 
-Apply the updated configuration and wait for the Gateway pod to be ready, and restart the ext-proc to pick up the updated secrets:
+Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
+then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
 kubectl apply -f basic.yaml
@@ -41,8 +42,6 @@ kubectl wait pods --timeout=2m \
   -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
   -n envoy-gateway-system \
   --for=condition=Ready
-
-kubectl rollout restart deployment/ai-eg-route-extproc-envoy-ai-gateway-basic
 ```
 
 ### 3. Test the Configuration
