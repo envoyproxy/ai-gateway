@@ -72,7 +72,7 @@ func newConfigSink(
 	c := &configSink{
 		client:                        kubeClient,
 		kube:                          kube,
-		logger:                        logger.WithName("config-sink"),
+		logger:                        logger,
 		defaultExtProcImage:           extProcImage,
 		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
 		eventChan:                     eventChan,

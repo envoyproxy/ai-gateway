@@ -69,7 +69,8 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sinkChan := make(chan ConfigSinkEvent, 100)
-	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("ai-gateway-route"), sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIGatewayRoute{}).
 		Owns(&egv1a1.EnvoyExtensionPolicy{}).
@@ -80,36 +81,38 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
 	}
 
-	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("ai-service-backend"), sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIServiceBackend{}).
 		Complete(backendC); err != nil {
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
-	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("backend-security-policy"), sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
-	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan)
+	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("secret"), sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
 		Complete(secretC); err != nil {
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
 	}
 
-	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger, sinkChan, options.ExtProcImage)
+	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("config-sink"), sinkChan, options.ExtProcImage)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
-	logger.Info("Initializing config sink")
 	if err = sink.init(ctx); err != nil {
 		return fmt.Errorf("failed to initialize config sink: %w", err)
 	}
 
-	logger.Info("Starting controller manager")
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
 		return fmt.Errorf("failed to start controller manager: %w", err)
 	}

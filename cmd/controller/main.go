@@ -72,7 +72,7 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, k8sConfig, setupLog, options); err != nil {
+	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), options); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
 }
