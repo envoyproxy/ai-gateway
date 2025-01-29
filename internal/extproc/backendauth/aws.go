@@ -31,7 +31,6 @@ func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 	var credentials aws.Credentials
 	var region string
 
-	// TODO: refactor to work with refreshing credentials (similar to API Key)
 	if awsAuth != nil {
 		region = awsAuth.Region
 		if len(awsAuth.CredentialFileName) != 0 {
