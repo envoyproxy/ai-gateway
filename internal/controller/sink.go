@@ -432,6 +432,10 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	return nil
 }
 
+// annotateExtProcPods annotates the external processor pods with the new config uuid.
+// This is necessary to make the config update faster.
+//
+// See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *configSink) annotateExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	pods, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", extProcName(aiGatewayRoute)),
