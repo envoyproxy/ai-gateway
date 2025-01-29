@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -259,4 +260,56 @@ func TestServer_Process(t *testing.T) {
 		err := s.process(p, ms)
 		require.Error(t, err, "context canceled")
 	})
+}
+
+func TestFilterSensitiveHeaders(t *testing.T) {
+	logger, buf := newTestLoggerWithBuffer()
+	hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "authorization", Value: "sensitive"}}}
+	filtered := filterSensitiveHeaders(hm, logger, []string{"authorization"})
+	require.Len(t, filtered.Headers, 2)
+	for _, h := range filtered.Headers {
+		if h.Key == "authorization" {
+			require.Equal(t, "[REDACTED]", h.Value)
+		} else {
+			require.Equal(t, "bar", h.Value)
+		}
+	}
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "filtering sensitive header")
+	}, 1*time.Second, 100*time.Millisecond, buf.String())
+}
+
+func TestFilterSensitiveBody(t *testing.T) {
+	logger, buf := newTestLoggerWithBuffer()
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: []*corev3.HeaderValueOption{
+							{Header: &corev3.HeaderValue{
+								Key:   ":path",
+								Value: "/model/some-random-model/converse",
+							}},
+							{Header: &corev3.HeaderValue{
+								Key:   "Authorization",
+								Value: "sensitive",
+							}},
+						},
+					},
+					BodyMutation: &extprocv3.BodyMutation{},
+				},
+			},
+		},
+	}
+	filtered := filterSensitiveBody(resp, logger, []string{"Authorization"})
+	require.NotNil(t, filtered)
+	for _, h := range filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
+		if h.Header.Key == "Authorization" {
+			require.Equal(t, "[REDACTED]", string(h.Header.RawValue))
+		}
+	}
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "filtering sensitive header")
+	}, 1*time.Second, 100*time.Millisecond, buf.String(), filtered)
 }
