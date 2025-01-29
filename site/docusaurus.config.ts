@@ -52,6 +52,10 @@ const config: Config = {
         theme: {
           customCss: './src/css/custom.css',
         },
+        // Will be passed to @docusaurus/plugin-google-gtag (only enabled when explicitly specified)
+        gtag: {
+          trackingID: 'G-DXJEH1ZRXX',
+        },
       } satisfies Preset.Options,
     ],
   ],
