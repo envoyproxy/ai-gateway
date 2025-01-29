@@ -9,6 +9,33 @@ import TabItem from '@theme/TabItem';
 
 Before you begin using Envoy AI Gateway, you'll need to ensure you have the following prerequisites in place:
 
+## Required Tools
+
+Make sure you have the following tools installed:
+
+- `kubectl` - The Kubernetes command-line tool
+- `helm` - The package manager for Kubernetes
+- `curl` - For testing API endpoints (installed by default on most systems)
+
+:::tip Verify Installation
+Run these commands to verify your tools are properly installed:
+
+Verify kubectl installation:
+```shell
+kubectl version --client
+```
+
+Verify helm installation:
+```shell
+helm version
+```
+
+Verify curl installation:
+```shell
+curl --version
+```
+:::
+
 ## Kubernetes Cluster
 
 :::info Version Requirements
@@ -114,30 +141,3 @@ helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
-
-## Required Tools
-
-Make sure you have the following tools installed:
-
-- `kubectl` - The Kubernetes command-line tool
-- `helm` - The package manager for Kubernetes
-- `curl` - For testing API endpoints (installed by default on most systems)
-
-:::tip Verify Installation
-Run these commands to verify your tools are properly installed:
-
-Verify kubectl installation:
-```shell
-kubectl version --client
-```
-
-Verify helm installation:
-```shell
-helm version
-```
-
-Verify curl installation:
-```shell
-curl --version
-```
-:::
