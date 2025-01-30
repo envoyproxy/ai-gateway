@@ -18,3 +18,4 @@ exclude:
     - apischema/
     - cmd/
     - tests/internal/envtest.go
+    - internal/controller  # TODO

@@ -166,10 +166,9 @@ test-e2e: kind
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
 test-coverage: go-test-coverage
-	@echo "test-coverage => ./..."
 	@mkdir -p $(OUTPUT_DIR)
-	$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
-	${GO_TEST_COVERAGE} --config=.testcoverage.yml
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
+	@${GO_TEST_COVERAGE} --config=.testcoverage.yml
 
 # This builds a binary for the given command under the internal/cmd directory.
 #

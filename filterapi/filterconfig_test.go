@@ -85,4 +85,15 @@ rules:
 	require.Equal(t, "apikey.txt", cfg.Rules[0].Backends[0].Auth.APIKey.Filename)
 	require.Equal(t, "aws.txt", cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
 	require.Equal(t, "us-east-1", cfg.Rules[0].Backends[1].Auth.AWSAuth.Region)
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
+		require.Error(t, err)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		const invalidConfig = `{wefaf3q20,9u,f02`
+		require.NoError(t, os.WriteFile(configPath, []byte(invalidConfig), 0o600))
+		_, err := filterapi.UnmarshalConfigYaml(configPath)
+		require.Error(t, err)
+	})
 }

@@ -25,7 +25,6 @@ func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
-	defaultTranslator
 	stream        bool
 	buffered      []byte
 	bufferingDone bool
@@ -81,6 +80,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 	}
 	return nil, nil, nil
+}
+
+// ResponseHeaders implements [Translator.ResponseHeaders].
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+	return nil, nil
 }
 
 // ResponseBody implements [Translator.ResponseBody].
