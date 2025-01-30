@@ -32,6 +32,7 @@ help:
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
 	@echo "  test            	 Run the unit tests for the codebase."
+	@echo "  test-coverage     	 Run the unit tests for the codebase with coverage check."
 	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
 	@echo "                  	 This will be needed when changing API definitions."
 	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
@@ -162,9 +163,10 @@ test-e2e: kind
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
+# This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
 test-coverage: go-test-coverage
-	$(MAKE) test GO_TEST_ARGS="-coverprofile=./cover.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
+	$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
 	${GO_TEST_COVERAGE} --config=.testcoverage.yml
 
 # This builds a binary for the given command under the internal/cmd directory.
