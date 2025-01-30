@@ -24,11 +24,21 @@ import (
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
 func parseAndValidateFlags(args []string) (configPath, addr string, logLevel slog.Level, err error) {
 	fs := flag.NewFlagSet("AI Gateway External Processor", flag.ContinueOnError)
-	configPathPtr := fs.String("configPath", "", "path to the configuration file. "+
-		"The file must be in YAML format specified in filterconfig.Config type. The configuration file is watched for changes.")
-	extProcAddrPtr := fs.String("extProcAddr", ":1063",
-		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock")
-	logLevelPtr := fs.String("logLevel", "info", "log level")
+	configPathPtr := fs.String(
+		"configPath",
+		"",
+		"path to the configuration file. The file must be in YAML format specified in filterconfig.Config type. "+
+			"The configuration file is watched for changes.",
+	)
+	extProcAddrPtr := fs.String(
+		"extProcAddr",
+		":1063",
+		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock",
+	)
+	logLevelPtr := fs.String(
+		"logLevel",
+		"info", "log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
 
 	if err = fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
