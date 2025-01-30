@@ -309,8 +309,8 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 							},
 						}
 					} else if backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
-						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-							AWSAuth: &filterconfig.AWSAuth{
+						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
 								SecretKeyFileName: path.Join(backendSecurityMountPath(volumeName), "/client-secret"),
 								OIDC:              &backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC,
 								RoleARN:           backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,

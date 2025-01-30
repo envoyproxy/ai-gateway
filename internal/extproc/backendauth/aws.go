@@ -69,7 +69,9 @@ func newAWSHandler(awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
 
 	handler := &awsHandler{credentials: credentials, signer: signer, region: region, oidcHandler: oidcHandler, proxyURL: awsAuth.ProxyURL}
 
-	go handler.updateCredentialsIfExpired()
+	if oidcHandler != nil {
+		go handler.updateCredentialsIfExpired()
+	}
 	return handler, nil
 }
 
