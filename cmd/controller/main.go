@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/envoyproxy/gateway/proto/extension"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -17,52 +18,54 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
-var setupLog = ctrl.Log.WithName("setup")
-
-// defaultOptions returns the default values for the program options.
-func defaultOptions() controller.Options {
-	return controller.Options{
-		ExtProcImage:         "ghcr.io/envoyproxy/ai-gateway/extproc:latest",
-		EnableLeaderElection: false,
-	}
-}
-
-// getOptions parses the program flags and returns them as Options.
-func getOptions() (opts controller.Options, extensionServerPort *string, err error) {
-	opts = defaultOptions()
-	flag.StringVar(&opts.ExtProcLogLevel, "extProcLogLevel", opts.ExtProcLogLevel,
-		"The log level for the external processor. Either 'debug', 'info', 'warn', or 'error'.")
-	var level slog.Level
-	if err = level.UnmarshalText([]byte(opts.ExtProcLogLevel)); err != nil {
-		return opts, nil, fmt.Errorf("failed to unmarshal log level: %w", err)
-	}
-	flag.StringVar(&opts.ExtProcImage, "extProcImage", opts.ExtProcImage, "The image for the external processor")
-	flag.BoolVar(&opts.EnableLeaderElection, "leader-elect", opts.EnableLeaderElection,
-		"Enable leader election for controller manager. "+
+var (
+	flagExtProcLogLevel = flag.String("extProcLogLevel",
+		"info", "The log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.")
+	flagExtProcImage = flag.String("extProcImage",
+		"envoyproxy/envoy", "The image for the external processor")
+	flagEnableLeaderElection = flag.Bool("enableLeaderElection",
+		true, "Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	extensionServerPort = flag.String("port", ":1063", "gRPC port for the extension server")
-	zapOpts := zap.Options{Development: true}
-	zapOpts.BindFlags(flag.CommandLine)
-	opts.ZapOptions = zapOpts
+	flagLogLevel = flag.String("logLevel",
+		"info", "The log level for the controller manager. One of 'debug', 'info', 'warn', or 'error'.")
+	flagExtensionServerPort = flag.String("port", ":1063",
+		"gRPC port for the extension server")
+)
+
+// parseAndValidateFlags parses the program flags and validates them.
+func parseAndValidateFlags() (zapLevel zapcore.Level, err error) {
 	flag.Parse()
+	var level slog.Level
+	if err = level.UnmarshalText([]byte(*flagExtProcLogLevel)); err != nil {
+		err = fmt.Errorf("invalid external processor log level: %s", *flagExtProcLogLevel)
+		return
+	}
+
+	if err = zapLevel.UnmarshalText([]byte(*flagLogLevel)); err != nil {
+		err = fmt.Errorf("invalid log level: %s", *flagLogLevel)
+		return
+	}
 	return
 }
 
 func main() {
-	options, extensionServerPort, err := getOptions()
+	setupLog := ctrl.Log.WithName("setup")
+
+	zapLogLevel, err := parseAndValidateFlags()
 	if err != nil {
-		setupLog.Error(err, "failed to get options")
+		setupLog.Error(err, "failed to parse flags")
 		os.Exit(1)
 	}
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&options.ZapOptions)))
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapLogLevel})))
 	k8sConfig, err := ctrl.GetConfig()
 	if err != nil {
 		setupLog.Error(err, "failed to get k8s config")
 	}
 
-	lis, err := net.Listen("tcp", *extensionServerPort)
+	lis, err := net.Listen("tcp", *flagExtensionServerPort)
 	if err != nil {
-		setupLog.Error(err, "failed to listen", "port", *extensionServerPort)
+		setupLog.Error(err, "failed to listen", "port", *flagExtensionServerPort)
 		os.Exit(1)
 	}
 
@@ -84,7 +87,11 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), options); err != nil {
+	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
+		ExtProcImage:         *flagExtProcImage,
+		ExtProcLogLevel:      *flagExtProcLogLevel,
+		EnableLeaderElection: *flagEnableLeaderElection,
+	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
 }
