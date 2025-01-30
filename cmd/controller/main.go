@@ -28,10 +28,8 @@ func parseAndValidateFlags(args []string) (
 	extensionServerPort string,
 	err error,
 ) {
-	// Create a new FlagSet, rather than using the global flag.CommandLine.
-	fs := flag.NewFlagSet("my-service-flags", flag.ContinueOnError)
+	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
-	// Define flags within this FlagSet.
 	extProcLogLevelPtr := fs.String(
 		"extProcLogLevel",
 		"info",
@@ -58,13 +56,11 @@ func parseAndValidateFlags(args []string) (
 		"gRPC port for the extension server",
 	)
 
-	// Parse the passed-in arguments.
 	if err = fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
 		return
 	}
 
-	// Validate log levels by trying to unmarshal them.
 	var slogLevel slog.Level
 	if err = slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid external processor log level: %q", *extProcLogLevelPtr)
