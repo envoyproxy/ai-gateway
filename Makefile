@@ -162,6 +162,11 @@ test-e2e: kind
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
+.PHONY: test-coverage
+test-coverage: go-test-coverage
+	$(MAKE) test GO_TEST_ARGS="-coverprofile=./cover.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
+	${GO_TEST_COVERAGE} --config=.testcoverage.yml
+
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:
