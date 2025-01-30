@@ -12,10 +12,12 @@ translate text from English to Spanish.
 -->
 
 **Related Issues/PRs (if applicable)**:
+
 <!--
 Please add the related issues or PRs here.
 
 Example:
+
 Fixes #12345
 Close #12346
 Related PR: #12347
@@ -44,7 +46,7 @@ Also, please make sure that you can check off all the items on the checklist bel
 Otherwise, you might unnecessarily consume the time of the maintainers unless there's
 a specific reason for not doing so.
 
-**Checklist**:
+**Checklist** (you don't need to keep in your PR description):
 - [ ] The PR title follows the same format as the merged PRs.
 - [ ] I have read the [CONTRIBUTING.md](../CONTRIBUTING.md) (for first-time contributors).
 - [ ] I have made sure that `make precommit test` passes locally.

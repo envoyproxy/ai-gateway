@@ -1,4 +1,4 @@
-name: Lint PR title
+name: PR Style Check
 
 on:
   pull_request_target:
@@ -7,9 +7,34 @@ on:
       - edited
       - synchronize
 
+permissions:
+  contents: read
+
 jobs:
-  main:
-    name: Validate PR title
+  description:
+    name: Description
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR description
+        env:
+          # Do noe use ${{ github.event.pull_request.body }} directly in run command.
+          TITLE: ${{ github.event.pull_request.body }}
+        run: |
+          if [[ $TITLE =~ "<!--" ]]; then
+              echo "PR description contains '<!--'. Please remove all the comment out lines in the template after carefully reading them."
+              exit 1
+          fi
+          if [[ $TITLE =~ "-->" ]]; then
+              echo "PR description contains '-->'. Please remove all the comment out lines in the template after carefully reading them."
+              exit 1
+          fi
+          if [[ ! $TITLE =~ "**Commit Message**:" ]]; then
+              echo "PR description must begin with '**Commit Message**:'."
+              exit 1
+          fi
+
+  title:
+    name: Title
     runs-on: ubuntu-latest
     steps:
       - uses: amannn/action-semantic-pull-request@v5
