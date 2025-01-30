@@ -1,9 +1,10 @@
 package backendauth
 
 import (
+	"testing"
+
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestNewOIDCHandler(t *testing.T) {
