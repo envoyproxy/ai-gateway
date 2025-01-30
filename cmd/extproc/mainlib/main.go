@@ -27,7 +27,7 @@ func parseAndValidateFlags(args []string) (configPath, addr string, logLevel slo
 	configPathPtr := fs.String(
 		"configPath",
 		"",
-		"path to the configuration file. The file must be in YAML format specified in filterconfig.Config type. "+
+		"path to the configuration file. The file must be in YAML format specified in filterapi.Config type. "+
 			"The configuration file is watched for changes.",
 	)
 	extProcAddrPtr := fs.String(
