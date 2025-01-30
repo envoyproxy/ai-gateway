@@ -37,11 +37,14 @@ type oidcHandler struct {
 }
 
 func newOIDCHandler(oidcCredential egv1a1.OIDC, clientSecretFileName string) (*oidcHandler, error) {
-	return &oidcHandler{
+	handler := &oidcHandler{
 		clientSecretFileName: clientSecretFileName,
 		oidcCredCache:        oauth2TokenWithExp{},
 		oidc:                 oidcCredential,
-	}, nil
+	}
+
+	go handler.updateCredentialsIfExpired()
+	return handler, nil
 }
 
 func (h *oidcHandler) extractOauth2Token(ctx context.Context) (*oauth2.Token, error) {
@@ -109,4 +112,14 @@ func (h *oidcHandler) extractClientSecret() (string, error) {
 		return "", fmt.Errorf("failed to read api key file: %w", err)
 	}
 	return strings.TrimSpace(string(secret)), nil
+}
+
+func (h *oidcHandler) updateCredentialsIfExpired() {
+	for {
+		err := h.updateOIDCTokenIfExpired(context.Background())
+		if err != nil {
+			return
+		}
+		time.Sleep(1 * time.Minute)
+	}
 }

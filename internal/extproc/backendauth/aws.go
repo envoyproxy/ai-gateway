@@ -67,7 +67,10 @@ func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 
 	signer := v4.NewSigner()
 
-	return &awsHandler{credentials: credentials, signer: signer, region: region, oidcHandler: oidcHandler, proxyURL: awsAuth.ProxyURL}, nil
+	handler := &awsHandler{credentials: credentials, signer: signer, region: region, oidcHandler: oidcHandler, proxyURL: awsAuth.ProxyURL}
+
+	go handler.updateCredentialsIfExpired()
+	return handler, nil
 }
 
 // Do implements [Handler.Do].
@@ -102,17 +105,6 @@ func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.H
 		bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("cannot create request: %w", err)
-	}
-
-	if a.oidcHandler != nil {
-		err := a.oidcHandler.updateOIDCTokenIfExpired(context.TODO())
-		if err != nil {
-			return err
-		}
-		err = a.updateSTSCredentialsIfExpired()
-		if err != nil {
-			return err
-		}
 	}
 
 	err = a.signer.SignHTTP(context.Background(), a.credentials, req,
@@ -159,4 +151,14 @@ func (a *awsHandler) updateSTSCredentialsIfExpired() error {
 		a.credentials = credentials
 	}
 	return nil
+}
+
+func (a *awsHandler) updateCredentialsIfExpired() {
+	for {
+		err := a.updateSTSCredentialsIfExpired()
+		if err != nil {
+			return
+		}
+		time.Sleep(1 * time.Minute)
+	}
 }
