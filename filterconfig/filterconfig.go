@@ -10,9 +10,9 @@
 package filterconfig
 
 import (
-	"github.com/envoyproxy/gateway/api/v1alpha1"
 	"os"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -172,13 +172,14 @@ type BackendAuth struct {
 
 // AWSAuth defines the credentials needed to access AWS.
 type AWSAuth struct {
-	CredentialFileName string        `json:"credentialFileName,omitempty"`
-	OIDC               v1alpha1.OIDC `json:"oidc,omitempty"`
-	SecretKeyFileName  string        `json:"secretKeyFileName,omitempty"`
-	GrantType          string        `json:"grantType,omitempty"`
-	Audience           string        `json:"audience,omitempty"`
-	RoleARN            string        `json:"roleARN,omitempty"`
-	Region             string        `json:"region"`
+	CredentialFileName string       `json:"credentialFileName,omitempty"`
+	OIDC               *egv1a1.OIDC `json:"oidc,omitempty"`
+	SecretKeyFileName  string       `json:"secretKeyFileName,omitempty"`
+	GrantType          string       `json:"grantType,omitempty"`
+	Audience           string       `json:"audience,omitempty"`
+	RoleARN            string       `json:"roleARN,omitempty"`
+	Region             string       `json:"region"`
+	ProxyURL           string       `json:"proxyURL,omitempty"`
 }
 
 // APIKeyAuth defines the file that will be mounted to the external proc.

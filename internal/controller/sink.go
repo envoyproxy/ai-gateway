@@ -302,11 +302,12 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
 							AWSAuth: &filterconfig.AWSAuth{
 								SecretKeyFileName: path.Join(backendSecurityMountPath(volumeName), "/client-secret"),
-								OIDC:              backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC,
+								OIDC:              &backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC,
 								RoleARN:           backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,
 								Audience:          backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.Aud,
 								GrantType:         backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.GrantType,
 								Region:            backendSecurityPolicy.Spec.AWSCredentials.Region,
+								ProxyURL:          backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.ProxyURL,
 							},
 						}
 					}

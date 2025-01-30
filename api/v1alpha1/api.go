@@ -471,6 +471,9 @@ type AWSOIDCExchangeToken struct {
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
 	AwsRoleArn string `json:"awsRoleArn"`
+
+	// ProxyURL can be used when communication with STS.
+	ProxyURL string `json:"proxyUrl,omitempty"`
 }
 
 // LLMRequestCost configures each request cost.

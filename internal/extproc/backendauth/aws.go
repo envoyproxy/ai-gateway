@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unsafe"
@@ -14,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
@@ -22,14 +25,20 @@ import (
 
 // awsHandler implements [Handler] for AWS Bedrock authz.
 type awsHandler struct {
-	credentials aws.Credentials
-	signer      *v4.Signer
-	region      string
+	credentials     aws.Credentials
+	signer          *v4.Signer
+	region          string
+	roleArn         string
+	oidcHandler     *oidcHandler
+	credentialCache *time.Time
+	proxyURL        string
 }
 
 func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 	var credentials aws.Credentials
 	var region string
+	var oidcHandler *oidcHandler
+	var err error
 
 	if awsAuth != nil {
 		region = awsAuth.Region
@@ -46,6 +55,11 @@ func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 			if err != nil {
 				return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
 			}
+		} else if awsAuth.OIDC != nil {
+			oidcHandler, err = newOIDCHandler(*awsAuth.OIDC, awsAuth.SecretKeyFileName)
+			if err != nil {
+				return nil, fmt.Errorf("cannot create OIDC handler: %w", err)
+			}
 		}
 	} else {
 		return nil, fmt.Errorf("aws auth configuration is required")
@@ -53,7 +67,7 @@ func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
 
 	signer := v4.NewSigner()
 
-	return &awsHandler{credentials: credentials, signer: signer, region: region}, nil
+	return &awsHandler{credentials: credentials, signer: signer, region: region, oidcHandler: oidcHandler, proxyURL: awsAuth.ProxyURL}, nil
 }
 
 // Do implements [Handler.Do].
@@ -90,6 +104,17 @@ func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.H
 		return fmt.Errorf("cannot create request: %w", err)
 	}
 
+	if a.oidcHandler != nil {
+		err := a.oidcHandler.updateOIDCTokenIfExpired(context.TODO())
+		if err != nil {
+			return err
+		}
+		err = a.updateSTSCredentialsIfExpired()
+		if err != nil {
+			return err
+		}
+	}
+
 	err = a.signer.SignHTTP(context.Background(), a.credentials, req,
 		hex.EncodeToString(payloadHash[:]), "bedrock", a.region, time.Now())
 	if err != nil {
@@ -102,6 +127,36 @@ func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.H
 				Header: &corev3.HeaderValue{Key: key, RawValue: []byte(hdr[0])}, // Assume aws-go-sdk always returns a single value.
 			})
 		}
+	}
+	return nil
+}
+
+func (a *awsHandler) updateSTSCredentialsIfExpired() error {
+	if a.credentialCache == nil || time.Now().Before(a.credentialCache.Add(-5*time.Minute)) {
+		// create sts client
+		stsCfg := aws.Config{
+			Region: a.region,
+		}
+		if a.proxyURL != "" {
+			stsCfg.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					Proxy: func(*http.Request) (*url.URL, error) {
+						return url.Parse(a.proxyURL)
+					},
+				},
+			}
+		}
+		stsClient := sts.NewFromConfig(stsCfg)
+		credentialsCache := aws.NewCredentialsCache(stscreds.NewWebIdentityRoleProvider(
+			stsClient,
+			a.roleArn,
+			IdentityTokenValue(a.oidcHandler.oidcCredCache.token.AccessToken),
+		))
+		credentials, err := credentialsCache.Retrieve(context.TODO())
+		if err != nil {
+			return err
+		}
+		a.credentials = credentials
 	}
 	return nil
 }

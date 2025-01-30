@@ -283,6 +283,7 @@ _Appears in:_
 | `grantType` | _string_ |  false  | GrantType is the method application gets access token. |
 | `aud` | _string_ |  false  | Aud defines the audience that this ID Token is intended for. |
 | `awsRoleArn` | _string_ |  true  | AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account<br />which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider. |
+| `proxyUrl` | _string_ |  true  | ProxyURL can be used when communication with STS. |
 
 
 #### BackendSecurityPolicy
