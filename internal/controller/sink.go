@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -25,8 +26,9 @@ import (
 )
 
 const (
-	selectedBackendHeaderKey  = "x-ai-eg-selected-backend"
-	hostRewriteHTTPFilterName = "ai-eg-host-rewrite"
+	selectedBackendHeaderKey   = "x-ai-eg-selected-backend"
+	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
+	extProcConfigAnnotationKey = "aigateway.envoyproxy.io/extproc-config-uuid"
 )
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
@@ -70,7 +72,7 @@ func newConfigSink(
 	c := &configSink{
 		client:                        kubeClient,
 		kube:                          kube,
-		logger:                        logger.WithName("config-sink"),
+		logger:                        logger,
 		defaultExtProcImage:           extProcImage,
 		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
 		eventChan:                     eventChan,
@@ -197,7 +199,8 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the extproc configmap.
-	if err := c.updateExtProcConfigMap(aiGatewayRoute, string(uuid2.NewUUID())); err != nil {
+	uuid := string(uuid2.NewUUID())
+	if err := c.updateExtProcConfigMap(aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -206,6 +209,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		return
+	}
+
+	// Annotate all pods with the new config.
+	err = c.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	if err != nil {
+		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 }
@@ -419,6 +429,31 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
+	return nil
+}
+
+// annotateExtProcPods annotates the external processor pods with the new config uuid.
+// This is necessary to make the config update faster.
+//
+// See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
+func (c *configSink) annotateExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+	pods, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", extProcName(aiGatewayRoute)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
+		_, err = c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+			[]byte(fmt.Sprintf(
+				`{"metadata":{"annotations":{"%s":"%s"}}}`, extProcConfigAnnotationKey, uuid),
+			), metav1.PatchOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
+		}
+	}
 	return nil
 }
 

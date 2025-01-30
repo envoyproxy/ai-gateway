@@ -27,7 +27,7 @@ func NewAIServiceBackendController(client client.Client, kube kubernetes.Interfa
 	return &aiBackendController{
 		client:    client,
 		kube:      kube,
-		logger:    logger.WithName("ai-service-backend-controller"),
+		logger:    logger,
 		eventChan: ch,
 	}
 }

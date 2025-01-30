@@ -80,6 +80,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 	}
 
 	newConfig := &processorConfig{
+		uuid:       config.UUID,
 		bodyParser: bodyParser, router: rt,
 		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
 		modelNameHeaderKey:       config.ModelNameHeaderKey,
@@ -95,6 +96,7 @@ func (s *Server[P]) LoadConfig(config *filterconfig.Config) error {
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server[P]) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
 	p := s.newProcessor(s.config, s.logger)
+	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.uuid))
 	return s.process(p, stream)
 }
 

@@ -23,6 +23,7 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 	s, err := NewServer[*mockProcessor](slog.Default(), newMockProcessor)
 	require.NoError(t, err)
 	require.NotNil(t, s)
+	s.config = &processorConfig{}
 	return s
 }
 
