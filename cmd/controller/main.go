@@ -82,7 +82,6 @@ func parseAndValidateFlags(args []string) (
 func main() {
 	setupLog := ctrl.Log.WithName("setup")
 
-	// Parse and validate flags.
 	flagExtProcLogLevel,
 		flagExtProcImage,
 		flagEnableLeaderElection,
