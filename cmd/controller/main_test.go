@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -11,7 +12,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags(args)
 		require.Equal(t, "info", extProcLogLevel)
 		require.Equal(t, "ghcr.io/envoyproxy/ai-gateway/extproc:latest", extProcImage)
-		require.Equal(t, true, enableLeaderElection)
+		require.True(t, enableLeaderElection)
 		require.Equal(t, "info", logLevel.String())
 		require.Equal(t, ":1063", extensionServerPort)
 		require.NoError(t, err)
@@ -35,7 +36,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", extProcLogLevel)
 				require.Equal(t, "example.com/extproc:latest", extProcImage)
-				require.Equal(t, false, enableLeaderElection)
+				require.False(t, enableLeaderElection)
 				require.Equal(t, "debug", logLevel.String())
 				require.Equal(t, ":8080", extensionServerPort)
 				require.NoError(t, err)
