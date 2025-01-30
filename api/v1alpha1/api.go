@@ -474,6 +474,12 @@ type AWSOIDCExchangeToken struct {
 
 	// ProxyURL can be used when communication with STS.
 	ProxyURL string `json:"proxyUrl,omitempty"`
+
+	// Cert is a configmap that can be used when communicating with the SSO.
+	Cert *corev1.LocalObjectReference `json:"cert,omitempty"`
+
+	// CertSubPath is the subPath specified on the volumeMount
+	CertSubPath string `json:"certSubPath,omitempty"`
 }
 
 // LLMRequestCost configures each request cost.

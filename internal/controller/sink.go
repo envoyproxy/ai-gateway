@@ -568,6 +568,25 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
+						if cert := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.Cert; cert != nil {
+							volumeMount := corev1.VolumeMount{
+								Name:      cert.Name,
+								MountPath: "/etc/ssl/certs/ca.crt",
+							}
+							if subPath := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.CertSubPath; subPath != "" {
+								volumeMount.SubPath = subPath
+							}
+							container.VolumeMounts = append(container.VolumeMounts, volumeMount)
+							spec.Volumes = append(spec.Volumes, corev1.Volume{
+								Name: cert.Name,
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: *cert,
+									},
+								},
+							})
+						}
+
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC.ClientSecret.Name)
 					}
 				default:
