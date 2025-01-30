@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -274,9 +273,7 @@ func TestFilterSensitiveHeaders(t *testing.T) {
 			require.Equal(t, "bar", h.Value)
 		}
 	}
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "filtering sensitive header")
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
+	require.Contains(t, buf.String(), "filtering sensitive header")
 }
 
 func TestFilterSensitiveBody(t *testing.T) {
@@ -302,14 +299,12 @@ func TestFilterSensitiveBody(t *testing.T) {
 			},
 		},
 	}
-	filtered := filterSensitiveBody(resp, logger, []string{"Authorization"})
+	filtered := filterSensitiveBody(resp, logger, []string{"authorization"})
 	require.NotNil(t, filtered)
 	for _, h := range filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
 		if h.Header.Key == "Authorization" {
 			require.Equal(t, "[REDACTED]", string(h.Header.RawValue))
 		}
 	}
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "filtering sensitive header")
-	}, 1*time.Second, 100*time.Millisecond, buf.String(), filtered)
+	require.Contains(t, buf.String(), "filtering sensitive header")
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -26,6 +27,8 @@ import (
 const (
 	redactedKey = "[REDACTED]"
 )
+
+var sensitiveHeaderKeys = []string{"authorization"}
 
 // Server implements the external process server.
 type Server[P ProcessorIface] struct {
@@ -141,7 +144,7 @@ func (s *Server[P]) processMsg(ctx context.Context, p P, req *extprocv3.Processi
 		requestHdrs := req.GetRequestHeaders().Headers
 		// If DEBUG log level is enabled, filter sensitive headers before logging.
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			filteredHdrs := filterSensitiveHeaders(requestHdrs, s.logger, []string{"authorization"})
+			filteredHdrs := filterSensitiveHeaders(requestHdrs, s.logger, sensitiveHeaderKeys)
 			s.logger.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
 		resp, err := p.ProcessRequestHeaders(ctx, requestHdrs)
@@ -155,7 +158,7 @@ func (s *Server[P]) processMsg(ctx context.Context, p P, req *extprocv3.Processi
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If DEBUG log level is enabled, filter sensitive body before logging.
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			filteredBody := filterSensitiveBody(resp, s.logger, []string{"Authorization"})
+			filteredBody := filterSensitiveBody(resp, s.logger, sensitiveHeaderKeys)
 			s.logger.Debug("request body processed", slog.Any("response", filteredBody))
 		}
 		if err != nil {
@@ -205,7 +208,8 @@ func filterSensitiveHeaders(headers *corev3.HeaderMap, logger *slog.Logger, sens
 	}
 	filteredHeaders := &corev3.HeaderMap{}
 	for _, header := range headers.Headers {
-		if slices.Contains(sensitiveKeys, header.GetKey()) {
+		// We convert the header key to lowercase to make the comparison case-insensitive but we don't modify the original header.
+		if slices.Contains(sensitiveKeys, strings.ToLower(header.GetKey())) {
 			logger.Debug("filtering sensitive header", slog.String("header_key", header.Key))
 			filteredHeaders.Headers = append(filteredHeaders.Headers, &corev3.HeaderValue{
 				Key:   header.Key,
@@ -240,7 +244,8 @@ func filterSensitiveBody(resp *extprocv3.ProcessingResponse, logger *slog.Logger
 		ModeOverride: resp.ModeOverride,
 	}
 	for _, setHeader := range filteredResp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
-		if slices.Contains(sensitiveKeys, setHeader.Header.GetKey()) {
+		// We convert the header key to lowercase to make the comparison case-insensitive but we don't modify the original header.
+		if slices.Contains(sensitiveKeys, strings.ToLower(setHeader.Header.GetKey())) {
 			logger.Debug("filtering sensitive header", slog.String("header_key", setHeader.Header.Key))
 			setHeader.Header.RawValue = []byte(redactedKey)
 		}
