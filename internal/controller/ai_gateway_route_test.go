@@ -17,7 +17,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func Test_extProcName(t *testing.T) {
@@ -46,7 +46,7 @@ func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	require.Equal(t, extProcName(aiGatewayRoute), configMap.Name)
 	require.Equal(t, "default", configMap.Namespace)
 	require.Equal(t, ownerRef, configMap.OwnerReferences)
-	require.Equal(t, filterconfig.DefaultConfig, configMap.Data[expProcConfigFileName])
+	require.Equal(t, filterapi.DefaultConfig, configMap.Data[expProcConfigFileName])
 
 	// Doing it again should not fail.
 	err = c.ensuresExtProcConfigMapExists(context.Background(), aiGatewayRoute)

@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 const listenerAddress = "http://localhost:1062"
@@ -25,14 +25,14 @@ const listenerAddress = "http://localhost:1062"
 var envoyYamlBase string
 
 var (
-	openAISchema     = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
-	awsBedrockSchema = filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}
+	openAISchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	awsBedrockSchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 )
 
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
 //
-// The config must be in YAML format specified in [filterconfig.Config] type.
+// The config must be in YAML format specified in [filterapi.Config] type.
 func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath string, envs ...string) {
 	cmd := exec.Command(executable)
 	cmd.Stdout = stdout
@@ -93,8 +93,8 @@ func getEnvVarOrSkip(t *testing.T, envVar string) string {
 	return value
 }
 
-// requireWriteFilterConfig writes the provided [filterconfig.Config] to the configPath in YAML format.
-func requireWriteFilterConfig(t *testing.T, configPath string, config *filterconfig.Config) {
+// requireWriteFilterConfig writes the provided [filterapi.Config] to the configPath in YAML format.
+func requireWriteFilterConfig(t *testing.T, configPath string, config *filterapi.Config) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))

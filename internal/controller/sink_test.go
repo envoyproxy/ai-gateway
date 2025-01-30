@@ -25,7 +25,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestConfigSink_init(t *testing.T) {
@@ -315,7 +315,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		route *aigv1a1.AIGatewayRoute
-		exp   *filterconfig.Config
+		exp   *filterapi.Config
 	}{
 		{
 			name: "basic",
@@ -369,46 +369,46 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 					},
 				},
 			},
-			exp: &filterconfig.Config{
+			exp: &filterapi.Config{
 				UUID:                     string(uuid2.NewUUID()),
-				Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI, Version: "v123"},
+				Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"},
 				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
 				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
 				SelectedBackendHeaderKey: selectedBackendHeaderKey,
-				Rules: []filterconfig.RouteRule{
+				Rules: []filterapi.RouteRule{
 					{
-						Backends: []filterconfig.Backend{
-							{Name: "apple.ns", Weight: 1, Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}, Auth: &filterconfig.BackendAuth{
-								APIKey: &filterconfig.APIKeyAuth{
+						Backends: []filterapi.Backend{
+							{Name: "apple.ns", Weight: 1, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, Auth: &filterapi.BackendAuth{
+								APIKey: &filterapi.APIKeyAuth{
 									Filename: "/etc/backend_security_policy/rule0-backref0-some-backend-security-policy-1/apiKey",
 								},
 							}}, {Name: "pineapple.ns", Weight: 2},
 						},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
+						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
 					{
-						Backends: []filterconfig.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterconfig.BackendAuth{
-							APIKey: &filterconfig.APIKeyAuth{
+						Backends: []filterapi.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterapi.BackendAuth{
+							APIKey: &filterapi.APIKeyAuth{
 								Filename: "/etc/backend_security_policy/rule1-backref0-some-backend-security-policy-1/apiKey",
 							},
 						}}},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
 					{
-						Backends: []filterconfig.Backend{{Name: "pen.ns", Weight: 2, Auth: &filterconfig.BackendAuth{
-							AWSAuth: &filterconfig.AWSAuth{
+						Backends: []filterapi.Backend{{Name: "pen.ns", Weight: 2, Auth: &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: "/etc/backend_security_policy/rule2-backref0-some-backend-security-policy-2/credentials",
 								Region:             "us-east-1",
 							},
 						}}},
-						Headers: []filterconfig.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
+						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
 					},
 				},
-				LLMRequestCosts: []filterconfig.LLMRequestCost{
-					{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
-					{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
-					{Type: filterconfig.LLMRequestCostTypeTotalToken, MetadataKey: "total-token"},
-					{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel-token", CELExpression: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
+				LLMRequestCosts: []filterapi.LLMRequestCost{
+					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
+					{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
+					{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total-token"},
+					{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel-token", CELExpression: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
 				},
 			},
 		},
@@ -427,7 +427,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			require.NotNil(t, cm)
 
 			data := cm.Data[expProcConfigFileName]
-			var actual filterconfig.Config
+			var actual filterapi.Config
 			require.NoError(t, yaml.Unmarshal([]byte(data), &actual))
 			require.Equal(t, tc.exp, &actual)
 		})

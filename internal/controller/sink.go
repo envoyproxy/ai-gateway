@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -259,17 +259,17 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(aiGatewayRoute), err))
 	}
 
-	ec := &filterconfig.Config{UUID: uuid}
+	ec := &filterapi.Config{UUID: uuid}
 	spec := &aiGatewayRoute.Spec
 
-	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
+	ec.Schema.Name = filterapi.APISchemaName(spec.APISchema.Name)
 	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
-	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
+	ec.Rules = make([]filterapi.RouteRule, len(spec.Rules))
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
-		ec.Rules[i].Backends = make([]filterconfig.Backend, len(rule.BackendRefs))
+		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backend := &rule.BackendRefs[j]
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
@@ -279,7 +279,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
-				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Name)
+				ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 
@@ -294,16 +294,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						APIKey: &filterconfig.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
-						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-							AWSAuth: &filterconfig.AWSAuth{
+						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
@@ -315,7 +315,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				}
 			}
 		}
-		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
+		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
@@ -324,16 +324,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
-		fc := filterconfig.LLMRequestCost{MetadataKey: cost.MetadataKey}
+		fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
 		switch cost.Type {
 		case aigv1a1.LLMRequestCostTypeInputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeInputToken
+			fc.Type = filterapi.LLMRequestCostTypeInputToken
 		case aigv1a1.LLMRequestCostTypeOutputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeOutputToken
+			fc.Type = filterapi.LLMRequestCostTypeOutputToken
 		case aigv1a1.LLMRequestCostTypeTotalToken:
-			fc.Type = filterconfig.LLMRequestCostTypeTotalToken
+			fc.Type = filterapi.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterconfig.LLMRequestCostTypeCELExpression
+			fc.Type = filterapi.LLMRequestCostTypeCELExpression
 			expr := *cost.CELExpression
 			// Sanity check the CEL expression.
 			_, err := llmcostcel.NewProgram(expr)

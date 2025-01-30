@@ -15,7 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -29,23 +29,23 @@ func TestWithTestUpstream(t *testing.T) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireTestUpstream(t)
 
-	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
-		LLMRequestCosts: []filterconfig.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
+		LLMRequestCosts: []filterapi.LLMRequestCost{
+			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
-		Rules: []filterconfig.RouteRule{
+		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "testupstream", Schema: openAISchema}},
-				Headers:  []filterconfig.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: openAISchema}},
+				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
 			},
 			{
-				Backends: []filterconfig.Backend{{Name: "testupstream", Schema: awsBedrockSchema}},
-				Headers:  []filterconfig.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: awsBedrockSchema}},
+				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
 			},
 		},
 	})

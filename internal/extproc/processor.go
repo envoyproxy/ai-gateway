@@ -14,8 +14,8 @@ import (
 	"github.com/google/cel-go/cel"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/extprocapi"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -27,16 +27,16 @@ import (
 type processorConfig struct {
 	uuid                                         string
 	bodyParser                                   router.RequestBodyParser
-	router                                       extprocapi.Router
+	router                                       x.Router
 	modelNameHeaderKey, selectedBackendHeaderKey string
-	factories                                    map[filterconfig.VersionedAPISchema]translator.Factory
+	factories                                    map[filterapi.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
 	metadataNamespace                            string
 	requestCosts                                 []processorConfigRequestCost
 }
 
 type processorConfigRequestCost struct {
-	*filterconfig.LLMRequestCost
+	*filterapi.LLMRequestCost
 	celProg cel.Program
 }
 
@@ -219,13 +219,13 @@ func (p *Processor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 		c := &p.config.requestCosts[i]
 		var cost uint32
 		switch c.Type {
-		case filterconfig.LLMRequestCostTypeInputToken:
+		case filterapi.LLMRequestCostTypeInputToken:
 			cost = p.costs.InputTokens
-		case filterconfig.LLMRequestCostTypeOutputToken:
+		case filterapi.LLMRequestCostTypeOutputToken:
 			cost = p.costs.OutputTokens
-		case filterconfig.LLMRequestCostTypeTotalToken:
+		case filterapi.LLMRequestCostTypeTotalToken:
 			cost = p.costs.TotalTokens
-		case filterconfig.LLMRequestCostTypeCELExpression:
+		case filterapi.LLMRequestCostTypeCELExpression:
 			costU64, err := llmcostcel.EvaluateProgram(
 				c.celProg,
 				p.requestHeaders[p.config.modelNameHeaderKey],

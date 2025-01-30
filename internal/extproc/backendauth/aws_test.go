@@ -8,14 +8,14 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestNewAWSHandler(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 
-	handler, err := newAWSHandler(&filterconfig.AWSAuth{})
+	handler, err := newAWSHandler(&filterapi.AWSAuth{})
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
@@ -35,7 +35,7 @@ func TestAWSHandler_Do(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
 
-	credentialFileHandler, err := newAWSHandler(&filterconfig.AWSAuth{
+	credentialFileHandler, err := newAWSHandler(&filterapi.AWSAuth{
 		CredentialFileName: awsCredentialFile,
 		Region:             "us-east-1",
 	})
