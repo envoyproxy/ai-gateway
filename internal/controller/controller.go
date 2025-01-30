@@ -41,6 +41,7 @@ func MustInitializeScheme(scheme *runtime.Scheme) {
 
 // Options defines the program configurable options that may be passed on the command line.
 type Options struct {
+	ExtProcLogLevel      string
 	ExtProcImage         string
 	EnableLeaderElection bool
 	ZapOptions           zap.Options
@@ -106,7 +107,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("config-sink"), sinkChan, options.ExtProcImage)
+		WithName("config-sink"), sinkChan, options.ExtProcImage, options.ExtProcLogLevel)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	if err = sink.init(ctx); err != nil {

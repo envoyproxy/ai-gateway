@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"log/slog"
 	"net"
 	"os"
 
@@ -26,9 +28,15 @@ func defaultOptions() controller.Options {
 }
 
 // getOptions parses the program flags and returns them as Options.
-func getOptions() (opts controller.Options, extensionServerPort *string) {
+func getOptions() (opts controller.Options, extensionServerPort *string, err error) {
 	opts = defaultOptions()
-	flag.StringVar(&opts.ExtProcImage, "extprocImage", opts.ExtProcImage, "The image for the external processor")
+	flag.StringVar(&opts.ExtProcLogLevel, "extProcLogLevel", opts.ExtProcLogLevel,
+		"The log level for the external processor. Either 'debug', 'info', 'warn', or 'error'.")
+	var level slog.Level
+	if err = level.UnmarshalText([]byte(opts.ExtProcLogLevel)); err != nil {
+		return opts, nil, fmt.Errorf("failed to unmarshal log level: %w", err)
+	}
+	flag.StringVar(&opts.ExtProcImage, "extProcImage", opts.ExtProcImage, "The image for the external processor")
 	flag.BoolVar(&opts.EnableLeaderElection, "leader-elect", opts.EnableLeaderElection,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -41,7 +49,11 @@ func getOptions() (opts controller.Options, extensionServerPort *string) {
 }
 
 func main() {
-	options, extensionServerPort := getOptions()
+	options, extensionServerPort, err := getOptions()
+	if err != nil {
+		setupLog.Error(err, "failed to get options")
+		os.Exit(1)
+	}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&options.ZapOptions)))
 	k8sConfig, err := ctrl.GetConfig()
 	if err != nil {

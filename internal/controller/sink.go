@@ -53,13 +53,13 @@ type ConfigSinkEventSecretUpdate struct {
 // consolidate the information from both objects to generate the ExtProc ConfigMap
 // and HTTPRoute objects.
 type configSink struct {
-	client                        client.Client
-	kube                          kubernetes.Interface
-	logger                        logr.Logger
-	defaultExtProcImage           string
-	defaultExtProcImagePullPolicy corev1.PullPolicy
-
-	eventChan chan ConfigSinkEvent
+	client                 client.Client
+	kube                   kubernetes.Interface
+	logger                 logr.Logger
+	extProcImage           string
+	extProcImagePullPolicy corev1.PullPolicy
+	extProcLogLevel        string
+	eventChan              chan ConfigSinkEvent
 }
 
 func newConfigSink(
@@ -68,14 +68,16 @@ func newConfigSink(
 	logger logr.Logger,
 	eventChan chan ConfigSinkEvent,
 	extProcImage string,
+	extProcLogLevel string,
 ) *configSink {
 	c := &configSink{
-		client:                        kubeClient,
-		kube:                          kube,
-		logger:                        logger,
-		defaultExtProcImage:           extProcImage,
-		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
-		eventChan:                     eventChan,
+		client:                 kubeClient,
+		kube:                   kube,
+		logger:                 logger,
+		extProcImage:           extProcImage,
+		extProcImagePullPolicy: corev1.PullIfNotPresent,
+		extProcLogLevel:        extProcLogLevel,
+		eventChan:              eventChan,
 	}
 	return c
 }
@@ -479,12 +481,12 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           c.defaultExtProcImage,
-									ImagePullPolicy: c.defaultExtProcImagePullPolicy,
+									Image:           c.extProcImage,
+									ImagePullPolicy: c.extProcImagePullPolicy,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", "info",
+										"-logLevel", c.extProcLogLevel,
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},

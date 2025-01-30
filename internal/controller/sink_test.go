@@ -33,7 +33,7 @@ func TestConfigSink_init(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
 }
 
@@ -42,7 +42,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
-	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})), eventChan, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -110,7 +110,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
 }
 
@@ -127,14 +127,14 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
@@ -243,7 +243,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}}))
 
@@ -439,7 +439,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "envoyproxy/ai-gateway-extproc:foo")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "envoyproxy/ai-gateway-extproc:foo", "debug")
 	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
 	require.NoError(t, err)
 
@@ -603,7 +603,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	err := s.init(context.Background())
 	require.NoError(t, err)
 	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
@@ -790,7 +790,7 @@ func Test_annotateExtProcPods(t *testing.T) {
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage")
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "foons"},
