@@ -11,7 +11,7 @@ Envoy AI Gateway is an open source project for using [Envoy Gateway](https://git
 We adhere to the [CNCF Code of conduct][Code of conduct]
 
 The Envoy AI Gateway team and community members meet every Thursday.
-Please register for the meeting, add agenda points, and get involved. The
+Please register for the me     eting, add agenda points, and get involved. The
 meeting details are available in the [public document][meeting].
 
 To contribute to the project via pull requests, please read the [CONTRIBUTING.md](CONTRIBUTING.md) file
