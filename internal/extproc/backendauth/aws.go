@@ -20,7 +20,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 // awsHandler implements [Handler] for AWS Bedrock authz.
@@ -34,7 +34,7 @@ type awsHandler struct {
 	proxyURL        string
 }
 
-func newAWSHandler(awsAuth *filterconfig.AWSAuth) (*awsHandler, error) {
+func newAWSHandler(awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
 	var credentials aws.Credentials
 	var region string
 	var oidcHandler *oidcHandler

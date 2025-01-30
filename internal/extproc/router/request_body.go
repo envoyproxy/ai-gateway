@@ -6,7 +6,7 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
@@ -14,8 +14,8 @@ import (
 type RequestBodyParser func(path string, body *extprocv3.HttpBody) (modelName string, rb RequestBody, err error)
 
 // NewRequestBodyParser creates a new RequestBodyParser based on the schema.
-func NewRequestBodyParser(schema filterconfig.VersionedAPISchema) (RequestBodyParser, error) {
-	if schema.Name == filterconfig.APISchemaOpenAI {
+func NewRequestBodyParser(schema filterapi.VersionedAPISchema) (RequestBodyParser, error) {
+	if schema.Name == filterapi.APISchemaOpenAI {
 		return openAIParseBody, nil
 	}
 	return nil, fmt.Errorf("unsupported API schema: %s", schema)

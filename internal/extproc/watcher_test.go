@@ -12,24 +12,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 // mockReceiver is a mock implementation of Receiver.
 type mockReceiver struct {
-	cfg *filterconfig.Config
+	cfg *filterapi.Config
 	mux sync.Mutex
 }
 
 // LoadConfig implements ConfigReceiver.
-func (m *mockReceiver) LoadConfig(cfg *filterconfig.Config) error {
+func (m *mockReceiver) LoadConfig(cfg *filterapi.Config) error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg
 	return nil
 }
 
-func (m *mockReceiver) getConfig() *filterconfig.Config {
+func (m *mockReceiver) getConfig() *filterapi.Config {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	return m.cfg

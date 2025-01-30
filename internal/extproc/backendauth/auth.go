@@ -5,7 +5,7 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 // Handler is the interface that deals with the backend auth for a specific backend.
@@ -17,7 +17,7 @@ type Handler interface {
 }
 
 // NewHandler returns a new implementation of [Handler] based on the configuration.
-func NewHandler(config *filterconfig.BackendAuth) (Handler, error) {
+func NewHandler(config *filterapi.BackendAuth) (Handler, error) {
 	if config.AWSAuth != nil {
 		return newAWSHandler(config.AWSAuth)
 	} else if config.APIKey != nil {

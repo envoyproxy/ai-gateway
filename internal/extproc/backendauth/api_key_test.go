@@ -8,7 +8,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestNewAPIKeyHandler(t *testing.T) {
@@ -21,7 +21,7 @@ func TestNewAPIKeyHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Sync())
 
-	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
+	auth := filterapi.APIKeyAuth{Filename: apiKeyFile}
 	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
@@ -39,7 +39,7 @@ func TestApiKeyHandler_Do(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Sync())
 
-	auth := filterconfig.APIKeyAuth{Filename: apiKeyFile}
+	auth := filterapi.APIKeyAuth{Filename: apiKeyFile}
 	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)

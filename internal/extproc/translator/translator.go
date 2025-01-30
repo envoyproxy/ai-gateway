@@ -8,7 +8,7 @@ import (
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
@@ -35,13 +35,13 @@ func isGoodStatusCode(code int) bool {
 type Factory func(path string) (Translator, error)
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out filterconfig.VersionedAPISchema) (Factory, error) {
-	if in.Name == filterconfig.APISchemaOpenAI {
+func NewFactory(in, out filterapi.VersionedAPISchema) (Factory, error) {
+	if in.Name == filterapi.APISchemaOpenAI {
 		// TODO: currently, we ignore the LLMAPISchema."Version" field.
 		switch out.Name {
-		case filterconfig.APISchemaOpenAI:
+		case filterapi.APISchemaOpenAI:
 			return newOpenAIToOpenAITranslator, nil
-		case filterconfig.APISchemaAWSBedrock:
+		case filterapi.APISchemaAWSBedrock:
 			return newOpenAIToAWSBedrockTranslator, nil
 		}
 	}

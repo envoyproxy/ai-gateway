@@ -18,7 +18,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 const (
@@ -44,7 +44,7 @@ func NewAIGatewayRouteController(
 	return &aiGatewayRouteController{
 		client:    client,
 		kube:      kube,
-		logger:    logger.WithName("ai-gateway-route-controller"),
+		logger:    logger,
 		eventChan: ch,
 	}
 }
@@ -152,7 +152,7 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 					Name:      name,
 					Namespace: aiGatewayRoute.Namespace,
 				},
-				Data: map[string]string{expProcConfigFileName: filterconfig.DefaultConfig},
+				Data: map[string]string{expProcConfigFileName: filterapi.DefaultConfig},
 			}
 			if err := ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
 				c.logger.Error(err, "failed to set controller reference for service", "namespace", configMap.Namespace, "name", configMap.Name)

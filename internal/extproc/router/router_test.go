@@ -5,20 +5,20 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/extprocapi"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
-// dummyCustomRouter implements [extprocapi.Router].
+// dummyCustomRouter implements [filterapi.Router].
 type dummyCustomRouter struct{ called bool }
 
-func (c *dummyCustomRouter) Calculate(map[string]string) (*filterconfig.Backend, error) {
+func (c *dummyCustomRouter) Calculate(map[string]string) (*filterapi.Backend, error) {
 	c.called = true
 	return nil, nil
 }
 
 func TestRouter_NewRouter_Custom(t *testing.T) {
-	r, err := NewRouter(&filterconfig.Config{}, func(defaultRouter extprocapi.Router, config *filterconfig.Config) extprocapi.Router {
+	r, err := NewRouter(&filterapi.Config{}, func(defaultRouter x.Router, config *filterapi.Config) x.Router {
 		require.NotNil(t, defaultRouter)
 		_, ok := defaultRouter.(*router)
 		require.True(t, ok) // Checking if the default router is correctly passed.
@@ -34,23 +34,23 @@ func TestRouter_NewRouter_Custom(t *testing.T) {
 }
 
 func TestRouter_Calculate(t *testing.T) {
-	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
-	_r, err := NewRouter(&filterconfig.Config{
-		Rules: []filterconfig.RouteRule{
+	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	_r, err := NewRouter(&filterapi.Config{
+		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterconfig.Backend{
+				Backends: []filterapi.Backend{
 					{Name: "foo", Schema: outSchema, Weight: 1},
 					{Name: "bar", Schema: outSchema, Weight: 3},
 				},
-				Headers: []filterconfig.HeaderMatch{
+				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "llama3.3333"},
 				},
 			},
 			{
-				Backends: []filterconfig.Backend{
+				Backends: []filterapi.Backend{
 					{Name: "openai", Schema: outSchema},
 				},
-				Headers: []filterconfig.HeaderMatch{
+				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "gpt4.4444"},
 				},
 			},
@@ -87,15 +87,15 @@ func TestRouter_Calculate(t *testing.T) {
 }
 
 func TestRouter_selectBackendFromRule(t *testing.T) {
-	_r, err := NewRouter(&filterconfig.Config{}, nil)
+	_r, err := NewRouter(&filterapi.Config{}, nil)
 	require.NoError(t, err)
 	r, ok := _r.(*router)
 	require.True(t, ok)
 
-	outSchema := filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}
+	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 
-	rule := &filterconfig.RouteRule{
-		Backends: []filterconfig.Backend{
+	rule := &filterapi.RouteRule{
+		Backends: []filterapi.Backend{
 			{Name: "foo", Schema: outSchema, Weight: 1},
 			{Name: "bar", Schema: outSchema, Weight: 3},
 		},

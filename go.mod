@@ -17,7 +17,6 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.49
 	github.com/stretchr/testify v1.10.0
-	github.com/yuin/goldmark v1.7.8
 	golang.org/x/exp v0.0.0-20250128144449-3edf0e91c1ae
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.70.0

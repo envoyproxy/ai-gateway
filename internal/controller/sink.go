@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -20,13 +21,14 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 const (
-	selectedBackendHeaderKey  = "x-ai-eg-selected-backend"
-	hostRewriteHTTPFilterName = "ai-eg-host-rewrite"
+	selectedBackendHeaderKey   = "x-ai-eg-selected-backend"
+	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
+	extProcConfigAnnotationKey = "aigateway.envoyproxy.io/extproc-config-uuid"
 )
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
@@ -70,7 +72,7 @@ func newConfigSink(
 	c := &configSink{
 		client:                        kubeClient,
 		kube:                          kube,
-		logger:                        logger.WithName("config-sink"),
+		logger:                        logger,
 		defaultExtProcImage:           extProcImage,
 		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
 		eventChan:                     eventChan,
@@ -197,7 +199,8 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the extproc configmap.
-	if err := c.updateExtProcConfigMap(aiGatewayRoute, string(uuid2.NewUUID())); err != nil {
+	uuid := string(uuid2.NewUUID())
+	if err := c.updateExtProcConfigMap(aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -206,6 +209,13 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		return
+	}
+
+	// Annotate all pods with the new config.
+	err = c.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	if err != nil {
+		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 }
@@ -249,17 +259,17 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(aiGatewayRoute), err))
 	}
 
-	ec := &filterconfig.Config{UUID: uuid}
+	ec := &filterapi.Config{UUID: uuid}
 	spec := &aiGatewayRoute.Spec
 
-	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
+	ec.Schema.Name = filterapi.APISchemaName(spec.APISchema.Name)
 	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
-	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
+	ec.Rules = make([]filterapi.RouteRule, len(spec.Rules))
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
-		ec.Rules[i].Backends = make([]filterconfig.Backend, len(rule.BackendRefs))
+		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backend := &rule.BackendRefs[j]
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
@@ -269,7 +279,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
-				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Name)
+				ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 
@@ -284,16 +294,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						APIKey: &filterconfig.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
-						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-							AWSAuth: &filterconfig.AWSAuth{
+						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
@@ -317,7 +327,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				}
 			}
 		}
-		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
+		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
@@ -326,16 +336,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
-		fc := filterconfig.LLMRequestCost{MetadataKey: cost.MetadataKey}
+		fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
 		switch cost.Type {
 		case aigv1a1.LLMRequestCostTypeInputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeInputToken
+			fc.Type = filterapi.LLMRequestCostTypeInputToken
 		case aigv1a1.LLMRequestCostTypeOutputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeOutputToken
+			fc.Type = filterapi.LLMRequestCostTypeOutputToken
 		case aigv1a1.LLMRequestCostTypeTotalToken:
-			fc.Type = filterconfig.LLMRequestCostTypeTotalToken
+			fc.Type = filterapi.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterconfig.LLMRequestCostTypeCELExpression
+			fc.Type = filterapi.LLMRequestCostTypeCELExpression
 			expr := *cost.CELExpression
 			// Sanity check the CEL expression.
 			_, err := llmcostcel.NewProgram(expr)
@@ -431,6 +441,31 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
+	return nil
+}
+
+// annotateExtProcPods annotates the external processor pods with the new config uuid.
+// This is necessary to make the config update faster.
+//
+// See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
+func (c *configSink) annotateExtProcPods(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+	pods, err := c.kube.CoreV1().Pods(aiGatewayRoute.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", extProcName(aiGatewayRoute)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
+		_, err = c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+			[]byte(fmt.Sprintf(
+				`{"metadata":{"annotations":{"%s":"%s"}}}`, extProcConfigAnnotationKey, uuid),
+			), metav1.PatchOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
+		}
+	}
 	return nil
 }
 

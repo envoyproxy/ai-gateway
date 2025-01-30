@@ -4,25 +4,25 @@ import (
 	"fmt"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
-	"github.com/envoyproxy/ai-gateway/extprocapi"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
-// newCustomRouter implements [extprocapi.NewCustomRouter].
-func newCustomRouter(defaultRouter extprocapi.Router, config *filterconfig.Config) extprocapi.Router {
+// newCustomRouter implements [x.NewCustomRouter].
+func newCustomRouter(defaultRouter x.Router, config *filterapi.Config) x.Router {
 	// You can poke the current configuration of the routes, and the list of backends
 	// specified in the AIGatewayRoute.Rules, etc.
 	return &myCustomRouter{config: config, defaultRouter: defaultRouter}
 }
 
-// myCustomRouter implements [extprocapi.Router].
+// myCustomRouter implements [filterapi.Router].
 type myCustomRouter struct {
-	config        *filterconfig.Config
-	defaultRouter extprocapi.Router
+	config        *filterapi.Config
+	defaultRouter x.Router
 }
 
-// Calculate implements [extprocapi.Router.Calculate].
-func (m *myCustomRouter) Calculate(headers map[string]string) (backend *filterconfig.Backend, err error) {
+// Calculate implements [x.Router.Calculate].
+func (m *myCustomRouter) Calculate(headers map[string]string) (backend *filterapi.Backend, err error) {
 	// Simply logs the headers and delegates the calculation to the default router.
 	modelName, ok := headers[m.config.ModelNameHeaderKey]
 	if !ok {
@@ -35,7 +35,7 @@ func (m *myCustomRouter) Calculate(headers map[string]string) (backend *filterco
 // This demonstrates how to build a custom router for the external processor.
 func main() {
 	// Initializes the custom router.
-	extprocapi.NewCustomRouter = newCustomRouter
+	x.NewCustomRouter = newCustomRouter
 	// Executes the main function of the external processor.
 	mainlib.Main()
 }

@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -23,35 +23,36 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 	s, err := NewServer[*mockProcessor](slog.Default(), newMockProcessor)
 	require.NoError(t, err)
 	require.NotNil(t, s)
+	s.config = &processorConfig{}
 	return s
 }
 
 func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(&filterconfig.Config{
-			Schema: filterconfig.VersionedAPISchema{Name: "some-invalid-schema"},
+		err := s.LoadConfig(&filterapi.Config{
+			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "cannot create request body parser")
 	})
 	t.Run("ok", func(t *testing.T) {
-		config := &filterconfig.Config{
+		config := &filterapi.Config{
 			MetadataNamespace: "ns",
-			LLMRequestCosts: []filterconfig.LLMRequestCost{
-				{MetadataKey: "key", Type: filterconfig.LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: filterconfig.LLMRequestCostTypeCELExpression, CELExpression: "1 + 1"},
+			LLMRequestCosts: []filterapi.LLMRequestCost{
+				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
+				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCELExpression, CELExpression: "1 + 1"},
 			},
-			Schema:                   filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI},
+			Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
 			ModelNameHeaderKey:       "x-model-name",
-			Rules: []filterconfig.RouteRule{
+			Rules: []filterapi.RouteRule{
 				{
-					Backends: []filterconfig.Backend{
-						{Name: "kserve", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
-						{Name: "awsbedrock", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}},
+					Backends: []filterapi.Backend{
+						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
 					},
-					Headers: []filterconfig.HeaderMatch{
+					Headers: []filterapi.HeaderMatch{
 						{
 							Name:  "x-model-name",
 							Value: "llama3.3333",
@@ -59,10 +60,10 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 				},
 				{
-					Backends: []filterconfig.Backend{
-						{Name: "openai", Schema: filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}},
+					Backends: []filterapi.Backend{
+						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 					},
-					Headers: []filterconfig.HeaderMatch{
+					Headers: []filterapi.HeaderMatch{
 						{
 							Name:  "x-model-name",
 							Value: "gpt4.4444",
@@ -82,13 +83,13 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 		require.Len(t, s.config.factories, 2)
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaOpenAI}])
-		require.NotNil(t, s.config.factories[filterconfig.VersionedAPISchema{Name: filterconfig.APISchemaAWSBedrock}])
+		require.NotNil(t, s.config.factories[filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}])
+		require.NotNil(t, s.config.factories[filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}])
 
 		require.Len(t, s.config.requestCosts, 2)
-		require.Equal(t, filterconfig.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterconfig.LLMRequestCostTypeCELExpression, s.config.requestCosts[1].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCELExpression, s.config.requestCosts[1].Type)
 		require.Equal(t, "1 + 1", s.config.requestCosts[1].CELExpression)
 		prog := s.config.requestCosts[1].celProg
 		require.NotNil(t, prog)
@@ -258,4 +259,52 @@ func TestServer_Process(t *testing.T) {
 		err := s.process(p, ms)
 		require.Error(t, err, "context canceled")
 	})
+}
+
+func TestFilterSensitiveHeaders(t *testing.T) {
+	logger, buf := newTestLoggerWithBuffer()
+	hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "authorization", Value: "sensitive"}}}
+	filtered := filterSensitiveHeaders(hm, logger, []string{"authorization"})
+	require.Len(t, filtered.Headers, 2)
+	for _, h := range filtered.Headers {
+		if h.Key == "authorization" {
+			require.Equal(t, "[REDACTED]", h.Value)
+		} else {
+			require.Equal(t, "bar", h.Value)
+		}
+	}
+	require.Contains(t, buf.String(), "filtering sensitive header")
+}
+
+func TestFilterSensitiveBody(t *testing.T) {
+	logger, buf := newTestLoggerWithBuffer()
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: []*corev3.HeaderValueOption{
+							{Header: &corev3.HeaderValue{
+								Key:   ":path",
+								Value: "/model/some-random-model/converse",
+							}},
+							{Header: &corev3.HeaderValue{
+								Key:   "Authorization",
+								Value: "sensitive",
+							}},
+						},
+					},
+					BodyMutation: &extprocv3.BodyMutation{},
+				},
+			},
+		},
+	}
+	filtered := filterSensitiveBody(resp, logger, []string{"authorization"})
+	require.NotNil(t, filtered)
+	for _, h := range filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
+		if h.Header.Key == "Authorization" {
+			require.Equal(t, "[REDACTED]", string(h.Header.RawValue))
+		}
+	}
+	require.Contains(t, buf.String(), "filtering sensitive header")
 }
