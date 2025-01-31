@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"go.uber.org/goleak"
 	"log/slog"
 	"os"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
