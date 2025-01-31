@@ -28,8 +28,18 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
+func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
+	builder := fake.NewClientBuilder().WithScheme(scheme)
+	err := applyIndexing(func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+		builder = builder.WithIndex(obj, field, extractValue)
+		return nil
+	})
+	require.NoError(t, err)
+	return builder.Build()
+}
+
 func TestConfigSink_handleEvent(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -48,7 +58,7 @@ func TestConfigSink_handleEvent(t *testing.T) {
 }
 
 func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
@@ -119,10 +129,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc).
-		Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	// Create the AI Gateway Route that references the backend.
 	route := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
@@ -147,13 +154,7 @@ func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 
 func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithIndex(
-			&aigv1a1.AIServiceBackend{},
-			k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend,
-			aiServiceBackendIndexFunc,
-		).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 
 	backend := aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "tomato", Namespace: "ns"},
@@ -172,7 +173,7 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 
 func Test_newHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
@@ -285,7 +286,7 @@ func Test_newHTTPRoute(t *testing.T) {
 }
 
 func Test_updateExtProcConfigMap(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -481,7 +482,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 }
 
 func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -645,7 +646,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 
 func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	// Create simple case
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -828,7 +829,7 @@ func Test_backendSecurityPolicyVolumeName(t *testing.T) {
 }
 
 func Test_annotateExtProcPods(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -864,12 +865,7 @@ func Test_annotateExtProcPods(t *testing.T) {
 }
 
 func Test_syncSecret(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithIndex(&aigv1a1.BackendSecurityPolicy{},
-			k8sClientIndexSecretToReferencingBackendSecurityPolicy,
-			backendSecurityPolicyIndexFunc,
-		).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
