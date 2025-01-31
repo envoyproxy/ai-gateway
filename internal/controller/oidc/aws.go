@@ -40,7 +40,7 @@ func getSTSCredentials(region, roleArn, proxyURL, accessToken string) (aws.Crede
 	return credentialsCache.Retrieve(context.TODO())
 }
 
-func updateOrCreateAWSSecret(k8sClient client.Client, credentials aws.Credentials, namespace, bspKey string) error {
+func updateAWSSecret(k8sClient client.Client, credentials aws.Credentials, namespace, bspKey string) error {
 	namespaceName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      fmt.Sprintf("%s%s", OidcAwsPrefix, bspKey),

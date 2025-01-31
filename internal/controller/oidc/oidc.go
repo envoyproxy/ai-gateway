@@ -26,8 +26,8 @@ const timeBeforeExpired = -5 * time.Minute
 // IdentityTokenValue is for retrieving an identity token
 type IdentityTokenValue string
 
-// GetIdentityTokenAsByteArray retrieves the JWT and returns the contents as a []byte
-func (j IdentityTokenValue) GetIdentityTokenAsByteArray() ([]byte, error) {
+// GetIdentityToken retrieves the JWT and returns the contents as a []byte
+func (j IdentityTokenValue) GetIdentityToken() ([]byte, error) {
 	return []byte(j), nil
 }
 
@@ -87,7 +87,7 @@ func (o *Handler) updateBackendSecurityCredentials(ctx context.Context, backendS
 
 	cacheKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
 	awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
-	if o.oidcCredentialCache[cacheKey].token == nil || time.Now().After(o.oidcCredentialCache[cacheKey].expTime.Add(timeBeforeExpired)) {
+	if o.needsTokenRefresh(cacheKey) {
 		oidcCred := awsCredentials.OIDCExchangeToken.OIDC
 		oidcAud := awsCredentials.OIDCExchangeToken.Aud
 		err := o.updateOIDCExpiredToken(ctx, oidcCred, cacheKey, oidcAud, backendSecurityPolicy.Namespace)
@@ -96,12 +96,12 @@ func (o *Handler) updateBackendSecurityCredentials(ctx context.Context, backendS
 		}
 	}
 
-	if expiredTime, ok := o.awsCredentialCache[cacheKey]; !ok || time.Now().After(expiredTime.Add(timeBeforeExpired)) {
+	if needsAWSCredentialRefresh() {
 		credentials, err := getSTSCredentials(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, awsCredentials.OIDCExchangeToken.ProxyURL, awsCredentials.OIDCExchangeToken.Aud)
 		if err != nil {
 			o.logger.Error(err, "Failed to get sts credentials", "BackendSecurityPolicy", backendSecurityPolicy.Name)
 		}
-		err = updateOrCreateAWSSecret(o.k8sClient, credentials, backendSecurityPolicy.Namespace, cacheKey)
+		err = updateAWSSecret(o.k8sClient, credentials, backendSecurityPolicy.Namespace, cacheKey)
 		if err != nil {
 			o.logger.Error(err, "Failed to update AWS secret", "BackendSecurityPolicy", backendSecurityPolicy.Name)
 		}
@@ -186,4 +186,8 @@ func (o *Handler) extractClientSecret(ctx context.Context, ns, secretName string
 		return "", fmt.Errorf("missing '%s' in secret %s.%s", secretKey, secret.Name, secret.Namespace)
 	}
 	return string(clientSecret), nil
+}
+
+func (o *Handler) needsTokenRefresh(cacheKey string) bool {
+	return o.oidcCredentialCache[cacheKey].token == nil || time.Now().After(o.oidcCredentialCache[cacheKey].expTime)
 }
