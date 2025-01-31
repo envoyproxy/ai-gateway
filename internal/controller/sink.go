@@ -151,10 +151,28 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		}
 		if err := c.client.Create(context.Background(), &httpRouteFilter); err != nil {
 			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
+			aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+				Type:    "Reconciled",
+				Status:  metav1.ConditionFalse,
+				Reason:  "HTTPRouteFilterCreateError",
+				Message: fmt.Sprintf("Failed to create HTTPRouteFilter: %v", err),
+			})
+			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+				c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName, "error", err)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "HTTPRouteFilterGetError",
+			Message: fmt.Sprintf("Failed to get HTTPRouteFilter: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -174,15 +192,42 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		}
 		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
 			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+				Type:    "Reconciled",
+				Status:  metav1.ConditionFalse,
+				Reason:  "ControllerRefSetError",
+				Message: fmt.Sprintf("Failed to set controller reference: %v", err),
+			})
+			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+				c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "HTTPRouteGetError",
+			Message: fmt.Sprintf("Failed to get HTTPRoute: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
 	if err := c.updateHTTPRoute(&httpRoute, aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "HTTPRouteUpdateError",
+			Message: fmt.Sprintf("Failed to update HTTPRoute: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -190,12 +235,30 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Update(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+				Type:    "Reconciled",
+				Status:  metav1.ConditionFalse,
+				Reason:  "HTTPRouteUpdateError",
+				Message: fmt.Sprintf("Failed to update HTTPRoute: %v", err),
+			})
+			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+				c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Create(context.Background(), &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+				Type:    "Reconciled",
+				Status:  metav1.ConditionFalse,
+				Reason:  "HTTPRouteCreateError",
+				Message: fmt.Sprintf("Failed to create HTTPRoute: %v", err),
+			})
+			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+				c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
 	}
@@ -204,6 +267,15 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	uuid := string(uuid2.NewUUID())
 	if err := c.updateExtProcConfigMap(aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "ExtProcConfigMapUpdateError",
+			Message: fmt.Sprintf("Failed to update extproc configmap: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -211,6 +283,15 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "ExtProcDeployError",
+			Message: fmt.Sprintf("Failed to deploy ext proc: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -218,6 +299,15 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	err = c.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
 	if err != nil {
 		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+			Type:    "Reconciled",
+			Status:  metav1.ConditionFalse,
+			Reason:  "PodAnnotateError",
+			Message: fmt.Sprintf("Failed to annotate pods: %v", err),
+		})
+		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			c.logger.Error(err, "Failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 }
@@ -423,24 +513,11 @@ func (c *configSink) updateHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aig
 	targetRefs := aiGatewayRoute.Spec.TargetRefs
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
-	parentStatus := make([]gwapiv1.RouteParentStatus, len(targetRefs))
 	for i, egRef := range targetRefs {
 		egName := egRef.Name
 		parentRefs[i] = gwapiv1.ParentReference{
 			Name:      egName,
 			Namespace: &egNs,
-		}
-		parentStatus[i] = gwapiv1.RouteParentStatus{
-			ParentRef: parentRefs[i],
-			Conditions: []metav1.Condition{
-				{
-					Type:               "Accepted",
-					Status:             metav1.ConditionTrue,
-					Reason:             "RouteAccepted",
-					Message:            fmt.Sprintf("The route has been accepted by the %s.%s", egName, egNs),
-					LastTransitionTime: metav1.Now(),
-				},
-			},
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs

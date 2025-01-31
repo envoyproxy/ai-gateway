@@ -253,16 +253,6 @@ func Test_updateHTTPRoute(t *testing.T) {
 			require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 		})
 	}
-
-	for i, p := range httpRoute.Status.Parents {
-		t.Run(fmt.Sprintf("parent-status-%d", i), func(t *testing.T) {
-			require.Equal(t, fmt.Sprintf("gtw%d", i+1), p.ParentRef.Name)
-			require.Equal(t, "ns1", p.ParentRef.Namespace)
-			require.Equal(t, 1, len(p.Conditions))
-			require.Equal(t, fmt.Sprintf("The route has been accepted by the gtw%d.ns1", i+1), p.Conditions[0].Message)
-
-		})
-	}
 }
 
 func Test_updateExtProcConfigMap(t *testing.T) {
