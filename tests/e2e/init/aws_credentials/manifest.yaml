@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aws-creds-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-oidc-server
+  namespace: aws-creds-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-oidc-server
+  template:
+    metadata:
+      labels:
+        app: mock-oidc-server
+    spec:
+      containers:
+      - name: mock-oidc-server
+        image: ghcr.io/envoyproxy/ai-gateway/testupstream:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: TESTUPSTREAM_ID
+          value: mock-oidc-server
+        - name: EXPECTED_PATHS
+          value: /oauth2/token,/.well-known/openid-configuration
+        - name: RESPONSE_BODY_/.well-known/openid-configuration
+          value: '{"issuer":"http://mock-oidc-server.aws-creds-test.svc.cluster.local","token_endpoint":"http://mock-oidc-server.aws-creds-test.svc.cluster.local/oauth2/token","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"],"scopes_supported":["openid"],"token_endpoint_auth_methods_supported":["client_secret_basic"]}'
+        - name: RESPONSE_BODY_/oauth2/token
+          value: '{"access_token":"test-access-token","id_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXN1YiIsImF1ZCI6InRlc3QtY2xpZW50IiwiaXNzIjoiaHR0cDovL21vY2stb2lkYy1zZXJ2ZXIuYXdzLWNyZWRzLXRlc3Quc3ZjLmNsdXN0ZXIubG9jYWwiLCJleHAiOjE3MDY3MjgwMDB9.test","token_type":"Bearer","expires_in":3600}'
+        - name: RESPONSE_STATUS_/oauth2/token
+          value: "200"
+        - name: RESPONSE_HEADERS_/oauth2/token
+          value: "Content-Type:application/json"
+        - name: EXPECTED_REQUEST_BODY_/oauth2/token
+          value: "grant_type=client_credentials&scope=openid"
+        - name: EXPECTED_HOST
+          value: "mock-oidc-server.aws-creds-test.svc.cluster.local"
+        - name: EXPECTED_HEADERS
+          value: "Content-Type:application/x-www-form-urlencoded,Authorization:Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ="
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-oidc-server
+  namespace: aws-creds-test
+spec:
+  selector:
+    app: mock-oidc-server
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-aws-creds
+  namespace: aws-creds-test
+data:
+  credentials: W2RlZmF1bHRdCmF3c19hY2Nlc3Nfa2V5X2lkID0gQUtJQVRFU1QKYXdzX3NlY3JldF9hY2Nlc3Nfa2V5ID0gdGVzdFNlY3JldApyZWdpb24gPSB1cy13ZXN0LTI=
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: test-aws-policy
+  namespace: aws-creds-test
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-west-2
+    credentialsFile:
+      secretRef:
+        name: test-aws-creds
+    rotationConfig:
+      rotationInterval: "1m"
+      preRotationWindow: "30m"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-oidc-client-secret
+  namespace: aws-creds-test
+data:
+  client-secret: dGVzdC1zZWNyZXQ=
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: test-oidc-policy
+  namespace: aws-creds-test
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-west-2
+    oidcExchangeToken:
+      oidc:
+        provider:
+          issuer: http://mock-oidc-server.aws-creds-test.svc.cluster.local
+          tokenEndpoint: http://mock-oidc-server.aws-creds-test.svc.cluster.local/token
+        clientID: test-client
+        clientSecret:
+          name: test-oidc-client-secret
+        scopes:
+        - openid
+      awsRoleArn: arn:aws:iam::123456789012:role/test-role
+      aud: test-client
+    rotationConfig:
+      rotationInterval: "1m"
+      preRotationWindow: "30m"

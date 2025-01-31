@@ -51,4 +51,3 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-

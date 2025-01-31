@@ -418,6 +418,27 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
+// AWSCredentialsRotationConfig specifies the configuration for rotating AWS credentials
+type AWSCredentialsRotationConfig struct {
+	// RotationInterval specifies how often to rotate the credentials.
+	// If not specified, defaults to 24 hours.
+	// The minimum allowed value is 1 hour.
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
+	// +kubebuilder:default="24h"
+	RotationInterval string `json:"rotationInterval,omitempty"`
+
+	// PreRotationWindow specifies how long before expiry to rotate the credentials.
+	// If not specified, defaults to 1 hour.
+	// Must be less than RotationInterval.
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
+	// +kubebuilder:default="1h"
+	PreRotationWindow string `json:"preRotationWindow,omitempty"`
+}
+
 // BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
@@ -435,6 +456,11 @@ type BackendSecurityPolicyAWSCredentials struct {
 	//
 	// +optional
 	OIDCExchangeToken *AWSOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+
+	// RotationConfig specifies the configuration for rotating AWS credentials.
+	// Only applies when CredentialsFile is used.
+	// +optional
+	RotationConfig *AWSCredentialsRotationConfig `json:"rotationConfig,omitempty"`
 }
 
 // AWSCredentialsFile specifies the credentials file to use for the AWS provider.

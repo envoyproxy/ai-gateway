@@ -1240,6 +1240,28 @@ spec:
                       policy.
                     minLength: 1
                     type: string
+                  rotationConfig:
+                    description: |-
+                      RotationConfig specifies the configuration for rotating AWS credentials.
+                      Only applies when CredentialsFile is used.
+                    properties:
+                      preRotationWindow:
+                        default: 1h
+                        description: |-
+                          PreRotationWindow specifies how long before expiry to rotate the credentials.
+                          If not specified, defaults to 1 hour.
+                          Must be less than RotationInterval.
+                        pattern: ^([0-9]+h)?([0-9]+m)?$
+                        type: string
+                      rotationInterval:
+                        default: 24h
+                        description: |-
+                          RotationInterval specifies how often to rotate the credentials.
+                          If not specified, defaults to 24 hours.
+                          The minimum allowed value is 1 hour.
+                        pattern: ^([0-9]+h)?([0-9]+m)?$
+                        type: string
+                    type: object
                 required:
                 - region
                 type: object

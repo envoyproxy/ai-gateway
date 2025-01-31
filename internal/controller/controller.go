@@ -90,10 +90,20 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), sinkChan)
+	awsRotator := NewAWSCredentialsRotator(c, kubernetes.NewForConfigOrDie(config), logger.WithName("aws-credentials-rotator"))
+
+	// Register BackendSecurityPolicy controller with both reconcilers
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
+	}
+
+	if err = ctrl.NewControllerManagedBy(mgr).
+		For(&aigv1a1.BackendSecurityPolicy{}).
+		Named("aws-credentials-rotator").
+		Complete(awsRotator); err != nil {
+		return fmt.Errorf("failed to create controller for AWS credentials rotation: %w", err)
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
