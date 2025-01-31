@@ -489,7 +489,11 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 										"-logLevel", c.extProcLogLevel,
 									},
 									VolumeMounts: []corev1.VolumeMount{
-										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
+										{
+											Name:      "config",
+											MountPath: "/etc/ai-gateway/extproc",
+											ReadOnly:  true,
+										},
 									},
 								},
 							},
@@ -611,6 +615,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 					Name:      volumeName,
 					MountPath: backendSecurityMountPath(volumeName),
+					ReadOnly:  true,
 				})
 			}
 		}
