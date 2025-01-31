@@ -98,8 +98,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.33.0
-            envoy_version: envoyproxy/envoy:v1.33.0
+          - name: v1.33
+            envoy_version: envoyproxy/envoy:v1.33-latest
           - name: latest
             envoy_version: envoyproxy/envoy-dev:latest
     runs-on: ubuntu-latest
@@ -145,8 +145,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.3.0-rc.1
-            envoy_gateway_version: v1.3.0-rc.1
+          - name: v1.3.0
+            envoy_gateway_version: v1.3.0
           - name: latest
             envoy_gateway_version: v0.0.0-latest
     steps:
@@ -185,7 +185,7 @@ jobs:
     needs: [unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
 
-  push_helm:
+  helm_push:
     name: Push Helm chart
     # Only push the Helm chart to the GHR when merged into the main branch.
     if: github.event_name == 'push'
