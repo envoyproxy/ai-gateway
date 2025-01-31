@@ -64,7 +64,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
-	if err = applyIndexing(indexer); err != nil {
+	if err = applyIndexing(indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
@@ -140,18 +140,18 @@ const (
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 )
 
-func applyIndexing(indexer client.FieldIndexer) error {
-	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
+func applyIndexing(indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
+	err := indexer(context.Background(), &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
-	err = indexer.IndexField(context.Background(), &aigv1a1.AIServiceBackend{},
+	err = indexer(context.Background(), &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
 	}
-	err = indexer.IndexField(context.Background(), &aigv1a1.BackendSecurityPolicy{},
+	err = indexer(context.Background(), &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)

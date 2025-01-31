@@ -6,16 +6,19 @@ local-prefix: "github.com/envoyproxy/ai-gateway/"
 threshold:
   file: 70
   # TODO: increase to 90.
-  package: 80
+  package: 81
   # TODO: increase to 95.
   total: 83
 
 exclude:
   paths:
-    - ^api/
+    # Examples are not part of the main codebase.
     - ^examples/
-    - apischema/
+    # Main functions are always tested with integration tests.
     - cmd/
+    # Generated code should not be tested.
+    - zz_generated.deepcopy.go
+    # This is the test library.
     - tests/internal/envtest.go
     # TODO: Remove this exclusion.
-    - internal/controller
+    - internal/controller/controller.go
