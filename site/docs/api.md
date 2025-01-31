@@ -284,8 +284,6 @@ _Appears in:_
 | `aud` | _string_ |  false  | Aud defines the audience that this ID Token is intended for. |
 | `awsRoleArn` | _string_ |  true  | AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account<br />which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider. |
 | `proxyUrl` | _string_ |  true  | ProxyURL can be used when communication with STS. |
-| `cert` | _[LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#localobjectreference-v1-core)_ |  true  | Cert is a configmap that can be used when communicating with the SSO. |
-| `certSubPath` | _string_ |  true  | CertSubPath is the subPath specified on the volumeMount |
 
 
 #### BackendSecurityPolicy

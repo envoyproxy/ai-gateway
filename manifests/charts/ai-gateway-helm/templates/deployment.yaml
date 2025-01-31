@@ -48,6 +48,21 @@ spec:
             periodSeconds: 2
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}
+          {{- if .Values.controller.volumes.exists }}
+          volumeMounts:
+            - mountPath: {{ .Values.controller.volumes.mountPath }}
+              name: {{ .Values.controller.volumes.name }}
+              {{- if .Values.controller.volumes.subPath }}
+              subPath: {{ .Values.controller.volumes.subPath }}
+              {{- end }}
+          {{- end }}
+      {{- if .Values.controller.volumes.exists }}
+      volumes:
+        - name: {{ .Values.controller.volumes.name }}
+          configMap:
+            defaultMode: {{ .Values.controller.volumes.configmap.defaultMode }}
+            name: {{ .Values.controller.volumes.configmap.name }}
+      {{- end }}
       {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

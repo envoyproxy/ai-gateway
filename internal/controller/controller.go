@@ -21,6 +21,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/oidc"
 )
 
 func init() { MustInitializeScheme(scheme) }
@@ -116,6 +117,14 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
 		return fmt.Errorf("failed to start controller manager: %w", err)
 	}
+
+	handler, err := oidc.NewOIDCHandler(&logger, c)
+	if err != nil {
+		return fmt.Errorf("failed to create OIDC handler: %w", err)
+	}
+
+	go handler.UpdateCredentials(ctx)
+
 	return nil
 }
 

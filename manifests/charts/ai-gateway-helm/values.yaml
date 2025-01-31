@@ -49,4 +49,11 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-
+  volumes:
+    configmap:
+      defaultMode:
+      name:
+    name:
+    mountPath:
+    subPath:
+    exists: False

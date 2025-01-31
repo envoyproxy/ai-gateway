@@ -22,6 +22,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/controller/oidc"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -301,23 +302,12 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
-					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+					credentials := backendSecurityPolicy.Spec.AWSCredentials
+					if credentials.CredentialsFile != nil || credentials.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
-							},
-						}
-					} else if backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
-						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-							AWSAuth: &filterapi.AWSAuth{
-								SecretKeyFileName: path.Join(backendSecurityMountPath(volumeName), "/client-secret"),
-								OIDC:              &backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC,
-								RoleARN:           backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,
-								Audience:          backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.Aud,
-								GrantType:         backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.GrantType,
-								Region:            backendSecurityPolicy.Spec.AWSCredentials.Region,
-								ProxyURL:          backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.ProxyURL,
 							},
 						}
 					}
@@ -603,26 +593,8 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
-						if cert := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.Cert; cert != nil {
-							volumeMount := corev1.VolumeMount{
-								Name:      cert.Name,
-								MountPath: "/etc/ssl/certs/ca.crt",
-							}
-							if subPath := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.CertSubPath; subPath != "" {
-								volumeMount.SubPath = subPath
-							}
-							container.VolumeMounts = append(container.VolumeMounts, volumeMount)
-							spec.Volumes = append(spec.Volumes, corev1.Volume{
-								Name: cert.Name,
-								VolumeSource: corev1.VolumeSource{
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: *cert,
-									},
-								},
-							})
-						}
-
-						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC.ClientSecret.Name)
+						bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
+						secretName = fmt.Sprintf("%s%s", oidc.OidcAwsPrefix, bspKey)
 					}
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
