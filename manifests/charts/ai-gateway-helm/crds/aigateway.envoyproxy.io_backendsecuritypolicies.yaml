@@ -1231,10 +1231,6 @@ spec:
                         - clientSecret
                         - provider
                         type: object
-                      proxyUrl:
-                        description: ProxyURL can be used when communication with
-                          STS.
-                        type: string
                     required:
                     - awsRoleArn
                     - oidc

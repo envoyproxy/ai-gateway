@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,7 +26,6 @@ const OidcAwsPrefix = "oidc-aws-"
 type AWSSpec struct {
 	region      string
 	expiredTime time.Time
-	proxyURL    string
 	roleArn     string
 	namespace   string
 	credentials aws.Credentials
@@ -65,7 +65,6 @@ func (a *AWSCredentialExchange) createSpecIfNew(policy aigv1a1.BackendSecurityPo
 		a.awsSpecs[fmt.Sprintf("%s.%s", policy.Name, policy.Namespace)] = &AWSSpec{
 			region:      policy.Spec.AWSCredentials.Region,
 			expiredTime: time.Time{},
-			proxyURL:    policy.Spec.AWSCredentials.OIDCExchangeToken.ProxyURL,
 			roleArn:     policy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,
 			namespace:   policy.Namespace,
 			credentials: aws.Credentials{},
@@ -93,11 +92,12 @@ func (a *AWSCredentialExchange) updateCredentials(accessToken, cacheKey string) 
 	stsCfg := aws.Config{
 		Region: awsSpec.region,
 	}
-	if awsSpec.proxyURL != "" {
+
+	if proxyURL := os.Getenv("AI_GATEWY_STS_PROXY_URL"); proxyURL != "" {
 		stsCfg.HTTPClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: func(*http.Request) (*url.URL, error) {
-					return url.Parse(awsSpec.proxyURL)
+					return url.Parse(proxyURL)
 				},
 			},
 		}
