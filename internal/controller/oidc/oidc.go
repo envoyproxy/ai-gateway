@@ -21,12 +21,13 @@ import (
 
 // OIDC expects the SecretKey to be "client-secret".
 const secretKey = "client-secret"
+const timeBeforeExpired = -5 * time.Minute
 
 // IdentityTokenValue is for retrieving an identity token
 type IdentityTokenValue string
 
-// GetIdentityToken retrieves the JWT and returns the contents as a []byte
-func (j IdentityTokenValue) GetIdentityToken() ([]byte, error) {
+// GetIdentityTokenAsByteArray retrieves the JWT and returns the contents as a []byte
+func (j IdentityTokenValue) GetIdentityTokenAsByteArray() ([]byte, error) {
 	return []byte(j), nil
 }
 
@@ -56,7 +57,7 @@ func NewOIDCHandler(logger *logr.Logger, k8sClient client.Client) (*Handler, err
 	return handler, nil
 }
 
-func (o *Handler) UpdateCredentials(ctx context.Context) {
+func (o *Handler) refreshCredentials(ctx context.Context) {
 	for {
 		backendSecurityPolicies := &aigv1a1.BackendSecurityPolicyList{}
 		if err := o.k8sClient.List(context.Background(), backendSecurityPolicies); err != nil {
@@ -64,42 +65,52 @@ func (o *Handler) UpdateCredentials(ctx context.Context) {
 		}
 
 		for _, backendSecurityPolicy := range backendSecurityPolicies.Items {
-			// Only AWS Credentials currently supports OIDC
-			if backendSecurityPolicy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
-				continue
-			}
-			if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
-				continue
-			}
-
-			cacheKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
-			awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
-			if o.oidcCredentialCache[cacheKey].token == nil || time.Now().After(o.oidcCredentialCache[cacheKey].expTime.Add(-5*time.Minute)) {
-				oidcCred := awsCredentials.OIDCExchangeToken.OIDC
-				oidcAud := awsCredentials.OIDCExchangeToken.Aud
-				err := o.updateOIDCExpiredToken(ctx, oidcCred, cacheKey, oidcAud, backendSecurityPolicy.Namespace)
-				if err != nil {
-					o.logger.Error(err, "Failed to update OIDC token", "BackendSecurityPolicy", backendSecurityPolicy.Name)
-				}
-			}
-
-			if expiredTime, ok := o.awsCredentialCache[cacheKey]; !ok || time.Now().After(expiredTime.Add(-5*time.Minute)) {
-				credentials, err := getSTSCredentials(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, awsCredentials.OIDCExchangeToken.ProxyURL, awsCredentials.OIDCExchangeToken.Aud)
-				if err != nil {
-					o.logger.Error(err, "Failed to get sts credentials", "BackendSecurityPolicy", backendSecurityPolicy.Name)
-				}
-				err = updateOrCreateAWSSecret(o.k8sClient, credentials, backendSecurityPolicy.Namespace, cacheKey)
-				if err != nil {
-					o.logger.Error(err, "Failed to update AWS secret", "BackendSecurityPolicy", backendSecurityPolicy.Name)
-				}
-				o.awsCredentialCache[cacheKey] = credentials.Expires
+			err := o.updateBackendSecurityCredentials(ctx, backendSecurityPolicy)
+			if err != nil {
+				o.logger.Error(err, "Failed to update backend security credentials")
 			}
 		}
 		time.Sleep(o.interval)
 	}
 }
 
-func (o *Handler) extractOauth2Token(ctx context.Context, oidcCreds egv1a1.OIDC, aud, namespace string) (*oauth2.Token, error) {
+func (o *Handler) updateBackendSecurityCredentials(ctx context.Context, backendSecurityPolicy aigv1a1.BackendSecurityPolicy) error {
+	// Only AWS Credentials currently supports OIDC
+	if backendSecurityPolicy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
+		o.logger.Info(fmt.Sprintf("Skipping credentials refresh for type %s", backendSecurityPolicy.Spec.Type))
+		return nil
+	}
+	if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+		o.logger.Info(fmt.Sprintf("Skiping due to credential file being set for %s", backendSecurityPolicy.Name))
+		return nil
+	}
+
+	cacheKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
+	awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
+	if o.oidcCredentialCache[cacheKey].token == nil || time.Now().After(o.oidcCredentialCache[cacheKey].expTime.Add(timeBeforeExpired)) {
+		oidcCred := awsCredentials.OIDCExchangeToken.OIDC
+		oidcAud := awsCredentials.OIDCExchangeToken.Aud
+		err := o.updateOIDCExpiredToken(ctx, oidcCred, cacheKey, oidcAud, backendSecurityPolicy.Namespace)
+		if err != nil {
+			o.logger.Error(err, "Failed to update OIDC token", "BackendSecurityPolicy", backendSecurityPolicy.Name)
+		}
+	}
+
+	if expiredTime, ok := o.awsCredentialCache[cacheKey]; !ok || time.Now().After(expiredTime.Add(timeBeforeExpired)) {
+		credentials, err := getSTSCredentials(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, awsCredentials.OIDCExchangeToken.ProxyURL, awsCredentials.OIDCExchangeToken.Aud)
+		if err != nil {
+			o.logger.Error(err, "Failed to get sts credentials", "BackendSecurityPolicy", backendSecurityPolicy.Name)
+		}
+		err = updateOrCreateAWSSecret(o.k8sClient, credentials, backendSecurityPolicy.Namespace, cacheKey)
+		if err != nil {
+			o.logger.Error(err, "Failed to update AWS secret", "BackendSecurityPolicy", backendSecurityPolicy.Name)
+		}
+		o.awsCredentialCache[cacheKey] = credentials.Expires
+	}
+	return nil
+}
+
+func (o *Handler) getOauth2Token(ctx context.Context, oidcCreds egv1a1.OIDC, aud, namespace string) (*oauth2.Token, error) {
 	provider, err := oidc.NewProvider(ctx, oidcCreds.Provider.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("fail to create oidc provider: %w", err)
@@ -128,15 +139,17 @@ func (o *Handler) oauth2TokenExpireTime(accessToken *oauth2.Token) (*time.Time, 
 	if err != nil {
 		return nil, fmt.Errorf("fail to parse oauth2 token: %v", slog.Any("error", err))
 	}
+	// Claims is defined as MapClaims in ParseUnverified to get token expiration time.
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, fmt.Errorf("fail to parse oauth2 token claims: %v", slog.Any("error", err))
 	}
-	exp, ok := claims["exp"].(float64)
+	// Expects exp to be the expiration time in seconds.
+	exp, ok := claims["exp"].(int64)
 	if !ok {
 		return nil, fmt.Errorf("fail to parse oauth2 token exp: %v", slog.Any("error", err))
 	}
-	expTime := time.Unix(int64(exp), 0)
+	expTime := time.Unix(exp, 0)
 	return &expTime, nil
 }
 
@@ -145,7 +158,7 @@ func (o *Handler) updateOIDCExpiredToken(ctx context.Context, oidcCreds egv1a1.O
 		o.oidcCredentialCache[cacheKey] = &oauth2TokenWithExp{}
 	}
 
-	token, err := o.extractOauth2Token(ctx, oidcCreds, aud, namespace)
+	token, err := o.getOauth2Token(ctx, oidcCreds, aud, namespace)
 	if err != nil {
 		return err
 	}
