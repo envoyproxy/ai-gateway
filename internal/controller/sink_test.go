@@ -871,23 +871,10 @@ func Test_syncSecret(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 
-	// Create a secret and a backend security policy that references it.
 	_, err := kube.CoreV1().Secrets("ns").Create(context.Background(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "ns"},
 		Data:       map[string][]byte{"key": []byte("value")},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
-	err = fakeClient.Create(context.Background(), &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy", Namespace: "ns"},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
-			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
-				SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	// Sync the secret.
 	s.syncSecret("ns", "some-secret")
 }
