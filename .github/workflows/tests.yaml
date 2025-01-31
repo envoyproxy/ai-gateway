@@ -185,7 +185,7 @@ jobs:
     needs: [unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
 
-  push_helm:
+  helm_push:
     name: Push Helm chart
     # Only push the Helm chart to the GHR when merged into the main branch.
     if: github.event_name == 'push'
