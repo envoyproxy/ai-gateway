@@ -12,10 +12,13 @@ threshold:
 
 exclude:
   paths:
-    - ^api/
+    # Examples are not part of the main codebase.
     - ^examples/
-    - apischema/
+    # Main functions are always tested with integration tests.
     - cmd/
+    # Generated code should not be tested.
+    - zz_generated.deepcopy.go
+    # This is the test library.
     - tests/internal/envtest.go
     # TODO: Remove this exclusion.
     - internal/controller/controller.go
