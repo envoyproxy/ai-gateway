@@ -172,8 +172,8 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
-		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
-			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
+			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
@@ -408,15 +408,17 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	}
 
 	// Adds the default route rule with "/" path.
-	rules = append(rules, gwapiv1.HTTPRouteRule{
-		Matches: []gwapiv1.HTTPRouteMatch{
-			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
-		},
-		BackendRefs: []gwapiv1.HTTPBackendRef{
-			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
-		},
-		Filters: rewriteFilters,
-	})
+	if len(rules) > 0 {
+		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Matches: []gwapiv1.HTTPRouteMatch{
+				{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
+			},
+			BackendRefs: []gwapiv1.HTTPBackendRef{
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
+			},
+			Filters: rewriteFilters,
+		})
+	}
 
 	dst.Spec.Rules = rules
 
@@ -508,7 +510,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 				},
 			}
 			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
-				c.logger.Error(err, "failed to set controller reference for deployment", "namespace", deployment.Namespace, "name", deployment.Name)
+				panic(fmt.Errorf("BUG: failed to set controller reference for deployment: %w", err))
 			}
 			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
@@ -554,7 +556,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 		},
 	}
 	if err = ctrlutil.SetControllerReference(aiGatewayRoute, service, c.client.Scheme()); err != nil {
-		c.logger.Error(err, "failed to set controller reference for service", "namespace", service.Namespace, "name", service.Name)
+		panic(fmt.Errorf("BUG: failed to set controller reference for service: %w", err))
 	}
 	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
 		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)

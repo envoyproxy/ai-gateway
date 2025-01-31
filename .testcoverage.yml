@@ -6,7 +6,7 @@ local-prefix: "github.com/envoyproxy/ai-gateway/"
 threshold:
   file: 70
   # TODO: increase to 90.
-  package: 80
+  package: 81
   # TODO: increase to 95.
   total: 83
 
@@ -18,4 +18,4 @@ exclude:
     - cmd/
     - tests/internal/envtest.go
     # TODO: Remove this exclusion.
-    - internal/controller
+    - internal/controller/controller.go
