@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -42,9 +41,9 @@ func MustInitializeScheme(scheme *runtime.Scheme) {
 
 // Options defines the program configurable options that may be passed on the command line.
 type Options struct {
+	ExtProcLogLevel      string
 	ExtProcImage         string
 	EnableLeaderElection bool
-	ZapOptions           zap.Options
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -107,7 +106,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("config-sink"), sinkChan, options.ExtProcImage)
+		WithName("config-sink"), sinkChan, options.ExtProcImage, options.ExtProcLogLevel)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	if err = sink.init(ctx); err != nil {

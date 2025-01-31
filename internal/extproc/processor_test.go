@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
 		require.NoError(t, err)
-		p := &Processor{translator: mt, logger: slog.Default(), config: &processorConfig{
+		p := &Processor{translator: mt, logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
 			requestCosts: []processorConfigRequestCost{
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},

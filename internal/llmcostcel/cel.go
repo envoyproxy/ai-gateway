@@ -18,9 +18,11 @@ const (
 	celTotalTokensKey  = "total_tokens"
 )
 
-// NewProgram creates a new CEL program from the given expression.
-func NewProgram(expr string) (prog cel.Program, err error) {
-	env, err := cel.NewEnv(
+var env *cel.Env
+
+func init() {
+	var err error
+	env, err = cel.NewEnv(
 		cel.Variable(celModelNameKey, cel.StringType),
 		cel.Variable(celBackendKey, cel.StringType),
 		cel.Variable(celInputTokensKey, cel.UintType),
@@ -28,8 +30,12 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 		cel.Variable(celTotalTokensKey, cel.UintType),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create CEL environment: %w", err)
+		panic(fmt.Sprintf("cannot create CEL environment: %v", err))
 	}
+}
+
+// NewProgram creates a new CEL program from the given expression.
+func NewProgram(expr string) (prog cel.Program, err error) {
 	ast, issues := env.Compile(expr)
 	if issues != nil && issues.Err() != nil {
 		err := issues.Err()
@@ -57,11 +63,8 @@ func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, o
 		celOutputTokensKey: outputTokens,
 		celTotalTokensKey:  totalTokens,
 	})
-	if err != nil {
+	if err != nil || out == nil {
 		return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-	}
-	if out == nil {
-		return 0, fmt.Errorf("CEL expression result is nil")
 	}
 
 	switch out.Type() {

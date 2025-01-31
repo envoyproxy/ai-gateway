@@ -846,9 +846,8 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, err := json.Marshal(tt.input)
+			_, err := json.Marshal(tt.input)
 			require.NoError(t, err)
-			fmt.Println(string(body))
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			hm, bm, err := o.ResponseError(tt.responseHeaders, tt.input)
@@ -1026,7 +1025,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			body, err := json.Marshal(tt.input)
 			require.NoError(t, err)
-			fmt.Println(string(body))
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false)
@@ -1157,7 +1155,6 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		var texts []string
 		var usage *awsbedrock.TokenUsage
 		for _, event := range o.events {
-			t.Log(event.String())
 			if delta := event.Delta; delta != nil && delta.Text != nil && *delta.Text != "" {
 				texts = append(texts, *event.Delta.Text)
 			}

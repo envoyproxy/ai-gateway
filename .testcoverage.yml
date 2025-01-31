@@ -1,0 +1,21 @@
+# This is the configuration file for https://github.com/vladopajic/go-test-coverage
+
+profile: ./out/go-test-coverage.out
+local-prefix: "github.com/envoyproxy/ai-gateway/"
+
+threshold:
+  file: 70
+  # TODO: increase to 90.
+  package: 80
+  # TODO: increase to 95.
+  total: 83
+
+exclude:
+  paths:
+    - ^api/
+    - ^examples/
+    - apischema/
+    - cmd/
+    - tests/internal/envtest.go
+    # TODO: Remove this exclusion.
+    - internal/controller

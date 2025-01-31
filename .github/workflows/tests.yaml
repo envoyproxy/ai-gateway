@@ -48,7 +48,7 @@ jobs:
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Run unit tests
-        run: make test
+        run: make test-coverage
 
   test_cel_validation:
     if: github.event_name == 'pull_request' || github.event_name == 'push'

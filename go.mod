@@ -17,6 +17,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.49
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250128144449-3edf0e91c1ae
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.70.0
@@ -88,8 +89,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect

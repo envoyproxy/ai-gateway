@@ -77,7 +77,7 @@ type Translator interface {
 	// ResponseBody translates the response body.
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `usedToken` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//
 	// TODO: this is coupled with "LLM" specific. Once we have another use case, we need to refactor this.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
@@ -96,24 +96,6 @@ type Translator interface {
 		bodyMutation *extprocv3.BodyMutation,
 		err error,
 	)
-}
-
-// defaultTranslator is a no-op translator that implements [Translator].
-type defaultTranslator struct{}
-
-// RequestBody implements [Translator.RequestBody].
-func (d *defaultTranslator) RequestBody(*extprocv3.HttpBody) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, *extprocv3http.ProcessingMode, string, error) {
-	return nil, nil, nil, "", nil
-}
-
-// ResponseHeaders implements [Translator.ResponseBody].
-func (d *defaultTranslator) ResponseHeaders(map[string]string) (*extprocv3.HeaderMutation, error) {
-	return nil, nil
-}
-
-// ResponseBody implements [Translator.ResponseBody].
-func (d *defaultTranslator) ResponseBody(io.Reader, bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, uint32, error) {
-	return nil, nil, 0, nil
 }
 
 func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
