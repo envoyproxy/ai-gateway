@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"go.uber.org/goleak"
 	"log/slog"
 	"os"
 	"testing"
@@ -32,6 +33,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 var defaultSchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"}
 

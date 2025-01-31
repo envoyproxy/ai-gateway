@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"go.uber.org/goleak"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,10 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 	scheme := runtime.NewScheme()
