@@ -117,12 +117,13 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to start controller manager: %w", err)
 	}
 
-	handler, err := oidc.NewOIDCHandler(&logger, c)
+	// Have a token exchange handler per provider type.
+	handler, err := oidc.NewOIDCTokenExchange(&logger, c, aigv1a1.BackendSecurityPolicyTypeAWSCredentials)
 	if err != nil {
 		return fmt.Errorf("failed to create OIDC handler: %w", err)
 	}
 
-	go handler.UpdateCredentials(ctx)
+	go handler.RefreshCredentials(ctx)
 
 	return nil
 }
