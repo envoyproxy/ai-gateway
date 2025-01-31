@@ -594,7 +594,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
-					} else {
+					} else if backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 						bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
 						secretName = fmt.Sprintf("%s%s", oidc.OidcAwsPrefix, bspKey)
 					}
