@@ -3,6 +3,27 @@ kind: Namespace
 metadata:
   name: aws-creds-test
 ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aws-creds-test-gc
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aws-creds-test-gw
+  namespace: aws-creds-test
+  annotations:
+    gateway.envoyproxy.io/service-type: "ClusterIP"
+spec:
+  gatewayClassName: aws-creds-test-gc
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,22 +46,17 @@ spec:
         env:
         - name: TESTUPSTREAM_ID
           value: mock-oidc-server
-        - name: EXPECTED_PATHS
-          value: /oauth2/token,/.well-known/openid-configuration
-        - name: RESPONSE_BODY_/.well-known/openid-configuration
-          value: '{"issuer":"http://mock-oidc-server.aws-creds-test.svc.cluster.local","token_endpoint":"http://mock-oidc-server.aws-creds-test.svc.cluster.local/oauth2/token","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"],"scopes_supported":["openid"],"token_endpoint_auth_methods_supported":["client_secret_basic"]}'
-        - name: RESPONSE_BODY_/oauth2/token
-          value: '{"access_token":"test-access-token","id_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXN1YiIsImF1ZCI6InRlc3QtY2xpZW50IiwiaXNzIjoiaHR0cDovL21vY2stb2lkYy1zZXJ2ZXIuYXdzLWNyZWRzLXRlc3Quc3ZjLmNsdXN0ZXIubG9jYWwiLCJleHAiOjE3MDY3MjgwMDB9.test","token_type":"Bearer","expires_in":3600}'
-        - name: RESPONSE_STATUS_/oauth2/token
-          value: "200"
-        - name: RESPONSE_HEADERS_/oauth2/token
-          value: "Content-Type:application/json"
-        - name: EXPECTED_REQUEST_BODY_/oauth2/token
-          value: "grant_type=client_credentials&scope=openid"
-        - name: EXPECTED_HOST
-          value: "mock-oidc-server.aws-creds-test.svc.cluster.local"
-        - name: EXPECTED_HEADERS
-          value: "Content-Type:application/x-www-form-urlencoded,Authorization:Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ="
+        - name: TESTUPSTREAM_SKIP_HOST_VERIFICATION
+          value: "true"
+        - name: CLIENT_ID
+          value: test-client
+        - name: CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: test-oidc-client-secret
+              key: client-secret
+        - name: ISSUER
+          value: https://mock-oidc-server.aws-creds-test.svc.cluster.local
         ports:
         - containerPort: 8080
         readinessProbe:
@@ -59,33 +75,8 @@ spec:
   selector:
     app: mock-oidc-server
   ports:
-  - protocol: TCP
-    port: 80
+  - port: 80
     targetPort: 8080
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: test-aws-creds
-  namespace: aws-creds-test
-data:
-  credentials: W2RlZmF1bHRdCmF3c19hY2Nlc3Nfa2V5X2lkID0gQUtJQVRFU1QKYXdzX3NlY3JldF9hY2Nlc3Nfa2V5ID0gdGVzdFNlY3JldApyZWdpb24gPSB1cy13ZXN0LTI=
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: test-aws-policy
-  namespace: aws-creds-test
-spec:
-  type: AWSCredentials
-  awsCredentials:
-    region: us-west-2
-    credentialsFile:
-      secretRef:
-        name: test-aws-creds
-    rotationConfig:
-      rotationInterval: "1m"
-      preRotationWindow: "30m"
 ---
 apiVersion: v1
 kind: Secret
@@ -95,27 +86,122 @@ metadata:
 data:
   client-secret: dGVzdC1zZWNyZXQ=
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-gateway-stable
+  namespace: envoy-gateway-system
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: envoy
+    app.kubernetes.io/component: proxy
+    gateway.envoyproxy.io/owning-gateway-namespace: aws-creds-test
+    gateway.envoyproxy.io/owning-gateway-name: aws-creds-test-gw
+  ports:
+  - port: 80
+    targetPort: 10080
+    protocol: TCP
+---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
-  name: test-oidc-policy
+  name: test-aws-oidc-policy
   namespace: aws-creds-test
 spec:
   type: AWSCredentials
   awsCredentials:
     region: us-west-2
     oidcExchangeToken:
+      aud: test-client
+      awsRoleArn: arn:aws:iam::123456789012:role/test-role
       oidc:
-        provider:
-          issuer: http://mock-oidc-server.aws-creds-test.svc.cluster.local
-          tokenEndpoint: http://mock-oidc-server.aws-creds-test.svc.cluster.local/token
         clientID: test-client
         clientSecret:
+          group: ""
+          kind: Secret
           name: test-oidc-client-secret
-        scopes:
-        - openid
-      awsRoleArn: arn:aws:iam::123456789012:role/test-role
-      aud: test-client
+        provider:
+          issuer: https://test-gateway-stable.envoy-gateway-system.svc.cluster.local
+          tokenEndpoint: https://test-gateway-stable.envoy-gateway-system.svc.cluster.local/oauth2/token
     rotationConfig:
-      rotationInterval: "1m"
-      preRotationWindow: "30m"
+      rotationInterval: 1m
+      preRotationWindow: 30m
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: test-aws-route
+  namespace: aws-creds-test
+spec:
+  parentRefs:
+  - name: aws-creds-test-gw
+    namespace: aws-creds-test
+  rules:
+  - backendRefs:
+    - name: mock-oidc-server
+      port: 80
+    matches:
+    - path:
+        type: Exact
+        value: /.well-known/openid-configuration
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-expected-testupstream-id
+          value: mock-oidc-server
+        - name: x-expected-path
+          value: Ly53ZWxsLWtub3duL29wZW5pZC1jb25maWd1cmF0aW9u
+        - name: x-response-body
+          value: eyJpc3N1ZXIiOiJodHRwczovL3Rlc3QtZ2F0ZXdheS1zdGFibGUuZW52b3ktZ2F0ZXdheS1zeXN0ZW0uc3ZjLmNsdXN0ZXIubG9jYWwiLCJ0b2tlbl9lbmRwb2ludCI6Imh0dHBzOi8vdGVzdC1nYXRld2F5LXN0YWJsZS5lbnZveS1nYXRld2F5LXN5c3RlbS5zdmMuY2x1c3Rlci5sb2NhbC9vYXV0aDIvdG9rZW4iLCJqd2tzLXVyaSI6Imh0dHBzOi8vdGVzdC1nYXRld2F5LXN0YWJsZS5lbnZveS1nYXRld2F5LXN5c3RlbS5zdmMuY2x1c3Rlci5sb2NhbC8ud2VsbC1rbm93bi9qd2tzLmpzb24iLCJyZXNwb25zZV90eXBlc19zdXBwb3J0ZWQiOlsiY29kZSJdLCJzdWJqZWN0X3R5cGVzX3N1cHBvcnRlZCI6WyJwdWJsaWMiXSwiaWRfdG9rZW5fc2lnbmluZ19hbGdfdmFsdWVzX3N1cHBvcnRlZCI6WyJSUzI1NiJdLCJzY29wZXNfc3VwcG9ydGVkIjpbIm9wZW5pZCJdLCJ0b2tlbl9lbmRwb2ludF9hdXRoX21ldGhvZHNfc3VwcG9ydGVkIjpbImNsaWVudF9zZWNyZXRfYmFzaWMiXX0=
+        - name: x-response-status
+          value: "200"
+        - name: x-response-headers
+          value: Q29udGVudC1UeXBlOmFwcGxpY2F0aW9uL2pzb24=
+  - backendRefs:
+    - name: mock-oidc-server
+      port: 80
+    matches:
+    - path:
+        type: Exact
+        value: /.well-known/jwks.json
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-expected-testupstream-id
+          value: mock-oidc-server
+        - name: x-expected-path
+          value: Ly53ZWxsLWtub3duL2p3a3MuanNvbg==
+        - name: x-response-body
+          value: eyJrZXlzIjpbeyJrdHkiOiJSU0EiLCJraWQiOiJ0ZXN0LWtpZCIsInVzZSI6InNpZyIsIm4iOiJ0ZXN0LW4iLCJlIjoiQVFBQiIsImFsZyI6IlJTMjU2In1dfQ==
+        - name: x-response-status
+          value: "200"
+        - name: x-response-headers
+          value: Q29udGVudC1UeXBlOmFwcGxpY2F0aW9uL2pzb24=
+  - backendRefs:
+    - name: mock-oidc-server
+      port: 80
+    matches:
+    - path:
+        type: Exact
+        value: /oauth2/token
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-expected-testupstream-id
+          value: mock-oidc-server
+        - name: x-expected-path
+          value: L29hdXRoMi90b2tlbg==
+        - name: x-expected-request-body
+          value: Z3JhbnRfdHlwZT1jbGllbnRfY3JlZGVudGlhbHMmc2NvcGU9b3Blbmlk
+        - name: x-expected-headers
+          value: Q29udGVudC1UeXBlOmFwcGxpY2F0aW9uL3gtd3d3LWZvcm0tdXJsZW5jb2RlZCxBdXRob3JpemF0aW9uOkJhc2ljIGRHVnpkQzFqYkdsbGJuUTZkR1Z6ZEMxelpXTnlaWFE9
+        - name: x-response-body
+          value: eyJhY2Nlc3NfdG9rZW4iOiJ0ZXN0LWFjY2Vzcy10b2tlbiIsImlkX3Rva2VuIjoiZXlKcmFXUWlPaUowWlhOMExXdHBaQ0lzSW1Gc1p5STZJbEpUTWpVMklpd2lkSGx3SWpvaVNsZFVJbjAuZXlKemRXSWlPaUowWlhOMExYTjFZaUlzSW1GMVpDSTZJblJsYzNRdFkyeHBaVzUwSWl3aWFYTnpJam9pYUhSMGNEb3ZMMlZ1ZG05NUxXZGhkR1YzWVhrdGMzUmhZbXhsTG1WdWRtOTVMV2RoZEdWM1lYa3RjM2x6ZEdWdExuTjJZeTVqYkhWemRHVnlMbXh2WTJGc0lpd2laWGh3SWpveE56QTJOekk0TURBd2ZRLnRlc3QiLCJ0b2tlbl90eXBlIjoiQmVhcmVyIiwiZXhwaXJlc19pbiI6MzYwMH0=
+        - name: x-response-status
+          value: "200"
+        - name: x-response-headers
+          value: Q29udGVudC1UeXBlOmFwcGxpY2F0aW9uL2pzb24=

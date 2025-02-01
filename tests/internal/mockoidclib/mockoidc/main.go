@@ -1,19 +1,18 @@
-package main
+package mockoidc
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
-	"github.com/envoyproxy/ai-gateway/tests/internal/mockoidclib"
 )
 
 var logger = log.New(os.Stdout, "[mockoidc] ", 0)
@@ -30,63 +29,133 @@ func main() {
 
 func doMain(l net.Listener) {
 	defer l.Close()
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/health", handleHealthCheck)
+	http.HandleFunc("/oauth2/token", handleTokenRequest)
 	if err := http.Serve(l, nil); err != nil {
 		logger.Printf("failed to serve: %v", err)
 	}
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	for k, v := range r.Header {
-		logger.Printf("header %q: %s\n", k, v)
+func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleTokenRequest(w http.ResponseWriter, r *http.Request) {
+	// Get expected values from headers
+	testUpstreamID := r.Header.Get("x-expected-testupstream-id")
+	expectedHost := r.Header.Get("x-expected-host")
+	expectedHeadersB64 := r.Header.Get("x-expected-headers")
+	expectedRequestBodyB64 := r.Header.Get("x-expected-request-body")
+	responseBodyB64 := r.Header.Get("x-response-body")
+	responseStatusStr := r.Header.Get("x-response-status")
+	responseHeadersB64 := r.Header.Get("x-response-headers")
+
+	// Log request details for debugging
+	log.Printf("[testupstream] Received request to /oauth2/token")
+	for name, values := range r.Header {
+		log.Printf("[testupstream] header %q: %v", name, values)
 	}
 
-	// Get the expected response for this path
-	responseBody := r.Header.Get(mockoidclib.ResponseBodyHeaderKey)
-	if responseBody == "" {
-		// If no response body is specified, use the default response for well-known paths
-		var err error
-		responseBody, err = getDefaultResponse(r.URL.Path)
-		if err != nil {
-			logger.Println("failed to get default response:", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	} else {
-		// Decode the base64 encoded response body
-		decoded, err := base64.StdEncoding.DecodeString(responseBody)
-		if err != nil {
-			logger.Println("failed to decode response body:", err)
-			http.Error(w, "failed to decode response body", http.StatusBadRequest)
-			return
-		}
-		responseBody = string(decoded)
+	// Validate testupstream ID
+	if testUpstreamID == "" {
+		log.Printf("[testupstream] no expected testupstream-id")
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
-	// Get the response status code
-	status := http.StatusOK
-	if statusStr := r.Header.Get(mockoidclib.ResponseStatusHeaderKey); statusStr != "" {
-		var err error
-		status, err = strconv.Atoi(statusStr)
+	// Validate host
+	if expectedHost != "" && r.Host != expectedHost {
+		log.Printf("[testupstream] host mismatch: expected %q, got %q", expectedHost, r.Host)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Validate headers if specified
+	if expectedHeadersB64 != "" {
+		expectedHeadersBytes, err := base64.StdEncoding.DecodeString(expectedHeadersB64)
 		if err != nil {
-			logger.Println("failed to parse status code:", err)
-			http.Error(w, "failed to parse status code", http.StatusBadRequest)
+			log.Printf("[testupstream] failed to decode expected headers: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		expectedHeaders := strings.Split(string(expectedHeadersBytes), ",")
+		for _, headerPair := range expectedHeaders {
+			parts := strings.SplitN(headerPair, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			headerName := parts[0]
+			expectedValue := parts[1]
+			actualValue := r.Header.Get(headerName)
+			if actualValue != expectedValue {
+				log.Printf("[testupstream] header mismatch for %q: expected %q, got %q", headerName, expectedValue, actualValue)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	// Validate request body if specified
+	if expectedRequestBodyB64 != "" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("[testupstream] failed to read request body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		expectedBodyBytes, err := base64.StdEncoding.DecodeString(expectedRequestBodyB64)
+		if err != nil {
+			log.Printf("[testupstream] failed to decode expected request body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// Parse both expected and actual bodies as URL values for comparison
+		expectedValues, err := url.ParseQuery(string(expectedBodyBytes))
+		if err != nil {
+			log.Printf("[testupstream] failed to parse expected request body as form data: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		actualValues, err := url.ParseQuery(string(body))
+		if err != nil {
+			log.Printf("[testupstream] failed to parse actual request body as form data: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// Compare form values
+		if !urlValuesEqual(expectedValues, actualValues) {
+			log.Printf("[testupstream] request body mismatch: expected %q, got %q", expectedBodyBytes, body)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	}
 
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
-	if headersStr := r.Header.Get(mockoidclib.ResponseHeadersKey); headersStr != "" {
-		headers, err := base64.StdEncoding.DecodeString(headersStr)
+	// Set response status
+	statusCode := http.StatusOK
+	if responseStatusStr != "" {
+		if code, err := parseStatusCode(responseStatusStr); err == nil {
+			statusCode = code
+		}
+	}
+
+	// Set response headers if specified
+	if responseHeadersB64 != "" {
+		headersBytes, err := base64.StdEncoding.DecodeString(responseHeadersB64)
 		if err != nil {
-			logger.Println("failed to decode headers:", err)
-			http.Error(w, "failed to decode headers", http.StatusBadRequest)
+			log.Printf("[testupstream] failed to decode response headers: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		for _, header := range headers {
-			parts := strings.SplitN(string(header), ":", 2)
+
+		headers := strings.Split(string(headersBytes), ",")
+		for _, headerPair := range headers {
+			parts := strings.SplitN(headerPair, ":", 2)
 			if len(parts) != 2 {
 				continue
 			}
@@ -94,8 +163,50 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.WriteHeader(status)
-	fmt.Fprintln(w, responseBody)
+	// Write response body if specified
+	if responseBodyB64 != "" {
+		responseBody, err := base64.StdEncoding.DecodeString(responseBodyB64)
+		if err != nil {
+			log.Printf("[testupstream] failed to decode response body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(statusCode)
+		w.Write(responseBody)
+		return
+	}
+
+	// Default response if no specific response is configured
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	fmt.Fprintf(w, `{"error":"no response configured"}`)
+}
+
+func parseStatusCode(s string) (int, error) {
+	var code int
+	if _, err := fmt.Sscanf(s, "%d", &code); err != nil {
+		return http.StatusOK, err
+	}
+	return code, nil
+}
+
+func urlValuesEqual(expected, actual url.Values) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+	for key, expectedValues := range expected {
+		actualValues := actual[key]
+		if len(expectedValues) != len(actualValues) {
+			return false
+		}
+		// Sort both slices for consistent comparison
+		expectedStr := strings.Join(expectedValues, ",")
+		actualStr := strings.Join(actualValues, ",")
+		if expectedStr != actualStr {
+			return false
+		}
+	}
+	return true
 }
 
 func getDefaultResponse(path string) (string, error) {
@@ -108,7 +219,7 @@ func getDefaultResponse(path string) (string, error) {
 	case "/.well-known/openid-configuration":
 		discovery := map[string]interface{}{
 			"issuer":                                issuer,
-			"token_endpoint":                        fmt.Sprintf("%s/token", issuer),
+			"token_endpoint":                        fmt.Sprintf("%s/oauth2/token", issuer),
 			"response_types_supported":              []string{"code"},
 			"subject_types_supported":               []string{"public"},
 			"id_token_signing_alg_values_supported": []string{"RS256"},
@@ -121,45 +232,9 @@ func getDefaultResponse(path string) (string, error) {
 		}
 		return string(resp), nil
 
-	case "/token":
-		// Verify client credentials
-		clientID := os.Getenv("CLIENT_ID")
-		clientSecret := os.Getenv("CLIENT_SECRET")
-		if clientID == "" || clientSecret == "" {
-			return "", fmt.Errorf("CLIENT_ID or CLIENT_SECRET environment variable not set")
-		}
-
-		// Generate a mock ID token
-		now := time.Now()
-		exp := now.Add(1 * time.Hour)
-		claims := map[string]interface{}{
-			"iss": issuer,
-			"sub": "test-subject",
-			"aud": clientID,
-			"exp": exp.Unix(),
-			"iat": now.Unix(),
-		}
-
-		claimsJSON, err := json.Marshal(claims)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal claims: %v", err)
-		}
-
-		idToken := fmt.Sprintf("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.%s.test",
-			base64.RawURLEncoding.EncodeToString(claimsJSON))
-
-		response := map[string]interface{}{
-			"access_token": "test-access-token",
-			"token_type":   "Bearer",
-			"id_token":     idToken,
-			"expires_in":   3600,
-		}
-
-		resp, err := json.Marshal(response)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal token response: %v", err)
-		}
-		return string(resp), nil
+	case "/oauth2/token":
+		// Token endpoint is handled directly in the handler
+		return "", fmt.Errorf("token endpoint should be handled by the main handler")
 
 	default:
 		return "", fmt.Errorf("unknown path: %s", path)

@@ -66,6 +66,11 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	if err := initAWSCredentialsTest(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
 	code := m.Run()
 	cancel()
 	os.Exit(code)
@@ -204,11 +209,50 @@ func initRateLimitServer(ctx context.Context) (err error) {
 	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit")
 }
 
+func initAWSCredentialsTest(ctx context.Context) (err error) {
+	initLog("Installing AWS Credentials Test components")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+
+	// Create the test namespace if it doesn't exist
+	initLog("\tcreating namespace aws-creds-test")
+	cmd := kubectl(ctx, "create", "namespace", "aws-creds-test", "--dry-run=client", "-o", "yaml")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	manifest, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to generate namespace manifest: %w", err)
+	}
+	if err := kubectlApplyManifestStdin(ctx, string(manifest)); err != nil {
+		return fmt.Errorf("failed to create test namespace: %w", err)
+	}
+
+	initLog("\tapplying AWS credentials manifests")
+	const manifestPath = "./init/aws_credentials/manifest.yaml"
+	if err = kubectlApplyManifest(ctx, manifestPath); err != nil {
+		return fmt.Errorf("failed to apply AWS credentials manifests: %w", err)
+	}
+
+	initLog("\twaiting for mock OIDC server deployment")
+	if err := kubectlWaitForDeploymentReady("aws-creds-test", "mock-oidc-server"); err != nil {
+		return fmt.Errorf("mock OIDC server deployment not ready: %w", err)
+	}
+
+	return nil
+}
+
 func kubectl(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd
+}
+
+func kubectlWithOutput(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, "kubectl", args...)
 }
 
 func kubectlApplyManifest(ctx context.Context, manifest string) (err error) {

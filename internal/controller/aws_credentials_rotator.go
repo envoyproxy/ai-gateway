@@ -266,19 +266,20 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 }
 
 // getSTSCredentials exchanges an OIDC token for temporary AWS credentials
-func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token string, roleARN string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token string, roleARN string, region string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	logger := r.logger.WithValues("roleARN", roleARN)
 	logger.V(1).Info("starting STS credentials exchange")
 
-	if r.stsClient == nil {
-		logger.V(2).Info("initializing AWS STS client")
-		cfg, err := config.LoadDefaultConfig(ctx)
-		if err != nil {
-			logger.Error(err, "failed to load AWS config")
-			return nil, fmt.Errorf("failed to load AWS config: %w", err)
-		}
-		r.stsClient = sts.NewFromConfig(cfg)
+	// Always initialize a new STS client with the provided region
+	logger.V(2).Info("initializing AWS STS client", "region", region)
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+	)
+	if err != nil {
+		logger.Error(err, "failed to load AWS config")
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
+	stsClient := sts.NewFromConfig(cfg)
 
 	sessionName := "ai-gateway-" + time.Now().Format("20060102150405")
 	logger.V(2).Info("assuming role with web identity", "sessionName", sessionName)
@@ -289,7 +290,7 @@ func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token str
 		WebIdentityToken: aws.String(token),
 	}
 
-	resp, err := r.stsClient.AssumeRoleWithWebIdentity(ctx, input)
+	resp, err := stsClient.AssumeRoleWithWebIdentity(ctx, input)
 	if err != nil {
 		logger.Error(err, "failed to assume role with web identity")
 		return nil, fmt.Errorf("failed to assume role with web identity: %w", err)
@@ -353,7 +354,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		// Exchange OIDC token for AWS credentials
-		stsResp, err := r.getSTSCredentials(ctx, token, oidcConfig.AwsRoleArn)
+		stsResp, err := r.getSTSCredentials(ctx, token, oidcConfig.AwsRoleArn, backendSecurityPolicy.Spec.AWSCredentials.Region)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to exchange OIDC token for AWS credentials: %w", err)
 		}
