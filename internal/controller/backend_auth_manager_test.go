@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -17,35 +17,35 @@ import (
 )
 
 type mockRotator struct {
-	rotateFn   func(ctx context.Context, event token_rotators.RotationEvent) error
-	initFn     func(ctx context.Context, event token_rotators.RotationEvent) error
-	rotateType token_rotators.RotationType
+	rotateFn   func(ctx context.Context, event backend_auth_rotators.RotationEvent) error
+	initFn     func(ctx context.Context, event backend_auth_rotators.RotationEvent) error
+	rotateType backend_auth_rotators.RotationType
 }
 
-func (m *mockRotator) Rotate(ctx context.Context, event token_rotators.RotationEvent) error {
+func (m *mockRotator) Rotate(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 	if m.rotateFn != nil {
 		return m.rotateFn(ctx, event)
 	}
 	return nil
 }
 
-func (m *mockRotator) Initialize(ctx context.Context, event token_rotators.RotationEvent) error {
+func (m *mockRotator) Initialize(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 	if m.initFn != nil {
 		return m.initFn(ctx, event)
 	}
 	return nil
 }
 
-func (m *mockRotator) Type() token_rotators.RotationType {
+func (m *mockRotator) Type() backend_auth_rotators.RotationType {
 	return m.rotateType
 }
 
-func TestTokenManager_RegisterRotator(t *testing.T) {
+func TestBackendAuthManager_RegisterRotator(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-	// Create test secret to simulate initialized token
+	// Create test secret to simulate initialized BackendAuth
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
@@ -57,19 +57,19 @@ func TestTokenManager_RegisterRotator(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
-	rotator := &mockRotator{rotateType: token_rotators.RotationTypeAWSCredentials}
+	rotator := &mockRotator{rotateType: backend_auth_rotators.RotationTypeAWSCredentials}
 	err := manager.RegisterRotator(rotator)
 	require.NoError(t, err)
 
-	assert.Equal(t, rotator, manager.rotators[token_rotators.RotationTypeAWSCredentials])
+	assert.Equal(t, rotator, manager.rotators[backend_auth_rotators.RotationTypeAWSCredentials])
 }
 
-func TestTokenManager_RequestRotation(t *testing.T) {
+func TestBackendAuthManager_RequestRotation(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-	// Create test secret to simulate initialized token
+	// Create test secret to simulate initialized BackendAuth
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
@@ -83,18 +83,18 @@ func TestTokenManager_RequestRotation(t *testing.T) {
 
 	// Track rotation calls
 	rotator := &mockRotator{
-		rotateType: token_rotators.RotationTypeAWSCredentials,
-		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+		rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 			return nil
 		},
 	}
 	err := manager.RegisterRotator(rotator)
 	require.NoError(t, err)
 
-	event := token_rotators.RotationEvent{
+	event := backend_auth_rotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
-		Type:      token_rotators.RotationTypeAWSCredentials,
+		Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 		Metadata:  map[string]string{"key": "value"},
 	}
 
@@ -110,15 +110,15 @@ func TestTokenManager_RequestRotation(t *testing.T) {
 	}
 }
 
-func TestTokenManager_Start(t *testing.T) {
+func TestBackendAuthManager_Start(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-	// Create test secret to simulate initialized token
+	// Create test secret to simulate initialized BackendAuth
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-secret",
@@ -131,10 +131,10 @@ func TestTokenManager_Start(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
 	// Track rotation calls
-	rotationCalls := make(chan token_rotators.RotationEvent, 100)
+	rotationCalls := make(chan backend_auth_rotators.RotationEvent, 100)
 	rotator := &mockRotator{
-		rotateType: token_rotators.RotationTypeAWSCredentials,
-		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+		rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 			rotationCalls <- event
 			return nil
 		},
@@ -146,10 +146,10 @@ func TestTokenManager_Start(t *testing.T) {
 	go manager.Start(ctx)
 
 	// Test immediate rotation
-	immediateEvent := token_rotators.RotationEvent{
+	immediateEvent := backend_auth_rotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
-		Type:      token_rotators.RotationTypeAWSCredentials,
+		Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 	}
 	err = manager.RequestRotation(ctx, immediateEvent)
 	require.NoError(t, err)
@@ -162,10 +162,10 @@ func TestTokenManager_Start(t *testing.T) {
 	}
 
 	// Test scheduled rotation
-	scheduledEvent := token_rotators.RotationEvent{
+	scheduledEvent := backend_auth_rotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
-		Type:      token_rotators.RotationTypeAWSCredentials,
+		Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 		Metadata: map[string]string{
 			"rotate_at": time.Now().Add(100 * time.Millisecond).Format(time.RFC3339),
 		},
@@ -188,14 +188,14 @@ func TestTokenManager_Start(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // Give time for goroutines to stop
 }
 
-func TestTokenManager_RegisterRotator_Errors(t *testing.T) {
+func TestBackendAuthManager_RegisterRotator_Errors(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	// Test registering duplicate rotator
-	rotator1 := &mockRotator{rotateType: token_rotators.RotationTypeAWSCredentials}
-	rotator2 := &mockRotator{rotateType: token_rotators.RotationTypeAWSCredentials}
+	rotator1 := &mockRotator{rotateType: backend_auth_rotators.RotationTypeAWSCredentials}
+	rotator2 := &mockRotator{rotateType: backend_auth_rotators.RotationTypeAWSCredentials}
 
 	err := manager.RegisterRotator(rotator1)
 	require.NoError(t, err)
@@ -206,19 +206,19 @@ func TestTokenManager_RegisterRotator_Errors(t *testing.T) {
 	assert.Contains(t, err.Error(), "already registered")
 }
 
-func TestTokenManager_RequestRotation_ValidationErrors(t *testing.T) {
+func TestBackendAuthManager_RequestRotation_ValidationErrors(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	tests := []struct {
 		name        string
-		event       token_rotators.RotationEvent
+		event       backend_auth_rotators.RotationEvent
 		expectedErr string
 	}{
 		{
 			name: "empty rotation type",
-			event: token_rotators.RotationEvent{
+			event: backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      "test-secret",
 			},
@@ -226,7 +226,7 @@ func TestTokenManager_RequestRotation_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "unregistered rotator type",
-			event: token_rotators.RotationEvent{
+			event: backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      "test-secret",
 				Type:      "unknown-type",
@@ -244,10 +244,10 @@ func TestTokenManager_RequestRotation_ValidationErrors(t *testing.T) {
 	}
 }
 
-func TestTokenManager_RotatorFailure(t *testing.T) {
+func TestBackendAuthManager_RotatorFailure(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	// Create test secret
 	secret := &corev1.Secret{
@@ -263,8 +263,8 @@ func TestTokenManager_RotatorFailure(t *testing.T) {
 
 	// Register rotator that will fail
 	rotator := &mockRotator{
-		rotateType: token_rotators.RotationTypeAWSCredentials,
-		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+		rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 			return fmt.Errorf("simulated rotation failure")
 		},
 	}
@@ -277,10 +277,10 @@ func TestTokenManager_RotatorFailure(t *testing.T) {
 	go manager.Start(ctx)
 
 	// Request rotation
-	event := token_rotators.RotationEvent{
+	event := backend_auth_rotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
-		Type:      token_rotators.RotationTypeAWSCredentials,
+		Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 	}
 	err = manager.RequestRotation(ctx, event)
 	require.NoError(t, err)
@@ -305,10 +305,10 @@ func TestTokenManager_RotatorFailure(t *testing.T) {
 	}
 }
 
-func TestTokenManager_ConcurrentRotations(t *testing.T) {
+func TestBackendAuthManager_ConcurrentRotations(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	// Create test secret
 	secret := &corev1.Secret{
@@ -325,8 +325,8 @@ func TestTokenManager_ConcurrentRotations(t *testing.T) {
 	// Track rotation calls with sync.Map to avoid race conditions
 	var rotationCalls sync.Map
 	rotator := &mockRotator{
-		rotateType: token_rotators.RotationTypeAWSCredentials,
-		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+		rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 			key := fmt.Sprintf("%s/%s", event.Namespace, event.Name)
 			count := int64(1)
 			if val, ok := rotationCalls.Load(key); ok {
@@ -351,10 +351,10 @@ func TestTokenManager_ConcurrentRotations(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			event := token_rotators.RotationEvent{
+			event := backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      fmt.Sprintf("test-secret-%d", i),
-				Type:      token_rotators.RotationTypeAWSCredentials,
+				Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 			}
 			err := manager.RequestRotation(ctx, event)
 			assert.NoError(t, err)
@@ -374,10 +374,10 @@ func TestTokenManager_ConcurrentRotations(t *testing.T) {
 	}
 }
 
-func TestTokenManager_Cleanup(t *testing.T) {
+func TestBackendAuthManager_Cleanup(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	// Create test secret
 	secret := &corev1.Secret{
@@ -396,10 +396,10 @@ func TestTokenManager_Cleanup(t *testing.T) {
 	futureTime := time.Now().Add(1 * time.Hour)
 
 	for i := 0; i < 3; i++ {
-		event := token_rotators.RotationEvent{
+		event := backend_auth_rotators.RotationEvent{
 			Namespace: "default",
 			Name:      fmt.Sprintf("test-secret-%d", i),
-			Type:      token_rotators.RotationTypeAWSCredentials,
+			Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 		}
 		manager.ScheduleRotation(ctx, event, futureTime)
 	}
@@ -424,16 +424,16 @@ func TestTokenManager_Cleanup(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
-func TestTokenManager_RequestInitialization(t *testing.T) {
+func TestBackendAuthManager_RequestInitialization(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
-	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+	manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 	// Register rotator with initialization tracking
 	initCalled := false
 	rotator := &mockRotator{
-		rotateType: token_rotators.RotationTypeAWSCredentials,
-		initFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+		rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+		initFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 			initCalled = true
 			return nil
 		},
@@ -442,10 +442,10 @@ func TestTokenManager_RequestInitialization(t *testing.T) {
 	require.NoError(t, err)
 
 	// Request initialization
-	event := token_rotators.RotationEvent{
+	event := backend_auth_rotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
-		Type:      token_rotators.RotationTypeAWSCredentials,
+		Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 	}
 	err = manager.RequestInitialization(context.Background(), event)
 	require.NoError(t, err)
@@ -458,46 +458,46 @@ func TestTokenManager_RequestInitialization(t *testing.T) {
 	case evt := <-eventChan:
 		k8sEvent, ok := evt.(*corev1.Event)
 		require.True(t, ok)
-		assert.Equal(t, "TokenRotationInitialization", k8sEvent.Reason)
+		assert.Equal(t, "BackendAuthRotationInitialization", k8sEvent.Reason)
 	case <-time.After(time.Second):
 		t.Fatal("no initialization event received")
 	}
 }
 
-func TestTokenManager_RequestInitialization_Errors(t *testing.T) {
+func TestBackendAuthManager_RequestInitialization_Errors(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent, 10)
 	fakeClient := ctrlfake.NewClientBuilder().Build()
 
 	tests := []struct {
 		name        string
 		rotator     *mockRotator
-		event       token_rotators.RotationEvent
+		event       backend_auth_rotators.RotationEvent
 		expectedErr string
 		expectedMsg string
 	}{
 		{
 			name: "initialization failure",
 			rotator: &mockRotator{
-				rotateType: token_rotators.RotationTypeAWSCredentials,
-				initFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+				rotateType: backend_auth_rotators.RotationTypeAWSCredentials,
+				initFn: func(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 					return fmt.Errorf("initialization failed")
 				},
 			},
-			event: token_rotators.RotationEvent{
+			event: backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      "test-secret",
-				Type:      token_rotators.RotationTypeAWSCredentials,
+				Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 			},
-			expectedErr: "failed to initialize token",
-			expectedMsg: "failed to initialize token for secret default/test-secret: initialization failed",
+			expectedErr: "failed to initialize BackendAuth",
+			expectedMsg: "failed to initialize BackendAuth for secret default/test-secret: initialization failed",
 		},
 		{
 			name:    "no rotator registered",
 			rotator: nil,
-			event: token_rotators.RotationEvent{
+			event: backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      "test-secret",
-				Type:      token_rotators.RotationTypeAWSCredentials,
+				Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 			},
 			expectedErr: "no rotator found",
 			expectedMsg: "no rotator found for secret default/test-secret: for type aws-credentials",
@@ -505,12 +505,12 @@ func TestTokenManager_RequestInitialization_Errors(t *testing.T) {
 		{
 			name: "rotator type mismatch",
 			rotator: &mockRotator{
-				rotateType: token_rotators.RotationTypeAWSOIDC,
+				rotateType: backend_auth_rotators.RotationTypeAWSOIDC,
 			},
-			event: token_rotators.RotationEvent{
+			event: backend_auth_rotators.RotationEvent{
 				Namespace: "default",
 				Name:      "test-secret",
-				Type:      token_rotators.RotationTypeAWSCredentials,
+				Type:      backend_auth_rotators.RotationTypeAWSCredentials,
 			},
 			expectedErr: "no rotator found",
 			expectedMsg: "no rotator found for secret default/test-secret: for type aws-credentials",
@@ -520,7 +520,7 @@ func TestTokenManager_RequestInitialization_Errors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset manager
-			manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
+			manager := NewBackendAuthManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
 			// Register rotator if provided
 			if tt.rotator != nil {
@@ -543,7 +543,7 @@ func TestTokenManager_RequestInitialization_Errors(t *testing.T) {
 					k8sEvent, ok := evt.(*corev1.Event)
 					require.True(t, ok)
 					assert.Equal(t, corev1.EventTypeNormal, k8sEvent.Type)
-					assert.Equal(t, "TokenRotationInitialization", k8sEvent.Reason)
+					assert.Equal(t, "BackendAuthRotationInitialization", k8sEvent.Reason)
 				case <-time.After(time.Second):
 					t.Fatal("no initialization event received")
 				}

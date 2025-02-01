@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
 )
 
 // RotationType defines the type of rotation to be performed
@@ -21,7 +21,7 @@ type RotationType string
 const (
 	// RotationTypeAWSCredentials represents AWS IAM credentials rotation
 	RotationTypeAWSCredentials RotationType = "aws-credentials"
-	// RotationTypeAWSOIDC represents AWS OIDC token rotation
+	// RotationTypeAWSOIDC represents AWS OIDC BackendAuth rotation
 	RotationTypeAWSOIDC RotationType = "aws-oidc"
 )
 
@@ -51,12 +51,12 @@ type RotationEvent struct {
 	Metadata map[string]string
 }
 
-// TokenRotationEvent represents an event related to token rotation
-type TokenRotationEvent struct {
+// BackendAuthRotationEvent represents an event related to BackendAuth rotation
+type BackendAuthRotationEvent struct {
 	// Type of the event (Started, Succeeded, Failed)
 	EventType RotationEventType
 	// The rotation event that triggered this event
-	RotationEvent token_rotators.RotationEvent
+	RotationEvent backend_auth_rotators.RotationEvent
 	// Error message if the event type is Failed
 	Error string
 	// Timestamp when the event occurred
@@ -65,7 +65,7 @@ type TokenRotationEvent struct {
 
 // Rotator defines the interface for credential rotators
 type Rotator interface {
-	// Initialize performs the initial token retrieval
+	// Initialize performs the initial BackendAuth retrieval
 	Initialize(ctx context.Context, event RotationEvent) error
 	// Rotate performs the credential rotation
 	Rotate(ctx context.Context, event RotationEvent) error
@@ -73,10 +73,10 @@ type Rotator interface {
 	Type() RotationType
 }
 
-// TokenManager manages credential rotation across different rotator implementations
-type TokenManager struct {
-	rotationChan chan token_rotators.RotationEvent
-	rotators     map[token_rotators.RotationType]token_rotators.Rotator
+// BackendAuthManager manages credential rotation across different rotator implementations
+type BackendAuthManager struct {
+	rotationChan chan backend_auth_rotators.RotationEvent
+	rotators     map[backend_auth_rotators.RotationType]backend_auth_rotators.Rotator
 	logger       logr.Logger
 	mu           sync.RWMutex
 	wg           sync.WaitGroup
@@ -86,27 +86,27 @@ type TokenManager struct {
 	// rotationWindow is how long before expiry to rotate credentials
 	rotationWindow time.Duration
 	// publishChan is used to publish rotation events to subscribers
-	publishChan chan token_rotators.RotationEvent
+	publishChan chan backend_auth_rotators.RotationEvent
 	// eventChan is used to publish events to the configSink
 	eventChan chan ConfigSinkEvent
 	// client is used for Kubernetes API operations
 	client client.Client
 }
 
-// scheduledRotation represents a scheduled token rotation
+// scheduledRotation represents a scheduled BackendAuth rotation
 type scheduledRotation struct {
 	timer    *time.Timer
 	cancelFn context.CancelFunc
-	event    token_rotators.RotationEvent
+	event    backend_auth_rotators.RotationEvent
 }
 
-// NewTokenManager creates a new token manager
-func NewTokenManager(logger logr.Logger, eventChan chan ConfigSinkEvent, client client.Client) *TokenManager {
-	return &TokenManager{
+// NewBackendAuthManager creates a new BackendAuth manager
+func NewBackendAuthManager(logger logr.Logger, eventChan chan ConfigSinkEvent, client client.Client) *BackendAuthManager {
+	return &BackendAuthManager{
 		logger:         logger,
-		rotators:       make(map[token_rotators.RotationType]token_rotators.Rotator),
-		rotationChan:   make(chan token_rotators.RotationEvent, 100), // Buffer size of 100
-		publishChan:    make(chan token_rotators.RotationEvent, 100), // Buffer size of 100
+		rotators:       make(map[backend_auth_rotators.RotationType]backend_auth_rotators.Rotator),
+		rotationChan:   make(chan backend_auth_rotators.RotationEvent, 100), // Buffer size of 100
+		publishChan:    make(chan backend_auth_rotators.RotationEvent, 100), // Buffer size of 100
 		stopChan:       make(chan struct{}),
 		client:         client,
 		eventChan:      eventChan,
@@ -115,7 +115,7 @@ func NewTokenManager(logger logr.Logger, eventChan chan ConfigSinkEvent, client 
 }
 
 // RegisterRotator registers a new rotator implementation
-func (tm *TokenManager) RegisterRotator(r token_rotators.Rotator) error {
+func (tm *BackendAuthManager) RegisterRotator(r backend_auth_rotators.Rotator) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -129,12 +129,12 @@ func (tm *TokenManager) RegisterRotator(r token_rotators.Rotator) error {
 }
 
 // RotationChannel returns a channel that will receive rotation events
-func (tm *TokenManager) RotationChannel() <-chan token_rotators.RotationEvent {
+func (tm *BackendAuthManager) RotationChannel() <-chan backend_auth_rotators.RotationEvent {
 	return tm.rotationChan
 }
 
-// publishRotationEvent publishes a token rotation event to the configSink
-func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
+// publishRotationEvent publishes a BackendAuth rotation event to the configSink
+func (tm *BackendAuthManager) publishRotationEvent(event BackendAuthRotationEvent) {
 	if tm.eventChan == nil {
 		return
 	}
@@ -142,7 +142,7 @@ func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
 	// Create a Kubernetes event
 	k8sEvent := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("token-rotation-%s-", strings.ToLower(string(event.EventType))),
+			GenerateName: fmt.Sprintf("BackendAuth-rotation-%s-", strings.ToLower(string(event.EventType))),
 			Namespace:    event.RotationEvent.Namespace,
 		},
 		InvolvedObject: corev1.ObjectReference{
@@ -150,7 +150,7 @@ func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
 			Name:      event.RotationEvent.Name,
 			Namespace: event.RotationEvent.Namespace,
 		},
-		Reason:    fmt.Sprintf("TokenRotation%s", event.EventType),
+		Reason:    fmt.Sprintf("BackendAuthRotation%s", event.EventType),
 		Message:   tm.formatEventMessage(event),
 		Type:      tm.getEventType(event.EventType),
 		EventTime: metav1.MicroTime{Time: event.Timestamp},
@@ -176,21 +176,21 @@ func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
 }
 
 // formatEventMessage formats the event message based on the event type
-func (tm *TokenManager) formatEventMessage(event TokenRotationEvent) string {
+func (tm *BackendAuthManager) formatEventMessage(event BackendAuthRotationEvent) string {
 	switch event.EventType {
 	case RotationEventStarted:
-		return fmt.Sprintf("Started rotation of %s token", event.RotationEvent.Type)
+		return fmt.Sprintf("Started rotation of %s BackendAuth", event.RotationEvent.Type)
 	case RotationEventSucceeded:
-		return fmt.Sprintf("Successfully rotated %s token", event.RotationEvent.Type)
+		return fmt.Sprintf("Successfully rotated %s BackendAuth", event.RotationEvent.Type)
 	case RotationEventFailed:
-		return fmt.Sprintf("Failed to rotate %s token: %s", event.RotationEvent.Type, event.Error)
+		return fmt.Sprintf("Failed to rotate %s BackendAuth: %s", event.RotationEvent.Type, event.Error)
 	default:
-		return fmt.Sprintf("Unknown rotation event for %s token", event.RotationEvent.Type)
+		return fmt.Sprintf("Unknown rotation event for %s BackendAuth", event.RotationEvent.Type)
 	}
 }
 
 // getEventType returns the appropriate Kubernetes event type
-func (tm *TokenManager) getEventType(eventType RotationEventType) string {
+func (tm *BackendAuthManager) getEventType(eventType RotationEventType) string {
 	switch eventType {
 	case RotationEventStarted:
 		return corev1.EventTypeNormal
@@ -203,8 +203,8 @@ func (tm *TokenManager) getEventType(eventType RotationEventType) string {
 	}
 }
 
-// isTokenInitialized checks if a token has been initialized by verifying if its secret exists
-func (tm *TokenManager) isTokenInitialized(event token_rotators.RotationEvent) bool {
+// isBackendAuthInitialized checks if a BackendAuth has been initialized by verifying if its secret exists
+func (tm *BackendAuthManager) isBackendAuthInitialized(event backend_auth_rotators.RotationEvent) bool {
 	secret := &corev1.Secret{}
 	err := tm.client.Get(context.Background(), client.ObjectKey{
 		Namespace: event.Namespace,
@@ -214,7 +214,7 @@ func (tm *TokenManager) isTokenInitialized(event token_rotators.RotationEvent) b
 }
 
 // validateRotationEvent validates that the rotation event is valid and a rotator exists for its type
-func (tm *TokenManager) validateRotationEvent(event token_rotators.RotationEvent) (bool, error) {
+func (tm *BackendAuthManager) validateRotationEvent(event backend_auth_rotators.RotationEvent) (bool, error) {
 	if event.Type == "" {
 		return false, fmt.Errorf("rotation type cannot be empty")
 	}
@@ -222,7 +222,7 @@ func (tm *TokenManager) validateRotationEvent(event token_rotators.RotationEvent
 }
 
 // checkRotatorExists checks if a rotator exists for the given type
-func (tm *TokenManager) checkRotatorExists(rotationType token_rotators.RotationType) bool {
+func (tm *BackendAuthManager) checkRotatorExists(rotationType backend_auth_rotators.RotationType) bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	_, exists := tm.rotators[rotationType]
@@ -230,8 +230,8 @@ func (tm *TokenManager) checkRotatorExists(rotationType token_rotators.RotationT
 }
 
 // publishEvent is a helper method to publish rotation events with consistent error handling
-func (tm *TokenManager) publishEvent(event token_rotators.RotationEvent, eventType RotationEventType, err error) {
-	rotationEvent := TokenRotationEvent{
+func (tm *BackendAuthManager) publishEvent(event backend_auth_rotators.RotationEvent, eventType RotationEventType, err error) {
+	rotationEvent := BackendAuthRotationEvent{
 		EventType:     eventType,
 		RotationEvent: event,
 		Timestamp:     time.Now(),
@@ -243,8 +243,8 @@ func (tm *TokenManager) publishEvent(event token_rotators.RotationEvent, eventTy
 }
 
 // handleError publishes an error event and returns a formatted error
-func (tm *TokenManager) handleError(event token_rotators.RotationEvent, errMsg string, err error) error {
-	rotationEvent := TokenRotationEvent{
+func (tm *BackendAuthManager) handleError(event backend_auth_rotators.RotationEvent, errMsg string, err error) error {
+	rotationEvent := BackendAuthRotationEvent{
 		EventType:     RotationEventFailed,
 		RotationEvent: event,
 		Timestamp:     time.Now(),
@@ -272,7 +272,7 @@ func (tm *TokenManager) handleError(event token_rotators.RotationEvent, errMsg s
 }
 
 // RequestRotation requests a rotation for a secret. This is a non-blocking operation.
-func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotators.RotationEvent) error {
+func (tm *BackendAuthManager) RequestRotation(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
 	// First validate the event structure without locks
 	if valid, err := tm.validateRotationEvent(event); !valid {
 		return tm.handleError(event, "invalid rotation event", err)
@@ -285,7 +285,7 @@ func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotator
 
 	// Use a mutex to make initialization check and request atomic
 	tm.mu.Lock()
-	needsInit := !tm.isTokenInitialized(event)
+	needsInit := !tm.isBackendAuthInitialized(event)
 	if needsInit {
 		if err := tm.RequestInitialization(ctx, event); err != nil {
 			tm.mu.Unlock()
@@ -328,12 +328,12 @@ func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotator
 }
 
 // getScheduledRotationKey returns a consistent key format for scheduled rotations
-func (tm *TokenManager) getScheduledRotationKey(namespace, name string) string {
+func (tm *BackendAuthManager) getScheduledRotationKey(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
 // createScheduledRotation creates and stores a new scheduled rotation
-func (tm *TokenManager) createScheduledRotation(ctx context.Context, event token_rotators.RotationEvent, rotateAt time.Time) (*scheduledRotation, context.CancelFunc) {
+func (tm *BackendAuthManager) createScheduledRotation(ctx context.Context, event backend_auth_rotators.RotationEvent, rotateAt time.Time) (*scheduledRotation, context.CancelFunc) {
 	rotationCtx, cancel := context.WithCancel(ctx)
 
 	timer := time.AfterFunc(time.Until(rotateAt), func() {
@@ -358,7 +358,7 @@ func (tm *TokenManager) createScheduledRotation(ctx context.Context, event token
 }
 
 // ScheduleRotation schedules a rotation to occur at a specific time
-func (tm *TokenManager) ScheduleRotation(ctx context.Context, event token_rotators.RotationEvent, rotateAt time.Time) {
+func (tm *BackendAuthManager) ScheduleRotation(ctx context.Context, event backend_auth_rotators.RotationEvent, rotateAt time.Time) {
 	// Cancel any existing scheduled rotation for this resource
 	tm.cancelExistingRotation(event.Namespace, event.Name)
 
@@ -377,13 +377,13 @@ func (tm *TokenManager) ScheduleRotation(ctx context.Context, event token_rotato
 }
 
 // ScheduleNextRotation schedules the next rotation based on expiry time
-func (tm *TokenManager) ScheduleNextRotation(ctx context.Context, event token_rotators.RotationEvent, expiry time.Time) {
+func (tm *BackendAuthManager) ScheduleNextRotation(ctx context.Context, event backend_auth_rotators.RotationEvent, expiry time.Time) {
 	rotateAt := expiry.Add(-tm.rotationWindow)
 	tm.ScheduleRotation(ctx, event, rotateAt)
 }
 
 // cancelExistingRotation cancels any existing scheduled rotation for the given resource
-func (tm *TokenManager) cancelExistingRotation(namespace, name string) {
+func (tm *BackendAuthManager) cancelExistingRotation(namespace, name string) {
 	key := tm.getScheduledRotationKey(namespace, name)
 	if val, ok := tm.scheduledRotations.Load(key); ok {
 		if sr, ok := val.(*scheduledRotation); ok {
@@ -397,7 +397,7 @@ func (tm *TokenManager) cancelExistingRotation(namespace, name string) {
 }
 
 // Cleanup cancels all scheduled rotations
-func (tm *TokenManager) Cleanup() {
+func (tm *BackendAuthManager) Cleanup() {
 	tm.scheduledRotations.Range(func(key, value interface{}) bool {
 		if sr, ok := value.(*scheduledRotation); ok {
 			sr.timer.Stop()
@@ -411,7 +411,7 @@ func (tm *TokenManager) Cleanup() {
 }
 
 // Start begins processing rotation events
-func (tm *TokenManager) Start(ctx context.Context) error {
+func (tm *BackendAuthManager) Start(ctx context.Context) error {
 	// Create a new context that we can cancel when stopping
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -437,7 +437,7 @@ func (tm *TokenManager) Start(ctx context.Context) error {
 			}
 
 			tm.wg.Add(1)
-			go func(e token_rotators.RotationEvent) {
+			go func(e backend_auth_rotators.RotationEvent) {
 				defer tm.wg.Done()
 				if err := rotator.Rotate(ctx, e); err != nil {
 					if err != context.Canceled {
@@ -475,9 +475,9 @@ func (tm *TokenManager) Start(ctx context.Context) error {
 	}
 }
 
-// RequestInitialization handles the initialization of tokens
-func (tm *TokenManager) RequestInitialization(ctx context.Context, event token_rotators.RotationEvent) error {
-	tm.logger.Info("requesting token initialization",
+// RequestInitialization handles the initialization of BackendAuths
+func (tm *BackendAuthManager) RequestInitialization(ctx context.Context, event backend_auth_rotators.RotationEvent) error {
+	tm.logger.Info("requesting BackendAuth initialization",
 		"namespace", event.Namespace,
 		"name", event.Name,
 		"type", event.Type)
@@ -498,7 +498,7 @@ func (tm *TokenManager) RequestInitialization(ctx context.Context, event token_r
 
 	// Perform initialization
 	if err := r.Initialize(ctx, event); err != nil {
-		return tm.handleError(event, "failed to initialize token", err)
+		return tm.handleError(event, "failed to initialize BackendAuth", err)
 	}
 
 	// Publish success event

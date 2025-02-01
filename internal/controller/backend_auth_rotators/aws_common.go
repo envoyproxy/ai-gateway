@@ -1,5 +1,5 @@
 /*
-Package token_rotators provides credential rotation implementations.
+Package backend_auth_rotators provides credential rotation implementations.
 
 This file contains common AWS functionality shared between different AWS credential
 rotators. It provides:
@@ -19,7 +19,7 @@ rotators. It provides:
   - Standard timeouts and delays
   - Session name formatting
 */
-package token_rotators
+package backend_auth_rotators
 
 import (
 	"context"

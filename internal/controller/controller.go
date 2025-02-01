@@ -20,7 +20,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
 )
 
 func init() { MustInitializeScheme(scheme) }
@@ -89,62 +89,53 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
-	// Create and start the Token Manager
-	tokenManager := NewTokenManager(logger.WithName("token-manager"), sinkChan, c)
-	go tokenManager.Start(ctx)
+	// Create and start the backend auth manager
+	backendAuthManager := NewBackendAuthManager(logger.WithName("backend-auth-manager"), sinkChan, c)
+	go backendAuthManager.Start(ctx)
 
-	// Create AWS credentials rotator
-	awsCredsRotator, err := NewAWSCredentialsRotator(
-		c,
-		kubernetes.NewForConfigOrDie(config),
-		logger.WithName("aws-credentials-rotator"),
-	)
+	// Create AWS factory
+	awsFactory := NewAWSFactory(c, kubernetes.NewForConfigOrDie(config), logger)
+
+	// Register AWS credentials rotator
+	awsCredsRotator, err := awsFactory.NewAWSCredentialsRotator()
 	if err != nil {
 		return fmt.Errorf("failed to create AWS credentials rotator: %w", err)
 	}
-	if err := tokenManager.RegisterRotator(awsCredsRotator); err != nil {
+	if err := backendAuthManager.RegisterRotator(awsCredsRotator); err != nil {
 		return fmt.Errorf("failed to register AWS credentials rotator: %w", err)
 	}
 
-	// Get channels for OIDC rotator
-	rotationChan := tokenManager.RotationChannel()
-	scheduleChan := make(chan token_rotators.RotationEvent, 100)
+	// Get rotation channels and set up event forwarding
+	rotationChan := backendAuthManager.RotationChannel()
+	scheduleChan := make(chan backend_auth_rotators.RotationEvent, 100)
 
-	// Create AWS OIDC rotator
-	awsOIDCRotator, err := NewAWSOIDCRotator(
-		c,
-		kubernetes.NewForConfigOrDie(config),
-		logger.WithName("aws-oidc-rotator"),
-		rotationChan,
-		scheduleChan,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create AWS OIDC rotator: %w", err)
-	}
-	if err := tokenManager.RegisterRotator(awsOIDCRotator); err != nil {
-		return fmt.Errorf("failed to register AWS OIDC rotator: %w", err)
-	}
-
-	// Start the OIDC rotator
+	// Forward rotation events to the backend auth manager
 	go func() {
-		if err := awsOIDCRotator.Start(ctx); err != nil && err != context.Canceled {
-			logger.Error(err, "OIDC rotator failed")
+		for event := range rotationChan {
+			if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
+				logger.Error(err, "failed to process rotation event",
+					"namespace", event.Namespace,
+					"name", event.Name)
+			}
 		}
 	}()
 
-	// Start goroutine to forward scheduled events to token manager
+	// Register AWS OIDC rotator
+	awsOIDCRotator, err := awsFactory.NewAWSOIDCRotator()
+	if err != nil {
+		return fmt.Errorf("failed to create AWS OIDC rotator: %w", err)
+	}
+	if err := backendAuthManager.RegisterRotator(awsOIDCRotator); err != nil {
+		return fmt.Errorf("failed to register AWS OIDC rotator: %w", err)
+	}
+
+	// Process scheduled rotation events
 	go func() {
-		for {
-			select {
-			case event := <-scheduleChan:
-				if err := tokenManager.RequestRotation(ctx, event); err != nil {
-					logger.Error(err, "failed to schedule rotation",
-						"type", event.Type,
-						"namespace", event.Namespace,
-						"name", event.Name)
-				}
-			case <-ctx.Done():
-				return
+		for event := range scheduleChan {
+			if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
+				logger.Error(err, "failed to schedule rotation",
+					"namespace", event.Namespace,
+					"name", event.Name)
 			}
 		}
 	}()
@@ -155,7 +146,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		kubernetes.NewForConfigOrDie(config),
 		logger.WithName("backend-security-policy"),
 		sinkChan,
-		tokenManager,
+		backendAuthManager,
 	)
 
 	// Register BackendSecurityPolicy controller
