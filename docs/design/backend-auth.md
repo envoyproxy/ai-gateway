@@ -26,13 +26,20 @@ The system is built around two core packages: `backend_auth_manager` and `backen
    - Publishes rotation events to subscribers
    - Integrates with Kubernetes events for monitoring
 
-2. **Rotator Interface**
+2. **Rotation Scheduling**
+   - The `BackendAuthManager` schedules credential rotations using the `ScheduleRotation` method.
+   - It cancels any existing scheduled rotation for the same resource before scheduling a new one.
+   - If the specified rotation time is very close (less than one second), it triggers the rotation immediately using `RequestRotation`.
+   - For valid future times, it sets up a timer to call `RequestRotation` at the specified time.
+   - This method logs the scheduling details, including the namespace, name, and scheduled time.
+
+3. **Rotator Interface**
    - Defines the contract for upstream credential rotators
    - Supports initialization and rotation operations
    - Allows for different types of upstream authentication
    - Extensible design for adding new backend service authentication types
 
-3. **BackendSecurityController**
+4. **BackendSecurityController**
    - Kubernetes controller watching BackendSecurityPolicy resources
    - Triggers rotation events based on policy changes
    - Manages the lifecycle of upstream credential secrets
