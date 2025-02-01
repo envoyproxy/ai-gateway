@@ -28,9 +28,9 @@ jobs:
               echo "PR description contains '-->'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
-          if [[ ! $TITLE =~ "**Commit Message**:" ]]; then
-              echo "PR description must begin with '**Commit Message**:'."
-              exit 1
+          if [[ ! $TITLE =~ ^\*\*Commit Message\*\* ]]; then
+            echo "The first line of the PR description should be '**Commit Message**'"
+            exit 1
           fi
 
   title:
