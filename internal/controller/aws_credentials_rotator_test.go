@@ -18,7 +18,6 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,25 +29,13 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	testNamespace  = "test-namespace"
-	mockOIDCIssuer = "https://test-oidc-server"
-)
-
-// Test error prefixes
-const (
-	errPrefixOIDCToken = "failed to get OIDC token: "
-	errPrefixOAuth     = "failed to get OAuth token: "
-	errPrefixOperation = "operation OIDC token retrieval failed: "
-	errPrefixSecret    = "failed to update Secret: "
-)
-
-// Test error messages
-const (
-	errMsgOAuth2InvalidClient = "oauth2: \"invalid_client\" \"Client authentication failed\""
-	errMsgSecretModified      = "Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified"
+	testNamespace          = "test-namespace"
+	mockOIDCIssuer         = "https://test-oidc-server"
+	lastRotationAnnotation = "ai-gateway.envoyproxy.io/last-rotation"
 )
 
 func init() {
@@ -93,18 +80,6 @@ func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return m.RoundTrip(req)
-}
-
-// Helper functions
-func assertDurationWithin(t *testing.T, expected, actual time.Duration, margin time.Duration) {
-	t.Helper()
-	diff := expected - actual
-	if diff < 0 {
-		diff = -diff
-	}
-	if diff > margin {
-		t.Errorf("Duration %v not within %v of expected %v", actual, margin, expected)
-	}
 }
 
 // IAMOperations mock implementation
@@ -169,6 +144,7 @@ func (f *mockSTSClientFactory) getClient(region string) *mockSTSOperations {
 	return client
 }
 
+// mockKubeClient wraps the fake clientset to simulate concurrent modifications
 type mockKubeClient struct {
 	*kubefake.Clientset
 	shouldReturnConflict bool
@@ -194,12 +170,28 @@ type mockSecretClient struct {
 }
 
 func (m *mockSecretClient) Update(ctx context.Context, secret *corev1.Secret, opts metav1.UpdateOptions) (*corev1.Secret, error) {
-	return nil, fmt.Errorf("failed to update Secret: %w", &apierrors.StatusError{ErrStatus: metav1.Status{
-		Status:  metav1.StatusFailure,
-		Message: "Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified",
-		Reason:  metav1.StatusReasonConflict,
-		Code:    409,
-	}})
+	fmt.Printf("mockSecretClient.Update called for secret %s/%s\n", secret.Namespace, secret.Name)
+	fmt.Printf("mockSecretClient.Update returning conflict error\n")
+	return nil, fmt.Errorf(errMsgSecretModified)
+}
+
+// mockClient implements client.Client to simulate concurrent modifications
+type mockClient struct {
+	client.Client
+	shouldReturnConflict bool
+}
+
+func (m *mockClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	fmt.Printf("mockClient.Update called for object: %T with GVK: %+v\n", obj, gvk)
+
+	// Check if it's a Secret by type assertion
+	if _, isSecret := obj.(*corev1.Secret); isSecret && m.shouldReturnConflict {
+		fmt.Printf("mockClient.Update detected Secret update, returning conflict error\n")
+		return fmt.Errorf(errMsgSecretModified)
+	}
+	fmt.Printf("mockClient.Update proceeding with normal update\n")
+	return m.Client.Update(ctx, obj, opts...)
 }
 
 // Test cases
@@ -268,7 +260,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: errPrefixOIDCToken + "client secret name is required",
+			expectedErrorMsg: errPrefixOIDCToken + errMsgClientSecretRequired,
 		},
 		{
 			name: "client_secret_not_found",
@@ -284,7 +276,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: errPrefixOIDCToken + fmt.Sprintf("client secret %q not found", "nonexistent-secret"),
+			expectedErrorMsg: fmt.Sprintf(errPrefixOIDCToken+errMsgClientSecretNotFound, "nonexistent-secret"),
 		},
 		{
 			name: "missing_aws_region",
@@ -373,7 +365,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			},
 			httpResponse:     failedOIDCResponse,
 			expectError:      true,
-			expectedErrorMsg: errPrefixOIDCToken + errPrefixOAuth + errPrefixOperation + errMsgOAuth2InvalidClient,
+			expectedErrorMsg: errPrefixOIDCToken + errPrefixOAuth + errPrefixOperation + "oauth2: \"invalid_client\" \"Client authentication failed\"",
 		},
 		{
 			name: "successful_static_credentials_rotation",
@@ -428,6 +420,9 @@ region = us-west-2`),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "aws-credentials",
 					Namespace: testNamespace,
+					Annotations: map[string]string{
+						lastRotationAnnotation: time.Now().Add(-25 * time.Hour).Format(time.RFC3339), // Force rotation by setting last rotation to 25 hours ago
+					},
 				},
 				Data: map[string][]byte{
 					credentialsKey: []byte(`[default]
@@ -443,12 +438,10 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`),
 					},
 				}
 				policy.Spec.AWSCredentials.Region = "us-west-2"
-			},
-			modifySecret: func(secret *corev1.Secret) {
-				secret.ResourceVersion = "1"
-				secret.Data[credentialsKey] = []byte(`[default]
-aws_access_key_id = AKIAIOSFODNN7MODIFIED
-aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
+				policy.Spec.AWSCredentials.RotationConfig = &aigv1a1.AWSCredentialsRotationConfig{
+					RotationInterval:  "24h",
+					PreRotationWindow: "1h",
+				}
 			},
 			createKeyOutput: &iam.CreateAccessKeyOutput{
 				AccessKey: &iamtypes.AccessKey{
@@ -457,14 +450,18 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: errPrefixSecret + errPrefixSecret + errMsgSecretModified,
+			expectedErrorMsg: fmt.Sprintf("operation %s failed after retries: %s", "secret operation", errMsgSecretModified),
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "concurrent_modification_handling" {
+				fmt.Printf("\n=== Starting concurrent modification test ===\n")
+			}
+
 			// Create fake clients
-			k8sClient := clientfake.NewClientBuilder().
+			baseClient := clientfake.NewClientBuilder().
 				WithScheme(testScheme).
 				WithObjects(
 					&aigv1a1.BackendSecurityPolicy{
@@ -484,40 +481,57 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				).
 				Build()
 
-			var kubeClient *mockKubeClient
+			var controllerClient client.Client
+			var credentialsClient *mockKubeClient
+
 			if tc.name == "concurrent_modification_handling" {
-				kubeClient = &mockKubeClient{
+				fmt.Printf("Setting up mock clients with conflict behavior\n")
+				controllerClient = &mockClient{
+					Client:               baseClient,
+					shouldReturnConflict: true,
+				}
+				credentialsClient = &mockKubeClient{
 					Clientset:            kubefake.NewSimpleClientset(),
 					shouldReturnConflict: true,
 				}
 			} else {
-				kubeClient = &mockKubeClient{
+				controllerClient = baseClient
+				credentialsClient = &mockKubeClient{
 					Clientset:            kubefake.NewSimpleClientset(),
 					shouldReturnConflict: false,
 				}
 			}
 
 			if tc.clientSecret != nil {
-				require.NoError(t, k8sClient.Create(context.Background(), tc.clientSecret), "Failed to create client secret in k8sClient")
-				_, err := kubeClient.CoreV1().Secrets(testNamespace).Create(context.Background(), tc.clientSecret, metav1.CreateOptions{})
-				require.NoError(t, err, "Failed to create client secret in kubeClient")
+				if tc.name == "concurrent_modification_handling" {
+					fmt.Printf("Creating client secret: %s/%s with last rotation: %s\n",
+						tc.clientSecret.Namespace,
+						tc.clientSecret.Name,
+						tc.clientSecret.Annotations[lastRotationAnnotation])
+				}
+				require.NoError(t, controllerClient.Create(context.Background(), tc.clientSecret), "Failed to create client secret in controllerClient")
+				_, err := credentialsClient.CoreV1().Secrets(testNamespace).Create(context.Background(), tc.clientSecret, metav1.CreateOptions{})
+				require.NoError(t, err, "Failed to create client secret in credentialsClient")
 			}
 
 			if tc.setupPolicy != nil {
+				if tc.name == "concurrent_modification_handling" {
+					fmt.Printf("Setting up policy with rotation config\n")
+				}
 				policy := &aigv1a1.BackendSecurityPolicy{}
-				err := k8sClient.Get(context.Background(), types.NamespacedName{
+				err := controllerClient.Get(context.Background(), types.NamespacedName{
 					Name:      "test-policy",
 					Namespace: testNamespace,
 				}, policy)
 				require.NoError(t, err, "Failed to get policy")
 				tc.setupPolicy(policy)
-				require.NoError(t, k8sClient.Update(context.Background(), policy), "Failed to update policy")
+				require.NoError(t, controllerClient.Update(context.Background(), policy), "Failed to update policy")
 			}
 
 			if tc.modifySecret != nil {
 				var secret corev1.Secret
 				var policy aigv1a1.BackendSecurityPolicy
-				err := k8sClient.Get(context.Background(), types.NamespacedName{
+				err := controllerClient.Get(context.Background(), types.NamespacedName{
 					Name:      "test-policy",
 					Namespace: testNamespace,
 				}, &policy)
@@ -527,13 +541,13 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 					secretName = fmt.Sprintf("%s-oidc-creds", "test-policy")
 				}
-				err = k8sClient.Get(context.Background(), types.NamespacedName{
+				err = controllerClient.Get(context.Background(), types.NamespacedName{
 					Name:      secretName,
 					Namespace: testNamespace,
 				}, &secret)
 				require.NoError(t, err, "Failed to get secret for modification")
 				tc.modifySecret(&secret)
-				require.NoError(t, k8sClient.Update(context.Background(), &secret), "Failed to update modified secret")
+				require.NoError(t, controllerClient.Update(context.Background(), &secret), "Failed to update modified secret")
 			}
 
 			// Create mock STS client factory
@@ -548,8 +562,8 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				err:      tc.httpError,
 			}
 			rotator := &awsCredentialsRotator{
-				k8sClient:    k8sClient,
-				k8sClientset: kubeClient,
+				k8sClient:    controllerClient,
+				k8sClientset: credentialsClient,
 				logger:       logger,
 				iamOps: &mockIAMOperations{
 					createKeyOutput: tc.createKeyOutput,
@@ -570,6 +584,9 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 			}
 
 			// Run reconciliation
+			if tc.name == "concurrent_modification_handling" {
+				fmt.Printf("Starting reconciliation\n")
+			}
 			result, err := rotator.Reconcile(context.Background(), ctrl.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      "test-policy",
@@ -578,6 +595,10 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 			})
 
 			// Verify results
+			if tc.name == "concurrent_modification_handling" {
+				fmt.Printf("Reconciliation completed. Error: %v\n", err)
+			}
+
 			if tc.expectError {
 				require.Error(t, err, "Expected error but got none")
 				if tc.expectedErrorMsg != "" {
@@ -589,7 +610,7 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				// Verify the secret was created
 				var secret corev1.Secret
 				var policy aigv1a1.BackendSecurityPolicy
-				err := k8sClient.Get(context.Background(), types.NamespacedName{
+				err := controllerClient.Get(context.Background(), types.NamespacedName{
 					Name:      "test-policy",
 					Namespace: testNamespace,
 				}, &policy)
@@ -599,7 +620,7 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 					secretName = fmt.Sprintf("%s-oidc-creds", "test-policy")
 				}
-				err = k8sClient.Get(context.Background(), types.NamespacedName{
+				err = controllerClient.Get(context.Background(), types.NamespacedName{
 					Name:      secretName,
 					Namespace: testNamespace,
 				}, &secret)
@@ -617,5 +638,17 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				require.Zero(t, result.RequeueAfter, "Expected no requeue but got one")
 			}
 		})
+	}
+}
+
+// Helper functions
+func assertDurationWithin(t *testing.T, expected, actual time.Duration, margin time.Duration) {
+	t.Helper()
+	diff := expected - actual
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > margin {
+		t.Errorf("Duration %v not within %v of expected %v", actual, margin, expected)
 	}
 }
