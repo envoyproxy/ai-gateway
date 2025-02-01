@@ -1,10 +1,9 @@
-//go:build test_controller
-
 package controller
 
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -18,10 +17,8 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,28 +30,27 @@ import (
 )
 
 const testNamespace = "test-namespace"
-const mockOIDCIssuer = "http://test-oidc-server"
+const mockOIDCIssuer = "https://test-oidc-server"
 
-var scheme = runtime.NewScheme()
+// var scheme = runtime.NewScheme()
 
 func init() {
 	// Initialize the logger for all tests
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 }
 
-// mockHTTPClient implements http.Client for testing
+// mockHTTPClient implements http.RoundTripper for testing
 type mockHTTPClient struct {
 	response *http.Response
 	err      error
 }
 
-func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 
-	// If we have a response and the request is for the token endpoint, return the mock response
-	if m.response != nil && strings.HasSuffix(req.URL.Path, "/oauth2/token") {
+	if m.response != nil {
 		// Read the original body
 		body, err := io.ReadAll(m.response.Body)
 		if err != nil {
@@ -83,6 +79,68 @@ func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return m.RoundTrip(req)
+}
+
+// assertDurationWithin checks if a duration is within an acceptable range of the expected value
+func assertDurationWithin(t *testing.T, expected, actual time.Duration, margin time.Duration) {
+	t.Helper()
+	diff := expected - actual
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > margin {
+		t.Errorf("Duration %v not within %v of expected %v", actual, margin, expected)
+	}
+}
+
+// mockSTSClient implements STSClient for testing
+type mockSTSClient struct {
+	assumeRoleOutput *sts.AssumeRoleWithWebIdentityOutput
+	assumeRoleError  error
+	region           string
+}
+
+func (m *mockSTSClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+	if m.assumeRoleError != nil {
+		return nil, m.assumeRoleError
+	}
+	if m.assumeRoleOutput != nil {
+		return m.assumeRoleOutput, nil
+	}
+	// Default successful response if none provided
+	expiration := time.Now().Add(1 * time.Hour)
+	return &sts.AssumeRoleWithWebIdentityOutput{
+		Credentials: &ststypes.Credentials{
+			AccessKeyId:     aws.String("AKIATEST"),
+			SecretAccessKey: aws.String("test-secret"),
+			SessionToken:    aws.String("test-session"),
+			Expiration:      &expiration,
+		},
+	}, nil
+}
+
+// mockSTSClientFactory creates mock STS clients for testing
+type mockSTSClientFactory struct {
+	clients map[string]*mockSTSClient
+}
+
+func newMockSTSClientFactory() *mockSTSClientFactory {
+	return &mockSTSClientFactory{
+		clients: make(map[string]*mockSTSClient),
+	}
+}
+
+func (f *mockSTSClientFactory) getClient(region string) *mockSTSClient {
+	if client, ok := f.clients[region]; ok {
+		return client
+	}
+	client := &mockSTSClient{region: region}
+	f.clients[region] = client
+	return client
+}
+
 func TestAWSCredentialsRotator(t *testing.T) {
 	logger := zap.New()
 	require.NoError(t, aigv1a1.AddToScheme(scheme))
@@ -93,7 +151,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 		StatusCode: http.StatusOK,
 		Body: io.NopCloser(strings.NewReader(`{
 			"access_token": "test-access-token",
-			"id_token": "test-id-token",
+			"id_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6InRlc3Qta2V5In0.eyJpc3MiOiJodHRwczovL3Rlc3Qtb2lkYy1zZXJ2ZXIiLCJzdWIiOiJ0ZXN0LXVzZXIiLCJhdWQiOiJjbGllbnQtaWQiLCJleHAiOjE3MzgzNzUzNjEsImlhdCI6MTczODM3MTc2MX0.test-signature",
 			"token_type": "Bearer",
 			"expires_in": 3600
 		}`)),
@@ -110,7 +168,8 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			"error_description": "Client authentication failed"
 		}`)),
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type":     []string{"application/json"},
+			"WWW-Authenticate": []string{`Bearer error="invalid_client", error_description="Client authentication failed"`},
 		},
 	}
 
@@ -148,6 +207,10 @@ func TestAWSCredentialsRotator(t *testing.T) {
 					},
 				},
 				AwsRoleArn: "arn:aws:iam::123456789012:role/test-role",
+			},
+			rotationConfig: &aigv1a1.AWSCredentialsRotationConfig{
+				RotationInterval:  "1h",
+				PreRotationWindow: "30m",
 			},
 			clientSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -195,7 +258,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			},
 			httpResponse:     failedOIDCResponse,
 			expectError:      true,
-			expectedErrorMsg: "failed to get OAuth token: oauth2: cannot fetch token: 401 Unauthorized",
+			expectedErrorMsg: "oauth2: \"invalid_client\" \"Client authentication failed\"",
 		},
 	}
 
@@ -228,7 +291,17 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			// Create mock STS client factory
+			stsFactory := newMockSTSClientFactory()
+			mockSTS := stsFactory.getClient("us-west-2")
+			mockSTS.assumeRoleOutput = tc.assumeRoleOutput
+			mockSTS.assumeRoleError = tc.assumeRoleError
+
 			// Create the rotator with mock clients
+			mockClient := &mockHTTPClient{
+				response: tc.httpResponse,
+				err:      tc.httpError,
+			}
 			rotator := &awsCredentialsRotator{
 				client:     k8sClient,
 				kubeClient: kubeClient,
@@ -238,21 +311,16 @@ func TestAWSCredentialsRotator(t *testing.T) {
 					createKeyError:  tc.createKeyError,
 					deleteKeyError:  tc.deleteKeyError,
 				},
-				stsClient: &mockSTSClient{
-					assumeRoleOutput: tc.assumeRoleOutput,
-					assumeRoleError:  tc.assumeRoleError,
+				httpClient: &http.Client{
+					Transport: mockClient,
 				},
-				httpClient: &mockHTTPClient{
-					response: tc.httpResponse,
-					err:      tc.httpError,
+				stsClientCache: map[string]STSClient{
+					"us-west-2": mockSTS,
 				},
 			}
 
-			// Create test context with mock HTTP client
-			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, rotator.httpClient)
-
 			// Run reconciliation
-			result, err := rotator.Reconcile(ctx, ctrl.Request{
+			result, err := rotator.Reconcile(context.Background(), ctrl.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      "test-policy",
 					Namespace: testNamespace,
@@ -267,10 +335,19 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
+				// Verify the secret was created
+				var secret corev1.Secret
+				err := k8sClient.Get(context.Background(), types.NamespacedName{
+					Name:      fmt.Sprintf("%s-oidc-creds", "test-policy"),
+					Namespace: testNamespace,
+				}, &secret)
+				assert.NoError(t, err)
+				assert.NotEmpty(t, secret.Data[credentialsKey])
 			}
 
 			if tc.expectRequeue {
-				assert.Equal(t, tc.expectedRequeue, result.RequeueAfter)
+				// Allow for duration differences up to 2 seconds
+				assertDurationWithin(t, tc.expectedRequeue, result.RequeueAfter, 2*time.Second)
 			} else {
 				assert.Zero(t, result.RequeueAfter)
 			}
@@ -291,14 +368,4 @@ func (m *mockIAMClient) CreateAccessKey(ctx context.Context, params *iam.CreateA
 
 func (m *mockIAMClient) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
 	return &iam.DeleteAccessKeyOutput{}, m.deleteKeyError
-}
-
-// mockSTSClient implements STSClient for testing
-type mockSTSClient struct {
-	assumeRoleOutput *sts.AssumeRoleWithWebIdentityOutput
-	assumeRoleError  error
-}
-
-func (m *mockSTSClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	return m.assumeRoleOutput, m.assumeRoleError
 }

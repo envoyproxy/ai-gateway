@@ -72,16 +72,17 @@ spec:
 ### OIDC Token Exchange
 
 1. The controller obtains an OIDC token using the configured provider
-2. Exchanges the OIDC token for temporary AWS credentials using `AssumeRoleWithWebIdentity`
-3. Creates/updates a secret with the `-oidc-creds` suffix containing the temporary credentials
-4. Automatically rotates credentials before they expire
+2. Creates a region-specific STS client (cached for efficiency)
+3. Exchanges the OIDC token for temporary AWS credentials using `AssumeRoleWithWebIdentity`
+4. Creates/updates a secret with the `-oidc-creds` suffix containing the temporary credentials
+5. Automatically rotates credentials before they expire
 
 ## Rotation Configuration
 
 - `rotationInterval`: How often to rotate credentials (default: 24h)
 - `preRotationWindow`: How long before expiry to start rotation (default: 1h)
 
-For OIDC credentials, rotation is based on the expiry time of the STS credentials.
+For OIDC credentials, rotation is based on the expiry time of the STS credentials. The controller automatically schedules the next rotation within the pre-rotation window to ensure continuous operation.
 
 ## Security Considerations
 
@@ -89,25 +90,37 @@ For OIDC credentials, rotation is based on the expiry time of the STS credential
    - Original credentials are stored in Kubernetes secrets
    - OIDC credentials are stored in separate secrets with `-oidc-creds` suffix
    - Secrets are automatically managed by the controller
+   - Region-specific credentials are properly handled
 
 2. **Access Control**:
    - Uses IAM roles and policies for OIDC-based access
    - Supports fine-grained permissions through AWS IAM
+   - Region-specific STS endpoints ensure proper regional access
 
 3. **Credential Lifecycle**:
    - Old credentials are securely deleted after rotation
    - Failed rotations are handled gracefully with retries
    - Automatic rotation before expiry prevents disruption
+   - Region-specific clients are cached for performance
 
 ## Error Handling
 
 The controller handles various error scenarios:
 - Missing or invalid configuration
-- AWS API errors
+- AWS API errors (including region-specific issues)
 - Rate limiting
 - Concurrent modifications
 - Invalid credentials
 - Network issues
+- OIDC token exchange failures
+- STS assume role failures
+
+Error handling includes:
+- Detailed error logging with context
+- Appropriate requeue durations for retries
+- Graceful degradation
+- Preservation of existing credentials on failure
+- Region-specific error handling
 
 ## Best Practices
 

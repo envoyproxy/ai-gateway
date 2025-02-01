@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -74,15 +75,18 @@ type awsCredentialsRotator struct {
 	httpClient interface {
 		Do(*http.Request) (*http.Response, error)
 	}
+	stsClientCache map[string]STSClient
+	stsClientLock  sync.RWMutex
 }
 
 // NewAWSCredentialsRotator creates a new reconciler for rotating AWS credentials
 func NewAWSCredentialsRotator(client client.Client, kubeClient kubernetes.Interface, logger logr.Logger) reconcile.Reconciler {
 	return &awsCredentialsRotator{
-		client:     client,
-		kubeClient: kubeClient,
-		logger:     logger,
-		httpClient: http.DefaultClient,
+		client:         client,
+		kubeClient:     kubeClient,
+		logger:         logger,
+		httpClient:     http.DefaultClient,
+		stsClientCache: make(map[string]STSClient),
 	}
 }
 
@@ -267,19 +271,15 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 
 // getSTSCredentials exchanges an OIDC token for temporary AWS credentials
 func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token string, roleARN string, region string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	logger := r.logger.WithValues("roleARN", roleARN)
+	logger := r.logger.WithValues("roleARN", roleARN, "region", region)
 	logger.V(1).Info("starting STS credentials exchange")
 
-	// Always initialize a new STS client with the provided region
-	logger.V(2).Info("initializing AWS STS client", "region", region)
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-	)
+	// Get region-specific STS client
+	stsClient, err := r.getSTSClient(ctx, region)
 	if err != nil {
-		logger.Error(err, "failed to load AWS config")
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		logger.Error(err, "failed to get STS client")
+		return nil, fmt.Errorf("failed to get STS client: %w", err)
 	}
-	stsClient := sts.NewFromConfig(cfg)
 
 	sessionName := "ai-gateway-" + time.Now().Format("20060102150405")
 	logger.V(2).Info("assuming role with web identity", "sessionName", sessionName)
@@ -305,6 +305,37 @@ func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token str
 		"accessKeyID", *resp.Credentials.AccessKeyId,
 		"expiration", resp.Credentials.Expiration.Format(time.RFC3339))
 	return resp, nil
+}
+
+// getSTSClient returns an STS client for the specified region, creating one if needed
+func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string) (STSClient, error) {
+	r.stsClientLock.RLock()
+	if client, ok := r.stsClientCache[region]; ok {
+		r.stsClientLock.RUnlock()
+		return client, nil
+	}
+	r.stsClientLock.RUnlock()
+
+	// Create new client
+	r.stsClientLock.Lock()
+	defer r.stsClientLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if client, ok := r.stsClientCache[region]; ok {
+		return client, nil
+	}
+
+	// Initialize a new STS client for the region
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
+	}
+
+	client := sts.NewFromConfig(cfg)
+	r.stsClientCache[region] = client
+	return client, nil
 }
 
 // Reconcile handles the rotation of AWS credentials
