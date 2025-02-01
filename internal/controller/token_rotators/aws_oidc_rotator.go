@@ -9,8 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -74,8 +72,8 @@ func NewAWSOIDCRotator(
 	}, nil
 }
 
-// GetType implements the Rotator interface
-func (r *AWSOIDCRotator) GetType() RotationType {
+// Type returns the type of rotation this rotator handles
+func (r *AWSOIDCRotator) Type() RotationType {
 	return RotationTypeAWSOIDC
 }
 
@@ -117,52 +115,7 @@ func (r *AWSOIDCRotator) Start(ctx context.Context) error {
 // Main Interface Methods - Initialize and Rotate
 // -----------------------------------------------------------------------------
 
-// updateSecret updates (or optionally creates) a secret with AWS credentials
-func (r *AWSOIDCRotator) updateSecret(ctx context.Context, event RotationEvent, resp *sts.AssumeRoleWithWebIdentityOutput, allowCreate bool) error {
-	secret := &corev1.Secret{}
-	if err := r.client.Get(ctx, client.ObjectKey{
-		Namespace: event.Namespace,
-		Name:      event.Name,
-	}, secret); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get secret: %w", err)
-		}
-		if !allowCreate {
-			return fmt.Errorf("secret does not exist and creation is not allowed: %w", err)
-		}
-		// Create new secret if it doesn't exist and creation is allowed
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      event.Name,
-				Namespace: event.Namespace,
-			},
-			Type: corev1.SecretTypeOpaque,
-			Data: make(map[string][]byte),
-		}
-	}
-
-	// Update secret with credentials
-	secret.Data[credentialsKey] = r.createCredentialsFileBytes(resp, event.Metadata["region"])
-
-	// Create or update the secret
-	if secret.ResourceVersion == "" {
-		if err := r.client.Create(ctx, secret); err != nil {
-			return fmt.Errorf("failed to create secret: %w", err)
-		}
-	} else {
-		if err := r.client.Update(ctx, secret); err != nil {
-			return fmt.Errorf("failed to update secret with new credentials: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// Initialize implements the initial token retrieval for AWS OIDC tokens.
-// It performs the following steps:
-// 1. Retrieves the OIDC token from the specified secret
-// 2. Exchanges the token for temporary AWS credentials
-// 3. Creates or updates a secret with the credentials
+// Initialize implements the initial token retrieval for AWS OIDC tokens
 func (r *AWSOIDCRotator) Initialize(ctx context.Context, event RotationEvent) error {
 	r.logger.Info("initializing AWS OIDC token",
 		"namespace", event.Namespace,
@@ -180,18 +133,30 @@ func (r *AWSOIDCRotator) Initialize(ctx context.Context, event RotationEvent) er
 		return err
 	}
 
-	// Update the credentials secret, allowing creation for initialization
-	return r.updateSecret(ctx, event, result, true)
+	// Create new secret struct
+	secret := newSecret(event.Namespace, event.Name)
+
+	// Create credentials file
+	credsFile := &awsCredentialsFile{
+		profiles: map[string]*awsCredentials{
+			defaultProfile: {
+				profile:         defaultProfile,
+				accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
+				secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
+				sessionToken:    aws.ToString(result.Credentials.SessionToken),
+				region:          event.Metadata["region"],
+			},
+		},
+	}
+
+	// Update secret with credentials
+	updateAWSCredentialsInSecret(secret, credsFile)
+	return updateSecret(ctx, r.client, secret)
 }
 
-// Rotate implements the Rotator interface for AWS OIDC credentials.
-// It performs the following steps:
-// 1. Validates the rotation event
-// 2. Exchanges the OIDC token for new AWS credentials
-// 3. Updates the credentials secret
-// 4. Schedules the next rotation before credential expiration
+// Rotate implements the Rotator interface for AWS OIDC credentials
 func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error {
-	if err := r.validateRotationEvent(event); err != nil {
+	if err := validateRotationEvent(event); err != nil {
 		return err
 	}
 
@@ -201,8 +166,28 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 		return err
 	}
 
-	// Update the credentials secret, not allowing creation during rotation
-	if err := r.updateSecret(ctx, event, resp, false); err != nil {
+	// Get existing secret
+	secret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
+	if err != nil {
+		return err
+	}
+
+	// Create credentials file
+	credsFile := &awsCredentialsFile{
+		profiles: map[string]*awsCredentials{
+			defaultProfile: {
+				profile:         defaultProfile,
+				accessKeyID:     aws.ToString(resp.Credentials.AccessKeyId),
+				secretAccessKey: aws.ToString(resp.Credentials.SecretAccessKey),
+				sessionToken:    aws.ToString(resp.Credentials.SessionToken),
+				region:          event.Metadata["region"],
+			},
+		},
+	}
+
+	// Update secret with credentials
+	updateAWSCredentialsInSecret(secret, credsFile)
+	if err := updateSecret(ctx, r.client, secret); err != nil {
 		return err
 	}
 
@@ -268,17 +253,6 @@ func (r *AWSOIDCRotator) createCredentialsFileBytes(resp *sts.AssumeRoleWithWebI
 // -----------------------------------------------------------------------------
 // Helper Methods - Validation and Scheduling
 // -----------------------------------------------------------------------------
-
-// validateRotationEvent validates the required metadata for rotation
-func (r *AWSOIDCRotator) validateRotationEvent(event RotationEvent) error {
-	if event.Metadata["role_arn"] == "" && event.Metadata["role-arn"] == "" {
-		return fmt.Errorf("role ARN is required in metadata")
-	}
-	if event.Metadata["id_token"] == "" {
-		return fmt.Errorf("id_token is required in metadata")
-	}
-	return nil
-}
 
 // scheduleNextRotation schedules the next rotation before credentials expire
 func (r *AWSOIDCRotator) scheduleNextRotation(event RotationEvent, resp *sts.AssumeRoleWithWebIdentityOutput) error {

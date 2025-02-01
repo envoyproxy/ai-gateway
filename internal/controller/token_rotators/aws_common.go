@@ -32,6 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Common constants for AWS operations
@@ -233,4 +234,26 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 		}
 	}
 	return builder.String()
+}
+
+// validateAWSSecret validates that a secret contains valid AWS credentials
+func validateAWSSecret(secret *corev1.Secret) (*awsCredentialsFile, error) {
+	if secret.Data == nil || len(secret.Data[credentialsKey]) == 0 {
+		return nil, fmt.Errorf("secret contains no AWS credentials")
+	}
+
+	creds := parseAWSCredentialsFile(string(secret.Data[credentialsKey]))
+	if creds == nil || len(creds.profiles) == 0 {
+		return nil, fmt.Errorf("no valid AWS credentials found in secret")
+	}
+
+	return creds, nil
+}
+
+// updateAWSCredentialsInSecret updates AWS credentials in a secret
+func updateAWSCredentialsInSecret(secret *corev1.Secret, creds *awsCredentialsFile) {
+	if secret.Data == nil {
+		secret.Data = make(map[string][]byte)
+	}
+	secret.Data[credentialsKey] = []byte(formatAWSCredentialsFile(creds))
 }

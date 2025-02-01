@@ -107,7 +107,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	// Get channels for OIDC rotator
-	rotationChan := tokenManager.GetRotationChannel()
+	rotationChan := tokenManager.RotationChannel()
 	scheduleChan := make(chan token_rotators.RotationEvent, 100)
 
 	// Create AWS OIDC rotator

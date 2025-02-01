@@ -76,7 +76,7 @@ The TokenManager provides:
 type Rotator interface {
     Initialize(ctx context.Context, event RotationEvent) error
     Rotate(ctx context.Context, event RotationEvent) error
-    GetType() RotationType
+    Type() RotationType
 }
 ```
 
@@ -199,8 +199,8 @@ const (
     ScopeKey           = "scope"
 )
 
-// GetType implements the Rotator interface
-func (r *OAuth2Rotator) GetType() RotationType {
+// Type implements the Rotator interface
+func (r *OAuth2Rotator) Type() RotationType {
     return RotationTypeOAuth2ClientCredentials
 }
 ```

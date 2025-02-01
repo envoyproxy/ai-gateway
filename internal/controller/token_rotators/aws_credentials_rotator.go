@@ -55,9 +55,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -119,8 +116,8 @@ func NewAWSCredentialsRotator(
 	}, nil
 }
 
-// GetType implements the Rotator interface
-func (r *AWSCredentialsRotator) GetType() RotationType {
+// Type returns the type of rotation this rotator handles
+func (r *AWSCredentialsRotator) Type() RotationType {
 	return RotationTypeAWSCredentials
 }
 
@@ -134,25 +131,8 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		"namespace", event.Namespace,
 		"name", event.Name)
 
-	// Get the secret
-	secret := &corev1.Secret{}
-	if err := r.client.Get(ctx, client.ObjectKey{
-		Namespace: event.Namespace,
-		Name:      event.Name,
-	}, secret); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get secret: %w", err)
-		}
-		// Create new secret if it doesn't exist
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      event.Name,
-				Namespace: event.Namespace,
-			},
-			Type: corev1.SecretTypeOpaque,
-			Data: make(map[string][]byte),
-		}
-	}
+	// Create new secret struct
+	secret := newSecret(event.Namespace, event.Name)
 
 	// Create new access key
 	result, err := r.IAMOps.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
@@ -160,14 +140,9 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		return fmt.Errorf("failed to create access key: %w", err)
 	}
 
-	// Parse existing credentials file or create new one
-	var credsFile *awsCredentialsFile
-	if data, ok := secret.Data[credentialsKey]; ok {
-		credsFile = parseAWSCredentialsFile(string(data))
-	} else {
-		credsFile = &awsCredentialsFile{
-			profiles: make(map[string]*awsCredentials),
-		}
+	// Create new credentials file
+	credsFile := &awsCredentialsFile{
+		profiles: make(map[string]*awsCredentials),
 	}
 
 	// Update credentials
@@ -183,35 +158,26 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		region:          event.Metadata["region"],
 	}
 
-	// Update secret
-	secret.Data[credentialsKey] = []byte(formatAWSCredentialsFile(credsFile))
-
-	// Create or update the secret
-	if secret.ResourceVersion == "" {
-		if err := r.client.Create(ctx, secret); err != nil {
-			return fmt.Errorf("failed to create secret: %w", err)
-		}
-	} else {
-		if err := r.client.Update(ctx, secret); err != nil {
-			return fmt.Errorf("failed to update secret: %w", err)
-		}
-	}
-
-	return nil
+	// Update secret with credentials
+	updateAWSCredentialsInSecret(secret, credsFile)
+	return updateSecret(ctx, r.client, secret)
 }
 
 // Rotate implements the Rotator interface for AWS IAM credentials
 func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent) error {
-	if err := r.validateRotationEvent(event); err != nil {
+	if err := validateRotationEvent(event); err != nil {
 		return err
 	}
 
-	secret, existingCreds, err := r.getAndValidateSecret(ctx, event)
+	// Get existing secret
+	secret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
 	if err != nil {
 		return err
 	}
-	if secret == nil {
-		return nil // Secret not found, nothing to rotate
+
+	existingCreds, err := validateAWSSecret(secret)
+	if err != nil {
+		return err
 	}
 
 	createKeyOutput, err := r.createNewAccessKey(ctx)
@@ -219,47 +185,18 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 		return err
 	}
 
-	if err := r.updateCredentialsInSecret(ctx, secret, existingCreds, createKeyOutput); err != nil {
+	// Update credentials in all profiles
+	for _, profile := range existingCreds.profiles {
+		profile.accessKeyID = aws.ToString(createKeyOutput.AccessKey.AccessKeyId)
+		profile.secretAccessKey = aws.ToString(createKeyOutput.AccessKey.SecretAccessKey)
+	}
+
+	updateAWSCredentialsInSecret(secret, existingCreds)
+	if err := updateSecret(ctx, r.client, secret); err != nil {
 		return err
 	}
 
 	return r.scheduleOldKeyDeletion(ctx, event)
-}
-
-// -----------------------------------------------------------------------------
-// Validation and Secret Management
-// -----------------------------------------------------------------------------
-
-// validateRotationEvent validates the rotation event parameters
-func (r *AWSCredentialsRotator) validateRotationEvent(event RotationEvent) error {
-	if event.Namespace == "" {
-		return fmt.Errorf("namespace cannot be empty")
-	}
-	if event.Name == "" {
-		return fmt.Errorf("name cannot be empty")
-	}
-	return nil
-}
-
-// getAndValidateSecret retrieves and validates the AWS credentials secret
-func (r *AWSCredentialsRotator) getAndValidateSecret(ctx context.Context, event RotationEvent) (*corev1.Secret, *awsCredentialsFile, error) {
-	var secret corev1.Secret
-	if err := r.client.Get(ctx, client.ObjectKey{
-		Namespace: event.Namespace,
-		Name:      event.Name,
-	}, &secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil, fmt.Errorf("secret not found: %s/%s", event.Namespace, event.Name)
-		}
-		return nil, nil, fmt.Errorf("failed to get secret: %w", err)
-	}
-
-	existingCreds := parseAWSCredentialsFile(string(secret.Data[credentialsKey]))
-	if existingCreds == nil || len(existingCreds.profiles) == 0 {
-		return nil, nil, fmt.Errorf("no valid AWS credentials found in secret")
-	}
-
-	return &secret, existingCreds, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -275,26 +212,6 @@ func (r *AWSCredentialsRotator) createNewAccessKey(ctx context.Context) (*iam.Cr
 	return createKeyOutput, nil
 }
 
-// updateCredentialsInSecret updates the secret with new AWS credentials
-func (r *AWSCredentialsRotator) updateCredentialsInSecret(ctx context.Context, secret *corev1.Secret, existingCreds *awsCredentialsFile, createKeyOutput *iam.CreateAccessKeyOutput) error {
-	// Update credentials in all profiles
-	for _, profile := range existingCreds.profiles {
-		profile.accessKeyID = *createKeyOutput.AccessKey.AccessKeyId
-		profile.secretAccessKey = *createKeyOutput.AccessKey.SecretAccessKey
-	}
-
-	// Format updated credentials
-	updatedCredsData := formatAWSCredentialsFile(existingCreds)
-
-	// Update the secret with new credentials
-	secret.Data[credentialsKey] = []byte(updatedCredsData)
-	if err := r.client.Update(ctx, secret); err != nil {
-		return fmt.Errorf("failed to update secret with new credentials: %w", err)
-	}
-
-	return nil
-}
-
 // -----------------------------------------------------------------------------
 // Key Deletion Management
 // -----------------------------------------------------------------------------
@@ -307,7 +224,7 @@ func (r *AWSCredentialsRotator) scheduleOldKeyDeletion(ctx context.Context, even
 	}
 
 	// Create a context that will time out after the deletion delay
-	deleteCtx, cancel := context.WithTimeout(ctx, r.KeyDeletionDelay+5*time.Second)
+	deleteCtx, cancel := context.WithTimeout(ctx, r.KeyDeletionDelay)
 
 	go func() {
 		defer cancel()

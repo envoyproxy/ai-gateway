@@ -26,8 +26,8 @@ type RotationEvent struct {
 
 // Rotator is the interface that must be implemented by credential rotators
 type Rotator interface {
-	// GetType returns the type of rotation this rotator handles
-	GetType() RotationType
+	// Type returns the type of rotation this rotator handles
+	Type() RotationType
 	// Rotate performs the rotation
 	Rotate(ctx context.Context, event RotationEvent) error
 	// Initialize performs the initial token retrieval

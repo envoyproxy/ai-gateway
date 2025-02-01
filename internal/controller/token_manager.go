@@ -69,8 +69,8 @@ type Rotator interface {
 	Initialize(ctx context.Context, event RotationEvent) error
 	// Rotate performs the credential rotation
 	Rotate(ctx context.Context, event RotationEvent) error
-	// GetType returns the type of rotator
-	GetType() RotationType
+	// Type returns the type of rotator
+	Type() RotationType
 }
 
 // TokenManager manages credential rotation across different rotator implementations
@@ -119,7 +119,7 @@ func (tm *TokenManager) RegisterRotator(r token_rotators.Rotator) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	rotationType := r.GetType()
+	rotationType := r.Type()
 	if _, exists := tm.rotators[rotationType]; exists {
 		return fmt.Errorf("rotator for type %q already registered", rotationType)
 	}
@@ -128,9 +128,9 @@ func (tm *TokenManager) RegisterRotator(r token_rotators.Rotator) error {
 	return nil
 }
 
-// GetRotationChannel returns a channel that subscribers can use to receive rotation events
-func (tm *TokenManager) GetRotationChannel() <-chan token_rotators.RotationEvent {
-	return tm.publishChan
+// RotationChannel returns a channel that will receive rotation events
+func (tm *TokenManager) RotationChannel() <-chan token_rotators.RotationEvent {
+	return tm.rotationChan
 }
 
 // publishRotationEvent publishes a token rotation event to the configSink
@@ -454,9 +454,15 @@ func (tm *TokenManager) RequestInitialization(ctx context.Context, event token_r
 		"name", event.Name,
 		"type", event.Type)
 
-	rotator, exists := tm.rotators[event.Type]
-	if !exists {
+	// Get the rotator for this type
+	r, ok := tm.rotators[event.Type]
+	if !ok {
 		return fmt.Errorf("no rotator found for type %s", event.Type)
+	}
+
+	// Verify the rotator type matches the event type
+	if r.Type() != event.Type {
+		return fmt.Errorf("rotator type %s does not match event type %s", r.Type(), event.Type)
 	}
 
 	// Publish initialization started event
@@ -467,7 +473,7 @@ func (tm *TokenManager) RequestInitialization(ctx context.Context, event token_r
 	})
 
 	// Perform initialization
-	if err := rotator.Initialize(ctx, event); err != nil {
+	if err := r.Initialize(ctx, event); err != nil {
 		tm.publishRotationEvent(TokenRotationEvent{
 			EventType:     RotationEventFailed,
 			RotationEvent: event,

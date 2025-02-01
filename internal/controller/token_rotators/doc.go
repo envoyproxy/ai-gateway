@@ -7,15 +7,23 @@ the contract for credential rotation operations.
 
 # Overview
 
-The package provides a pluggable system for credential rotation, allowing different
-types of credentials to be rotated using a common interface. Each rotator implements
-the Rotator interface:
+The package provides:
+- AWS IAM credentials rotation
+- AWS OIDC token rotation
+- Common utilities for credential management
 
-	type Rotator interface {
-		Initialize(ctx context.Context, event RotationEvent) error
-		Rotate(ctx context.Context, event RotationEvent) error
-		GetType() RotationType
-	}
+# Key Components
+
+## Rotator Interface
+
+The Rotator interface defines three key methods:
+- Initialize: Performs initial credential setup
+- Rotate: Performs credential rotation
+- Type: Returns the type of rotation handled
+
+# Usage
+
+See individual rotator documentation for specific usage details.
 
 # Available Rotators
 

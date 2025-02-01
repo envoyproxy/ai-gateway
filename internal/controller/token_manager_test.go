@@ -34,7 +34,7 @@ func (m *mockRotator) Initialize(ctx context.Context, event token_rotators.Rotat
 	return nil
 }
 
-func (m *mockRotator) GetType() token_rotators.RotationType {
+func (m *mockRotator) Type() token_rotators.RotationType {
 	return m.rotateType
 }
 
@@ -101,7 +101,7 @@ func TestTokenManager_RequestRotation(t *testing.T) {
 
 	// Verify the event was published
 	select {
-	case publishedEvent := <-manager.GetRotationChannel():
+	case publishedEvent := <-manager.RotationChannel():
 		assert.Equal(t, event, publishedEvent)
 	case <-time.After(time.Second):
 		t.Fatal("rotation event was not published")
@@ -171,14 +171,14 @@ func TestTokenManager_Start(t *testing.T) {
 	err = manager.RequestRotation(ctx, scheduledEvent)
 	require.NoError(t, err)
 
-	// Verify the event was published
+	// Wait for the scheduled rotation to occur
 	select {
-	case publishedEvent := <-manager.GetRotationChannel():
-		assert.Equal(t, scheduledEvent.Namespace, publishedEvent.Namespace)
-		assert.Equal(t, scheduledEvent.Name, publishedEvent.Name)
-		assert.Equal(t, scheduledEvent.Type, publishedEvent.Type)
-	case <-time.After(time.Second):
-		t.Fatal("scheduled rotation not published")
+	case rotatedEvent := <-rotationCalls:
+		assert.Equal(t, scheduledEvent.Namespace, rotatedEvent.Namespace)
+		assert.Equal(t, scheduledEvent.Name, rotatedEvent.Name)
+		assert.Equal(t, scheduledEvent.Type, rotatedEvent.Type)
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("scheduled rotation was not executed")
 	}
 
 	// Test cancellation
