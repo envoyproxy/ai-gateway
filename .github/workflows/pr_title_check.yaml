@@ -17,14 +17,14 @@ jobs:
     steps:
       - name: Check PR description
         env:
-          # Do noe use ${{ github.event.pull_request.body }} directly in run command.
-          TITLE: ${{ github.event.pull_request.body }}
+          # Do not use ${{ github.event.pull_request.body }} directly in run command.
+          BODY: ${{ github.event.pull_request.body }}
         run: |
-          if [[ $TITLE =~ "<!--" ]]; then
+          if [[ $BODY =~ "<!--" ]]; then
               echo "PR description contains '<!--'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
-          if [[ $TITLE =~ "-->" ]]; then
+          if [[ $BODY =~ "-->" ]]; then
               echo "PR description contains '-->'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
