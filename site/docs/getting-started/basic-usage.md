@@ -9,6 +9,8 @@ import TabItem from '@theme/TabItem';
 
 This guide will help you set up a basic AI Gateway configuration and make your first request.
 
+For Windows users, note that you are able to use Windows Subsystem for Linux (WSL) to run the commands below if they do not work on the Windows command prompt.
+
 ## Setting Up Your Environment
 
 ### Deploy Basic Configuration
