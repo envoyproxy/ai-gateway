@@ -2,9 +2,7 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
 	"sort"
@@ -16,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -24,6 +21,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -281,7 +279,7 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 	// Get token using client credentials grant
 	logger.V(2).Info("requesting OAuth token")
 	var token *oauth2.Token
-	err = r.retryWithExponentialBackoff(ctx, "OIDC token retrieval", func() error {
+	err = r.retryOperation(ctx, "OIDC token retrieval", func() error {
 		var err error
 		token, err = config.Token(ctx)
 		if err != nil {
@@ -336,26 +334,7 @@ func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token str
 	}
 
 	var resp *sts.AssumeRoleWithWebIdentityOutput
-	err = r.retryWithExponentialBackoff(ctx, "STS assume role", func() error {
-		var err error
-		resp, err = stsClient.AssumeRoleWithWebIdentity(ctx, input)
-		if err != nil {
-			// Check for permanent errors (like invalid role ARN or expired token)
-			var ae smithy.APIError
-			if errors.As(err, &ae) {
-				switch ae.ErrorCode() {
-				case "ExpiredTokenException",
-					"InvalidIdentityTokenException",
-					"MalformedPolicyDocumentException",
-					"PackedPolicyTooLargeException":
-					return &permanentError{err: err}
-				}
-			}
-			return err // Retry other errors
-		}
-		return nil
-	})
-
+	resp, err = stsClient.AssumeRoleWithWebIdentity(ctx, input)
 	if err != nil {
 		logger.Error(err, "failed to assume role with web identity")
 		return nil, fmt.Errorf("failed to assume role with web identity: %w", err)
@@ -390,9 +369,11 @@ func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string)
 		return client, nil
 	}
 
-	// Initialize a new STS client for the region
+	// Initialize a new STS client for the region with retry configuration
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(region),
+		config.WithRetryMode(aws.RetryModeStandard),
+		config.WithRetryMaxAttempts(3),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
@@ -403,58 +384,66 @@ func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string)
 	return client, nil
 }
 
-// retryWithExponentialBackoff executes the given operation with exponential backoff
-func (r *awsCredentialsRotator) retryWithExponentialBackoff(
-	ctx context.Context,
-	operation string,
-	fn func() error,
-) error {
+// Initialize IAM client with retry configuration
+func (r *awsCredentialsRotator) initializeIAMClient(ctx context.Context, region string, creds *awsCredentials) error {
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
+		config.WithRegion(region),
+		config.WithRetryMode(aws.RetryModeStandard),
+		config.WithRetryMaxAttempts(3),
+		config.WithCredentialsProvider(aws.CredentialsProviderFunc(
+			func(ctx context.Context) (aws.Credentials, error) {
+				return aws.Credentials{
+					AccessKeyID:     creds.accessKeyID,
+					SecretAccessKey: creds.secretAccessKey,
+					SessionToken:    creds.sessionToken,
+				}, nil
+			},
+		)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+	r.iamClient = iam.NewFromConfig(cfg)
+	return nil
+}
+
+// retryOperation executes the given operation with exponential backoff using k8s retry utilities
+func (r *awsCredentialsRotator) retryOperation(ctx context.Context, operation string, fn func() error) error {
+	backoff := retry.DefaultBackoff
+	backoff.Steps = 3 // Match our original maxRetries value
+
 	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Check if context is cancelled
-		if ctx.Err() != nil {
-			return fmt.Errorf("context cancelled during %s: %w", operation, ctx.Err())
-		}
-
-		// Execute the operation
-		if err := fn(); err == nil {
-			return nil
-		} else {
-			lastErr = err
-			// Don't retry permanent errors
-			if isPermanentError(err) {
-				return err
+	err := retry.OnError(backoff,
+		func(err error) bool {
+			// Don't retry if context is cancelled or if it's a permanent error
+			if ctx.Err() != nil || isPermanentError(err) {
+				return false
 			}
-			// Log the retry attempt
-			r.logger.V(1).Info("operation failed, will retry",
-				"operation", operation,
-				"attempt", attempt+1,
-				"maxAttempts", maxRetries,
-				"error", err)
-		}
 
-		// Calculate backoff duration with jitter
-		backoff := float64(baseRetryDelay) * float64(uint(1)<<uint(attempt))
-		if backoff > float64(maxRetryDelay) {
-			backoff = float64(maxRetryDelay)
-		}
+			// Log retry attempt
+			if err != nil {
+				r.logger.V(1).Info("operation failed, will retry",
+					"operation", operation,
+					"error", err)
+				lastErr = err
+			}
+			return true
+		},
+		fn)
 
-		// Add jitter
-		jitter := (rand.Float64()*2 - 1) * retryJitterFactor * backoff
-		backoff = backoff + jitter
-
-		// Wait before next attempt
-		timer := time.NewTimer(time.Duration(backoff))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return fmt.Errorf("context cancelled during %s retry: %w", operation, ctx.Err())
-		case <-timer.C:
-			continue
-		}
+	if ctx.Err() != nil {
+		return fmt.Errorf("context cancelled during %s: %w", operation, ctx.Err())
 	}
 
-	return fmt.Errorf("operation %s failed after %d attempts: %w", operation, maxRetries, lastErr)
+	if err != nil {
+		if lastErr != nil {
+			return fmt.Errorf("operation %s failed: %w", operation, lastErr)
+		}
+		return fmt.Errorf("operation %s failed: %w", operation, err)
+	}
+
+	return nil
 }
 
 // Reconcile handles the rotation of AWS credentials
@@ -544,13 +533,12 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 			},
 		}
 
-		err = r.retryWithExponentialBackoff(ctx, "secret operation", func() error {
+		err = r.retryOperation(ctx, "secret operation", func() error {
 			if err := r.client.Create(ctx, secret); err != nil {
 				if !apierrors.IsAlreadyExists(err) {
 					return err
 				}
 				if err := r.client.Update(ctx, secret); err != nil {
-					// Don't retry if the error is due to conflict
 					if apierrors.IsConflict(err) {
 						return &permanentError{err: err}
 					}
@@ -569,7 +557,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
 
-		err = r.retryWithExponentialBackoff(ctx, "policy update", func() error {
+		err = r.retryOperation(ctx, "policy update", func() error {
 			if err := r.client.Update(ctx, &policy); err != nil {
 				if apierrors.IsConflict(err) {
 					return &permanentError{err: err}
@@ -646,23 +634,9 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Initialize IAM client if not already done
 	if r.iamClient == nil {
-		cfg, err := config.LoadDefaultConfig(
-			ctx,
-			config.WithRegion(policy.Spec.AWSCredentials.Region),
-			config.WithCredentialsProvider(aws.CredentialsProviderFunc(
-				func(ctx context.Context) (aws.Credentials, error) {
-					return aws.Credentials{
-						AccessKeyID:     currentCreds.accessKeyID,
-						SecretAccessKey: currentCreds.secretAccessKey,
-						SessionToken:    currentCreds.sessionToken,
-					}, nil
-				},
-			)),
-		)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to load AWS config: %w", err)
+		if err := r.initializeIAMClient(ctx, policy.Spec.AWSCredentials.Region, currentCreds); err != nil {
+			return ctrl.Result{}, err
 		}
-		r.iamClient = iam.NewFromConfig(cfg)
 	}
 
 	// Create new access key
@@ -705,7 +679,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
 
-	err = r.retryWithExponentialBackoff(ctx, "policy update", func() error {
+	err = r.retryOperation(ctx, "policy update", func() error {
 		if err := r.client.Update(ctx, &policy); err != nil {
 			if apierrors.IsConflict(err) {
 				return &permanentError{err: err}

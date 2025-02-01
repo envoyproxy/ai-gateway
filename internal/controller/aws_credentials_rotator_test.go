@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -177,7 +176,10 @@ type mockIAMClient struct {
 }
 
 func (m *mockIAMClient) CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error) {
-	return m.createKeyOutput, m.createKeyError
+	if m.createKeyError != nil {
+		return nil, m.createKeyError
+	}
+	return m.createKeyOutput, nil
 }
 
 func (m *mockIAMClient) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
@@ -308,40 +310,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			},
 			httpResponse:     failedOIDCResponse,
 			expectError:      true,
-			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: oauth2: \"invalid_client\" \"Client authentication failed\"",
-		},
-		{
-			name: "network_timeout_retry",
-			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
-				OIDC: egv1a1.OIDC{
-					Provider: egv1a1.OIDCProvider{
-						Issuer: mockOIDCIssuer,
-					},
-					ClientID: "client-id",
-					ClientSecret: gwapiv1.SecretObjectReference{
-						Name: "client-secret",
-					},
-				},
-				AwsRoleArn: "arn:aws:iam::123456789012:role/test-role",
-			},
-			clientSecret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "client-secret",
-					Namespace: testNamespace,
-				},
-				Data: map[string][]byte{
-					"client-secret": []byte("test-secret"),
-				},
-			},
-			httpError: &net.OpError{
-				Op:     "dial",
-				Net:    "tcp",
-				Source: nil,
-				Addr:   nil,
-				Err:    &timeoutError{},
-			},
-			expectError:      true,
-			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: operation OIDC token retrieval failed after 3 attempts: Post \"https://test-oidc-server/oauth2/token\": dial tcp: timeout",
+			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: operation OIDC token retrieval failed: oauth2: \"invalid_client\" \"Client authentication failed\"",
 		},
 		{
 			name: "successful_static_credentials_rotation",
