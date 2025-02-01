@@ -224,29 +224,38 @@ func (tm *TokenManager) checkRotatorExists(rotationType token_rotators.RotationT
 	return exists
 }
 
+// publishEvent is a helper method to publish rotation events with consistent error handling
+func (tm *TokenManager) publishEvent(event token_rotators.RotationEvent, eventType RotationEventType, err error) {
+	rotationEvent := TokenRotationEvent{
+		EventType:     eventType,
+		RotationEvent: event,
+		Timestamp:     time.Now(),
+	}
+	if err != nil {
+		rotationEvent.Error = err.Error()
+	}
+	tm.publishRotationEvent(rotationEvent)
+}
+
+// handleError publishes an error event and returns a formatted error
+func (tm *TokenManager) handleError(event token_rotators.RotationEvent, errMsg string, err error) error {
+	tm.publishEvent(event, RotationEventFailed, err)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+	return fmt.Errorf("%s", errMsg)
+}
+
 // RequestRotation requests a rotation for a secret. This is a non-blocking operation.
 func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotators.RotationEvent) error {
 	// First validate the event structure without locks
 	if valid, err := tm.validateRotationEvent(event); !valid {
-		tm.publishRotationEvent(TokenRotationEvent{
-			EventType:     RotationEventFailed,
-			RotationEvent: event,
-			Error:         err.Error(),
-			Timestamp:     time.Now(),
-		})
-		return err
+		return tm.handleError(event, "invalid rotation event", err)
 	}
 
 	// Check if rotator exists
 	if !tm.checkRotatorExists(event.Type) {
-		err := fmt.Errorf("no rotator registered for type %q", event.Type)
-		tm.publishRotationEvent(TokenRotationEvent{
-			EventType:     RotationEventFailed,
-			RotationEvent: event,
-			Error:         err.Error(),
-			Timestamp:     time.Now(),
-		})
-		return err
+		return tm.handleError(event, "no rotator registered", fmt.Errorf("for type %q", event.Type))
 	}
 
 	// Use a mutex to make initialization check and request atomic
@@ -261,26 +270,14 @@ func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotator
 	tm.mu.Unlock()
 
 	// Publish started event
-	tm.publishRotationEvent(TokenRotationEvent{
-		EventType:     RotationEventStarted,
-		RotationEvent: event,
-		Timestamp:     time.Now(),
-	})
+	tm.publishEvent(event, RotationEventStarted, nil)
 
 	// Try non-blocking sends to both channels
 	select {
 	case tm.rotationChan <- event:
 		// Successfully sent to rotation channel
 	default:
-		// Channel is full, return error
-		err := fmt.Errorf("rotation channel is full")
-		tm.publishRotationEvent(TokenRotationEvent{
-			EventType:     RotationEventFailed,
-			RotationEvent: event,
-			Error:         err.Error(),
-			Timestamp:     time.Now(),
-		})
-		return err
+		return tm.handleError(event, "rotation channel is full", nil)
 	}
 
 	// Try non-blocking send to publish channel
@@ -305,18 +302,13 @@ func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotator
 	return nil
 }
 
-// ScheduleRotation schedules a rotation to occur at a specific time
-func (tm *TokenManager) ScheduleRotation(ctx context.Context, event token_rotators.RotationEvent, rotateAt time.Time) {
-	// Cancel any existing scheduled rotation for this resource
-	tm.cancelExistingRotation(event.Namespace, event.Name)
+// getScheduledRotationKey returns a consistent key format for scheduled rotations
+func (tm *TokenManager) getScheduledRotationKey(namespace, name string) string {
+	return fmt.Sprintf("%s/%s", namespace, name)
+}
 
-	// If we're already past or very close to the rotation time, trigger immediately
-	if time.Until(rotateAt) < time.Second {
-		tm.RequestRotation(ctx, event)
-		return
-	}
-
-	// Create a new context for this scheduled rotation
+// createScheduledRotation creates and stores a new scheduled rotation
+func (tm *TokenManager) createScheduledRotation(ctx context.Context, event token_rotators.RotationEvent, rotateAt time.Time) (*scheduledRotation, context.CancelFunc) {
 	rotationCtx, cancel := context.WithCancel(ctx)
 
 	timer := time.AfterFunc(time.Until(rotateAt), func() {
@@ -328,13 +320,30 @@ func (tm *TokenManager) ScheduleRotation(ctx context.Context, event token_rotato
 		}
 	})
 
-	// Store the scheduled rotation
-	key := fmt.Sprintf("%s/%s", event.Namespace, event.Name)
-	tm.scheduledRotations.Store(key, &scheduledRotation{
+	sr := &scheduledRotation{
 		timer:    timer,
 		cancelFn: cancel,
 		event:    event,
-	})
+	}
+
+	key := tm.getScheduledRotationKey(event.Namespace, event.Name)
+	tm.scheduledRotations.Store(key, sr)
+
+	return sr, cancel
+}
+
+// ScheduleRotation schedules a rotation to occur at a specific time
+func (tm *TokenManager) ScheduleRotation(ctx context.Context, event token_rotators.RotationEvent, rotateAt time.Time) {
+	// Cancel any existing scheduled rotation for this resource
+	tm.cancelExistingRotation(event.Namespace, event.Name)
+
+	// If we're already past or very close to the rotation time, trigger immediately
+	if time.Until(rotateAt) < time.Second {
+		tm.RequestRotation(ctx, event)
+		return
+	}
+
+	_, _ = tm.createScheduledRotation(ctx, event, rotateAt)
 
 	tm.logger.Info("scheduled rotation",
 		"namespace", event.Namespace,
@@ -350,7 +359,7 @@ func (tm *TokenManager) ScheduleNextRotation(ctx context.Context, event token_ro
 
 // cancelExistingRotation cancels any existing scheduled rotation for the given resource
 func (tm *TokenManager) cancelExistingRotation(namespace, name string) {
-	key := fmt.Sprintf("%s/%s", namespace, name)
+	key := tm.getScheduledRotationKey(namespace, name)
 	if val, ok := tm.scheduledRotations.Load(key); ok {
 		if sr, ok := val.(*scheduledRotation); ok {
 			sr.timer.Stop()
@@ -457,38 +466,24 @@ func (tm *TokenManager) RequestInitialization(ctx context.Context, event token_r
 	// Get the rotator for this type
 	r, ok := tm.rotators[event.Type]
 	if !ok {
-		return fmt.Errorf("no rotator found for type %s", event.Type)
+		return tm.handleError(event, "no rotator found", fmt.Errorf("for type %s", event.Type))
 	}
 
 	// Verify the rotator type matches the event type
 	if r.Type() != event.Type {
-		return fmt.Errorf("rotator type %s does not match event type %s", r.Type(), event.Type)
+		return tm.handleError(event, "rotator type mismatch", fmt.Errorf("rotator type %s does not match event type %s", r.Type(), event.Type))
 	}
 
 	// Publish initialization started event
-	tm.publishRotationEvent(TokenRotationEvent{
-		EventType:     RotationEventInitialization,
-		RotationEvent: event,
-		Timestamp:     time.Now(),
-	})
+	tm.publishEvent(event, RotationEventInitialization, nil)
 
 	// Perform initialization
 	if err := r.Initialize(ctx, event); err != nil {
-		tm.publishRotationEvent(TokenRotationEvent{
-			EventType:     RotationEventFailed,
-			RotationEvent: event,
-			Error:         err.Error(),
-			Timestamp:     time.Now(),
-		})
-		return fmt.Errorf("failed to initialize token: %w", err)
+		return tm.handleError(event, "failed to initialize token", err)
 	}
 
 	// Publish success event
-	tm.publishRotationEvent(TokenRotationEvent{
-		EventType:     RotationEventSucceeded,
-		RotationEvent: event,
-		Timestamp:     time.Now(),
-	})
+	tm.publishEvent(event, RotationEventSucceeded, nil)
 
 	return nil
 }
