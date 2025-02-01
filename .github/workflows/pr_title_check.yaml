@@ -28,9 +28,11 @@ jobs:
               echo "PR description contains '-->'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
-          first_line=$(echo "$BODY" | head -n 1)
-          if [[ "$first_line" != "**Commit Message**" ]]; then
-            echo "The first line of the commit message must be '**Commit Message**'"
+          first_line=$(echo -n "$BODY" | head -n 1)
+          trimmed_first_line=$(echo "$first_line" | sed 's/[[:space:]]*$//')
+          echo "$trimmed_first_line='$trimmed_first_line'"
+          if [[ "$trimmed_first_line" != "**Commit Message**" ]]; then
+            echo "The first line of the PR description must be '**Commit Message**'"
             exit 1
           fi
 
