@@ -37,6 +37,20 @@ const (
 	mockOIDCIssuer = "https://test-oidc-server"
 )
 
+// Test error prefixes
+const (
+	errPrefixOIDCToken = "failed to get OIDC token: "
+	errPrefixOAuth     = "failed to get OAuth token: "
+	errPrefixOperation = "operation OIDC token retrieval failed: "
+	errPrefixSecret    = "failed to update Secret: "
+)
+
+// Test error messages
+const (
+	errMsgOAuth2InvalidClient = "oauth2: \"invalid_client\" \"Client authentication failed\""
+	errMsgSecretModified      = "Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified"
+)
+
 func init() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 }
@@ -254,7 +268,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: "failed to get OIDC token: client secret name is required",
+			expectedErrorMsg: errPrefixOIDCToken + "client secret name is required",
 		},
 		{
 			name: "client_secret_not_found",
@@ -270,7 +284,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: "failed to get OIDC token: client secret \"nonexistent-secret\" not found",
+			expectedErrorMsg: errPrefixOIDCToken + fmt.Sprintf("client secret %q not found", "nonexistent-secret"),
 		},
 		{
 			name: "missing_aws_region",
@@ -359,7 +373,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			},
 			httpResponse:     failedOIDCResponse,
 			expectError:      true,
-			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: operation OIDC token retrieval failed: oauth2: \"invalid_client\" \"Client authentication failed\"",
+			expectedErrorMsg: errPrefixOIDCToken + errPrefixOAuth + errPrefixOperation + errMsgOAuth2InvalidClient,
 		},
 		{
 			name: "successful_static_credentials_rotation",
@@ -443,7 +457,7 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				},
 			},
 			expectError:      true,
-			expectedErrorMsg: "failed to update Secret: failed to update Secret: Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified",
+			expectedErrorMsg: errPrefixSecret + errPrefixSecret + errMsgSecretModified,
 		},
 	}
 
