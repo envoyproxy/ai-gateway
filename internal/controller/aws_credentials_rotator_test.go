@@ -93,13 +93,32 @@ func assertDurationWithin(t *testing.T, expected, actual time.Duration, margin t
 	}
 }
 
-type mockSTSClientImpl struct {
+// IAMOperations mock implementation
+type mockIAMOperations struct {
+	createKeyOutput *iam.CreateAccessKeyOutput
+	createKeyError  error
+	deleteKeyError  error
+}
+
+func (m *mockIAMOperations) CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error) {
+	if m.createKeyError != nil {
+		return nil, m.createKeyError
+	}
+	return m.createKeyOutput, nil
+}
+
+func (m *mockIAMOperations) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
+	return &iam.DeleteAccessKeyOutput{}, m.deleteKeyError
+}
+
+// STSOperations mock implementation
+type mockSTSOperations struct {
 	assumeRoleOutput *sts.AssumeRoleWithWebIdentityOutput
 	assumeRoleError  error
 	region           string
 }
 
-func (m *mockSTSClientImpl) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+func (m *mockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	if m.assumeRoleError != nil {
 		return nil, m.assumeRoleError
 	}
@@ -118,20 +137,20 @@ func (m *mockSTSClientImpl) AssumeRoleWithWebIdentity(ctx context.Context, param
 }
 
 type mockSTSClientFactory struct {
-	clients map[string]*mockSTSClientImpl
+	clients map[string]*mockSTSOperations
 }
 
 func newMockSTSClientFactory() *mockSTSClientFactory {
 	return &mockSTSClientFactory{
-		clients: make(map[string]*mockSTSClientImpl),
+		clients: make(map[string]*mockSTSOperations),
 	}
 }
 
-func (f *mockSTSClientFactory) getClient(region string) *mockSTSClientImpl {
+func (f *mockSTSClientFactory) getClient(region string) *mockSTSOperations {
 	if client, ok := f.clients[region]; ok {
 		return client
 	}
-	client := &mockSTSClientImpl{region: region}
+	client := &mockSTSOperations{region: region}
 	f.clients[region] = client
 	return client
 }
@@ -169,35 +188,13 @@ func (m *mockSecretClient) Update(ctx context.Context, secret *corev1.Secret, op
 	}})
 }
 
-type mockIAMClient struct {
-	createKeyOutput *iam.CreateAccessKeyOutput
-	createKeyError  error
-	deleteKeyError  error
-}
-
-func (m *mockIAMClient) CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error) {
-	if m.createKeyError != nil {
-		return nil, m.createKeyError
-	}
-	return m.createKeyOutput, nil
-}
-
-func (m *mockIAMClient) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
-	return &iam.DeleteAccessKeyOutput{}, m.deleteKeyError
-}
-
-type timeoutError struct{}
-
-func (e *timeoutError) Error() string   { return "timeout" }
-func (e *timeoutError) Timeout() bool   { return true }
-func (e *timeoutError) Temporary() bool { return true }
-
 // Test cases
 func TestAWSCredentialsRotator(t *testing.T) {
 	logger := zap.New()
 	testScheme := runtime.NewScheme()
 	require.NoError(t, aigv1a1.AddToScheme(testScheme))
 	require.NoError(t, corev1.AddToScheme(testScheme))
+	require.NoError(t, egv1a1.AddToScheme(testScheme))
 
 	// Common test responses
 	successfulOIDCResponse := &http.Response{
@@ -246,6 +243,58 @@ func TestAWSCredentialsRotator(t *testing.T) {
 		setupPolicy         func(*aigv1a1.BackendSecurityPolicy)
 		modifySecret        func(*corev1.Secret)
 	}{
+		{
+			name: "missing_client_secret_name",
+			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: egv1a1.OIDC{
+					Provider: egv1a1.OIDCProvider{
+						Issuer: mockOIDCIssuer,
+					},
+					ClientID: "test-client",
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "failed to get OIDC token: client secret name is required",
+		},
+		{
+			name: "client_secret_not_found",
+			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: egv1a1.OIDC{
+					Provider: egv1a1.OIDCProvider{
+						Issuer: mockOIDCIssuer,
+					},
+					ClientID: "test-client",
+					ClientSecret: gwapiv1.SecretObjectReference{
+						Name: "nonexistent-secret",
+					},
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "failed to get OIDC token: client secret \"nonexistent-secret\" not found",
+		},
+		{
+			name: "missing_aws_region",
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.OIDCExchangeToken = nil
+				policy.Spec.AWSCredentials.CredentialsFile = &aigv1a1.AWSCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "aws-credentials",
+					},
+				}
+				policy.Spec.AWSCredentials.Region = ""
+			},
+			expectError:      true,
+			expectedErrorMsg: errMsgAWSRegionRequired,
+		},
+		{
+			name: "missing_credentials_secret_ref",
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.OIDCExchangeToken = nil
+				policy.Spec.AWSCredentials.CredentialsFile = &aigv1a1.AWSCredentialsFile{}
+			},
+			expectError:      true,
+			expectedErrorMsg: errMsgAWSCredsSecretRequired,
+		},
 		{
 			name: "successful_oidc_token_exchange",
 			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
@@ -485,10 +534,10 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				err:      tc.httpError,
 			}
 			rotator := &awsCredentialsRotator{
-				client:     k8sClient,
-				kubeClient: kubeClient,
-				logger:     logger,
-				iamClient: &mockIAMClient{
+				k8sClient:    k8sClient,
+				k8sClientset: kubeClient,
+				logger:       logger,
+				iamOps: &mockIAMOperations{
 					createKeyOutput: tc.createKeyOutput,
 					createKeyError:  tc.createKeyError,
 					deleteKeyError:  tc.deleteKeyError,
@@ -496,9 +545,12 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
 				httpClient: &http.Client{
 					Transport: mockClient,
 				},
-				stsClientCache: map[string]STSClient{
-					"us-west-2": mockSTS,
-					"eu-west-1": mockSTS,
+				stsClientByRegion: map[string]STSOperations{
+					"us-west-2": &mockSTSOperations{
+						assumeRoleOutput: tc.assumeRoleOutput,
+						assumeRoleError:  tc.assumeRoleError,
+						region:           "us-west-2",
+					},
 				},
 				keyDeletionDelay: 100 * time.Millisecond,
 			}

@@ -41,12 +41,37 @@ const (
 	credentialsKey = "credentials"
 	// defaultProfile is the default AWS credentials profile name
 	defaultProfile = "default"
+	// defaultKeyDeletionDelay is the default delay before deleting old access keys
+	defaultKeyDeletionDelay = 30 * time.Second
+	// oauthTokenEndpointPath is the path for OAuth2 token endpoint
+	oauthTokenEndpointPath = "/oauth2/token"
+	// oauthOpenIDScope is the default scope for OpenID Connect
+	oauthOpenIDScope = "openid"
+	// idTokenKey is the key for ID token in OAuth response
+	idTokenKey = "id_token"
 
 	// Retry configuration
 	maxRetries        = 3
 	baseRetryDelay    = 1 * time.Second
 	maxRetryDelay     = 10 * time.Second
 	retryJitterFactor = 0.1
+)
+
+// AWS session name format
+const awsSessionNameFormat = "ai-gateway-%s"
+
+// Error messages
+const (
+	errMsgClientSecretRequired    = "client secret name is required"
+	errMsgClientSecretNotFound    = "client secret %q not found"
+	errMsgClientSecretDataMissing = "client secret data not found in secret %q"
+	errMsgIDTokenNotFound         = "ID token not found in OAuth response"
+	errMsgSTSCredsNotFound        = "no credentials returned from STS"
+	errMsgAWSRegionRequired       = "AWS region is required"
+	errMsgAWSCredsSecretRequired  = "AWS credentials secret reference is required"
+	errMsgAWSCredsSecretMissing   = "AWS credentials secret %q not found"
+	errMsgAWSCredsDataMissing     = "AWS credentials secret %q is missing required data"
+	errMsgAWSProfileNotFound      = "AWS credentials profile %q not found"
 )
 
 // permanentError represents an error that should not be retried
@@ -78,47 +103,47 @@ type awsCredentialsFile struct {
 	profiles map[string]*awsCredentials
 }
 
-// IAMClient interface for AWS IAM operations
-type IAMClient interface {
+// IAMOperations interface for AWS IAM operations
+type IAMOperations interface {
 	CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error)
 	DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error)
 }
 
-// STSClient interface for AWS STS operations
-type STSClient interface {
+// STSOperations interface for AWS STS operations
+type STSOperations interface {
 	AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
 
 // awsCredentialsRotator implements reconcile.Reconciler for rotating AWS credentials
 type awsCredentialsRotator struct {
-	client     client.Client
-	kubeClient kubernetes.Interface
-	logger     logr.Logger
-	iamClient  IAMClient
-	stsClient  STSClient
-	httpClient interface {
+	k8sClient    client.Client
+	k8sClientset kubernetes.Interface
+	logger       logr.Logger
+	iamOps       IAMOperations
+	stsOps       STSOperations
+	httpClient   interface {
 		Do(*http.Request) (*http.Response, error)
 	}
-	stsClientCache map[string]STSClient
-	stsClientLock  sync.RWMutex
+	stsClientByRegion map[string]STSOperations
+	stsClientMutex    sync.RWMutex
 	// For testing purposes
 	keyDeletionDelay time.Duration
 }
 
 // NewAWSCredentialsRotator creates a new reconciler for rotating AWS credentials
-func NewAWSCredentialsRotator(client client.Client, kubeClient kubernetes.Interface, logger logr.Logger) reconcile.Reconciler {
+func NewAWSCredentialsRotator(k8sClient client.Client, k8sClientset kubernetes.Interface, logger logr.Logger) reconcile.Reconciler {
 	return &awsCredentialsRotator{
-		client:           client,
-		kubeClient:       kubeClient,
-		logger:           logger,
-		httpClient:       http.DefaultClient,
-		stsClientCache:   make(map[string]STSClient),
-		keyDeletionDelay: 30 * time.Second, // Default delay
+		k8sClient:         k8sClient,
+		k8sClientset:      k8sClientset,
+		logger:            logger,
+		httpClient:        http.DefaultClient,
+		stsClientByRegion: make(map[string]STSOperations),
+		keyDeletionDelay:  defaultKeyDeletionDelay,
 	}
 }
 
-// parseCredentialsFile parses an AWS credentials file with multiple profiles
-func parseCredentialsFile(data string) *awsCredentialsFile {
+// parseAWSCredentialsFile parses an AWS credentials file with multiple profiles
+func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 	file := &awsCredentialsFile{
 		profiles: make(map[string]*awsCredentials),
 	}
@@ -172,41 +197,51 @@ func parseCredentialsFile(data string) *awsCredentialsFile {
 	return file
 }
 
-// formatCredentialsFile formats multiple AWS credential profiles into a credentials file
-func formatCredentialsFile(file *awsCredentialsFile) string {
-	var b strings.Builder
+// formatAWSCredentialsFile formats multiple AWS credential profiles into a credentials file
+func formatAWSCredentialsFile(file *awsCredentialsFile) string {
+	var builder strings.Builder
 
 	// Sort profiles to ensure consistent output
-	profiles := make([]string, 0, len(file.profiles))
-	for profile := range file.profiles {
-		profiles = append(profiles, profile)
-	}
-	sort.Strings(profiles)
+	profileNames := getSortedProfileNames(file.profiles)
 
-	for i, profile := range profiles {
+	for i, profileName := range profileNames {
 		if i > 0 {
-			b.WriteString("\n")
+			builder.WriteString("\n")
 		}
-		creds := file.profiles[profile]
-		b.WriteString(fmt.Sprintf("[%s]\n", profile))
-		b.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", creds.accessKeyID))
-		b.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", creds.secretAccessKey))
+		creds := file.profiles[profileName]
+		builder.WriteString(fmt.Sprintf("[%s]\n", profileName))
+		builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", creds.accessKeyID))
+		builder.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", creds.secretAccessKey))
 		if creds.sessionToken != "" {
-			b.WriteString(fmt.Sprintf("aws_session_token = %s\n", creds.sessionToken))
+			builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", creds.sessionToken))
 		}
 		if creds.region != "" {
-			b.WriteString(fmt.Sprintf("region = %s\n", creds.region))
+			builder.WriteString(fmt.Sprintf("region = %s\n", creds.region))
 		}
 	}
-	return b.String()
+	return builder.String()
 }
 
-// parseDuration parses a duration string in the format "1h2m" into a time.Duration
-func parseDuration(s string) (time.Duration, error) {
-	if s == "" {
-		return 0, nil
+// getSortedProfileNames returns a sorted list of profile names
+func getSortedProfileNames(profiles map[string]*awsCredentials) []string {
+	profileNames := make([]string, 0, len(profiles))
+	for profileName := range profiles {
+		profileNames = append(profileNames, profileName)
 	}
-	return time.ParseDuration(s)
+	sort.Strings(profileNames)
+	return profileNames
+}
+
+// parseDurationWithDefault parses a duration string with a default fallback
+func parseDurationWithDefault(s string, defaultDuration time.Duration) time.Duration {
+	if s == "" {
+		return defaultDuration
+	}
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return defaultDuration
+	}
+	return duration
 }
 
 // getRotationConfig returns the rotation interval and pre-rotation window from the policy
@@ -215,16 +250,8 @@ func getRotationConfig(policy *aigv1a1.BackendSecurityPolicy) (rotationInterval,
 	preRotationWindow = defaultPreRotationWindow
 
 	if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.RotationConfig != nil {
-		if policy.Spec.AWSCredentials.RotationConfig.RotationInterval != "" {
-			if d, err := parseDuration(policy.Spec.AWSCredentials.RotationConfig.RotationInterval); err == nil {
-				rotationInterval = d
-			}
-		}
-		if policy.Spec.AWSCredentials.RotationConfig.PreRotationWindow != "" {
-			if d, err := parseDuration(policy.Spec.AWSCredentials.RotationConfig.PreRotationWindow); err == nil {
-				preRotationWindow = d
-			}
-		}
+		rotationInterval = parseDurationWithDefault(policy.Spec.AWSCredentials.RotationConfig.RotationInterval, defaultRotationInterval)
+		preRotationWindow = parseDurationWithDefault(policy.Spec.AWSCredentials.RotationConfig.PreRotationWindow, defaultPreRotationWindow)
 	}
 
 	return rotationInterval, preRotationWindow
@@ -241,16 +268,16 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 
 	// Get client secret from Kubernetes secret
 	if oidcConfig.OIDC.ClientSecret.Name == "" {
-		logger.Error(nil, "client secret name is required")
-		return "", fmt.Errorf("client secret name is required")
+		logger.Error(nil, errMsgClientSecretRequired)
+		return "", fmt.Errorf(errMsgClientSecretRequired)
 	}
 
 	logger.V(2).Info("retrieving client secret", "secretName", oidcConfig.OIDC.ClientSecret.Name)
-	secret, err := r.kubeClient.CoreV1().Secrets(namespace).Get(ctx, string(oidcConfig.OIDC.ClientSecret.Name), metav1.GetOptions{})
+	secret, err := r.k8sClientset.CoreV1().Secrets(namespace).Get(ctx, string(oidcConfig.OIDC.ClientSecret.Name), metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Error(err, "client secret not found", "secretName", oidcConfig.OIDC.ClientSecret.Name)
-			return "", fmt.Errorf("client secret %q not found: %w", oidcConfig.OIDC.ClientSecret.Name, err)
+			logger.Error(err, errMsgClientSecretNotFound, "secretName", oidcConfig.OIDC.ClientSecret.Name)
+			return "", fmt.Errorf(errMsgClientSecretNotFound, oidcConfig.OIDC.ClientSecret.Name)
 		}
 		logger.Error(err, "failed to get client secret", "secretName", oidcConfig.OIDC.ClientSecret.Name)
 		return "", fmt.Errorf("failed to get client secret: %w", err)
@@ -258,19 +285,19 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 
 	clientSecret, ok := secret.Data["client-secret"]
 	if !ok {
-		logger.Error(nil, "client secret data not found in secret", "secretName", oidcConfig.OIDC.ClientSecret.Name)
-		return "", fmt.Errorf("client secret data not found in secret %q", oidcConfig.OIDC.ClientSecret.Name)
+		logger.Error(nil, errMsgClientSecretDataMissing, "secretName", oidcConfig.OIDC.ClientSecret.Name)
+		return "", fmt.Errorf(errMsgClientSecretDataMissing, oidcConfig.OIDC.ClientSecret.Name)
 	}
 
 	// Configure OAuth2 client credentials flow
-	tokenURL := fmt.Sprintf("%s/oauth2/token", strings.TrimSuffix(oidcConfig.OIDC.Provider.Issuer, "/"))
+	tokenURL := fmt.Sprintf("%s%s", strings.TrimSuffix(oidcConfig.OIDC.Provider.Issuer, "/"), oauthTokenEndpointPath)
 	logger.V(2).Info("configuring OAuth2 client credentials flow", "tokenURL", tokenURL)
 
 	config := &clientcredentials.Config{
 		ClientID:     oidcConfig.OIDC.ClientID,
 		ClientSecret: string(clientSecret),
 		TokenURL:     tokenURL,
-		Scopes:       []string{"openid"},
+		Scopes:       []string{oauthOpenIDScope},
 	}
 
 	// Create context with custom HTTP client
@@ -302,10 +329,10 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 	logger.V(2).Info("successfully obtained OAuth token")
 
 	// Extract ID token from response
-	rawIDToken, ok := token.Extra("id_token").(string)
+	rawIDToken, ok := token.Extra(idTokenKey).(string)
 	if !ok {
-		logger.Error(nil, "ID token not found in OAuth response")
-		return "", fmt.Errorf("ID token not found in OAuth response")
+		logger.Error(nil, errMsgIDTokenNotFound)
+		return "", fmt.Errorf(errMsgIDTokenNotFound)
 	}
 
 	logger.V(1).Info("successfully acquired OIDC token")
@@ -352,20 +379,20 @@ func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token str
 }
 
 // getSTSClient returns an STS client for the specified region, creating one if needed
-func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string) (STSClient, error) {
-	r.stsClientLock.RLock()
-	if client, ok := r.stsClientCache[region]; ok {
-		r.stsClientLock.RUnlock()
+func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string) (STSOperations, error) {
+	r.stsClientMutex.RLock()
+	if client, exists := r.stsClientByRegion[region]; exists {
+		r.stsClientMutex.RUnlock()
 		return client, nil
 	}
-	r.stsClientLock.RUnlock()
+	r.stsClientMutex.RUnlock()
 
 	// Create new client
-	r.stsClientLock.Lock()
-	defer r.stsClientLock.Unlock()
+	r.stsClientMutex.Lock()
+	defer r.stsClientMutex.Unlock()
 
 	// Double-check after acquiring write lock
-	if client, ok := r.stsClientCache[region]; ok {
+	if client, exists := r.stsClientByRegion[region]; exists {
 		return client, nil
 	}
 
@@ -373,14 +400,14 @@ func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string)
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(region),
 		config.WithRetryMode(aws.RetryModeStandard),
-		config.WithRetryMaxAttempts(3),
+		config.WithRetryMaxAttempts(maxRetries),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config for region %s: %w", region, err)
 	}
 
 	client := sts.NewFromConfig(cfg)
-	r.stsClientCache[region] = client
+	r.stsClientByRegion[region] = client
 	return client, nil
 }
 
@@ -390,7 +417,7 @@ func (r *awsCredentialsRotator) initializeIAMClient(ctx context.Context, region 
 		ctx,
 		config.WithRegion(region),
 		config.WithRetryMode(aws.RetryModeStandard),
-		config.WithRetryMaxAttempts(3),
+		config.WithRetryMaxAttempts(maxRetries),
 		config.WithCredentialsProvider(aws.CredentialsProviderFunc(
 			func(ctx context.Context) (aws.Credentials, error) {
 				return aws.Credentials{
@@ -404,7 +431,7 @@ func (r *awsCredentialsRotator) initializeIAMClient(ctx context.Context, region 
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
-	r.iamClient = iam.NewFromConfig(cfg)
+	r.iamOps = iam.NewFromConfig(cfg)
 	return nil
 }
 
@@ -452,7 +479,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Get the BackendSecurityPolicy
 	var policy aigv1a1.BackendSecurityPolicy
-	if err := r.client.Get(ctx, req.NamespacedName, &policy); err != nil {
+	if err := r.k8sClient.Get(ctx, req.NamespacedName, &policy); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -529,16 +556,16 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 				Namespace: req.Namespace,
 			},
 			Data: map[string][]byte{
-				credentialsKey: []byte(formatCredentialsFile(credentialsFile)),
+				credentialsKey: []byte(formatAWSCredentialsFile(credentialsFile)),
 			},
 		}
 
 		err = r.retryOperation(ctx, "secret operation", func() error {
-			if err := r.client.Create(ctx, secret); err != nil {
+			if err := r.k8sClient.Create(ctx, secret); err != nil {
 				if !apierrors.IsAlreadyExists(err) {
 					return err
 				}
-				if err := r.client.Update(ctx, secret); err != nil {
+				if err := r.k8sClient.Update(ctx, secret); err != nil {
 					if apierrors.IsConflict(err) {
 						return &permanentError{err: err}
 					}
@@ -558,7 +585,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
 
 		err = r.retryOperation(ctx, "policy update", func() error {
-			if err := r.client.Update(ctx, &policy); err != nil {
+			if err := r.k8sClient.Update(ctx, &policy); err != nil {
 				if apierrors.IsConflict(err) {
 					return &permanentError{err: err}
 				}
@@ -589,18 +616,18 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Validate required fields
 	if policy.Spec.AWSCredentials.Region == "" {
-		r.logger.Error(nil, "AWS region is required", "policy", req.NamespacedName)
-		return ctrl.Result{}, fmt.Errorf("AWS region is required")
+		r.logger.Error(nil, errMsgAWSRegionRequired, "policy", req.NamespacedName)
+		return ctrl.Result{}, fmt.Errorf(errMsgAWSRegionRequired)
 	}
 
 	if policy.Spec.AWSCredentials.CredentialsFile.SecretRef == nil || policy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name == "" {
-		r.logger.Error(nil, "AWS credentials secret reference is required", "policy", req.NamespacedName)
-		return ctrl.Result{}, fmt.Errorf("AWS credentials secret reference is required")
+		r.logger.Error(nil, errMsgAWSCredsSecretRequired, "policy", req.NamespacedName)
+		return ctrl.Result{}, fmt.Errorf(errMsgAWSCredsSecretRequired)
 	}
 
 	// Get the secret containing AWS credentials
 	secretRef := policy.Spec.AWSCredentials.CredentialsFile.SecretRef
-	secret, err := r.kubeClient.CoreV1().Secrets(req.Namespace).Get(ctx, string(secretRef.Name), metav1.GetOptions{})
+	secret, err := r.k8sClientset.CoreV1().Secrets(req.Namespace).Get(ctx, string(secretRef.Name), metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			r.logger.Error(err, "AWS credentials secret not found", "secret", secretRef.Name, "policy", req.NamespacedName)
@@ -617,7 +644,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Parse existing credentials file
 	credentialsData := string(secret.Data[credentialsKey])
-	credentialsFile := parseCredentialsFile(credentialsData)
+	credentialsFile := parseAWSCredentialsFile(credentialsData)
 
 	// Get the profile to rotate (default if not specified)
 	profile := defaultProfile
@@ -633,14 +660,14 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Initialize IAM client if not already done
-	if r.iamClient == nil {
+	if r.iamOps == nil {
 		if err := r.initializeIAMClient(ctx, policy.Spec.AWSCredentials.Region, currentCreds); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Create new access key
-	result, err := r.iamClient.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
+	result, err := r.iamOps.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to create new access key: %w", err)
 	}
@@ -655,8 +682,8 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Update secret with new credentials while preserving other profiles
-	secret.Data[credentialsKey] = []byte(formatCredentialsFile(credentialsFile))
-	if _, err := r.kubeClient.CoreV1().Secrets(req.Namespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+	secret.Data[credentialsKey] = []byte(formatAWSCredentialsFile(credentialsFile))
+	if _, err := r.k8sClientset.CoreV1().Secrets(req.Namespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Secret: %w", err)
 	}
 
@@ -665,7 +692,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		time.Sleep(r.keyDeletionDelay)
 	}
 	if currentCreds.accessKeyID != "" {
-		_, err = r.iamClient.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
+		_, err = r.iamOps.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
 			AccessKeyId: aws.String(currentCreds.accessKeyID),
 		})
 		if err != nil {
@@ -680,7 +707,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
 
 	err = r.retryOperation(ctx, "policy update", func() error {
-		if err := r.client.Update(ctx, &policy); err != nil {
+		if err := r.k8sClient.Update(ctx, &policy); err != nil {
 			if apierrors.IsConflict(err) {
 				return &permanentError{err: err}
 			}
