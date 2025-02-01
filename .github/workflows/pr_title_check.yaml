@@ -17,20 +17,23 @@ jobs:
     steps:
       - name: Check PR description
         env:
-          # Do noe use ${{ github.event.pull_request.body }} directly in run command.
-          TITLE: ${{ github.event.pull_request.body }}
+          # Do not use ${{ github.event.pull_request.body }} directly in run command.
+          BODY: ${{ github.event.pull_request.body }}
         run: |
-          if [[ $TITLE =~ "<!--" ]]; then
+          if [[ $BODY =~ "<!--" ]]; then
               echo "PR description contains '<!--'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
-          if [[ $TITLE =~ "-->" ]]; then
+          if [[ $BODY =~ "-->" ]]; then
               echo "PR description contains '-->'. Please remove all the comment out lines in the template after carefully reading them."
               exit 1
           fi
-          if [[ ! $TITLE =~ "**Commit Message**:" ]]; then
-              echo "PR description must begin with '**Commit Message**:'."
-              exit 1
+          first_line=$(echo -n "$BODY" | head -n 1)
+          trimmed_first_line=$(echo "$first_line" | sed 's/[[:space:]]*$//')
+          echo "$trimmed_first_line='$trimmed_first_line'"
+          if [[ "$trimmed_first_line" != "**Commit Message**" ]]; then
+            echo "The first line of the PR description must be '**Commit Message**'"
+            exit 1
           fi
 
   title:
@@ -63,3 +66,16 @@ jobs:
             The subject "{subject}" found in the pull request title "{title}"
             didn't match the configured pattern. Please ensure that the subject
             doesn't start with an uppercase character.
+
+      - name: Check length of PR title
+        env:
+          # Do not use ${{ github.event.pull_request.title }} directly in run command.
+          TITLE: ${{ github.event.pull_request.title }}
+        # We want to make sure that each commit "subject" is under 53 characters not to
+        # be truncated in the git log as well as in the GitHub UI.
+        # https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/process/submitting-patches.rst?id=bc7938deaca7f474918c41a0372a410049bd4e13#n664
+        run: |
+          if (( ${#TITLE} >= 53 )); then
+            echo "The PR title is too long. Please keep it under 52 characters."
+            exit 1
+          fi
