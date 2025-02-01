@@ -2,7 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math/rand"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,15 +16,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -38,7 +43,28 @@ const (
 	credentialsKey = "credentials"
 	// defaultProfile is the default AWS credentials profile name
 	defaultProfile = "default"
+
+	// Retry configuration
+	maxRetries        = 3
+	baseRetryDelay    = 1 * time.Second
+	maxRetryDelay     = 10 * time.Second
+	retryJitterFactor = 0.1
 )
+
+// permanentError represents an error that should not be retried
+type permanentError struct {
+	err error
+}
+
+func (e *permanentError) Error() string {
+	return e.err.Error()
+}
+
+// isPermanentError checks if an error is a permanent error that should not be retried
+func isPermanentError(err error) bool {
+	_, ok := err.(*permanentError)
+	return ok
+}
 
 // awsCredentials represents parsed AWS credentials
 type awsCredentials struct {
@@ -77,16 +103,19 @@ type awsCredentialsRotator struct {
 	}
 	stsClientCache map[string]STSClient
 	stsClientLock  sync.RWMutex
+	// For testing purposes
+	keyDeletionDelay time.Duration
 }
 
 // NewAWSCredentialsRotator creates a new reconciler for rotating AWS credentials
 func NewAWSCredentialsRotator(client client.Client, kubeClient kubernetes.Interface, logger logr.Logger) reconcile.Reconciler {
 	return &awsCredentialsRotator{
-		client:         client,
-		kubeClient:     kubeClient,
-		logger:         logger,
-		httpClient:     http.DefaultClient,
-		stsClientCache: make(map[string]STSClient),
+		client:           client,
+		kubeClient:       kubeClient,
+		logger:           logger,
+		httpClient:       http.DefaultClient,
+		stsClientCache:   make(map[string]STSClient),
+		keyDeletionDelay: 30 * time.Second, // Default delay
 	}
 }
 
@@ -221,7 +250,7 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 	logger.V(2).Info("retrieving client secret", "secretName", oidcConfig.OIDC.ClientSecret.Name)
 	secret, err := r.kubeClient.CoreV1().Secrets(namespace).Get(ctx, string(oidcConfig.OIDC.ClientSecret.Name), metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Error(err, "client secret not found", "secretName", oidcConfig.OIDC.ClientSecret.Name)
 			return "", fmt.Errorf("client secret %q not found: %w", oidcConfig.OIDC.ClientSecret.Name, err)
 		}
@@ -251,7 +280,23 @@ func (r *awsCredentialsRotator) getOIDCToken(ctx context.Context, oidcConfig *ai
 
 	// Get token using client credentials grant
 	logger.V(2).Info("requesting OAuth token")
-	token, err := config.Token(ctx)
+	var token *oauth2.Token
+	err = r.retryWithExponentialBackoff(ctx, "OIDC token retrieval", func() error {
+		var err error
+		token, err = config.Token(ctx)
+		if err != nil {
+			// Only retry on network errors or 5xx responses
+			if netErr, ok := err.(net.Error); ok && (netErr.Temporary() || netErr.Timeout()) {
+				return err
+			}
+			if strings.Contains(err.Error(), "5") { // Simple check for 5xx status codes
+				return err
+			}
+			// Don't retry other errors (e.g., 4xx client errors)
+			return &permanentError{err: err}
+		}
+		return nil
+	})
 	if err != nil {
 		logger.Error(err, "failed to get OAuth token")
 		return "", fmt.Errorf("failed to get OAuth token: %w", err)
@@ -290,7 +335,27 @@ func (r *awsCredentialsRotator) getSTSCredentials(ctx context.Context, token str
 		WebIdentityToken: aws.String(token),
 	}
 
-	resp, err := stsClient.AssumeRoleWithWebIdentity(ctx, input)
+	var resp *sts.AssumeRoleWithWebIdentityOutput
+	err = r.retryWithExponentialBackoff(ctx, "STS assume role", func() error {
+		var err error
+		resp, err = stsClient.AssumeRoleWithWebIdentity(ctx, input)
+		if err != nil {
+			// Check for permanent errors (like invalid role ARN or expired token)
+			var ae smithy.APIError
+			if errors.As(err, &ae) {
+				switch ae.ErrorCode() {
+				case "ExpiredTokenException",
+					"InvalidIdentityTokenException",
+					"MalformedPolicyDocumentException",
+					"PackedPolicyTooLargeException":
+					return &permanentError{err: err}
+				}
+			}
+			return err // Retry other errors
+		}
+		return nil
+	})
+
 	if err != nil {
 		logger.Error(err, "failed to assume role with web identity")
 		return nil, fmt.Errorf("failed to assume role with web identity: %w", err)
@@ -338,26 +403,91 @@ func (r *awsCredentialsRotator) getSTSClient(ctx context.Context, region string)
 	return client, nil
 }
 
+// retryWithExponentialBackoff executes the given operation with exponential backoff
+func (r *awsCredentialsRotator) retryWithExponentialBackoff(
+	ctx context.Context,
+	operation string,
+	fn func() error,
+) error {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Check if context is cancelled
+		if ctx.Err() != nil {
+			return fmt.Errorf("context cancelled during %s: %w", operation, ctx.Err())
+		}
+
+		// Execute the operation
+		if err := fn(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			// Don't retry permanent errors
+			if isPermanentError(err) {
+				return err
+			}
+			// Log the retry attempt
+			r.logger.V(1).Info("operation failed, will retry",
+				"operation", operation,
+				"attempt", attempt+1,
+				"maxAttempts", maxRetries,
+				"error", err)
+		}
+
+		// Calculate backoff duration with jitter
+		backoff := float64(baseRetryDelay) * float64(uint(1)<<uint(attempt))
+		if backoff > float64(maxRetryDelay) {
+			backoff = float64(maxRetryDelay)
+		}
+
+		// Add jitter
+		jitter := (rand.Float64()*2 - 1) * retryJitterFactor * backoff
+		backoff = backoff + jitter
+
+		// Wait before next attempt
+		timer := time.NewTimer(time.Duration(backoff))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("context cancelled during %s retry: %w", operation, ctx.Err())
+		case <-timer.C:
+			continue
+		}
+	}
+
+	return fmt.Errorf("operation %s failed after %d attempts: %w", operation, maxRetries, lastErr)
+}
+
 // Reconcile handles the rotation of AWS credentials
 func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
-	if err := r.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
-		if errors.IsNotFound(err) {
+	logger := log.FromContext(ctx)
+
+	// Get the BackendSecurityPolicy
+	var policy aigv1a1.BackendSecurityPolicy
+	if err := r.client.Get(ctx, req.NamespacedName, &policy); err != nil {
+		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get BackendSecurityPolicy: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get policy: %w", err)
+	}
+
+	// Validate rotation interval if specified
+	if policy.Spec.AWSCredentials.RotationConfig != nil {
+		if _, err := time.ParseDuration(policy.Spec.AWSCredentials.RotationConfig.RotationInterval); err != nil {
+			logger.Error(err, "invalid rotation interval")
+			return ctrl.Result{}, fmt.Errorf("invalid rotation interval: %w", err)
+		}
 	}
 
 	// Only process AWS credentials
-	if backendSecurityPolicy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
+	if policy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
 		return ctrl.Result{}, nil
 	}
 
 	// Get rotation configuration
-	rotationInterval, preRotationWindow := getRotationConfig(&backendSecurityPolicy)
+	rotationInterval, preRotationWindow := getRotationConfig(&policy)
 
 	// Check if it's time to rotate credentials
-	lastRotation := backendSecurityPolicy.Annotations[rotationAnnotation]
+	lastRotation := policy.Annotations[rotationAnnotation]
 	if lastRotation != "" {
 		lastRotationTime, err := time.Parse(time.RFC3339, lastRotation)
 		if err != nil {
@@ -375,8 +505,8 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle OIDC authentication if configured
-	if backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
-		oidcConfig := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken
+	if policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
+		oidcConfig := policy.Spec.AWSCredentials.OIDCExchangeToken
 
 		// Get OIDC token
 		token, err := r.getOIDCToken(ctx, oidcConfig, req.Namespace)
@@ -385,7 +515,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		// Exchange OIDC token for AWS credentials
-		stsResp, err := r.getSTSCredentials(ctx, token, oidcConfig.AwsRoleArn, backendSecurityPolicy.Spec.AWSCredentials.Region)
+		stsResp, err := r.getSTSCredentials(ctx, token, oidcConfig.AwsRoleArn, policy.Spec.AWSCredentials.Region)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to exchange OIDC token for AWS credentials: %w", err)
 		}
@@ -398,7 +528,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 					accessKeyID:     *stsResp.Credentials.AccessKeyId,
 					secretAccessKey: *stsResp.Credentials.SecretAccessKey,
 					sessionToken:    *stsResp.Credentials.SessionToken,
-					region:          backendSecurityPolicy.Spec.AWSCredentials.Region,
+					region:          policy.Spec.AWSCredentials.Region,
 				},
 			},
 		}
@@ -406,7 +536,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		// Create or update secret
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-oidc-creds", backendSecurityPolicy.Name),
+				Name:      fmt.Sprintf("%s-oidc-creds", policy.Name),
 				Namespace: req.Namespace,
 			},
 			Data: map[string][]byte{
@@ -414,22 +544,42 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 			},
 		}
 
-		if err := r.client.Create(ctx, secret); err != nil {
-			if !errors.IsAlreadyExists(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to create credentials secret: %w", err)
+		err = r.retryWithExponentialBackoff(ctx, "secret operation", func() error {
+			if err := r.client.Create(ctx, secret); err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					return err
+				}
+				if err := r.client.Update(ctx, secret); err != nil {
+					// Don't retry if the error is due to conflict
+					if apierrors.IsConflict(err) {
+						return &permanentError{err: err}
+					}
+					return err
+				}
 			}
-			if err := r.client.Update(ctx, secret); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update credentials secret: %w", err)
-			}
+			return nil
+		})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to manage credentials secret: %w", err)
 		}
 
 		// Update annotation with rotation timestamp
-		if backendSecurityPolicy.Annotations == nil {
-			backendSecurityPolicy.Annotations = make(map[string]string)
+		if policy.Annotations == nil {
+			policy.Annotations = make(map[string]string)
 		}
-		backendSecurityPolicy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
-		if err := r.client.Update(ctx, &backendSecurityPolicy); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update BackendSecurityPolicy: %w", err)
+		policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
+
+		err = r.retryWithExponentialBackoff(ctx, "policy update", func() error {
+			if err := r.client.Update(ctx, &policy); err != nil {
+				if apierrors.IsConflict(err) {
+					return &permanentError{err: err}
+				}
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update policy: %w", err)
 		}
 
 		// Schedule next rotation based on token expiry or default interval
@@ -445,26 +595,26 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle static credentials rotation
-	if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile == nil {
+	if policy.Spec.AWSCredentials.CredentialsFile == nil {
 		return ctrl.Result{}, nil
 	}
 
 	// Validate required fields
-	if backendSecurityPolicy.Spec.AWSCredentials.Region == "" {
+	if policy.Spec.AWSCredentials.Region == "" {
 		r.logger.Error(nil, "AWS region is required", "policy", req.NamespacedName)
 		return ctrl.Result{}, fmt.Errorf("AWS region is required")
 	}
 
-	if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef == nil || backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name == "" {
+	if policy.Spec.AWSCredentials.CredentialsFile.SecretRef == nil || policy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name == "" {
 		r.logger.Error(nil, "AWS credentials secret reference is required", "policy", req.NamespacedName)
 		return ctrl.Result{}, fmt.Errorf("AWS credentials secret reference is required")
 	}
 
 	// Get the secret containing AWS credentials
-	secretRef := backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef
+	secretRef := policy.Spec.AWSCredentials.CredentialsFile.SecretRef
 	secret, err := r.kubeClient.CoreV1().Secrets(req.Namespace).Get(ctx, string(secretRef.Name), metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			r.logger.Error(err, "AWS credentials secret not found", "secret", secretRef.Name, "policy", req.NamespacedName)
 			return ctrl.Result{}, fmt.Errorf("AWS credentials secret %q not found", secretRef.Name)
 		}
@@ -483,8 +633,8 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Get the profile to rotate (default if not specified)
 	profile := defaultProfile
-	if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.Profile != "" {
-		profile = backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.Profile
+	if policy.Spec.AWSCredentials.CredentialsFile.Profile != "" {
+		profile = policy.Spec.AWSCredentials.CredentialsFile.Profile
 	}
 
 	// Check if profile exists
@@ -498,7 +648,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	if r.iamClient == nil {
 		cfg, err := config.LoadDefaultConfig(
 			ctx,
-			config.WithRegion(backendSecurityPolicy.Spec.AWSCredentials.Region),
+			config.WithRegion(policy.Spec.AWSCredentials.Region),
 			config.WithCredentialsProvider(aws.CredentialsProviderFunc(
 				func(ctx context.Context) (aws.Credentials, error) {
 					return aws.Credentials{
@@ -526,7 +676,7 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 		profile:         profile,
 		accessKeyID:     *result.AccessKey.AccessKeyId,
 		secretAccessKey: *result.AccessKey.SecretAccessKey,
-		region:          backendSecurityPolicy.Spec.AWSCredentials.Region,
+		region:          policy.Spec.AWSCredentials.Region,
 		sessionToken:    currentCreds.sessionToken, // Preserve session token if it exists
 	}
 
@@ -537,7 +687,9 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Delete old access key after a delay to ensure the new one is being used
-	time.Sleep(30 * time.Second)
+	if r.keyDeletionDelay > 0 {
+		time.Sleep(r.keyDeletionDelay)
+	}
 	if currentCreds.accessKeyID != "" {
 		_, err = r.iamClient.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
 			AccessKeyId: aws.String(currentCreds.accessKeyID),
@@ -548,12 +700,22 @@ func (r *awsCredentialsRotator) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Update annotation with rotation timestamp
-	if backendSecurityPolicy.Annotations == nil {
-		backendSecurityPolicy.Annotations = make(map[string]string)
+	if policy.Annotations == nil {
+		policy.Annotations = make(map[string]string)
 	}
-	backendSecurityPolicy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
-	if err := r.client.Update(ctx, &backendSecurityPolicy); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update BackendSecurityPolicy: %w", err)
+	policy.Annotations[rotationAnnotation] = time.Now().Format(time.RFC3339)
+
+	err = r.retryWithExponentialBackoff(ctx, "policy update", func() error {
+		if err := r.client.Update(ctx, &policy); err != nil {
+			if apierrors.IsConflict(err) {
+				return &permanentError{err: err}
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update policy: %w", err)
 	}
 
 	// Schedule next rotation

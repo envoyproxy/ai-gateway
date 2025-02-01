@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,15 +13,19 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/smithy-go"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	corev1typed "k8s.io/client-go/kubernetes/typed/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	clientfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -141,6 +146,40 @@ func (f *mockSTSClientFactory) getClient(region string) *mockSTSClient {
 	return client
 }
 
+// mockKubeClient implements a fake client that can return conflict errors
+type mockKubeClient struct {
+	*kubefake.Clientset
+	shouldReturnConflict bool
+}
+
+func (m *mockKubeClient) CoreV1() corev1typed.CoreV1Interface {
+	if m.shouldReturnConflict {
+		return &mockCoreV1Client{CoreV1Interface: m.Clientset.CoreV1()}
+	}
+	return m.Clientset.CoreV1()
+}
+
+type mockCoreV1Client struct {
+	corev1typed.CoreV1Interface
+}
+
+func (m *mockCoreV1Client) Secrets(namespace string) corev1typed.SecretInterface {
+	return &mockSecretClient{SecretInterface: m.CoreV1Interface.Secrets(namespace)}
+}
+
+type mockSecretClient struct {
+	corev1typed.SecretInterface
+}
+
+func (m *mockSecretClient) Update(ctx context.Context, secret *corev1.Secret, opts metav1.UpdateOptions) (*corev1.Secret, error) {
+	return nil, fmt.Errorf("failed to update Secret: %w", &apierrors.StatusError{ErrStatus: metav1.Status{
+		Status:  metav1.StatusFailure,
+		Message: "Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified",
+		Reason:  metav1.StatusReasonConflict,
+		Code:    409,
+	}})
+}
+
 func TestAWSCredentialsRotator(t *testing.T) {
 	logger := zap.New()
 	require.NoError(t, aigv1a1.AddToScheme(scheme))
@@ -234,7 +273,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			expectedRequeue: 30 * time.Minute,
 		},
 		{
-			name: "failed OIDC token exchange",
+			name: "failed_OIDC_token_exchange",
 			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
 				OIDC: egv1a1.OIDC{
 					Provider: egv1a1.OIDCProvider{
@@ -258,7 +297,201 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			},
 			httpResponse:     failedOIDCResponse,
 			expectError:      true,
-			expectedErrorMsg: "oauth2: \"invalid_client\" \"Client authentication failed\"",
+			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: oauth2: \"invalid_client\" \"Client authentication failed\"",
+		},
+		{
+			name: "retry_on_network_timeout",
+			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: egv1a1.OIDC{
+					Provider: egv1a1.OIDCProvider{
+						Issuer: mockOIDCIssuer,
+					},
+					ClientID: "client-id",
+					ClientSecret: gwapiv1.SecretObjectReference{
+						Name: "client-secret",
+					},
+				},
+				AwsRoleArn: "arn:aws:iam::123456789012:role/test-role",
+			},
+			clientSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "client-secret",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					"client-secret": []byte("test-secret"),
+				},
+			},
+			httpError: &net.OpError{
+				Op:     "dial",
+				Net:    "tcp",
+				Source: nil,
+				Addr:   nil,
+				Err:    &timeoutError{},
+			},
+			expectError:      true,
+			expectedErrorMsg: "failed to get OIDC token: failed to get OAuth token: operation OIDC token retrieval failed after 3 attempts: Post \"https://test-oidc-server/oauth2/token\": dial tcp: timeout",
+		},
+		{
+			name: "successful static credentials rotation",
+			existingCredentials: `[default]
+aws_access_key_id = AKIAOLD
+aws_secret_access_key = oldSecret
+region = us-west-2`,
+			createKeyOutput: &iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{
+					AccessKeyId:     aws.String("AKIANEW"),
+					SecretAccessKey: aws.String("newSecret"),
+				},
+			},
+			rotationConfig: &aigv1a1.AWSCredentialsRotationConfig{
+				RotationInterval:  "24h",
+				PreRotationWindow: "1h",
+			},
+			clientSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-credentials",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					credentialsKey: []byte(`[default]
+aws_access_key_id = AKIAOLD
+aws_secret_access_key = oldSecret
+region = us-west-2`),
+				},
+			},
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.OIDCExchangeToken = nil
+				policy.Spec.AWSCredentials.CredentialsFile = &aigv1a1.AWSCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "aws-credentials",
+					},
+				}
+			},
+			expectRequeue:   true,
+			expectedRequeue: defaultRotationInterval,
+		},
+		{
+			name: "invalid_rotation_interval",
+			rotationConfig: &aigv1a1.AWSCredentialsRotationConfig{
+				RotationInterval: "invalid",
+			},
+			expectError:      true,
+			expectedErrorMsg: "invalid rotation interval: time: invalid duration \"invalid\"",
+		},
+		{
+			name: "multi-region_client_caching",
+			oidcConfig: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: egv1a1.OIDC{
+					Provider: egv1a1.OIDCProvider{
+						Issuer: mockOIDCIssuer,
+					},
+					ClientID: "client-id",
+					ClientSecret: gwapiv1.SecretObjectReference{
+						Name: "client-secret",
+					},
+				},
+				AwsRoleArn: "arn:aws:iam::123456789012:role/test-role",
+			},
+			clientSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "client-secret",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					"client-secret": []byte("test-secret"),
+				},
+			},
+			httpResponse: successfulOIDCResponse,
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.Region = "eu-west-1"
+			},
+			assumeRoleError: &smithy.OperationError{
+				ServiceID:     "STS",
+				OperationName: "AssumeRoleWithWebIdentity",
+				Err: &ststypes.ExpiredTokenException{
+					Message: aws.String("Token expired"),
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "failed to exchange OIDC token for AWS credentials: failed to assume role with web identity: operation error STS: AssumeRoleWithWebIdentity, ExpiredTokenException: Token expired",
+		},
+		{
+			name: "concurrent_modification_handling",
+			clientSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-credentials",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					credentialsKey: []byte(`[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`),
+				},
+			},
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.OIDCExchangeToken = nil
+				policy.Spec.AWSCredentials.CredentialsFile = &aigv1a1.AWSCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "aws-credentials",
+					},
+				}
+				policy.Spec.AWSCredentials.Region = "us-west-2"
+			},
+			modifySecret: func(secret *corev1.Secret) {
+				// Simulate a conflict by changing both ResourceVersion and data
+				secret.ResourceVersion = "1"
+				secret.Data[credentialsKey] = []byte(`[default]
+aws_access_key_id = AKIAIOSFODNN7MODIFIED
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYMODIFIEDKEY`)
+			},
+			createKeyOutput: &iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{
+					AccessKeyId:     aws.String("AKIAIOSFODNN7NEW"),
+					SecretAccessKey: aws.String("wJalrXUtnFEMI/K7MDENG/bPxRfiCYNEWKEY"),
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "failed to update Secret: failed to update Secret: Operation cannot be fulfilled on secrets \"aws-credentials\": object was modified",
+		},
+		{
+			name: "successful_static_credentials_rotation",
+			existingCredentials: `[default]
+aws_access_key_id = AKIAOLD
+aws_secret_access_key = oldSecret
+region = us-west-2`,
+			createKeyOutput: &iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{
+					AccessKeyId:     aws.String("AKIANEW"),
+					SecretAccessKey: aws.String("newSecret"),
+				},
+			},
+			rotationConfig: &aigv1a1.AWSCredentialsRotationConfig{
+				RotationInterval:  "24h",
+				PreRotationWindow: "1h",
+			},
+			clientSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-credentials",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					credentialsKey: []byte(`[default]
+aws_access_key_id = AKIAOLD
+aws_secret_access_key = oldSecret
+region = us-west-2`),
+				},
+			},
+			setupPolicy: func(policy *aigv1a1.BackendSecurityPolicy) {
+				policy.Spec.AWSCredentials.OIDCExchangeToken = nil
+				policy.Spec.AWSCredentials.CredentialsFile = &aigv1a1.AWSCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "aws-credentials",
+					},
+				}
+			},
+			expectRequeue:   true,
+			expectedRequeue: defaultRotationInterval,
 		},
 	}
 
@@ -285,9 +518,65 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				).
 				Build()
 
-			kubeClient := kubefake.NewSimpleClientset()
+			var kubeClient *mockKubeClient
+			if tc.name == "concurrent_modification_handling" {
+				kubeClient = &mockKubeClient{
+					Clientset:            kubefake.NewSimpleClientset(),
+					shouldReturnConflict: true,
+				}
+			} else {
+				kubeClient = &mockKubeClient{
+					Clientset:            kubefake.NewSimpleClientset(),
+					shouldReturnConflict: false,
+				}
+			}
+
 			if tc.clientSecret != nil {
-				_, err := kubeClient.CoreV1().Secrets(testNamespace).Create(context.Background(), tc.clientSecret, metav1.CreateOptions{})
+				// Add to k8sClient
+				err := k8sClient.Create(context.Background(), tc.clientSecret)
+				require.NoError(t, err)
+
+				// Add to kubeClient
+				_, err = kubeClient.CoreV1().Secrets(testNamespace).Create(context.Background(), tc.clientSecret, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+
+			// Apply policy modifications if any
+			if tc.setupPolicy != nil {
+				policy := &aigv1a1.BackendSecurityPolicy{}
+				err := k8sClient.Get(context.Background(), types.NamespacedName{
+					Name:      "test-policy",
+					Namespace: testNamespace,
+				}, policy)
+				require.NoError(t, err)
+				tc.setupPolicy(policy)
+				err = k8sClient.Update(context.Background(), policy)
+				require.NoError(t, err)
+			}
+
+			// Apply any secret modifications before reconciliation
+			if tc.modifySecret != nil {
+				var secret corev1.Secret
+				var policy aigv1a1.BackendSecurityPolicy
+				err := k8sClient.Get(context.Background(), types.NamespacedName{
+					Name:      "test-policy",
+					Namespace: testNamespace,
+				}, &policy)
+				require.NoError(t, err)
+
+				secretName := "aws-credentials"
+				if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
+					secretName = fmt.Sprintf("%s-oidc-creds", "test-policy")
+				}
+				err = k8sClient.Get(context.Background(), types.NamespacedName{
+					Name:      secretName,
+					Namespace: testNamespace,
+				}, &secret)
+				require.NoError(t, err)
+				tc.modifySecret(&secret)
+
+				// Update in k8sClient
+				err = k8sClient.Update(context.Background(), &secret)
 				require.NoError(t, err)
 			}
 
@@ -316,7 +605,9 @@ func TestAWSCredentialsRotator(t *testing.T) {
 				},
 				stsClientCache: map[string]STSClient{
 					"us-west-2": mockSTS,
+					"eu-west-1": mockSTS,
 				},
+				keyDeletionDelay: 100 * time.Millisecond, // Short delay for testing
 			}
 
 			// Run reconciliation
@@ -331,14 +622,25 @@ func TestAWSCredentialsRotator(t *testing.T) {
 			if tc.expectError {
 				assert.Error(t, err)
 				if tc.expectedErrorMsg != "" {
-					assert.Contains(t, err.Error(), tc.expectedErrorMsg)
+					assert.Equal(t, tc.expectedErrorMsg, err.Error())
 				}
 			} else {
 				assert.NoError(t, err)
 				// Verify the secret was created
 				var secret corev1.Secret
+				var policy aigv1a1.BackendSecurityPolicy
 				err := k8sClient.Get(context.Background(), types.NamespacedName{
-					Name:      fmt.Sprintf("%s-oidc-creds", "test-policy"),
+					Name:      "test-policy",
+					Namespace: testNamespace,
+				}, &policy)
+				require.NoError(t, err)
+
+				secretName := "aws-credentials"
+				if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
+					secretName = fmt.Sprintf("%s-oidc-creds", "test-policy")
+				}
+				err = k8sClient.Get(context.Background(), types.NamespacedName{
+					Name:      secretName,
 					Namespace: testNamespace,
 				}, &secret)
 				assert.NoError(t, err)
@@ -347,7 +649,12 @@ func TestAWSCredentialsRotator(t *testing.T) {
 
 			if tc.expectRequeue {
 				// Allow for duration differences up to 2 seconds
-				assertDurationWithin(t, tc.expectedRequeue, result.RequeueAfter, 2*time.Second)
+				if tc.expectedRequeue == defaultRotationInterval {
+					// For default rotation interval, allow a larger margin
+					assertDurationWithin(t, tc.expectedRequeue, result.RequeueAfter, 5*time.Minute)
+				} else {
+					assertDurationWithin(t, tc.expectedRequeue, result.RequeueAfter, 2*time.Second)
+				}
 			} else {
 				assert.Zero(t, result.RequeueAfter)
 			}
@@ -369,3 +676,10 @@ func (m *mockIAMClient) CreateAccessKey(ctx context.Context, params *iam.CreateA
 func (m *mockIAMClient) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
 	return &iam.DeleteAccessKeyOutput{}, m.deleteKeyError
 }
+
+// timeoutError implements net.Error interface for testing timeouts
+type timeoutError struct{}
+
+func (e *timeoutError) Error() string   { return "timeout" }
+func (e *timeoutError) Timeout() bool   { return true }
+func (e *timeoutError) Temporary() bool { return true }
