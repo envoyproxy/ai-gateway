@@ -165,7 +165,7 @@ func (ts *testSetup) verifySecretCredentials(t *testing.T, secretName, expectedK
 	assert.Equal(t, expectedSecret, creds.profiles["default"].secretAccessKey)
 }
 
-func TestAWSCredentialsRotator(t *testing.T) {
+func TestAWS_CredentialsRotator(t *testing.T) {
 	t.Run("basic rotation", func(t *testing.T) {
 		ts := setupTest()
 		defer ts.cancel()
@@ -248,7 +248,7 @@ func TestAWSCredentialsRotator(t *testing.T) {
 	})
 }
 
-func TestAWSOIDCRotator(t *testing.T) {
+func TestAWS_OIDCRotator(t *testing.T) {
 	ts := setupTest()
 	defer ts.cancel()
 
@@ -363,7 +363,7 @@ region = us-east-1
 	assert.Equal(t, expected, output)
 }
 
-func TestAWSCredentialsRotator_Initialize(t *testing.T) {
+func TestAWS_CredentialsRotator_Initialize(t *testing.T) {
 	ts := setupTest()
 	defer ts.cancel()
 
@@ -410,7 +410,7 @@ func TestAWSCredentialsRotator_Initialize(t *testing.T) {
 	})
 }
 
-func TestAWSCredentialsRotator_ErrorHandling(t *testing.T) {
+func TestAWS_CredentialsRotator_ErrorHandling(t *testing.T) {
 	ts := setupTest()
 	defer ts.cancel()
 
@@ -467,7 +467,7 @@ func TestAWSCredentialsRotator_ErrorHandling(t *testing.T) {
 	})
 }
 
-func TestAWSCredentialsRotator_Concurrency(t *testing.T) {
+func TestAWS_CredentialsRotator_Concurrency(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -556,7 +556,7 @@ func TestAWSCredentialsRotator_Concurrency(t *testing.T) {
 	})
 }
 
-func TestAWSCredentialsRotator_Security(t *testing.T) {
+func TestAWS_CredentialsRotator_Security(t *testing.T) {
 	ts := setupTest()
 	defer ts.cancel()
 
@@ -603,7 +603,7 @@ func TestAWSCredentialsRotator_Security(t *testing.T) {
 	})
 }
 
-func TestAWSCredentialsRotator_Performance(t *testing.T) {
+func TestAWS_CredentialsRotator_Performance(t *testing.T) {
 	ts := setupTest()
 	defer ts.cancel()
 

@@ -146,7 +146,7 @@ func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
 			Namespace:    event.RotationEvent.Namespace,
 		},
 		InvolvedObject: corev1.ObjectReference{
-			Kind:      "Secret", // This might need to be dynamic based on the rotation type
+			Kind:      "Secret",
 			Name:      event.RotationEvent.Name,
 			Namespace: event.RotationEvent.Namespace,
 		},
@@ -154,6 +154,11 @@ func (tm *TokenManager) publishRotationEvent(event TokenRotationEvent) {
 		Message:   tm.formatEventMessage(event),
 		Type:      tm.getEventType(event.EventType),
 		EventTime: metav1.MicroTime{Time: event.Timestamp},
+	}
+
+	// If there's an error in the event, ensure it's marked as a warning
+	if event.Error != "" {
+		k8sEvent.Type = corev1.EventTypeWarning
 	}
 
 	select {
@@ -239,11 +244,31 @@ func (tm *TokenManager) publishEvent(event token_rotators.RotationEvent, eventTy
 
 // handleError publishes an error event and returns a formatted error
 func (tm *TokenManager) handleError(event token_rotators.RotationEvent, errMsg string, err error) error {
-	tm.publishEvent(event, RotationEventFailed, err)
-	if err != nil {
-		return fmt.Errorf("%s: %w", errMsg, err)
+	rotationEvent := TokenRotationEvent{
+		EventType:     RotationEventFailed,
+		RotationEvent: event,
+		Timestamp:     time.Now(),
 	}
-	return fmt.Errorf("%s", errMsg)
+
+	// Include namespace and name in the error message
+	contextMsg := fmt.Sprintf("%s for secret %s/%s", errMsg, event.Namespace, event.Name)
+	if err != nil {
+		rotationEvent.Error = fmt.Sprintf("%s: %s", contextMsg, err.Error())
+	} else {
+		rotationEvent.Error = contextMsg
+	}
+
+	// Also log the error with structured fields
+	tm.logger.Error(err, contextMsg,
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"type", event.Type)
+
+	tm.publishRotationEvent(rotationEvent)
+	if err != nil {
+		return fmt.Errorf("%s: %w", contextMsg, err)
+	}
+	return fmt.Errorf("%s", contextMsg)
 }
 
 // RequestRotation requests a rotation for a secret. This is a non-blocking operation.
@@ -407,10 +432,7 @@ func (tm *TokenManager) Start(ctx context.Context) error {
 			tm.mu.RUnlock()
 
 			if !exists {
-				tm.logger.Error(fmt.Errorf("no rotator found"), "failed to process rotation event",
-					"type", event.Type,
-					"namespace", event.Namespace,
-					"name", event.Name)
+				tm.handleError(event, "no rotator found", fmt.Errorf("for type %s", event.Type))
 				continue
 			}
 
@@ -419,10 +441,7 @@ func (tm *TokenManager) Start(ctx context.Context) error {
 				defer tm.wg.Done()
 				if err := rotator.Rotate(ctx, e); err != nil {
 					if err != context.Canceled {
-						tm.logger.Error(err, "failed to rotate credentials",
-							"type", e.Type,
-							"namespace", e.Namespace,
-							"name", e.Name)
+						tm.handleError(e, "failed to rotate credentials", err)
 					}
 				}
 			}(event)
