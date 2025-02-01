@@ -9,6 +9,8 @@ import TabItem from '@theme/TabItem';
 
 This guide will help you set up a basic AI Gateway configuration and make your first request.
 
+Note that some of the below commands also have listed Powershell equivalents for Windows users.
+
 ## Setting Up Your Environment
 
 ### Deploy Basic Configuration
@@ -54,9 +56,19 @@ First, save the external IP and set the gateway URL:
 export GATEWAY_URL=$(kubectl get gateway/envoy-ai-gateway-basic -o jsonpath='{.status.addresses[0].value}')
 ```
 
+Powershell:
+```shell
+$env:GATEWAY_URL = kubectl get gateway/envoy-ai-gateway-basic -o jsonpath='{.status.addresses[0].value}'
+```
+
 Verify the URL is available:
 ```shell
 echo $GATEWAY_URL
+```
+
+Powershell:
+```shell
+echo $env:GATEWAY_URL
 ```
 
 </TabItem>
@@ -69,13 +81,30 @@ First, set the gateway URL:
 export GATEWAY_URL="http://localhost:8080"
 ```
 
+Powershell:
+```shell
+$env:GATEWAY_URL = "http://localhost:8080"
+```
+
 Then set up port forwarding (this will block the terminal):
 ```shell
 export ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system \
     --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
     -o jsonpath='{.items[0].metadata.name}')
+```
 
+Powershell:
+```shell
+$env:ENVOY_SERVICE = kubectl get svc -n envoy-gateway-system --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -o jsonpath='{.items[0].metadata.name}'
+```
+
+```shell
 kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
+```
+
+Powershell:
+```shell
+kubectl port-forward -n envoy-gateway-system svc/$env:ENVOY_SERVICE 8080:80
 ```
 
 </TabItem>
