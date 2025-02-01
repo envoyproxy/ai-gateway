@@ -88,22 +88,44 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
-	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), sinkChan)
-	awsRotator := NewAWSCredentialsRotator(c, kubernetes.NewForConfigOrDie(config), logger.WithName("aws-credentials-rotator"))
+	// Create and start the Token Manager
+	tokenManager := NewTokenManager(logger.WithName("token-manager"))
+	go tokenManager.Start(ctx)
 
-	// Register BackendSecurityPolicy controller with both reconcilers
+	// Create AWS credentials rotator
+	awsCredsRotator := NewAWSCredentialsRotator(
+		c,
+		kubernetes.NewForConfigOrDie(config),
+		logger.WithName("aws-credentials-rotator"),
+	)
+	if err := tokenManager.RegisterRotator(awsCredsRotator); err != nil {
+		return fmt.Errorf("failed to register AWS credentials rotator: %w", err)
+	}
+
+	// Create AWS OIDC rotator
+	awsOIDCRotator := NewAWSOIDCRotator(
+		c,
+		kubernetes.NewForConfigOrDie(config),
+		logger.WithName("aws-oidc-rotator"),
+	)
+	if err := tokenManager.RegisterRotator(awsOIDCRotator); err != nil {
+		return fmt.Errorf("failed to register AWS OIDC rotator: %w", err)
+	}
+
+	// Create Backend Security Policy controller with Token Manager
+	backendSecurityPolicyC := newBackendSecurityPolicyController(
+		c,
+		kubernetes.NewForConfigOrDie(config),
+		logger.WithName("backend-security-policy"),
+		sinkChan,
+		tokenManager,
+	)
+
+	// Register BackendSecurityPolicy controller
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
-	}
-
-	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.BackendSecurityPolicy{}).
-		Named("aws-credentials-rotator").
-		Complete(awsRotator); err != nil {
-		return fmt.Errorf("failed to create controller for AWS credentials rotation: %w", err)
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
@@ -192,7 +214,6 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		if awsCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(awsCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
 		}
-		// TODO: OIDC.
 	}
 	return []string{key}
 }

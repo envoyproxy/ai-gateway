@@ -14,6 +14,22 @@ The AWS Credentials Rotation feature provides automated rotation of AWS credenti
 
 The feature is implemented through the `BackendSecurityPolicy` resource with type `AWSCredentials`. It automatically manages and rotates AWS credentials stored in Kubernetes secrets, ensuring secure access to AWS services.
 
+## Architecture
+
+The credential rotation system consists of three main components:
+
+1. **Token Manager**: Central coordinator that manages different types of credential rotators
+2. **Rotator Interface**: Common interface for implementing credential rotation strategies
+3. **Rotator Implementations**:
+   - `AWSCredentialsRotator`: Handles IAM access key rotation
+   - `AWSOIDCRotator`: Manages OIDC token exchange with AWS STS
+
+This modular architecture allows for:
+- Easy addition of new rotation types
+- Consistent handling of rotation events
+- Centralized error handling and logging
+- Clean separation of concerns
+
 ## Configuration
 
 ### Basic IAM Access Key Rotation
@@ -27,14 +43,10 @@ metadata:
 spec:
   type: AWSCredentials
   awsCredentials:
-    region: us-west-2
     credentialsFile:
       secretRef:
         name: aws-credentials
       profile: default  # Optional, defaults to "default"
-    rotationConfig:     # Optional
-      rotationInterval: "24h"
-      preRotationWindow: "1h"
 ```
 
 ### OIDC Token Exchange
@@ -48,7 +60,6 @@ metadata:
 spec:
   type: AWSCredentials
   awsCredentials:
-    region: us-west-2
     oidcExchangeToken:
       oidc:
         provider:
@@ -61,147 +72,134 @@ spec:
 
 ## How It Works
 
+### Token Manager
+
+The Token Manager:
+1. Maintains a registry of credential rotators
+2. Receives rotation requests from controllers
+3. Routes rotation events to appropriate rotators
+4. Handles concurrent rotations safely
+5. Provides context-aware cancellation
+6. Manages error handling and logging
+
 ### IAM Access Key Rotation
 
-1. The controller monitors `BackendSecurityPolicy` resources with type `AWSCredentials`.
-2. When rotation is needed (based on `rotationInterval` or first deployment):
+The `AWSCredentialsRotator`:
+1. Monitors `BackendSecurityPolicy` resources with type `AWSCredentials`
+2. When rotation is requested:
    - Creates a new IAM access key
    - Updates the credentials secret with the new key
-   - Deletes the old access key after successful update
+   - Schedules deletion of the old access key after a delay
+3. Handles multiple AWS profiles in a single credentials file
+4. Provides safe concurrent access to AWS credentials
 
 ### OIDC Token Exchange
 
-1. The controller obtains an OIDC token using the configured provider
-2. Creates a region-specific STS client (cached for efficiency)
-3. Exchanges the OIDC token for temporary AWS credentials using `AssumeRoleWithWebIdentity`
-4. Creates/updates a secret with the `-oidc-creds` suffix containing the temporary credentials
-5. Automatically rotates credentials before they expire
-
-## Rotation Configuration
-
-- `rotationInterval`: How often to rotate credentials (default: 24h)
-- `preRotationWindow`: How long before expiry to start rotation (default: 1h)
-
-For OIDC credentials, rotation is based on the expiry time of the STS credentials. The controller automatically schedules the next rotation within the pre-rotation window to ensure continuous operation.
+The `AWSOIDCRotator`:
+1. Receives OIDC token exchange requests
+2. Validates required metadata (role ARN and ID token)
+3. Exchanges OIDC token for temporary AWS credentials using STS
+4. Updates the target secret with the new credentials
+5. Formats credentials in AWS credentials file format
 
 ## Security Considerations
 
-1. **Secret Management**:
-   - Original credentials are stored in Kubernetes secrets
-   - OIDC credentials are stored in separate secrets with `-oidc-creds` suffix
-   - Secrets are automatically managed by the controller
-   - Region-specific credentials are properly handled
+1. **Concurrent Operations**:
+   - Thread-safe rotation handling
+   - Mutex-protected rotator registry
+   - Safe concurrent secret updates
 
-2. **Access Control**:
-   - Uses IAM roles and policies for OIDC-based access
-   - Supports fine-grained permissions through AWS IAM
-   - Region-specific STS endpoints ensure proper regional access
+2. **Error Handling**:
+   - Context-aware cancellation
+   - Graceful error recovery
+   - Detailed error logging
+   - Safe cleanup on failures
 
-3. **Credential Lifecycle**:
-   - Old credentials are securely deleted after rotation
-   - Failed rotations are handled gracefully with retries
-   - Automatic rotation before expiry prevents disruption
-   - Region-specific clients are cached for performance
-
-## Error Handling
-
-The controller handles various error scenarios:
-- Missing or invalid configuration
-- AWS API errors (including region-specific issues)
-- Rate limiting
-- Concurrent modifications
-- Invalid credentials
-- Network issues
-- OIDC token exchange failures
-- STS assume role failures
-
-Error handling includes:
-- Detailed error logging with context
-- Appropriate requeue durations for retries
-- Graceful degradation
-- Preservation of existing credentials on failure
-- Region-specific error handling
+3. **Credential Management**:
+   - Secure credential storage in Kubernetes secrets
+   - Automatic cleanup of old credentials
+   - Support for multiple credential profiles
 
 ## Best Practices
 
-1. **IAM Access Keys**:
-   - Use short rotation intervals (24h recommended)
-   - Configure appropriate IAM policies
-   - Monitor rotation logs for issues
+1. **Implementation**:
+   - Implement the `Rotator` interface for new rotation types
+   - Use context for cancellation and timeouts
+   - Handle concurrent operations safely
+   - Provide detailed error messages
 
-2. **OIDC Integration**:
-   - Use secure OIDC providers
-   - Configure appropriate role trust relationships
-   - Set reasonable session durations
-
-3. **Monitoring**:
-   - Monitor controller logs for rotation events
-   - Set up alerts for rotation failures
-   - Track credential usage and expiry
-
-## Troubleshooting
-
-Common issues and solutions:
-
-1. **Rotation Failures**:
-   - Check controller logs for error messages
-   - Verify IAM permissions
-   - Ensure secret access is available
-
-2. **OIDC Issues**:
-   - Verify OIDC provider configuration
-   - Check client credentials
-   - Validate role ARN and trust relationships
-
-3. **Secret Management**:
-   - Check secret permissions
-   - Verify secret format
-   - Monitor for concurrent modifications
+2. **Usage**:
+   - Monitor rotation logs
+   - Handle rotation errors appropriately
+   - Set up alerts for failed rotations
+   - Use appropriate IAM permissions
 
 ## Example Use Cases
 
-1. **GitHub Actions Integration**:
+1. **AWS Bedrock Integration**:
+This example demonstrates how to configure credentials for accessing AWS Bedrock LLM services. This is particularly useful for:
+- Secure access to AWS Bedrock models
+- Automatic credential rotation for production workloads
+- Maintaining secure access across multiple AWS regions
+
 ```yaml
 apiVersion: ai-gateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
-  name: github-aws-credentials
+  name: bedrock-credentials
 spec:
   type: AWSCredentials
   awsCredentials:
-    region: us-west-2
+    credentialsFile:
+      secretRef:
+        name: bedrock-credentials
+```
+
+Prerequisites:
+1. Create an IAM user with appropriate Bedrock permissions
+2. Store initial AWS credentials in a Kubernetes secret named 'bedrock-credentials'
+3. Ensure the IAM user has permissions for key rotation
+
+The rotator will:
+1. Automatically rotate the IAM access keys
+2. Update the credentials in the Kubernetes secret
+3. Clean up old access keys after successful rotation
+
+2. **Cross-Account Access**:
+This example shows how to use OIDC token exchange for accessing AWS services across accounts:
+
+```yaml
+apiVersion: ai-gateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: cross-account-access
+spec:
+  type: AWSCredentials
+  awsCredentials:
     oidcExchangeToken:
       oidc:
         provider:
-          issuer: "https://token.actions.githubusercontent.com"
-        clientId: "my-client-id"
+          issuer: "https://oidc.eks.region.amazonaws.com/id/CLUSTER_ID"
+        clientId: "sts.amazonaws.com"
         clientSecret:
-          name: github-token
-      awsRoleArn: "arn:aws:iam::123456789012:role/github-actions-role"
+          name: eks-token
+      awsRoleArn: "arn:aws:iam::ACCOUNT_ID:role/bedrock-access-role"
 ```
 
-2. **Regular IAM Key Rotation**:
-```yaml
-apiVersion: ai-gateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: aws-service-account
-spec:
-  type: AWSCredentials
-  awsCredentials:
-    region: us-west-2
-    credentialsFile:
-      secretRef:
-        name: service-account-credentials
-    rotationConfig:
-      rotationInterval: "12h"
-      preRotationWindow: "30m"
-```
+Prerequisites:
+1. Configure EKS OIDC provider in the target AWS account
+2. Create an IAM role with appropriate trust relationships and Bedrock permissions
+3. Configure service account with appropriate annotations
+
+This setup allows:
+- Secure cross-account access to AWS services
+- Automatic credential rotation without long-lived access keys
+- Fine-grained access control through IAM roles
 
 ## Limitations
 
-1. Maximum of two active access keys per IAM user
-2. AWS API rate limits apply
-3. OIDC token exchange requires valid trust relationships
-4. Minimum rotation interval of 1 hour
-5. Maximum session duration based on role settings 
+1. AWS API rate limits apply to credential operations
+2. OIDC token exchange requires valid trust relationships
+3. Requires appropriate IAM permissions for key creation/deletion
+4. Secret updates must be atomic to prevent race conditions
+5. Rotator implementations must be registered before use
