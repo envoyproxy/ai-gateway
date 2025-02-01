@@ -20,6 +20,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
 )
 
 func init() { MustInitializeScheme(scheme) }
@@ -89,7 +90,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	// Create and start the Token Manager
-	tokenManager := NewTokenManager(logger.WithName("token-manager"))
+	tokenManager := NewTokenManager(logger.WithName("token-manager"), sinkChan, c)
 	go tokenManager.Start(ctx)
 
 	// Create AWS credentials rotator
@@ -102,15 +103,45 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to register AWS credentials rotator: %w", err)
 	}
 
+	// Get channels for OIDC rotator
+	rotationChan := tokenManager.GetRotationChannel()
+	scheduleChan := make(chan token_rotators.RotationEvent, 100)
+
 	// Create AWS OIDC rotator
 	awsOIDCRotator := NewAWSOIDCRotator(
 		c,
 		kubernetes.NewForConfigOrDie(config),
 		logger.WithName("aws-oidc-rotator"),
+		rotationChan,
+		scheduleChan,
 	)
 	if err := tokenManager.RegisterRotator(awsOIDCRotator); err != nil {
 		return fmt.Errorf("failed to register AWS OIDC rotator: %w", err)
 	}
+
+	// Start the OIDC rotator
+	go func() {
+		if err := awsOIDCRotator.Start(ctx); err != nil && err != context.Canceled {
+			logger.Error(err, "OIDC rotator failed")
+		}
+	}()
+
+	// Start goroutine to forward scheduled events to token manager
+	go func() {
+		for {
+			select {
+			case event := <-scheduleChan:
+				if err := tokenManager.RequestRotation(ctx, event); err != nil {
+					logger.Error(err, "failed to schedule rotation",
+						"type", event.Type,
+						"namespace", event.Namespace,
+						"name", event.Name)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	// Create Backend Security Policy controller with Token Manager
 	backendSecurityPolicyC := newBackendSecurityPolicyController(

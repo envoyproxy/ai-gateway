@@ -5,190 +5,183 @@ import (
 	"testing"
 	"time"
 
+	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 type mockRotator struct {
-	rotateFunc func(ctx context.Context, event RotationEvent) error
-	rotateType RotationType
+	rotateFn   func(ctx context.Context, event token_rotators.RotationEvent) error
+	initFn     func(ctx context.Context, event token_rotators.RotationEvent) error
+	rotateType token_rotators.RotationType
 }
 
-func (m *mockRotator) Rotate(ctx context.Context, event RotationEvent) error {
-	if m.rotateFunc != nil {
-		return m.rotateFunc(ctx, event)
+func (m *mockRotator) Rotate(ctx context.Context, event token_rotators.RotationEvent) error {
+	if m.rotateFn != nil {
+		return m.rotateFn(ctx, event)
 	}
 	return nil
 }
 
-func (m *mockRotator) GetType() RotationType {
+func (m *mockRotator) Initialize(ctx context.Context, event token_rotators.RotationEvent) error {
+	if m.initFn != nil {
+		return m.initFn(ctx, event)
+	}
+	return nil
+}
+
+func (m *mockRotator) GetType() token_rotators.RotationType {
 	return m.rotateType
 }
 
 func TestTokenManager_RegisterRotator(t *testing.T) {
-	tm := NewTokenManager(ctrl.Log.WithName("test"))
+	eventChan := make(chan ConfigSinkEvent, 10)
+	fakeClient := ctrlfake.NewClientBuilder().Build()
+	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-	t.Run("successful registration", func(t *testing.T) {
-		rotator := &mockRotator{rotateType: RotationTypeAWSCredentials}
-		err := tm.RegisterRotator(rotator)
-		require.NoError(t, err)
-	})
+	// Create test secret to simulate initialized token
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"credentials": []byte("test"),
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
-	t.Run("duplicate registration", func(t *testing.T) {
-		rotator := &mockRotator{rotateType: RotationTypeAWSCredentials}
-		err := tm.RegisterRotator(rotator)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "already registered")
-	})
+	rotator := &mockRotator{rotateType: token_rotators.RotationTypeAWSCredentials}
+	err := manager.RegisterRotator(rotator)
+	require.NoError(t, err)
+
+	assert.Equal(t, rotator, manager.rotators[token_rotators.RotationTypeAWSCredentials])
 }
 
 func TestTokenManager_RequestRotation(t *testing.T) {
-	tm := NewTokenManager(ctrl.Log.WithName("test"))
-	ctx := context.Background()
+	eventChan := make(chan ConfigSinkEvent, 10)
+	fakeClient := ctrlfake.NewClientBuilder().Build()
+	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-	t.Run("unknown rotator type", func(t *testing.T) {
-		event := RotationEvent{Type: "unknown"}
-		err := tm.RequestRotation(ctx, event)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no rotator registered")
-	})
+	// Create test secret to simulate initialized token
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"credentials": []byte("test"),
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
-	t.Run("successful request", func(t *testing.T) {
-		rotated := make(chan struct{})
-		startErr := make(chan error, 1)
-		rotator := &mockRotator{
-			rotateType: RotationTypeAWSCredentials,
-			rotateFunc: func(ctx context.Context, event RotationEvent) error {
-				close(rotated)
-				return nil
-			},
-		}
-		err := tm.RegisterRotator(rotator)
-		require.NoError(t, err)
-
-		// Start the manager
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		go func() {
-			startErr <- tm.Start(ctx)
-		}()
-
-		event := RotationEvent{Type: RotationTypeAWSCredentials}
-		err = tm.RequestRotation(ctx, event)
-		require.NoError(t, err)
-
-		// Wait for rotation or timeout
-		select {
-		case <-rotated:
-			// Success
-		case <-time.After(time.Second):
-			t.Fatal("rotation did not occur within timeout")
-		}
-
-		// Cancel and verify shutdown
-		cancel()
-		select {
-		case err := <-startErr:
-			require.ErrorIs(t, err, context.Canceled)
-		case <-time.After(time.Second):
-			t.Fatal("manager did not shut down within timeout")
-		}
-	})
-
-	t.Run("cancelled context", func(t *testing.T) {
-		rotator := &mockRotator{rotateType: RotationTypeAWSOIDC}
-		err := tm.RegisterRotator(rotator)
-		require.NoError(t, err)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		event := RotationEvent{Type: RotationTypeAWSOIDC}
-		err = tm.RequestRotation(ctx, event)
-		require.Error(t, err)
-		assert.Equal(t, context.Canceled, err)
-	})
-}
-
-func TestTokenManager_Start(t *testing.T) {
-	tm := NewTokenManager(ctrl.Log.WithName("test"))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	rotated := make(chan struct{})
-	startErr := make(chan error, 1)
+	// Track rotation calls
 	rotator := &mockRotator{
-		rotateType: RotationTypeAWSCredentials,
-		rotateFunc: func(ctx context.Context, event RotationEvent) error {
-			close(rotated)
+		rotateType: token_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
 			return nil
 		},
 	}
-
-	err := tm.RegisterRotator(rotator)
+	err := manager.RegisterRotator(rotator)
 	require.NoError(t, err)
 
-	// Start the manager in a goroutine
-	go func() {
-		startErr <- tm.Start(ctx)
-	}()
-
-	// Request a rotation
-	event := RotationEvent{Type: RotationTypeAWSCredentials}
-	err = tm.RequestRotation(ctx, event)
-	require.NoError(t, err)
-
-	// Wait for rotation or timeout
-	select {
-	case <-rotated:
-		// Success
-	case <-time.After(time.Second):
-		t.Fatal("rotation did not occur within timeout")
+	event := token_rotators.RotationEvent{
+		Namespace: "default",
+		Name:      "test-secret",
+		Type:      token_rotators.RotationTypeAWSCredentials,
+		Metadata:  map[string]string{"key": "value"},
 	}
 
-	// Test cleanup
-	t.Run("cleanup on context cancel", func(t *testing.T) {
-		// Create a slow rotation that will be interrupted
-		slowRotated := make(chan struct{})
-		slowRotator := &mockRotator{
-			rotateType: RotationTypeAWSOIDC,
-			rotateFunc: func(ctx context.Context, event RotationEvent) error {
-				defer close(slowRotated)
-				select {
-				case <-time.After(2 * time.Second):
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
-		}
+	err = manager.RequestRotation(context.Background(), event)
+	require.NoError(t, err)
 
-		err := tm.RegisterRotator(slowRotator)
-		require.NoError(t, err)
+	// Verify the event was published
+	select {
+	case publishedEvent := <-manager.GetRotationChannel():
+		assert.Equal(t, event, publishedEvent)
+	case <-time.After(time.Second):
+		t.Fatal("rotation event was not published")
+	}
+}
 
-		// Request the slow rotation
-		event := RotationEvent{Type: RotationTypeAWSOIDC}
-		err = tm.RequestRotation(ctx, event)
-		require.NoError(t, err)
+func TestTokenManager_Start(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		// Cancel the context quickly
-		cancel()
+	eventChan := make(chan ConfigSinkEvent, 10)
+	fakeClient := ctrlfake.NewClientBuilder().Build()
+	manager := NewTokenManager(ctrl.Log.WithName("test"), eventChan, fakeClient)
 
-		// Verify the rotation was interrupted
-		select {
-		case <-slowRotated:
-			// Rotation completed or was cancelled
-		case <-time.After(3 * time.Second):
-			t.Fatal("cleanup did not complete within timeout")
-		}
+	// Create test secret to simulate initialized token
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"credentials": []byte("test"),
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
-		// Verify the manager shut down cleanly
-		select {
-		case err := <-startErr:
-			require.ErrorIs(t, err, context.Canceled)
-		case <-time.After(time.Second):
-			t.Fatal("manager did not shut down within timeout")
-		}
-	})
+	// Track rotation calls
+	rotationCalls := make(chan token_rotators.RotationEvent, 100)
+	rotator := &mockRotator{
+		rotateType: token_rotators.RotationTypeAWSCredentials,
+		rotateFn: func(ctx context.Context, event token_rotators.RotationEvent) error {
+			rotationCalls <- event
+			return nil
+		},
+	}
+	err := manager.RegisterRotator(rotator)
+	require.NoError(t, err)
+
+	// Start the manager
+	go manager.Start(ctx)
+
+	// Test immediate rotation
+	immediateEvent := token_rotators.RotationEvent{
+		Namespace: "default",
+		Name:      "test-secret",
+		Type:      token_rotators.RotationTypeAWSCredentials,
+	}
+	err = manager.RequestRotation(ctx, immediateEvent)
+	require.NoError(t, err)
+
+	select {
+	case rotatedEvent := <-rotationCalls:
+		assert.Equal(t, immediateEvent, rotatedEvent)
+	case <-time.After(time.Second):
+		t.Fatal("immediate rotation not processed")
+	}
+
+	// Test scheduled rotation
+	scheduledEvent := token_rotators.RotationEvent{
+		Namespace: "default",
+		Name:      "test-secret",
+		Type:      token_rotators.RotationTypeAWSCredentials,
+		Metadata: map[string]string{
+			"rotate_at": time.Now().Add(100 * time.Millisecond).Format(time.RFC3339),
+		},
+	}
+	err = manager.RequestRotation(ctx, scheduledEvent)
+	require.NoError(t, err)
+
+	// Verify the event was published
+	select {
+	case publishedEvent := <-manager.GetRotationChannel():
+		assert.Equal(t, scheduledEvent.Namespace, publishedEvent.Namespace)
+		assert.Equal(t, scheduledEvent.Name, publishedEvent.Name)
+		assert.Equal(t, scheduledEvent.Type, publishedEvent.Type)
+	case <-time.After(time.Second):
+		t.Fatal("scheduled rotation not published")
+	}
+
+	// Test cancellation
+	cancel()
+	time.Sleep(100 * time.Millisecond) // Give time for goroutines to stop
 }

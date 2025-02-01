@@ -1,4 +1,4 @@
-package controller
+package token_rotators
 
 import (
 	"context"
@@ -54,7 +54,7 @@ func TestAWSCredentialsRotator_Rotate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k8sClient := ctrlfake.NewClientBuilder().WithScheme(scheme).Build()
+	k8sClient := ctrlfake.NewClientBuilder().Build()
 	k8sClientset := kubefake.NewSimpleClientset()
 
 	// Create a test secret
@@ -90,8 +90,8 @@ func TestAWSCredentialsRotator_Rotate(t *testing.T) {
 	}
 
 	rotator := NewAWSCredentialsRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"))
-	rotator.keyDeletionDelay = 100 * time.Millisecond
-	rotator.iamOps = mockIAM
+	rotator.KeyDeletionDelay = 100 * time.Millisecond
+	rotator.IAMOps = mockIAM
 
 	event := RotationEvent{
 		Namespace: "default",
@@ -149,12 +149,15 @@ func TestAWSCredentialsRotator_Rotate(t *testing.T) {
 }
 
 func TestAWSOIDCRotator_Rotate(t *testing.T) {
-	// Create a cancellable context for cleanup
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // This will trigger cleanup of any goroutines
+	defer cancel()
 
-	k8sClient := ctrlfake.NewClientBuilder().WithScheme(scheme).Build()
+	k8sClient := ctrlfake.NewClientBuilder().Build()
 	k8sClientset := kubefake.NewSimpleClientset()
+
+	// Create test channels
+	rotationChan := make(chan RotationEvent)
+	scheduleChan := make(chan RotationEvent, 100)
 
 	// Create a test secret first
 	secret := &corev1.Secret{
@@ -175,13 +178,14 @@ func TestAWSOIDCRotator_Rotate(t *testing.T) {
 					AccessKeyId:     aws.String("STSKEY"),
 					SecretAccessKey: aws.String("STSSECRET"),
 					SessionToken:    aws.String("STSTOKEN"),
+					Expiration:      aws.Time(time.Now().Add(time.Hour)),
 				},
 			}, nil
 		},
 	}
 
-	rotator := NewAWSOIDCRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"))
-	rotator.stsOps = mockSTS
+	rotator := NewAWSOIDCRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"), rotationChan, scheduleChan)
+	rotator.SetSTSOperations(mockSTS)
 
 	event := RotationEvent{
 		Namespace: "default",
@@ -207,6 +211,19 @@ func TestAWSOIDCRotator_Rotate(t *testing.T) {
 	assert.Equal(t, "STSKEY", creds.profiles[defaultProfile].accessKeyID)
 	assert.Equal(t, "STSSECRET", creds.profiles[defaultProfile].secretAccessKey)
 	assert.Equal(t, "STSTOKEN", creds.profiles[defaultProfile].sessionToken)
+
+	// Verify that a rotation event was scheduled
+	select {
+	case scheduledEvent := <-scheduleChan:
+		assert.Equal(t, event.Namespace, scheduledEvent.Namespace)
+		assert.Equal(t, event.Name, scheduledEvent.Name)
+		assert.Equal(t, event.Type, scheduledEvent.Type)
+		assert.Equal(t, event.Metadata["role_arn"], scheduledEvent.Metadata["role_arn"])
+		assert.Equal(t, event.Metadata["id_token"], scheduledEvent.Metadata["id_token"])
+		assert.NotEmpty(t, scheduledEvent.Metadata["rotate_at"])
+	case <-time.After(time.Second):
+		t.Fatal("no rotation event was scheduled")
+	}
 
 	// Wait a moment for any cleanup
 	time.Sleep(100 * time.Millisecond)
@@ -239,7 +256,7 @@ region = us-east-1`
 	require.NotNil(t, otherProfile)
 	assert.Equal(t, "AKIA2TEST", otherProfile.accessKeyID)
 	assert.Equal(t, "SECRET789", otherProfile.secretAccessKey)
-	assert.Equal(t, "", otherProfile.sessionToken)
+	assert.Empty(t, otherProfile.sessionToken)
 	assert.Equal(t, "us-east-1", otherProfile.region)
 }
 
@@ -263,22 +280,17 @@ func TestFormatAWSCredentialsFile(t *testing.T) {
 	}
 
 	output := formatAWSCredentialsFile(creds)
-	parsedCreds := parseAWSCredentialsFile(output)
+	expected := `[default]
+aws_access_key_id = AKIATEST
+aws_secret_access_key = SECRET123
+aws_session_token = TOKEN456
+region = us-west-2
 
-	require.NotNil(t, parsedCreds)
-	require.Len(t, parsedCreds.profiles, 2)
+[other]
+aws_access_key_id = AKIA2TEST
+aws_secret_access_key = SECRET789
+region = us-east-1
+`
 
-	defaultProfile := parsedCreds.profiles["default"]
-	require.NotNil(t, defaultProfile)
-	assert.Equal(t, "AKIATEST", defaultProfile.accessKeyID)
-	assert.Equal(t, "SECRET123", defaultProfile.secretAccessKey)
-	assert.Equal(t, "TOKEN456", defaultProfile.sessionToken)
-	assert.Equal(t, "us-west-2", defaultProfile.region)
-
-	otherProfile := parsedCreds.profiles["other"]
-	require.NotNil(t, otherProfile)
-	assert.Equal(t, "AKIA2TEST", otherProfile.accessKeyID)
-	assert.Equal(t, "SECRET789", otherProfile.secretAccessKey)
-	assert.Equal(t, "", otherProfile.sessionToken)
-	assert.Equal(t, "us-east-1", otherProfile.region)
+	assert.Equal(t, expected, output)
 }

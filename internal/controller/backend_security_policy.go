@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/token_rotators"
 )
 
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
@@ -74,10 +75,10 @@ func (b backendSecurityPolicyController) handleAWSCredentialRotation(ctx context
 
 	// Handle IAM credentials rotation
 	if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.CredentialsFile != nil {
-		event := RotationEvent{
+		event := token_rotators.RotationEvent{
 			Namespace: policy.Namespace,
 			Name:      string(policy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name),
-			Type:      RotationTypeAWSCredentials,
+			Type:      token_rotators.RotationTypeAWSCredentials,
 			Metadata:  make(map[string]string),
 		}
 		if err := b.tokenManager.RequestRotation(ctx, event); err != nil {
@@ -87,10 +88,10 @@ func (b backendSecurityPolicyController) handleAWSCredentialRotation(ctx context
 
 	// Handle OIDC token rotation
 	if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
-		event := RotationEvent{
+		event := token_rotators.RotationEvent{
 			Namespace: policy.Namespace,
 			Name:      policy.Name,
-			Type:      RotationTypeAWSOIDC,
+			Type:      token_rotators.RotationTypeAWSOIDC,
 			Metadata: map[string]string{
 				"role_arn": policy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn,
 				// Note: id_token will be added by the token manager when available
