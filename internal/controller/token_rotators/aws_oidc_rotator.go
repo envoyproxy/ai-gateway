@@ -30,10 +30,10 @@ import (
 // - Integration with Kubernetes secrets for credential storage
 // - Channel-based rotation scheduling
 type AWSOIDCRotator struct {
-	// k8sClient is used for Kubernetes API operations
-	k8sClient client.Client
-	// k8sClientset provides additional Kubernetes API capabilities
-	k8sClientset kubernetes.Interface
+	// client is used for Kubernetes API operations
+	client client.Client
+	// kube provides additional Kubernetes API capabilities
+	kube kubernetes.Interface
 	// logger is used for structured logging
 	logger logr.Logger
 	// stsOps provides AWS STS operations interface
@@ -51,8 +51,8 @@ type AWSOIDCRotator struct {
 // NewAWSOIDCRotator creates a new AWS OIDC rotator with the specified configuration.
 // It initializes the AWS STS client and sets up the rotation channels.
 func NewAWSOIDCRotator(
-	k8sClient client.Client,
-	k8sClientset kubernetes.Interface,
+	client client.Client,
+	kube kubernetes.Interface,
 	logger logr.Logger,
 	rotationChan <-chan RotationEvent,
 	scheduleChan chan<- RotationEvent,
@@ -65,8 +65,8 @@ func NewAWSOIDCRotator(
 	stsClient := NewSTSClient(cfg)
 
 	return &AWSOIDCRotator{
-		k8sClient:    k8sClient,
-		k8sClientset: k8sClientset,
+		client:       client,
+		kube:         kube,
 		logger:       logger,
 		stsOps:       stsClient,
 		rotationChan: rotationChan,
@@ -120,7 +120,7 @@ func (r *AWSOIDCRotator) Start(ctx context.Context) error {
 // updateSecret updates (or optionally creates) a secret with AWS credentials
 func (r *AWSOIDCRotator) updateSecret(ctx context.Context, event RotationEvent, resp *sts.AssumeRoleWithWebIdentityOutput, allowCreate bool) error {
 	secret := &corev1.Secret{}
-	if err := r.k8sClient.Get(ctx, client.ObjectKey{
+	if err := r.client.Get(ctx, client.ObjectKey{
 		Namespace: event.Namespace,
 		Name:      event.Name,
 	}, secret); err != nil {
@@ -146,11 +146,11 @@ func (r *AWSOIDCRotator) updateSecret(ctx context.Context, event RotationEvent, 
 
 	// Create or update the secret
 	if secret.ResourceVersion == "" {
-		if err := r.k8sClient.Create(ctx, secret); err != nil {
+		if err := r.client.Create(ctx, secret); err != nil {
 			return fmt.Errorf("failed to create secret: %w", err)
 		}
 	} else {
-		if err := r.k8sClient.Update(ctx, secret); err != nil {
+		if err := r.client.Update(ctx, secret); err != nil {
 			return fmt.Errorf("failed to update secret with new credentials: %w", err)
 		}
 	}
@@ -217,7 +217,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 // getOIDCToken retrieves the OIDC token from the specified secret
 func (r *AWSOIDCRotator) getOIDCToken(ctx context.Context, event RotationEvent) ([]byte, error) {
 	oidcSecret := &corev1.Secret{}
-	if err := r.k8sClient.Get(ctx, client.ObjectKey{
+	if err := r.client.Get(ctx, client.ObjectKey{
 		Namespace: event.Namespace,
 		Name:      event.Metadata["oidc-token-secret"],
 	}, oidcSecret); err != nil {

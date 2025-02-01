@@ -78,10 +78,10 @@ import (
 // The rotation process is configurable through KeyDeletionDelay and MinPropagationDelay
 // to accommodate different environments and requirements.
 type AWSCredentialsRotator struct {
-	// k8sClient is used for Kubernetes API operations
-	k8sClient client.Client
-	// k8sClientset provides additional Kubernetes API capabilities
-	k8sClientset kubernetes.Interface
+	// client is used for Kubernetes API operations
+	client client.Client
+	// kube provides additional Kubernetes API capabilities
+	kube kubernetes.Interface
 	// logger is used for structured logging
 	logger logr.Logger
 	// IAMOps provides AWS IAM operations interface
@@ -98,8 +98,8 @@ type AWSCredentialsRotator struct {
 
 // NewAWSCredentialsRotator creates a new AWS credentials rotator
 func NewAWSCredentialsRotator(
-	k8sClient client.Client,
-	k8sClientset kubernetes.Interface,
+	client client.Client,
+	kube kubernetes.Interface,
 	logger logr.Logger,
 ) (*AWSCredentialsRotator, error) {
 	cfg, err := getDefaultAWSConfig(context.Background())
@@ -110,8 +110,8 @@ func NewAWSCredentialsRotator(
 	iamClient := NewIAMClient(cfg)
 
 	return &AWSCredentialsRotator{
-		k8sClient:           k8sClient,
-		k8sClientset:        k8sClientset,
+		client:              client,
+		kube:                kube,
 		logger:              logger,
 		IAMOps:              iamClient,
 		KeyDeletionDelay:    defaultKeyDeletionDelay,
@@ -136,7 +136,7 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 
 	// Get the secret
 	secret := &corev1.Secret{}
-	if err := r.k8sClient.Get(ctx, client.ObjectKey{
+	if err := r.client.Get(ctx, client.ObjectKey{
 		Namespace: event.Namespace,
 		Name:      event.Name,
 	}, secret); err != nil {
@@ -188,11 +188,11 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 
 	// Create or update the secret
 	if secret.ResourceVersion == "" {
-		if err := r.k8sClient.Create(ctx, secret); err != nil {
+		if err := r.client.Create(ctx, secret); err != nil {
 			return fmt.Errorf("failed to create secret: %w", err)
 		}
 	} else {
-		if err := r.k8sClient.Update(ctx, secret); err != nil {
+		if err := r.client.Update(ctx, secret); err != nil {
 			return fmt.Errorf("failed to update secret: %w", err)
 		}
 	}
@@ -244,7 +244,7 @@ func (r *AWSCredentialsRotator) validateRotationEvent(event RotationEvent) error
 // getAndValidateSecret retrieves and validates the AWS credentials secret
 func (r *AWSCredentialsRotator) getAndValidateSecret(ctx context.Context, event RotationEvent) (*corev1.Secret, *awsCredentialsFile, error) {
 	var secret corev1.Secret
-	if err := r.k8sClient.Get(ctx, client.ObjectKey{
+	if err := r.client.Get(ctx, client.ObjectKey{
 		Namespace: event.Namespace,
 		Name:      event.Name,
 	}, &secret); err != nil {
@@ -288,7 +288,7 @@ func (r *AWSCredentialsRotator) updateCredentialsInSecret(ctx context.Context, s
 
 	// Update the secret with new credentials
 	secret.Data[credentialsKey] = []byte(updatedCredsData)
-	if err := r.k8sClient.Update(ctx, secret); err != nil {
+	if err := r.client.Update(ctx, secret); err != nil {
 		return fmt.Errorf("failed to update secret with new credentials: %w", err)
 	}
 

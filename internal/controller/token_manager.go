@@ -89,7 +89,8 @@ type TokenManager struct {
 	publishChan chan token_rotators.RotationEvent
 	// eventChan is used to publish events to the configSink
 	eventChan chan ConfigSinkEvent
-	k8sClient client.Client
+	// client is used for Kubernetes API operations
+	client client.Client
 }
 
 // scheduledRotation represents a scheduled token rotation
@@ -107,7 +108,7 @@ func NewTokenManager(logger logr.Logger, eventChan chan ConfigSinkEvent, client 
 		rotationChan:   make(chan token_rotators.RotationEvent, 100), // Buffer size of 100
 		publishChan:    make(chan token_rotators.RotationEvent, 100), // Buffer size of 100
 		stopChan:       make(chan struct{}),
-		k8sClient:      client,
+		client:         client,
 		eventChan:      eventChan,
 		rotationWindow: 5 * time.Minute, // Default to rotating 5 minutes before expiry
 	}
@@ -200,7 +201,7 @@ func (tm *TokenManager) getEventType(eventType RotationEventType) string {
 // isTokenInitialized checks if a token has been initialized by verifying if its secret exists
 func (tm *TokenManager) isTokenInitialized(event token_rotators.RotationEvent) bool {
 	secret := &corev1.Secret{}
-	err := tm.k8sClient.Get(context.Background(), client.ObjectKey{
+	err := tm.client.Get(context.Background(), client.ObjectKey{
 		Namespace: event.Namespace,
 		Name:      event.Name,
 	}, secret)
