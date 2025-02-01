@@ -94,11 +94,14 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	go tokenManager.Start(ctx)
 
 	// Create AWS credentials rotator
-	awsCredsRotator := NewAWSCredentialsRotator(
+	awsCredsRotator, err := NewAWSCredentialsRotator(
 		c,
 		kubernetes.NewForConfigOrDie(config),
 		logger.WithName("aws-credentials-rotator"),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create AWS credentials rotator: %w", err)
+	}
 	if err := tokenManager.RegisterRotator(awsCredsRotator); err != nil {
 		return fmt.Errorf("failed to register AWS credentials rotator: %w", err)
 	}
@@ -108,13 +111,16 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	scheduleChan := make(chan token_rotators.RotationEvent, 100)
 
 	// Create AWS OIDC rotator
-	awsOIDCRotator := NewAWSOIDCRotator(
+	awsOIDCRotator, err := NewAWSOIDCRotator(
 		c,
 		kubernetes.NewForConfigOrDie(config),
 		logger.WithName("aws-oidc-rotator"),
 		rotationChan,
 		scheduleChan,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create AWS OIDC rotator: %w", err)
+	}
 	if err := tokenManager.RegisterRotator(awsOIDCRotator); err != nil {
 		return fmt.Errorf("failed to register AWS OIDC rotator: %w", err)
 	}

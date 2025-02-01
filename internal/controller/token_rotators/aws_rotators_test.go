@@ -89,8 +89,10 @@ func TestAWSCredentialsRotator_Rotate(t *testing.T) {
 		},
 	}
 
-	rotator := NewAWSCredentialsRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"))
+	rotator, err := NewAWSCredentialsRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"))
+	require.NoError(t, err)
 	rotator.KeyDeletionDelay = 100 * time.Millisecond
+	rotator.MinPropagationDelay = 10 * time.Millisecond
 	rotator.IAMOps = mockIAM
 
 	event := RotationEvent{
@@ -100,7 +102,7 @@ func TestAWSCredentialsRotator_Rotate(t *testing.T) {
 		Metadata:  map[string]string{"old_access_key_id": "OLDKEY"},
 	}
 
-	err := rotator.Rotate(ctx, event)
+	err = rotator.Rotate(ctx, event)
 	require.NoError(t, err)
 
 	// Verify the secret was updated immediately
@@ -184,7 +186,8 @@ func TestAWSOIDCRotator_Rotate(t *testing.T) {
 		},
 	}
 
-	rotator := NewAWSOIDCRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"), rotationChan, scheduleChan)
+	rotator, err := NewAWSOIDCRotator(k8sClient, k8sClientset, ctrl.Log.WithName("test"), rotationChan, scheduleChan)
+	require.NoError(t, err)
 	rotator.SetSTSOperations(mockSTS)
 
 	event := RotationEvent{
@@ -197,7 +200,7 @@ func TestAWSOIDCRotator_Rotate(t *testing.T) {
 		},
 	}
 
-	err := rotator.Rotate(ctx, event)
+	err = rotator.Rotate(ctx, event)
 	require.NoError(t, err)
 
 	// Verify the secret was updated

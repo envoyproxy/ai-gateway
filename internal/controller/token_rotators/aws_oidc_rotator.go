@@ -32,14 +32,22 @@ func NewAWSOIDCRotator(
 	logger logr.Logger,
 	rotationChan <-chan RotationEvent,
 	scheduleChan chan<- RotationEvent,
-) *AWSOIDCRotator {
+) (*AWSOIDCRotator, error) {
+	cfg, err := getDefaultAWSConfig(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	stsClient := NewSTSClient(cfg)
+
 	return &AWSOIDCRotator{
 		k8sClient:    k8sClient,
 		k8sClientset: k8sClientset,
 		logger:       logger,
+		stsOps:       stsClient,
 		rotationChan: rotationChan,
 		scheduleChan: scheduleChan,
-	}
+	}, nil
 }
 
 // GetType implements the Rotator interface
@@ -242,11 +250,37 @@ func (r *AWSOIDCRotator) Initialize(ctx context.Context, event RotationEvent) er
 
 	// Schedule next rotation based on token expiry
 	if result.Credentials.Expiration != nil {
-		r.scheduleChan <- RotationEvent{
+		// Create the rotation event
+		nextEvent := RotationEvent{
 			Namespace: event.Namespace,
 			Name:      event.Name,
 			Type:      event.Type,
 			Metadata:  event.Metadata,
+		}
+
+		// Calculate minimum delay between rotations (5 seconds)
+		minDelay := 5 * time.Second
+		rotateAt := time.Now().Add(minDelay)
+
+		// If expiration is further in future, use that instead
+		if expiryRotateAt := result.Credentials.Expiration.Add(-5 * time.Minute); expiryRotateAt.After(rotateAt) {
+			rotateAt = expiryRotateAt
+		}
+
+		nextEvent.Metadata["rotate_at"] = rotateAt.Format(time.RFC3339)
+
+		// Send the event through the schedule channel with non-blocking behavior
+		select {
+		case r.scheduleChan <- nextEvent:
+			r.logger.Info("scheduled next rotation",
+				"namespace", event.Namespace,
+				"name", event.Name,
+				"rotateAt", rotateAt)
+		default:
+			r.logger.Error(fmt.Errorf("schedule channel is full"), "failed to schedule next rotation",
+				"namespace", event.Namespace,
+				"name", event.Name,
+				"rotateAt", rotateAt)
 		}
 	}
 

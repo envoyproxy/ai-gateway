@@ -17,11 +17,12 @@ import (
 
 // AWSCredentialsRotator implements the Rotator interface for AWS IAM credentials
 type AWSCredentialsRotator struct {
-	k8sClient        client.Client
-	k8sClientset     kubernetes.Interface
-	logger           logr.Logger
-	IAMOps           IAMOperations
-	KeyDeletionDelay time.Duration
+	k8sClient           client.Client
+	k8sClientset        kubernetes.Interface
+	logger              logr.Logger
+	IAMOps              IAMOperations
+	KeyDeletionDelay    time.Duration
+	MinPropagationDelay time.Duration
 }
 
 // NewAWSCredentialsRotator creates a new AWS credentials rotator
@@ -29,13 +30,22 @@ func NewAWSCredentialsRotator(
 	k8sClient client.Client,
 	k8sClientset kubernetes.Interface,
 	logger logr.Logger,
-) *AWSCredentialsRotator {
-	return &AWSCredentialsRotator{
-		k8sClient:        k8sClient,
-		k8sClientset:     k8sClientset,
-		logger:           logger,
-		KeyDeletionDelay: defaultKeyDeletionDelay,
+) (*AWSCredentialsRotator, error) {
+	cfg, err := getDefaultAWSConfig(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
+
+	iamClient := NewIAMClient(cfg)
+
+	return &AWSCredentialsRotator{
+		k8sClient:           k8sClient,
+		k8sClientset:        k8sClientset,
+		logger:              logger,
+		IAMOps:              iamClient,
+		KeyDeletionDelay:    defaultKeyDeletionDelay,
+		MinPropagationDelay: defaultMinPropagationDelay,
+	}, nil
 }
 
 // GetType implements the Rotator interface
@@ -92,9 +102,12 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 		go func() {
 			defer cancel()
 
+			// First, wait for the minimum propagation delay to ensure new credentials are active
 			select {
 			case <-ctx.Done():
-				// Context was cancelled, delete immediately
+				// Context was cancelled, but still ensure minimum propagation delay
+				time.Sleep(r.MinPropagationDelay)
+				// Then delete immediately without waiting for full deletion delay
 				_, err := r.IAMOps.DeleteAccessKey(deleteCtx, &iam.DeleteAccessKeyInput{
 					AccessKeyId: aws.String(oldKeyID),
 				})
@@ -102,15 +115,37 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 					r.logger.Error(err, "failed to delete old access key after context cancellation",
 						"accessKeyId", oldKeyID)
 				}
-			case <-time.After(r.KeyDeletionDelay):
-				// Normal delay-based deletion
-				_, err := r.IAMOps.DeleteAccessKey(deleteCtx, &iam.DeleteAccessKeyInput{
-					AccessKeyId: aws.String(oldKeyID),
-				})
-				if err != nil {
-					r.logger.Error(err, "failed to delete old access key",
-						"accessKeyId", oldKeyID)
+				return
+			case <-time.After(r.MinPropagationDelay):
+				// Minimum propagation delay satisfied, continue with normal flow
+			}
+
+			// Now wait for the remaining deletion delay
+			remainingDelay := r.KeyDeletionDelay - r.MinPropagationDelay
+			if remainingDelay > 0 {
+				select {
+				case <-ctx.Done():
+					// Context cancelled after propagation delay, delete immediately
+					_, err := r.IAMOps.DeleteAccessKey(deleteCtx, &iam.DeleteAccessKeyInput{
+						AccessKeyId: aws.String(oldKeyID),
+					})
+					if err != nil {
+						r.logger.Error(err, "failed to delete old access key after context cancellation",
+							"accessKeyId", oldKeyID)
+					}
+					return
+				case <-time.After(remainingDelay):
+					// Normal delay-based deletion
 				}
+			}
+
+			// Proceed with deletion after all delays are satisfied
+			_, err := r.IAMOps.DeleteAccessKey(deleteCtx, &iam.DeleteAccessKeyInput{
+				AccessKeyId: aws.String(oldKeyID),
+			})
+			if err != nil {
+				r.logger.Error(err, "failed to delete old access key",
+					"accessKeyId", oldKeyID)
 			}
 		}()
 	}

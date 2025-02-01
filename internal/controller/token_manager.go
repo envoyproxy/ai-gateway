@@ -208,22 +208,25 @@ func (tm *TokenManager) isTokenInitialized(event token_rotators.RotationEvent) b
 }
 
 // validateRotationEvent validates that the rotation event is valid and a rotator exists for its type
-func (tm *TokenManager) validateRotationEvent(event token_rotators.RotationEvent) error {
-	tm.mu.RLock()
-	_, exists := tm.rotators[event.Type]
-	tm.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no rotator registered for type %q", event.Type)
+func (tm *TokenManager) validateRotationEvent(event token_rotators.RotationEvent) (bool, error) {
+	if event.Type == "" {
+		return false, fmt.Errorf("rotation type cannot be empty")
 	}
-	return nil
+	return true, nil
+}
+
+// checkRotatorExists checks if a rotator exists for the given type
+func (tm *TokenManager) checkRotatorExists(rotationType token_rotators.RotationType) bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	_, exists := tm.rotators[rotationType]
+	return exists
 }
 
 // RequestRotation requests a rotation for a secret. This is a non-blocking operation.
 func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotators.RotationEvent) error {
-	select {
-	case <-tm.stopChan:
-		err := fmt.Errorf("token manager is shutting down")
+	// First validate the event structure without locks
+	if valid, err := tm.validateRotationEvent(event); !valid {
 		tm.publishRotationEvent(TokenRotationEvent{
 			EventType:     RotationEventFailed,
 			RotationEvent: event,
@@ -231,19 +234,11 @@ func (tm *TokenManager) RequestRotation(ctx context.Context, event token_rotator
 			Timestamp:     time.Now(),
 		})
 		return err
-	case <-ctx.Done():
-		tm.publishRotationEvent(TokenRotationEvent{
-			EventType:     RotationEventFailed,
-			RotationEvent: event,
-			Error:         ctx.Err().Error(),
-			Timestamp:     time.Now(),
-		})
-		return ctx.Err()
-	default:
-		// Continue with rotation if not shutting down and context not cancelled
 	}
 
-	if err := tm.validateRotationEvent(event); err != nil {
+	// Check if rotator exists
+	if !tm.checkRotatorExists(event.Type) {
+		err := fmt.Errorf("no rotator registered for type %q", event.Type)
 		tm.publishRotationEvent(TokenRotationEvent{
 			EventType:     RotationEventFailed,
 			RotationEvent: event,

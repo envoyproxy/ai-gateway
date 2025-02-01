@@ -13,7 +13,7 @@ func NewAWSCredentialsRotator(
 	k8sClient client.Client,
 	k8sClientset kubernetes.Interface,
 	logger logr.Logger,
-) *token_rotators.AWSCredentialsRotator {
+) (*token_rotators.AWSCredentialsRotator, error) {
 	return token_rotators.NewAWSCredentialsRotator(k8sClient, k8sClientset, logger)
 }
 
@@ -24,6 +24,6 @@ func NewAWSOIDCRotator(
 	logger logr.Logger,
 	rotationChan <-chan token_rotators.RotationEvent,
 	scheduleChan chan<- token_rotators.RotationEvent,
-) *token_rotators.AWSOIDCRotator {
+) (*token_rotators.AWSOIDCRotator, error) {
 	return token_rotators.NewAWSOIDCRotator(k8sClient, k8sClientset, logger, rotationChan, scheduleChan)
 }
