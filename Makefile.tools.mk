@@ -142,11 +142,6 @@ $(CODESPELL): .bin/.venv/codespell@v2.3.0
 
 $(YAMLLINT): .bin/.venv/yamllint@1.35.1
 
-.PHONY: yamllint
-yamllint: $(YAMLLINT)
-	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
-
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
 # $2 - package url which can be installed
