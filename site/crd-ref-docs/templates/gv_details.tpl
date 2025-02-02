@@ -1,12 +1,12 @@
 {{- define "gvDetails" -}}
 {{- $gv := . -}}
 
-## {{ $gv.GroupVersionString }}
+# {{ $gv.GroupVersionString }}
 
 {{ $gv.Doc }}
 
 {{- if $gv.Kinds  }}
-### Resource Types
+# Resource Types
 {{- range $gv.SortedKinds }}
 - {{ $gv.TypeForKind . | markdownRenderTypeLink }}
 {{- end }}

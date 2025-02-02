@@ -7,7 +7,7 @@ id: api_references
 title: API Reference
 ---
 
-## Packages
+# Packages
 {{- range $groupVersions }}
 - {{ markdownRenderGVLink . }}
 {{- end }}
