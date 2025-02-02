@@ -266,6 +266,21 @@ _Appears in:_
 | `profile` | _string_ |  true  | Profile is the profile to use in the credentials file. |
 
 
+#### AWSCredentialsRotationConfig
+
+
+
+AWSCredentialsRotationConfig specifies the configuration for rotating AWS credentials
+
+_Appears in:_
+- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+
+| Field | Type | Required | Description |
+| ---   | ---  | ---      | ---         |
+| `rotationInterval` | _string_ |  false  | RotationInterval specifies how often to rotate the credentials.<br />If not specified, defaults to 24 hours.<br />The minimum allowed value is 1 hour. |
+| `preRotationWindow` | _string_ |  false  | PreRotationWindow specifies how long before expiry to rotate the credentials.<br />If not specified, defaults to 1 hour.<br />Must be less than RotationInterval. |
+
+
 #### AWSOIDCExchangeToken
 
 
@@ -331,6 +346,7 @@ _Appears in:_
 | `region` | _string_ |  true  | Region specifies the AWS region associated with the policy. |
 | `credentialsFile` | _[AWSCredentialsFile](#awscredentialsfile)_ |  false  | CredentialsFile specifies the credentials file to use for the AWS provider. |
 | `oidcExchangeToken` | _[AWSOIDCExchangeToken](#awsoidcexchangetoken)_ |  false  | OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS. |
+| `rotationConfig` | _[AWSCredentialsRotationConfig](#awscredentialsrotationconfig)_ |  false  | RotationConfig specifies the configuration for rotating AWS credentials.<br />Only applies when CredentialsFile is used. |
 
 
 #### BackendSecurityPolicyList
@@ -382,6 +398,8 @@ _Appears in:_
 | ----- | ----------- |
 | `APIKey` |  |
 | `AWSCredentials` |  |
+
+
 
 
 #### LLMRequestCost

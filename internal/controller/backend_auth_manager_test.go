@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
 )
 
 type mockRotator struct {

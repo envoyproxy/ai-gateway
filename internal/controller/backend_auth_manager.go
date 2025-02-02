@@ -152,7 +152,7 @@ func (tm *BackendAuthManager) publishRotationEvent(event BackendAuthRotationEven
 		},
 		Reason:    fmt.Sprintf("BackendAuthRotation%s", event.EventType),
 		Message:   tm.formatEventMessage(event),
-		Type:      tm.getEventType(event.EventType),
+		Type:      tm.EventType(event.EventType),
 		EventTime: metav1.MicroTime{Time: event.Timestamp},
 	}
 
@@ -189,8 +189,8 @@ func (tm *BackendAuthManager) formatEventMessage(event BackendAuthRotationEvent)
 	}
 }
 
-// getEventType returns the appropriate Kubernetes event type
-func (tm *BackendAuthManager) getEventType(eventType RotationEventType) string {
+// EventType returns the appropriate Kubernetes event type
+func (tm *BackendAuthManager) EventType(eventType RotationEventType) string {
 	switch eventType {
 	case RotationEventStarted:
 		return corev1.EventTypeNormal
@@ -327,8 +327,8 @@ func (tm *BackendAuthManager) RequestRotation(ctx context.Context, event backend
 	return nil
 }
 
-// getScheduledRotationKey returns a consistent key format for scheduled rotations
-func (tm *BackendAuthManager) getScheduledRotationKey(namespace, name string) string {
+// ScheduledRotationKey returns a consistent key format for scheduled rotations
+func (tm *BackendAuthManager) ScheduledRotationKey(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
@@ -351,7 +351,7 @@ func (tm *BackendAuthManager) createScheduledRotation(ctx context.Context, event
 		event:    event,
 	}
 
-	key := tm.getScheduledRotationKey(event.Namespace, event.Name)
+	key := tm.ScheduledRotationKey(event.Namespace, event.Name)
 	tm.scheduledRotations.Store(key, sr)
 
 	return sr, cancel
@@ -384,7 +384,7 @@ func (tm *BackendAuthManager) ScheduleNextRotation(ctx context.Context, event ba
 
 // cancelExistingRotation cancels any existing scheduled rotation for the given resource
 func (tm *BackendAuthManager) cancelExistingRotation(namespace, name string) {
-	key := tm.getScheduledRotationKey(namespace, name)
+	key := tm.ScheduledRotationKey(namespace, name)
 	if val, ok := tm.scheduledRotations.Load(key); ok {
 		if sr, ok := val.(*scheduledRotation); ok {
 			sr.timer.Stop()
