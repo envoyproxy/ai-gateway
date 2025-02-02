@@ -25,5 +25,5 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Run code style check
+      - name: Ensure `make precommit` is executed
         run: make check
