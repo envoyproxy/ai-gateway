@@ -20,7 +20,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/internal/controller/backend_auth_rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
 )
 
 func init() { MustInitializeScheme(scheme) }
@@ -91,7 +91,11 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	// Create and start the backend auth manager
 	backendAuthManager := NewBackendAuthManager(logger.WithName("backend-auth-manager"), sinkChan, c)
-	go backendAuthManager.Start(ctx)
+	go func() {
+		if err := backendAuthManager.Start(ctx); err != nil {
+			logger.Error(err, "Backend auth manager failed")
+		}
+	}()
 
 	// Create AWS factory
 	awsFactory := NewAWSFactory(c, kubernetes.NewForConfigOrDie(config), logger)
@@ -107,7 +111,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	// Get rotation channels and set up event forwarding
 	rotationChan := backendAuthManager.RotationChannel()
-	scheduleChan := make(chan backend_auth_rotators.RotationEvent, 100)
+	scheduleChan := make(chan backendauthrotators.RotationEvent, 100)
 
 	// Forward rotation events to the backend auth manager
 	go func() {

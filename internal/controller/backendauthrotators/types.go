@@ -1,4 +1,4 @@
-package backend_auth_rotators
+package backendauthrotators
 
 import "context"
 

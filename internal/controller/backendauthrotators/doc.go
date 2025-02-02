@@ -1,5 +1,5 @@
 /*
-Package backend_auth_rotators provides implementations for credential rotation in the AI Gateway.
+Package backendauthrotators provides implementations for credential rotation in the AI Gateway.
 
 The package provides a set of interfaces and implementations for rotating different types of credentials:
 
@@ -188,4 +188,4 @@ The package provides monitoring capabilities through:
 For more information about AWS IAM best practices, see:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 */
-package backend_auth_rotators
+package backendauthrotators

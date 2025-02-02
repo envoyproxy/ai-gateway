@@ -1,5 +1,5 @@
 /*
-Package backend_auth_rotators provides credential rotation implementations.
+Package backendauthrotators provides credential rotation implementations.
 
 # AWS Credentials Rotation
 
@@ -45,7 +45,7 @@ The key deletion process includes two important delays:
 
 These delays ensure smooth credential rotation without service interruption.
 */
-package backend_auth_rotators
+package backendauthrotators
 
 import (
 	"context"
