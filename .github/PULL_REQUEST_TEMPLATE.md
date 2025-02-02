@@ -1,4 +1,4 @@
-**Commit Message**:
+**Commit Message**
 
 <!--
 Please write the commit message here, which
@@ -11,7 +11,7 @@ text from English to Spanish. This feature is useful for users who want to
 translate text from English to Spanish.
 -->
 
-**Related Issues/PRs (if applicable)**:
+**Related Issues/PRs (if applicable)**
 
 <!--
 Please add the related issues or PRs here.
@@ -23,7 +23,7 @@ Close #12346
 Related PR: #12347
 -->
 
-**Special notes for reviewers (if applicable)**:
+**Special notes for reviewers (if applicable)**
 
 <!--
 Please add any special notes for reviewers here.
