@@ -48,43 +48,54 @@ docker run --rm \
 	-v $$(pwd):/app:delegated \
 	-v $$(go env GOMODCACHE):/go/pkg/mod \
 	-w /app \
-	$(GOLANGCI_LINT_IMAGE)
+	--entrypoint sh \
+	$(GOLANGCI_LINT_IMAGE) -c
 endef
 
 .PHONY: docker-golangci-lint
 docker-golangci-lint: ensure-golangci-lint-image
 	@echo "lint => ./..."
 	@echo "Starting analysis..."
-	@start_time=$$(date +%s); \
-	$(docker-golangci-lint-cmd) golangci-lint run \
-		--build-tags==test_cel_validation,test_controller,test_extproc \
-		--timeout=3m \
-		./... > /tmp/golangci.out 2>&1 & \
-	lint_pid=$$!; \
-	spinner=( "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏" ); \
-	i=0; \
-	while kill -0 $$lint_pid 2>/dev/null; do \
+	@$(docker-golangci-lint-cmd) ' \
+		start_time=$$(date +%s); \
+		golangci-lint run \
+			--build-tags==test_cel_validation,test_controller,test_extproc \
+			--timeout=3m \
+			./... > /tmp/golangci.out 2>&1 & \
+		lint_pid=$$!; \
+		i=0; \
+		while kill -0 $$lint_pid 2>/dev/null; do \
+			case $$i in \
+				0) sp="-" ;; \
+				1) sp="\\" ;; \
+				2) sp="|" ;; \
+				3) sp="/" ;; \
+			esac; \
+			elapsed=$$(($$(date +%s) - start_time)); \
+			min=$$((elapsed/60)); \
+			sec=$$((elapsed%60)); \
+			printf "\r%s Analyzing code... [%02d:%02d elapsed]" \
+				"$$sp" "$$min" "$$sec"; \
+			i=$$((i + 1)); \
+			[ $$i -eq 4 ] && i=0; \
+			sleep 0.1; \
+		done; \
+		wait $$lint_pid; \
+		lint_exit_code=$$?; \
 		elapsed=$$(($$(date +%s) - start_time)); \
-		printf "\r%s Analyzing code... [%02d:%02d elapsed]" \
-			"$${spinner[$$i]}" $$((elapsed/60)) $$((elapsed%60)); \
-		i=$$((i+1)); \
-		[ $$i -eq $${#spinner[@]} ] && i=0; \
-		sleep 0.1; \
-	done; \
-	wait $$lint_pid; \
-	lint_exit_code=$$?; \
-	elapsed=$$(($$(date +%s) - start_time)); \
-	if [ $$lint_exit_code -eq 0 ]; then \
-		printf "\r⠿ Analysis completed in %02d:%02d                              \n" $$((elapsed/60)) $$((elapsed%60)); \
-		echo "✨ Congratulations! No linting errors! ✨"; \
-	else \
-		printf "\r⠿ Analysis completed in %02d:%02d                              \n" $$((elapsed/60)) $$((elapsed%60)); \
-		echo "Linting issues found:"; \
-		cat /tmp/golangci.out; \
-		rm -f /tmp/golangci.out; \
-		exit 1; \
-	fi; \
-	rm -f /tmp/golangci.out
+		min=$$((elapsed/60)); \
+		sec=$$((elapsed%60)); \
+		if [ $$lint_exit_code -eq 0 ]; then \
+			printf "\r* Analysis completed in %02d:%02d                              \n" "$$min" "$$sec"; \
+			echo "✨ Congratulations! No linting errors! ✨"; \
+		else \
+			printf "\r* Analysis completed in %02d:%02d                              \n" "$$min" "$$sec"; \
+			echo "Linting issues found:"; \
+			cat /tmp/golangci.out; \
+			rm -f /tmp/golangci.out; \
+			exit 1; \
+		fi; \
+		rm -f /tmp/golangci.out'
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
