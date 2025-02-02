@@ -3,17 +3,19 @@ id: api_references
 title: API Reference
 ---
 
-## Packages
-- [aigateway.envoyproxy.io/v1alpha1](#aigatewayenvoyproxyiov1alpha1)
+<a id="api_references"></a>
+# Packages
+- [aigateway.envoyproxy.io/v1alpha1](#-)
 
 
-## aigateway.envoyproxy.io/v1alpha1
+<a name="-"></a>
+# aigateway.envoyproxy.io/v1alpha1
 
 Package v1alpha1 contains API schema definitions for the aigateway.envoyproxy.io
 API group.
 
 
-### Resource Types
+## Resource Types
 - [AIGatewayRoute](#aigatewayroute)
 - [AIGatewayRouteList](#aigatewayroutelist)
 - [AIServiceBackend](#aiservicebackend)
@@ -23,7 +25,7 @@ API group.
 
 
 
-#### AIGatewayFilterConfig
+## AIGatewayFilterConfig
 
 
 
@@ -38,7 +40,7 @@ _Appears in:_
 | `externalProcess` | _[AIGatewayFilterConfigExternalProcess](#aigatewayfilterconfigexternalprocess)_ |  false  | ExternalProcess is the configuration for the external process filter.<br />This is optional, and if not set, the default values of Deployment spec will be used. |
 
 
-#### AIGatewayFilterConfigExternalProcess
+## AIGatewayFilterConfigExternalProcess
 
 
 
@@ -53,7 +55,7 @@ _Appears in:_
 | `resources` | _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)_ |  false  | Resources required by the external process container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ |
 
 
-#### AIGatewayFilterConfigType
+## AIGatewayFilterConfigType
 
 _Underlying type:_ _string_
 
@@ -68,7 +70,7 @@ _Appears in:_
 | `DynamicModule` |  |
 
 
-#### AIGatewayRoute
+## AIGatewayRoute
 
 
 
@@ -99,7 +101,7 @@ _Appears in:_
 | `spec` | _[AIGatewayRouteSpec](#aigatewayroutespec)_ |  true  | Spec defines the details of the AIGatewayRoute. |
 
 
-#### AIGatewayRouteList
+## AIGatewayRouteList
 
 
 
@@ -115,7 +117,7 @@ AIGatewayRouteList contains a list of AIGatewayRoute.
 | `items` | _[AIGatewayRoute](#aigatewayroute) array_ |  true  |  |
 
 
-#### AIGatewayRouteRule
+## AIGatewayRouteRule
 
 
 
@@ -130,7 +132,7 @@ _Appears in:_
 | `matches` | _[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array_ |  false  | Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch |
 
 
-#### AIGatewayRouteRuleBackendRef
+## AIGatewayRouteRuleBackendRef
 
 
 
@@ -145,7 +147,7 @@ _Appears in:_
 | `weight` | _integer_ |  false  | Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in<br />the BackendRef in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef<br /><br />Default is 1. |
 
 
-#### AIGatewayRouteRuleMatch
+## AIGatewayRouteRuleMatch
 
 
 
@@ -159,7 +161,7 @@ _Appears in:_
 | `headers` | _HTTPHeaderMatch array_ |  false  | Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch<br /><br />Currently, only the exact header matching is supported. |
 
 
-#### AIGatewayRouteSpec
+## AIGatewayRouteSpec
 
 
 
@@ -177,7 +179,7 @@ _Appears in:_
 | `llmRequestCosts` | _[LLMRequestCost](#llmrequestcost) array_ |  false  | LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",<br /><br />For example, let's say we have the following LLMRequestCosts configuration:<br /><br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br /><br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-user-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br /><br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of "tokens" allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token |
 
 
-#### AIServiceBackend
+## AIServiceBackend
 
 
 
@@ -203,7 +205,7 @@ _Appears in:_
 | `spec` | _[AIServiceBackendSpec](#aiservicebackendspec)_ |  true  | Spec defines the details of AIServiceBackend. |
 
 
-#### AIServiceBackendList
+## AIServiceBackendList
 
 
 
@@ -219,7 +221,7 @@ AIServiceBackendList contains a list of AIServiceBackends.
 | `items` | _[AIServiceBackend](#aiservicebackend) array_ |  true  |  |
 
 
-#### AIServiceBackendSpec
+## AIServiceBackendSpec
 
 
 
@@ -235,7 +237,7 @@ _Appears in:_
 | `backendSecurityPolicyRef` | _[LocalObjectReference](#localobjectreference)_ |  false  | BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to. |
 
 
-#### APISchema
+## APISchema
 
 _Underlying type:_ _string_
 
@@ -250,7 +252,7 @@ _Appears in:_
 | `AWSBedrock` | APISchemaAWSBedrock is the AWS Bedrock schema.<br />https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html<br /> |
 
 
-#### AWSCredentialsFile
+## AWSCredentialsFile
 
 
 
@@ -266,7 +268,7 @@ _Appears in:_
 | `profile` | _string_ |  true  | Profile is the profile to use in the credentials file. |
 
 
-#### AWSOIDCExchangeToken
+## AWSOIDCExchangeToken
 
 
 
@@ -285,7 +287,7 @@ _Appears in:_
 | `awsRoleArn` | _string_ |  true  | AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account<br />which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider. |
 
 
-#### BackendSecurityPolicy
+## BackendSecurityPolicy
 
 
 
@@ -303,7 +305,7 @@ _Appears in:_
 | `spec` | _[BackendSecurityPolicySpec](#backendsecuritypolicyspec)_ |  true  |  |
 
 
-#### BackendSecurityPolicyAPIKey
+## BackendSecurityPolicyAPIKey
 
 
 
@@ -317,7 +319,7 @@ _Appears in:_
 | `secretRef` | _[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)_ |  true  | SecretRef is the reference to the secret containing the API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be "apiKey". |
 
 
-#### BackendSecurityPolicyAWSCredentials
+## BackendSecurityPolicyAWSCredentials
 
 
 
@@ -333,7 +335,7 @@ _Appears in:_
 | `oidcExchangeToken` | _[AWSOIDCExchangeToken](#awsoidcexchangetoken)_ |  false  | OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS. |
 
 
-#### BackendSecurityPolicyList
+## BackendSecurityPolicyList
 
 
 
@@ -349,7 +351,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 | `items` | _[BackendSecurityPolicy](#backendsecuritypolicy) array_ |  true  |  |
 
 
-#### BackendSecurityPolicySpec
+## BackendSecurityPolicySpec
 
 
 
@@ -369,7 +371,7 @@ _Appears in:_
 | `awsCredentials` | _[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)_ |  false  | AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied. |
 
 
-#### BackendSecurityPolicyType
+## BackendSecurityPolicyType
 
 _Underlying type:_ _string_
 
@@ -384,7 +386,7 @@ _Appears in:_
 | `AWSCredentials` |  |
 
 
-#### LLMRequestCost
+## LLMRequestCost
 
 
 
@@ -400,7 +402,7 @@ _Appears in:_
 | `celExpression` | _string_ |  false  | CELExpression is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br /><br />The expression can use the following variables:<br /><br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of "name.namespace". Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br /><br />For example, the following expressions are valid:<br /><br />	* "model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens"<br />	* "backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens"<br />	* "input_tokens + output_tokens + total_tokens"<br />	* "input_tokens * output_tokens" |
 
 
-#### LLMRequestCostType
+## LLMRequestCostType
 
 _Underlying type:_ _string_
 
@@ -417,7 +419,7 @@ _Appears in:_
 | `CEL` | LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br /> |
 
 
-#### VersionedAPISchema
+## VersionedAPISchema
 
 
 
@@ -441,3 +443,5 @@ _Appears in:_
 | `version` | _string_ |  true  | Version is the version of the API schema. |
 
 
+
+[Back to Packages](#api_references)
