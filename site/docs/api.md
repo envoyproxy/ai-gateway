@@ -11,7 +11,7 @@ title: API Reference
 <a name="-"></a>
 # aigateway.envoyproxy.io/v1alpha1
 
-The package v1alpha1 contains API schema definitions for the aigateway.envoyproxy.io
+Package v1alpha1 contains API schema definitions for the aigateway.envoyproxy.io
 API group.
 
 
