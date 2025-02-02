@@ -29,6 +29,10 @@ GO_TEST_E2E_ARGS ?= -count=1
 help:
 	@echo "Usage: make <target>"
 	@echo ""
+	@echo "Prerequisites:"
+	@echo "  - Docker: Required for linting and some build operations"
+	@echo "  - Go: Required for building and testing"
+	@echo ""
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
 	@echo "  test            	 Run the unit tests for the codebase."
@@ -42,13 +46,13 @@ help:
 	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
+	@echo "First time setup:"
+	@echo "  The first run of any target may take longer as it downloads required Docker images and tools."
 	@echo ""
 
 # This runs the linter, formatter, and tidy on the codebase.
 .PHONY: lint
-lint: golangci-lint
-	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc ./...
+lint: docker-golangci-lint
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -56,11 +60,6 @@ CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
 codespell: $(CODESPELL)
 	@echo "spell => ./..."
 	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
-
-.PHONY: yamllint
-yamllint: $(YAMLLINT)
-	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format

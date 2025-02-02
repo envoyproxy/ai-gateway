@@ -26,6 +26,66 @@ KIND_VERSION ?= v0.26.0
 CRD_REF_DOCS_VERSION ?= v0.1.0
 GO_TEST_COVERAGE_VERSION ?= v2.11.4
 
+# Docker image names
+GOLANGCI_LINT_IMAGE ?= golangci/golangci-lint:$(GOLANGCI_LINT_VERSION)
+
+# Cache configuration (set USE_LINT_CACHE=0 to disable)
+USE_LINT_CACHE ?= 1
+DOCKER_CACHE_DIR ?= $(HOME)/.cache/docker
+GOLANGCI_CACHE_DIR ?= $(HOME)/.cache/golangci-lint
+
+# This ensures the Docker image is available and cache directories exist
+.PHONY: ensure-golangci-lint-image
+ensure-golangci-lint-image: check-prereqs
+	@if ! docker image inspect $(GOLANGCI_LINT_IMAGE) >/dev/null 2>&1; then \
+		echo "Pulling golangci-lint Docker image $(GOLANGCI_LINT_IMAGE)"; \
+		docker pull $(GOLANGCI_LINT_IMAGE); \
+	fi
+
+# Define the docker run command with optional caching
+define docker-golangci-lint-cmd
+docker run --rm \
+	-v $$(pwd):/app:delegated \
+	-v $$(go env GOMODCACHE):/go/pkg/mod \
+	-w /app \
+	$(GOLANGCI_LINT_IMAGE)
+endef
+
+.PHONY: docker-golangci-lint
+docker-golangci-lint: ensure-golangci-lint-image
+	@echo "lint => ./..."
+	@echo "Starting analysis..."
+	@start_time=$$(date +%s); \
+	$(docker-golangci-lint-cmd) golangci-lint run \
+		--build-tags==test_cel_validation,test_controller,test_extproc \
+		--timeout=3m \
+		./... > /tmp/golangci.out 2>&1 & \
+	lint_pid=$$!; \
+	spinner=( "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏" ); \
+	i=0; \
+	while kill -0 $$lint_pid 2>/dev/null; do \
+		elapsed=$$(($$(date +%s) - start_time)); \
+		printf "\r%s Analyzing code... [%02d:%02d elapsed]" \
+			"$${spinner[$$i]}" $$((elapsed/60)) $$((elapsed%60)); \
+		i=$$((i+1)); \
+		[ $$i -eq $${#spinner[@]} ] && i=0; \
+		sleep 0.1; \
+	done; \
+	wait $$lint_pid; \
+	lint_exit_code=$$?; \
+	elapsed=$$(($$(date +%s) - start_time)); \
+	if [ $$lint_exit_code -eq 0 ]; then \
+		printf "\r⠿ Analysis completed in %02d:%02d                              \n" $$((elapsed/60)) $$((elapsed%60)); \
+		echo "✨ Congratulations! No linting errors! ✨"; \
+	else \
+		printf "\r⠿ Analysis completed in %02d:%02d                              \n" $$((elapsed/60)) $$((elapsed%60)); \
+		echo "Linting issues found:"; \
+		cat /tmp/golangci.out; \
+		rm -f /tmp/golangci.out; \
+		exit 1; \
+	fi; \
+	rm -f /tmp/golangci.out
+
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
 $(GOLANGCI_LINT): $(LOCALBIN)
@@ -50,6 +110,8 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 editorconfig-checker: $(EDITORCONFIG_CHECKER)
 $(EDITORCONFIG_CHECKER): $(LOCALBIN)
 	$(call go-install-tool,$(EDITORCONFIG_CHECKER),github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker,$(EDITORCONFIG_CHECKER_VERSION))
+	@echo "editorconfig => ./..."
+	@$(EDITORCONFIG_CHECKER)
 
 .PHONY: envtest
 envtest: $(ENVTEST)
@@ -80,6 +142,11 @@ $(CODESPELL): .bin/.venv/codespell@v2.3.0
 
 $(YAMLLINT): .bin/.venv/yamllint@1.35.1
 
+.PHONY: yamllint
+yamllint: $(YAMLLINT)
+	@echo "yamllint => ./..."
+	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
+
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
 # $2 - package url which can be installed
@@ -95,3 +162,9 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+# Check for required tools
+REQUIRED_BINS := docker
+check-prereqs:
+	$(foreach bin,$(REQUIRED_BINS),\
+		$(if $(shell command -v $(bin) 2> /dev/null),,$(error Please install $(bin) to run this test)))
