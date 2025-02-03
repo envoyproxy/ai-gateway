@@ -234,22 +234,6 @@ func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, event Rotation
 	})
 }
 
-// createCredentialsFileBytes creates formatted AWS credentials file bytes from STS credentials
-func (r *AWSOIDCRotator) createCredentialsFileBytes(resp *sts.AssumeRoleWithWebIdentityOutput, region string) []byte {
-	creds := &awsCredentialsFile{
-		profiles: map[string]*awsCredentials{
-			defaultProfile: {
-				profile:         defaultProfile,
-				accessKeyID:     aws.ToString(resp.Credentials.AccessKeyId),
-				secretAccessKey: aws.ToString(resp.Credentials.SecretAccessKey),
-				sessionToken:    aws.ToString(resp.Credentials.SessionToken),
-				region:          region,
-			},
-		},
-	}
-	return []byte(formatAWSCredentialsFile(creds))
-}
-
 // -----------------------------------------------------------------------------
 // Helper Methods - Validation and Scheduling
 // -----------------------------------------------------------------------------
