@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backendauth/oauth"
 )
 
 // -----------------------------------------------------------------------------

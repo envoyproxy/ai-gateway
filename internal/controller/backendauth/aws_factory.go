@@ -5,7 +5,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
+	rotators "github.com/envoyproxy/ai-gateway/internal/controller/backendauth/rotators"
 )
 
 // AWSFactory creates AWS rotators
@@ -25,8 +25,8 @@ func NewAWSFactory(k8sClient client.Client, k8sClientset kubernetes.Interface, l
 }
 
 // NewAWSCredentialsRotator creates a new AWS credentials rotator
-func (f *AWSFactory) NewAWSCredentialsRotator() (*backendauthrotators.AWSCredentialsRotator, error) {
-	return backendauthrotators.NewAWSCredentialsRotator(backendauthrotators.RotatorConfig{
+func (f *AWSFactory) NewAWSCredentialsRotator() (*rotators.AWSCredentialsRotator, error) {
+	return rotators.NewAWSCredentialsRotator(rotators.RotatorConfig{
 		Client:     f.client,
 		KubeClient: f.kubeClient,
 		Logger:     f.logger,
@@ -34,8 +34,8 @@ func (f *AWSFactory) NewAWSCredentialsRotator() (*backendauthrotators.AWSCredent
 }
 
 // NewAWSOIDCRotator creates a new AWS OIDC rotator
-func (f *AWSFactory) NewAWSOIDCRotator() (*backendauthrotators.AWSOIDCRotator, error) {
-	rotationChan := make(chan backendauthrotators.RotationEvent, 100)
-	scheduleChan := make(chan backendauthrotators.RotationEvent, 100)
-	return backendauthrotators.NewAWSOIDCRotator(f.client, f.kubeClient, f.logger, rotationChan, scheduleChan)
+func (f *AWSFactory) NewAWSOIDCRotator() (*rotators.AWSOIDCRotator, error) {
+	rotationChan := make(chan rotators.RotationEvent, 100)
+	scheduleChan := make(chan rotators.RotationEvent, 100)
+	return rotators.NewAWSOIDCRotator(f.client, f.kubeClient, f.logger, rotationChan, scheduleChan)
 }

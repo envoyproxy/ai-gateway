@@ -14,7 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/backendauth/rotators"
 )
 
 type mockRotator struct {

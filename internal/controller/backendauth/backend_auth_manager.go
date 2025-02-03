@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/backendauth/rotators"
 )
 
 // RotationType defines the type of rotation to be performed

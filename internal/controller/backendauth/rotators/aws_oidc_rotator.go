@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backendauth/oauth"
 )
 
 // -----------------------------------------------------------------------------

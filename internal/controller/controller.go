@@ -20,7 +20,8 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
+	backendauth "github.com/envoyproxy/ai-gateway/internal/controller/backendauth"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/backendauth/rotators"
 )
 
 func init() { MustInitializeScheme(scheme) }
@@ -90,7 +91,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	// Create and start the backend auth manager
-	backendAuthManager := NewBackendAuthManager(logger.WithName("backend-auth-manager"), c)
+	backendAuthManager := backendauth.NewBackendAuthManager(logger.WithName("backend-auth-manager"), c)
 	go func() {
 		if err := backendAuthManager.Start(ctx); err != nil {
 			logger.Error(err, "Backend auth manager failed")
@@ -98,7 +99,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}()
 
 	// Create AWS factory
-	awsFactory := NewAWSFactory(c, kubernetes.NewForConfigOrDie(config), logger)
+	awsFactory := backendauth.NewAWSFactory(c, kubernetes.NewForConfigOrDie(config), logger)
 
 	// Register AWS credentials rotator
 	awsCredsRotator, err := awsFactory.NewAWSCredentialsRotator()

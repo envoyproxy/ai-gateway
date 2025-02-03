@@ -11,7 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
+	backendauth "github.com/envoyproxy/ai-gateway/internal/controller/backendauth"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/backendauth/rotators"
 )
 
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
@@ -23,7 +24,7 @@ type backendSecurityPolicyController struct {
 	kube         kubernetes.Interface
 	logger       logr.Logger
 	eventChan    chan ConfigSinkEvent
-	tokenManager *BackendAuthManager
+	tokenManager *backendauth.BackendAuthManager
 }
 
 func newBackendSecurityPolicyController(
@@ -31,7 +32,7 @@ func newBackendSecurityPolicyController(
 	kube kubernetes.Interface,
 	logger logr.Logger,
 	ch chan ConfigSinkEvent,
-	tokenManager *BackendAuthManager,
+	tokenManager *backendauth.BackendAuthManager,
 ) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
 		client:       client,

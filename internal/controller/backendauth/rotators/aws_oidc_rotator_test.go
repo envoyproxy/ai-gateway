@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
+	"github.com/envoyproxy/ai-gateway/internal/controller/backendauth/oauth"
 )
 
 // -----------------------------------------------------------------------------

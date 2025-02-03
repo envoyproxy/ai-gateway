@@ -13,12 +13,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	backendauth "github.com/envoyproxy/ai-gateway/internal/controller/backendauth"
 )
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	tokenManager := NewBackendAuthManager(ctrl.Log.WithName("token-manager"), cl)
+	tokenManager := backendauth.NewBackendAuthManager(ctrl.Log.WithName("token-manager"), cl)
 	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch, tokenManager)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
