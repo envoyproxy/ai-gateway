@@ -11,6 +11,7 @@ require (
 	github.com/envoyproxy/gateway v1.3.0
 	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/go-logr/logr v1.4.2
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/cel-go v0.23.1
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.50

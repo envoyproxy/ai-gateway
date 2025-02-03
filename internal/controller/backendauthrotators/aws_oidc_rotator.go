@@ -4,14 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
 )
 
 // -----------------------------------------------------------------------------
@@ -37,6 +39,8 @@ type AWSOIDCRotator struct {
 	logger logr.Logger
 	// stsOps provides AWS STS operations interface
 	stsOps STSOperations
+	// oidcProvider provides OIDC token provider
+	oidcProvider oauth.Provider
 	// rotationChan receives rotation events to process
 	rotationChan <-chan RotationEvent
 	// scheduleChan sends events for future rotations
@@ -63,11 +67,16 @@ func NewAWSOIDCRotator(
 
 	stsClient := NewSTSClient(cfg)
 
+	// Create OIDC provider
+	baseProvider := oauth.NewBaseProvider(client, logger, &http.Client{Timeout: 30 * time.Second})
+	oidcProvider := oauth.NewOIDCProvider(baseProvider)
+
 	return &AWSOIDCRotator{
 		client:       client,
 		kube:         kube,
 		logger:       logger,
 		stsOps:       stsClient,
+		oidcProvider: oidcProvider,
 		rotationChan: rotationChan,
 		scheduleChan: scheduleChan,
 	}, nil
@@ -122,14 +131,20 @@ func (r *AWSOIDCRotator) Initialize(ctx context.Context, event RotationEvent) er
 		"namespace", event.Namespace,
 		"name", event.Name)
 
-	// Get the OIDC token from the secret
-	oidcToken, err := r.getOIDCToken(ctx, event)
+	// Get OIDC configuration from metadata
+	config, err := r.getOIDCConfig(ctx, event)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get OIDC config: %w", err)
+	}
+
+	// Fetch and validate OIDC token
+	token, err := r.oidcProvider.FetchToken(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to fetch OIDC token: %w", err)
 	}
 
 	// Exchange token for AWS credentials
-	result, err := r.assumeRoleWithToken(ctx, event, string(oidcToken))
+	result, err := r.assumeRoleWithToken(ctx, event, token.IDToken)
 	if err != nil {
 		return err
 	}
@@ -167,6 +182,18 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 		return err
 	}
 
+	// Get OIDC configuration from metadata
+	config, err := r.getOIDCConfig(ctx, event)
+	if err != nil {
+		return fmt.Errorf("failed to get OIDC config: %w", err)
+	}
+
+	// Fetch and validate OIDC token
+	token, err := r.oidcProvider.FetchToken(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to fetch OIDC token: %w", err)
+	}
+
 	// Get existing secret
 	secret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
 	if err != nil {
@@ -185,7 +212,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 	}
 
 	// Exchange token for AWS credentials
-	resp, err := r.assumeRoleWithToken(ctx, event, event.Metadata["id_token"])
+	resp, err := r.assumeRoleWithToken(ctx, event, token.IDToken)
 	if err != nil {
 		return err
 	}
@@ -210,22 +237,25 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 // Helper Methods - Token and Credential Management
 // -----------------------------------------------------------------------------
 
-// getOIDCToken retrieves the OIDC token from the specified secret
-func (r *AWSOIDCRotator) getOIDCToken(ctx context.Context, event RotationEvent) ([]byte, error) {
-	oidcSecret := &corev1.Secret{}
-	if err := r.client.Get(ctx, client.ObjectKey{
-		Namespace: event.Namespace,
-		Name:      event.Metadata["oidc-token-secret"],
-	}, oidcSecret); err != nil {
-		return nil, fmt.Errorf("failed to get OIDC token secret: %w", err)
+// getOIDCConfig creates an OAuth config from the rotation event metadata
+func (r *AWSOIDCRotator) getOIDCConfig(ctx context.Context, event RotationEvent) (oauth.Config, error) {
+	// Convert metadata to expected format
+	params := make(map[string]string)
+
+	// Required fields
+	params["token_url"] = event.Metadata["token_url"]
+	params["client_id"] = event.Metadata["client_id"]
+	params["client-secret-name"] = event.Metadata["client_secret_name"]
+
+	// Optional fields
+	if issuerURL := event.Metadata["issuer_url"]; issuerURL != "" {
+		params["issuer_url"] = issuerURL
+	}
+	if scopes := event.Metadata["scopes"]; scopes != "" {
+		params["scopes"] = scopes
 	}
 
-	oidcToken, ok := oidcSecret.Data["token"]
-	if !ok {
-		return nil, fmt.Errorf("OIDC token not found in secret")
-	}
-
-	return oidcToken, nil
+	return oauth.NewOIDCConfig(ctx, r.client, event.Namespace, params)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials

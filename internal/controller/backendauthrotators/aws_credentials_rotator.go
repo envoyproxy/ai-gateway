@@ -255,6 +255,9 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 		"profile", profile,
 		"new_key_id", aws.ToString(createKeyOutput.AccessKey.AccessKeyId))
 
+	// Store the old key ID before updating the secret
+	oldKeyID := existingCreds.profiles[profile].accessKeyID
+
 	// Update only the specified profile's credentials
 	existingCreds.profiles[profile].accessKeyID = aws.ToString(createKeyOutput.AccessKey.AccessKeyId)
 	existingCreds.profiles[profile].secretAccessKey = aws.ToString(createKeyOutput.AccessKey.SecretAccessKey)
@@ -272,7 +275,7 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 	if event.Metadata == nil {
 		event.Metadata = make(map[string]string)
 	}
-	event.Metadata["old_access_key_id"] = existingCreds.profiles[profile].accessKeyID
+	event.Metadata["old_access_key_id"] = oldKeyID
 
 	return r.scheduleOldKeyDeletion(ctx, event)
 }
