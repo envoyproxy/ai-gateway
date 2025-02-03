@@ -570,28 +570,3 @@ const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
-
-// HealthCheckConfig specifies the configuration for health checks
-type HealthCheckConfig struct {
-	// HealthCheckInterval specifies how often to perform health checks.
-	// If not specified, defaults to 1 minute.
-	// +optional
-	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?([0-9]+s)?$
-	// +kubebuilder:default="1m"
-	HealthCheckInterval string `json:"healthCheckInterval,omitempty"`
-
-	// UnhealthyThreshold specifies the number of consecutive failures before marking as unhealthy.
-	// If not specified, defaults to 3.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:default=3
-	UnhealthyThreshold int `json:"unhealthyThreshold,omitempty"`
-
-	// HealthyThreshold specifies the number of consecutive successes before marking as healthy.
-	// If not specified, defaults to 2.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:default=2
-	HealthyThreshold int `json:"healthyThreshold,omitempty"`
-}
