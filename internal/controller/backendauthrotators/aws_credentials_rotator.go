@@ -371,7 +371,9 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 	case <-ctx.Done():
 		// Context was cancelled, but still ensure minimum propagation delay
 		time.Sleep(r.MinPropagationDelay)
-		r.deleteAccessKey(ctx, oldKeyID)
+		if err := r.deleteAccessKey(ctx, oldKeyID); err != nil {
+			r.logger.Error(err, "failed to delete access key after context cancellation", "keyID", oldKeyID)
+		}
 		return
 	case <-time.After(r.MinPropagationDelay):
 		// Minimum propagation delay satisfied, continue with normal flow
@@ -383,7 +385,9 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 		select {
 		case <-ctx.Done():
 			// Context cancelled after propagation delay, delete immediately
-			r.deleteAccessKey(ctx, oldKeyID)
+			if err := r.deleteAccessKey(ctx, oldKeyID); err != nil {
+				r.logger.Error(err, "failed to delete access key after context cancellation during remaining delay", "keyID", oldKeyID)
+			}
 			return
 		case <-time.After(remainingDelay):
 			// Normal delay-based deletion
@@ -391,5 +395,7 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 	}
 
 	// Proceed with deletion after all delays are satisfied
-	r.deleteAccessKey(ctx, oldKeyID)
+	if err := r.deleteAccessKey(ctx, oldKeyID); err != nil {
+		r.logger.Error(err, "failed to delete access key after all delays", "keyID", oldKeyID)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,31 +50,45 @@ func secret(ctx context.Context, name, namespace string) (*corev1.Secret, error)
 func podLogs(ctx context.Context, namespace, labelSelector string) (string, error) {
 	clientset, err := kubeClient()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	// First list all pods in the namespace to help with debugging
+	allPods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)
+	}
+
+	// Log all available pods and their labels
+	var availablePods []string
+	for _, pod := range allPods.Items {
+		podInfo := fmt.Sprintf("pod=%s labels=%v", pod.Name, pod.Labels)
+		availablePods = append(availablePods, podInfo)
 	}
 
 	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to list pods with selector %s: %w", labelSelector, err)
 	}
 
 	if len(pods.Items) == 0 {
-		return "", fmt.Errorf("no pods found matching selector %s", labelSelector)
+		return "", fmt.Errorf("no pods found matching selector %s in namespace %s. Available pods: %v",
+			labelSelector, namespace, availablePods)
 	}
 
 	req := clientset.CoreV1().Pods(namespace).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{})
 	podLogs, err := req.Stream(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get logs for pod %s: %w", pods.Items[0].Name, err)
 	}
 	defer podLogs.Close()
 
 	buf := new(bytes.Buffer)
 	_, err = io.Copy(buf, podLogs)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read logs from pod %s: %w", pods.Items[0].Name, err)
 	}
 
 	return buf.String(), nil
@@ -139,13 +154,48 @@ func Test_Examples_TokenRotation(t *testing.T) {
 		return chatCompletion.Choices[0].Message.Content == "This is a test response."
 	}, 30*time.Second, 3*time.Second)
 
-	// Wait for rotation attempt
-	time.Sleep(70 * time.Second)
+	// Wait for rotation attempt with timeout
+	t.Log("Waiting for rotation attempt...")
+	const controllerNamespace = "envoy-ai-gateway-system"
+	require.Eventually(t, func() bool {
+		// First verify the controller pod exists
+		clientset, err := kubeClient()
+		if err != nil {
+			t.Logf("Failed to create kubernetes client: %v", err)
+			return false
+		}
 
-	// Get logs from controller
-	logs, err := podLogs(ctx, egNamespace, "app=ai-gateway-controller")
-	require.NoError(t, err)
-	require.Contains(t, logs, "failed to rotate credentials for secret default/test-rotation-secret", "Expected to find credential rotation failure in logs")
+		pods, err := clientset.CoreV1().Pods(controllerNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: "app.kubernetes.io/instance=ai-eg",
+		})
+		if err != nil {
+			t.Logf("Failed to list pods in namespace %s: %v", controllerNamespace, err)
+			return false
+		}
+		if len(pods.Items) == 0 {
+			allPods, err := clientset.CoreV1().Pods(controllerNamespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				t.Logf("Failed to list all pods in namespace %s: %v", controllerNamespace, err)
+				return false
+			}
+			var availablePods []string
+			for _, pod := range allPods.Items {
+				availablePods = append(availablePods, fmt.Sprintf("pod=%s labels=%v", pod.Name, pod.Labels))
+			}
+			t.Logf("No controller pods found with selector 'app.kubernetes.io/instance=ai-eg' in namespace %s. Available pods: %v",
+				controllerNamespace, availablePods)
+			return false
+		}
+
+		// Get logs from controller
+		logs, err := podLogs(ctx, controllerNamespace, "app.kubernetes.io/instance=ai-eg")
+		if err != nil {
+			t.Logf("Failed to get controller logs: %v", err)
+			return false
+		}
+
+		return strings.Contains(logs, "failed to rotate credentials for secret default/test-rotation-secret")
+	}, 90*time.Second, 5*time.Second, "Expected to find credential rotation failure in logs")
 
 	// Verify the gateway still works even though rotation failed
 	require.Eventually(t, func() bool {

@@ -90,4 +90,4 @@ spec:
       enabled: true
       config:
         rotationInterval: "1m"
-        preRotationWindow: "1m" 
+        preRotationWindow: "1m"
