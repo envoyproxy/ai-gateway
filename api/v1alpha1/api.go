@@ -418,52 +418,6 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// AWSCredentialsRotationConfig specifies the configuration for rotating AWS credentials
-type AWSCredentialsRotationConfig struct {
-	// RotationInterval specifies how often to rotate the credentials.
-	// If not specified, defaults to 24 hours.
-	// The minimum allowed value is 1 hour.
-	// +optional
-	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
-	// +kubebuilder:default="24h"
-	RotationInterval string `json:"rotationInterval,omitempty"`
-
-	// PreRotationWindow specifies how long before expiry to rotate the credentials.
-	// If not specified, defaults to 1 hour.
-	// Must be less than RotationInterval.
-	// +optional
-	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
-	// +kubebuilder:default="1h"
-	PreRotationWindow string `json:"preRotationWindow,omitempty"`
-}
-
-// HealthCheckConfig specifies the configuration for health checks
-type HealthCheckConfig struct {
-	// HealthCheckInterval specifies how often to perform health checks.
-	// If not specified, defaults to 1 minute.
-	// +optional
-	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?([0-9]+s)?$
-	// +kubebuilder:default="1m"
-	HealthCheckInterval string `json:"healthCheckInterval,omitempty"`
-
-	// UnhealthyThreshold specifies the number of consecutive failures before marking as unhealthy.
-	// If not specified, defaults to 3.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:default=3
-	UnhealthyThreshold int `json:"unhealthyThreshold,omitempty"`
-
-	// HealthyThreshold specifies the number of consecutive successes before marking as healthy.
-	// If not specified, defaults to 2.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:default=2
-	HealthyThreshold int `json:"healthyThreshold,omitempty"`
-}
-
 // BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
@@ -482,10 +436,49 @@ type BackendSecurityPolicyAWSCredentials struct {
 	// +optional
 	OIDCExchangeToken *AWSOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
 
-	// RotationConfig specifies the configuration for rotating AWS credentials.
+	// Rotation specifies the configuration for rotating AWS credentials.
 	// Only applies when CredentialsFile is used.
 	// +optional
-	RotationConfig *AWSCredentialsRotationConfig `json:"rotationConfig,omitempty"`
+	Rotation *AWSCredentialsRotation `json:"rotation,omitempty"`
+}
+
+// AWSCredentialsRotation specifies whether and how to rotate AWS credentials
+type AWSCredentialsRotation struct {
+	// Enabled specifies whether credential rotation is enabled.
+	// If not specified, defaults to false.
+	//
+	// +optional
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// Config specifies the configuration for credential rotation when enabled.
+	// If not specified and Enabled is true, default values will be used.
+	//
+	// +optional
+	Config *AWSCredentialsRotationConfig `json:"config,omitempty"`
+}
+
+// AWSCredentialsRotationConfig specifies the configuration for rotating AWS credentials
+type AWSCredentialsRotationConfig struct {
+	// RotationInterval specifies how often to rotate the credentials.
+	// If not specified, defaults to 24 hours.
+	// The minimum allowed value is 1 hour.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
+	// +kubebuilder:default="24h"
+	RotationInterval string `json:"rotationInterval,omitempty"`
+
+	// PreRotationWindow specifies how long before expiry to rotate the credentials.
+	// If not specified, defaults to 1 hour.
+	// Must be less than RotationInterval.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?$
+	// +kubebuilder:default="1h"
+	PreRotationWindow string `json:"preRotationWindow,omitempty"`
 }
 
 // AWSCredentialsFile specifies the credentials file to use for the AWS provider.
@@ -577,3 +570,28 @@ const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
+
+// HealthCheckConfig specifies the configuration for health checks
+type HealthCheckConfig struct {
+	// HealthCheckInterval specifies how often to perform health checks.
+	// If not specified, defaults to 1 minute.
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=^([0-9]+h)?([0-9]+m)?([0-9]+s)?$
+	// +kubebuilder:default="1m"
+	HealthCheckInterval string `json:"healthCheckInterval,omitempty"`
+
+	// UnhealthyThreshold specifies the number of consecutive failures before marking as unhealthy.
+	// If not specified, defaults to 3.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=3
+	UnhealthyThreshold int `json:"unhealthyThreshold,omitempty"`
+
+	// HealthyThreshold specifies the number of consecutive successes before marking as healthy.
+	// If not specified, defaults to 2.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=2
+	HealthyThreshold int `json:"healthyThreshold,omitempty"`
+}

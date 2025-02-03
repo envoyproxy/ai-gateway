@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -73,21 +74,37 @@ func (b backendSecurityPolicyController) handleAWSCredentialRotation(ctx context
 		return nil
 	}
 
-	// Handle IAM credentials rotation
-	if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.CredentialsFile != nil {
+	// Skip if AWS credentials or credentials file is not configured
+	if policy.Spec.AWSCredentials == nil || policy.Spec.AWSCredentials.CredentialsFile == nil {
+		return nil
+	}
+
+	// Handle IAM credentials rotation if enabled
+	if policy.Spec.AWSCredentials.Rotation != nil && policy.Spec.AWSCredentials.Rotation.Enabled {
 		event := backendauthrotators.RotationEvent{
 			Namespace: policy.Namespace,
 			Name:      string(policy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name),
 			Type:      backendauthrotators.RotationTypeAWSCredentials,
 			Metadata:  make(map[string]string),
 		}
+
+		// Add rotation config if specified
+		if config := policy.Spec.AWSCredentials.Rotation.Config; config != nil {
+			if config.RotationInterval != "" {
+				event.Metadata["rotation_interval"] = config.RotationInterval
+			}
+			if config.PreRotationWindow != "" {
+				event.Metadata["pre_rotation_window"] = config.PreRotationWindow
+			}
+		}
+
 		if err := b.tokenManager.RequestRotation(ctx, event); err != nil {
-			return err
+			return fmt.Errorf("failed to request IAM credentials rotation: %w", err)
 		}
 	}
 
 	// Handle OIDC token rotation
-	if policy.Spec.AWSCredentials != nil && policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
+	if policy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 		event := backendauthrotators.RotationEvent{
 			Namespace: policy.Namespace,
 			Name:      policy.Name,
@@ -98,7 +115,7 @@ func (b backendSecurityPolicyController) handleAWSCredentialRotation(ctx context
 			},
 		}
 		if err := b.tokenManager.RequestRotation(ctx, event); err != nil {
-			return err
+			return fmt.Errorf("failed to request OIDC token rotation: %w", err)
 		}
 	}
 

@@ -266,6 +266,21 @@ _Appears in:_
 | `profile` | _string_ |  true  | Profile is the profile to use in the credentials file. |
 
 
+#### AWSCredentialsRotation
+
+
+
+AWSCredentialsRotation specifies whether and how to rotate AWS credentials
+
+_Appears in:_
+- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+
+| Field | Type | Required | Description |
+| ---   | ---  | ---      | ---         |
+| `enabled` | _boolean_ |  false  | Enabled specifies whether credential rotation is enabled.<br />If not specified, defaults to false. |
+| `config` | _[AWSCredentialsRotationConfig](#awscredentialsrotationconfig)_ |  false  | Config specifies the configuration for credential rotation when enabled.<br />If not specified and Enabled is true, default values will be used. |
+
+
 #### AWSCredentialsRotationConfig
 
 
@@ -273,7 +288,7 @@ _Appears in:_
 AWSCredentialsRotationConfig specifies the configuration for rotating AWS credentials
 
 _Appears in:_
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [AWSCredentialsRotation](#awscredentialsrotation)
 
 | Field | Type | Required | Description |
 | ---   | ---  | ---      | ---         |
@@ -346,7 +361,7 @@ _Appears in:_
 | `region` | _string_ |  true  | Region specifies the AWS region associated with the policy. |
 | `credentialsFile` | _[AWSCredentialsFile](#awscredentialsfile)_ |  false  | CredentialsFile specifies the credentials file to use for the AWS provider. |
 | `oidcExchangeToken` | _[AWSOIDCExchangeToken](#awsoidcexchangetoken)_ |  false  | OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS. |
-| `rotationConfig` | _[AWSCredentialsRotationConfig](#awscredentialsrotationconfig)_ |  false  | RotationConfig specifies the configuration for rotating AWS credentials.<br />Only applies when CredentialsFile is used. |
+| `rotation` | _[AWSCredentialsRotation](#awscredentialsrotation)_ |  false  | Rotation specifies the configuration for rotating AWS credentials.<br />Only applies when CredentialsFile is used. |
 
 
 #### BackendSecurityPolicyList
