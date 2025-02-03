@@ -62,7 +62,7 @@ graph TB
     BAM --> CHAN
     BAM --> SCHED
     ROT --> AWS_CRED
-    ROT --> AWS_OIDC 
+    ROT --> AWS_OIDC
     AWS_CRED --> AWS_IAM
     AWS_OIDC --> AWS_STS
     AWS_OIDC --> OAUTH
