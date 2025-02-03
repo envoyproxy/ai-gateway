@@ -26,11 +26,11 @@ jobs:
             console.log(`Title: ${issueTitle}`);
             console.log(`Length: ${length}`);
 
-            if (length >= 60) {
+            if (length > 80) {
               await github.rest.issues.createComment({
                 owner: repoOwner,
                 repo: repoName,
                 issue_number: issueNumber,
-                body: "The issue title is too long (over 60 characters). Please shorten it and ensure it is well summarized."
+                body: "The issue title is too long (over 80 characters). Please shorten it and ensure it is well summarized."
               });
             }
