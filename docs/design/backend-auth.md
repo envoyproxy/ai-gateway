@@ -42,42 +42,34 @@ graph TB
         BAM[BackendAuthManager]
         ROT[Rotator Registry]
         CHAN[Rotation Channel]
-        
         subgraph "Rotator Implementations"
             AWS_CRED[AWS Credentials Rotator]
             AWS_OIDC[AWS OIDC Rotator]
             OAUTH[OAuth Provider]
         end
-        
         subgraph "Support Services"
             SCHED[Rotation Scheduler]
             SEC_STORE[Secret Store]
         end
     end
-    
     subgraph "External Services"
         K8S[Kubernetes API]
         AWS_STS[AWS STS]
         AWS_IAM[AWS IAM]
         OIDC[OIDC Provider]
     end
-    
     BAM --> ROT
     BAM --> CHAN
     BAM --> SCHED
-    
     ROT --> AWS_CRED
     ROT --> AWS_OIDC
     ROT --> OAUTH
-    
     AWS_CRED --> AWS_IAM
     AWS_OIDC --> AWS_STS
     AWS_OIDC --> OIDC
-    
     AWS_CRED --> SEC_STORE
     AWS_OIDC --> SEC_STORE
     OAUTH --> SEC_STORE
-    
     SEC_STORE --> K8S
 ```
 
@@ -93,24 +85,20 @@ sequenceDiagram
     participant Provider as Auth Provider
     participant K8S as Kubernetes API
     participant AWS as AWS Services
-
     Controller->>BAM: RequestRotation(event)
     Note over BAM: Validate Event & Check Rotator
     BAM->>BAM: Check if Initialized
-    
     alt Needs Initialization
         BAM->>Rotator: Initialize(ctx, event)
         Rotator->>Provider: FetchInitialCredentials
         Provider->>AWS: Exchange/Create Credentials
         Provider->>K8S: Store Initial Credentials
     end
-    
     BAM->>BAM: Send to Rotation Channel
     BAM->>Rotator: Rotate(ctx, event)
     Rotator->>K8S: Get Existing Secret
     Rotator->>Provider: FetchNewCredentials
     Provider->>AWS: Exchange/Create New Credentials
-    
     alt Success
         Rotator->>K8S: Update Secret
         Rotator->>BAM: Schedule Next Rotation
