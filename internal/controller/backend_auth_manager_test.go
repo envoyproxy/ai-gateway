@@ -206,7 +206,7 @@ func TestBackendAuthManager_RegisterRotator_Errors(t *testing.T) {
 
 	// Attempt to register second rotator of same type
 	err = manager.RegisterRotator(rotator2)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already registered")
 }
 
@@ -242,7 +242,7 @@ func TestBackendAuthManager_RequestRotation_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := manager.RequestRotation(context.Background(), tt.event)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedErr)
 		})
 	}
@@ -541,7 +541,7 @@ func TestBackendAuthManager_RequestInitialization_Errors(t *testing.T) {
 
 			// Request initialization
 			err := manager.RequestInitialization(context.Background(), tt.event)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedErr)
 
 			// For initialization failure, we expect two events:

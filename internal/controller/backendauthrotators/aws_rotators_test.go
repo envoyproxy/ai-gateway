@@ -199,7 +199,7 @@ func TestAWS_CredentialsRotator(t *testing.T) {
 		}
 
 		err := ts.rotator.Rotate(ts.ctx, event)
-		assert.Error(t, err)
+		require.Error(t, err)
 		ts.verifySecretCredentials(t, "test-secret", "OLDKEY", "OLDSECRET")
 	})
 
@@ -405,7 +405,7 @@ func TestAWS_CredentialsRotator_Initialize(t *testing.T) {
 		}
 
 		err := ts.rotator.Initialize(ts.ctx, event)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create access key")
 	})
 }
@@ -427,7 +427,7 @@ func TestAWS_CredentialsRotator_ErrorHandling(t *testing.T) {
 		}
 
 		err := ts.rotator.Rotate(ts.ctx, event)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create new access key")
 
 		ts.verifySecretCredentials(t, "test-secret", "OLDKEY", "OLDSECRET")
@@ -457,7 +457,7 @@ func TestAWS_CredentialsRotator_ErrorHandling(t *testing.T) {
 		// Verify the error during deletion
 		select {
 		case err := <-deleteError:
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), "delete failed")
 		case <-time.After(time.Second):
 			t.Fatal("deletion error not received")
