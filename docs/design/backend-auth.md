@@ -12,6 +12,7 @@ The system is built around two core packages: `backend_auth_manager` and `backen
 - Secure storage and handling of sensitive authentication data
 - Zero-downtime credential updates for uninterrupted backend communication
 - Support for multiple authentication types to different backend services
+- Proactive rotation scheduling before credential expiry
 
 ## Architecture Components
 
@@ -23,27 +24,85 @@ The system is built around two core packages: `backend_auth_manager` and `backen
    - Handles registration and dispatching of rotation events
    - Ensures graceful shutdown and cleanup
    - Manages scheduled rotations of upstream credentials
-   - Publishes rotation events to subscribers
-   - Integrates with Kubernetes events for monitoring
+   - Provides initialization and rotation request handling
+   - Supports both immediate and scheduled rotations
+   - Maintains thread-safe operation with proper locking mechanisms
 
 2. **Rotation Scheduling**
-   - The `BackendAuthManager` schedules credential rotations using the `ScheduleRotation` method.
-   - It cancels any existing scheduled rotation for the same resource before scheduling a new one.
-   - If the specified rotation time is very close (less than one second), it triggers the rotation immediately using `RequestRotation`.
-   - For valid future times, it sets up a timer to call `RequestRotation` at the specified time.
-   - This method logs the scheduling details, including the namespace, name, and scheduled time.
+   - Configurable rotation window (default 5 minutes before expiry)
+   - Automatic cancellation of existing scheduled rotations when rescheduling
+   - Immediate rotation triggering for past or near-future schedules
+   - Context-aware scheduling with proper cleanup
+   - Thread-safe tracking of scheduled rotations using sync.Map
 
 3. **Rotator Interface**
-   - Defines the contract for upstream credential rotators
-   - Supports initialization and rotation operations
-   - Allows for different types of upstream authentication
-   - Extensible design for adding new backend service authentication types
+   ```go
+   type Rotator interface {
+       // Initialize performs the initial BackendAuth retrieval
+       Initialize(ctx context.Context, event RotationEvent) error
+       // Rotate performs the credential rotation
+       Rotate(ctx context.Context, event RotationEvent) error
+       // Type returns the type of rotator
+       Type() RotationType
+   }
+   ```
 
-4. **BackendSecurityController**
-   - Kubernetes controller watching BackendSecurityPolicy resources
-   - Triggers rotation events based on policy changes
-   - Manages the lifecycle of upstream credential secrets
-   - Handles policy reconciliation
+4. **Rotation Events**
+   ```go
+   type RotationEvent struct {
+       // Namespace where the rotation should occur
+       Namespace string
+       // Name of the resource requiring rotation
+       Name string
+       // Type of rotation to perform
+       Type RotationType
+       // Metadata contains any additional data needed for rotation
+       Metadata map[string]string
+   }
+   ```
+
+### Supported Rotation Types
+
+Currently implemented rotation types:
+```go
+const (
+    // RotationTypeAWSCredentials represents AWS IAM credentials rotation
+    RotationTypeAWSCredentials RotationType = "aws-credentials"
+    // RotationTypeAWSOIDC represents AWS OIDC BackendAuth rotation
+    RotationTypeAWSOIDC RotationType = "aws-oidc"
+)
+```
+
+#### AWS IAM Credentials (`aws-credentials`)
+This rotator manages long-lived AWS IAM access keys. It is designed for:
+- Direct AWS IAM user authentication
+- Managing programmatic access keys
+- Use cases requiring long-term IAM credentials
+- Scenarios where OIDC authentication is not available or suitable
+
+Key features:
+- Creates and rotates IAM access key pairs
+- Handles proper cleanup of old access keys
+- Ensures zero-downtime rotation with propagation delays
+- Supports multiple credential profiles
+
+#### AWS OIDC (`aws-oidc`)
+This rotator manages temporary credentials obtained through OpenID Connect (OIDC) authentication with AWS. It is designed for:
+- Workload identity federation
+- Short-lived credential management
+- Token exchange with AWS STS service
+- Modern cloud-native authentication patterns
+
+Key features:
+- Exchanges OIDC tokens for temporary AWS credentials
+- Automatic credential refresh before expiration
+- Support for role assumption with web identity
+- Configurable session duration
+- Built-in support for AWS regional endpoints
+
+When choosing between these types:
+- Use `aws-credentials` when you need long-lived IAM user credentials
+- Use `aws-oidc` when you want to leverage OIDC-based authentication for better security and automated rotation
 
 ### Interaction Flow
 
@@ -52,158 +111,143 @@ sequenceDiagram
     participant API as K8s API Server
     participant BSC as BackendSecurityController
     participant BAM as BackendAuthManager
+    participant Chan as Rotation Channel
     participant Rotator as Auth Rotator
-    participant Upstream as Upstream Backend
+    participant Auth as External Auth Server
 
     Note over BSC,BAM: Initialization Flow
     BSC->>BAM: Request Initialization
+    BAM->>API: Check Secret Exists
+    BAM->>BAM: Validate Event & Check Rotator
     BAM->>Rotator: Initialize Credentials
-    Rotator->>Upstream: Create Initial Credentials
+    Rotator->>Auth: Create Initial Credentials
     Rotator->>API: Create/Update Secret
 
     Note over BSC,BAM: Rotation Flow
     BSC->>BAM: Request Rotation
+    BAM->>BAM: Validate Event & Check Rotator
+    BAM->>BAM: Check if Needs Initialization
+    opt Needs Initialization
+        BAM->>Rotator: Initialize First
+    end
+    BAM->>Chan: Send Rotation Event
+    Note over Chan: Async Processing
+    Chan->>BAM: Process Event
     BAM->>Rotator: Rotate Credentials
-    Rotator->>Upstream: Create New Credentials
+    Rotator->>Auth: Create New Credentials
     Rotator->>API: Update Secret
-    Note over Rotator: Wait for Propagation
-    Note over Rotator: Wait for Deletion Delay
-    Rotator->>Upstream: Delete Old Credentials
+    BAM->>BAM: Schedule Next Rotation
 ```
 
 ## Implementation Details
 
 ### BackendAuthManager
 
-The BackendAuthManager (`internal/controller/backend_auth_manager.go`) provides centralized management of upstream service authentication:
-- Thread-safe rotator registration for different backend services
-- Asynchronous event processing
-- Graceful shutdown with cleanup
-- Context-aware operation cancellation
-- Scheduled rotation management of upstream credentials
-- Event publishing for monitoring
-- Kubernetes event integration
+The BackendAuthManager implements several key operations:
 
-Key features:
-```go
-type BackendAuthManager struct {
-    rotationChan chan RotationEvent
-    rotators     map[RotationType]Rotator
-    logger       logr.Logger
-    // ... other fields
-}
-```
+1. **Initialization**
+   ```go
+   func NewBackendAuthManager(logger logr.Logger, client client.Client) *BackendAuthManager {
+       return &BackendAuthManager{
+           logger:         logger,
+           rotators:       make(map[RotationType]Rotator),
+           rotationChan:   make(chan RotationEvent, 100),
+           stopChan:       make(chan struct{}),
+           client:         client,
+           rotationWindow: 5 * time.Minute,
+       }
+   }
+   ```
 
-### Rotator Interface
+2. **Rotation Request Handling**
+   - Validates rotation events
+   - Checks for rotator existence
+   - Handles initialization if needed
+   - Non-blocking rotation channel sends
+   - Proper error handling and logging
 
-The Rotator interface (`internal/controller/backend_auth_rotators/types.go`) defines the contract for all upstream credential rotators:
+3. **Scheduling Management**
+   - Thread-safe tracking of scheduled rotations
+   - Automatic cleanup of old schedules
+   - Context-aware operation for proper cancellation
+   - Support for immediate and future rotations
 
-```go
-type Rotator interface {
-    Initialize(ctx context.Context, event RotationEvent) error
-    Rotate(ctx context.Context, event RotationEvent) error
-    Type() RotationType
-}
-```
+4. **Error Handling**
+   - Structured logging with context
+   - Proper error wrapping and propagation
+   - Graceful failure handling
+   - Detailed error messages for debugging
 
-### Rotation Events
+### Rotator Implementation Guidelines
 
-Rotation events (`internal/controller/backend_auth_rotators/types.go`) carry the necessary information for upstream credential operations:
+When implementing a new rotator:
 
-```go
-type RotationEvent struct {
-    Namespace string
-    Name      string
-    Type      RotationType
-    Metadata  map[string]string
-}
-```
+1. **Type Definition**
+   ```go
+   type NewRotator struct {
+       client client.Client
+       logger logr.Logger
+   }
+   ```
 
-## Kubernetes Integration
+2. **Required Methods**
+   ```go
+   // Initialize should handle first-time setup
+   func (r *NewRotator) Initialize(ctx context.Context, event RotationEvent) error {
+       // Implementation
+   }
 
-### Secret Management
+   // Rotate should handle credential rotation
+   func (r *NewRotator) Rotate(ctx context.Context, event RotationEvent) error {
+       // Implementation
+   }
 
-- Secure storage of upstream service credentials in Kubernetes secrets
-- Support for multiple credential formats based on backend requirements
-- Atomic updates using Kubernetes API
-- Proper cleanup of old upstream credentials
-
-### BackendSecurityPolicy CRD
-
-```yaml
-apiVersion: ai-gateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: example-policy
-spec:
-  backend:
-    credentials:
-      secretName: upstream-creds
-      type: credential-type  # Type of upstream authentication
-      metadata:
-        # Backend-specific authentication configuration
-        key1: value1
-        key2: value2
-```
-
-### Controller Reconciliation
-
-1. **Watch Events**
-   - Monitors BackendSecurityPolicy changes
-   - Detects credential configuration changes
-   - Handles policy deletions
-
-2. **Secret Management**
-   - Creates/updates secrets as needed
-   - Maintains secret ownership
-   - Handles cleanup on policy deletion
-
-3. **Error Handling**
-   - Retries on transient failures
-   - Logs detailed error information
-   - Updates policy status with error conditions
+   // Type should return the rotator type
+   func (r *NewRotator) Type() RotationType {
+       return RotationTypeNew
+   }
+   ```
 
 ## Security Considerations
 
-1. **Credential Lifecycle**
-   - Zero-downtime rotation with two-phase process for uninterrupted backend communication
-   - Configurable propagation and deletion delays to ensure smooth transition
-   - Immediate cleanup on cancellation after minimum propagation
-   - Old credentials remain valid during propagation period to prevent service disruption
+1. **Thread Safety**
+   - Proper use of mutexes for shared state
+   - Thread-safe maps for rotation tracking
+   - Atomic operations where needed
+   - Proper cleanup on shutdown
 
-2. **Access Control**
-   - Kubernetes RBAC integration for credential access control
-   - Namespace-scoped operations for isolation
-   - Least privilege principle for credential management
-   - Audit logging support for credential operations
+2. **Context Management**
+   - Context propagation for cancellation
+   - Timeout handling
+   - Resource cleanup on cancellation
+   - Proper goroutine management
 
-3. **Secret Protection**
-   - Secure storage of upstream credentials in Kubernetes secrets
-   - Support for secret encryption at rest
-   - Atomic updates to prevent race conditions
-   - Proper cleanup of old credentials
+3. **Error Handling**
+   - Structured logging
+   - Error context preservation
+   - Proper cleanup on failures
+   - Non-blocking operation where appropriate
 
 ## Testing Strategy
 
 1. **Unit Tests**
-   - Mock backend service APIs
-   - Test rotation logic
-   - Verify cleanup behavior
-   - Test propagation delays
-   - Concurrent rotation testing
+   - Test rotation scheduling
+   - Verify thread safety
+   - Test error handling
+   - Verify context cancellation
+   - Test cleanup behavior
 
 2. **Integration Tests**
-   - Test with Kubernetes API
-   - Verify secret updates
-   - Check controller reconciliation
-   - Test initialization flow
+   - Test with actual rotators
+   - Verify scheduling behavior
+   - Test concurrent operations
+   - Verify cleanup on shutdown
 
 3. **End-to-End Tests**
-   - Full rotation cycle
-   - Policy changes
-   - Error scenarios
-   - Scheduled rotations
-   - Performance testing
+   - Full rotation lifecycle
+   - Scheduling and rescheduling
+   - Error recovery
+   - Performance under load
 
 ## Performance Considerations
 
