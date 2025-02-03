@@ -658,7 +658,7 @@ func TestAWS_CredentialsRotator_Performance(t *testing.T) {
 					Metadata:  map[string]string{"old_access_key_id": fmt.Sprintf("OLDKEY%d", i)},
 				}
 				if err := ts.rotator.Rotate(ts.ctx, event); err != nil {
-					errChan <- fmt.Errorf("rotation %d failed: %v", i, err)
+					errChan <- fmt.Errorf("rotation %d failed: %w", i, err)
 				}
 			}(i)
 		}
