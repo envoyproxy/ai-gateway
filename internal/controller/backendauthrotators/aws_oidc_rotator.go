@@ -2,6 +2,7 @@ package backendauthrotators
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -99,7 +100,7 @@ func (r *AWSOIDCRotator) Start(ctx context.Context) error {
 			}
 
 			if err := r.Rotate(ctx, event); err != nil {
-				if err != context.Canceled {
+				if !errors.Is(err, context.Canceled) {
 					r.logger.Error(err, "failed to rotate credentials",
 						"namespace", event.Namespace,
 						"name", event.Name)

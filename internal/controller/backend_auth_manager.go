@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -448,7 +449,7 @@ func (tm *BackendAuthManager) Start(ctx context.Context) error {
 			go func(e backendauthrotators.RotationEvent) {
 				defer tm.wg.Done()
 				if err := rotator.Rotate(ctx, e); err != nil {
-					if err != context.Canceled {
+					if !errors.Is(err, context.Canceled) {
 						if handleErr := tm.handleError(e, "failed to rotate credentials", err); handleErr != nil {
 							tm.logger.Error(handleErr, "failed to handle rotation error",
 								"namespace", e.Namespace,
