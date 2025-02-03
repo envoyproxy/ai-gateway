@@ -56,7 +56,7 @@ func NewAWSOIDCRotator(
 	rotationChan <-chan RotationEvent,
 	scheduleChan chan<- RotationEvent,
 ) (*AWSOIDCRotator, error) {
-	cfg, err := getDefaultAWSConfig(context.Background())
+	cfg, err := defaultAWSConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -137,11 +137,17 @@ func (r *AWSOIDCRotator) Initialize(ctx context.Context, event RotationEvent) er
 	// Create new secret struct
 	secret := newSecret(event.Namespace, event.Name)
 
-	// Create credentials file
+	// Get profile from metadata, defaulting to "default" if not specified
+	profile := event.Metadata["profile"]
+	if profile == "" {
+		profile = "default"
+	}
+
+	// Create credentials file with the specified profile
 	credsFile := &awsCredentialsFile{
 		profiles: map[string]*awsCredentials{
-			defaultProfile: {
-				profile:         defaultProfile,
+			profile: {
+				profile:         profile,
 				accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
 				secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
 				sessionToken:    aws.ToString(result.Credentials.SessionToken),
@@ -161,33 +167,37 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, event RotationEvent) error 
 		return err
 	}
 
-	// Exchange token for AWS credentials
-	resp, err := r.assumeRoleWithToken(ctx, event, event.Metadata["id_token"])
-	if err != nil {
-		return err
-	}
-
 	// Get existing secret
 	secret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
 	if err != nil {
 		return err
 	}
 
-	// Create credentials file
-	credsFile := &awsCredentialsFile{
-		profiles: map[string]*awsCredentials{
-			defaultProfile: {
-				profile:         defaultProfile,
-				accessKeyID:     aws.ToString(resp.Credentials.AccessKeyId),
-				secretAccessKey: aws.ToString(resp.Credentials.SecretAccessKey),
-				sessionToken:    aws.ToString(resp.Credentials.SessionToken),
-				region:          event.Metadata["region"],
-			},
-		},
+	existingCreds, err := validateAWSSecret(secret)
+	if err != nil {
+		return err
 	}
 
+	// Determine which profile to use
+	profile, err := profileFromMetadata(event.Metadata, existingCreds)
+	if err != nil {
+		return fmt.Errorf("failed to determine AWS profile: %w", err)
+	}
+
+	// Exchange token for AWS credentials
+	resp, err := r.assumeRoleWithToken(ctx, event, event.Metadata["id_token"])
+	if err != nil {
+		return err
+	}
+
+	// Update only the specified profile's credentials
+	existingCreds.profiles[profile].accessKeyID = aws.ToString(resp.Credentials.AccessKeyId)
+	existingCreds.profiles[profile].secretAccessKey = aws.ToString(resp.Credentials.SecretAccessKey)
+	existingCreds.profiles[profile].sessionToken = aws.ToString(resp.Credentials.SessionToken)
+	existingCreds.profiles[profile].region = event.Metadata["region"]
+
 	// Update secret with credentials
-	updateAWSCredentialsInSecret(secret, credsFile)
+	updateAWSCredentialsInSecret(secret, existingCreds)
 	if err := updateSecret(ctx, r.client, secret); err != nil {
 		return err
 	}
@@ -250,17 +260,21 @@ func (r *AWSOIDCRotator) scheduleNextRotation(event RotationEvent, resp *sts.Ass
 
 	// If we're not too close to expiry, schedule the next rotation
 	if time.Until(rotateAt) > time.Second {
-		// Create a new event for the next rotation
+		// Create a new event for the next rotation, preserving all metadata
 		nextEvent := RotationEvent{
 			Namespace: event.Namespace,
 			Name:      event.Name,
 			Type:      RotationTypeAWSOIDC,
-			Metadata: map[string]string{
-				"role_arn":  event.Metadata["role_arn"],
-				"id_token":  event.Metadata["id_token"],
-				"rotate_at": rotateAt.Format(time.RFC3339),
-			},
+			Metadata:  make(map[string]string),
 		}
+
+		// Copy all metadata from the original event
+		for k, v := range event.Metadata {
+			nextEvent.Metadata[k] = v
+		}
+
+		// Update the rotation time
+		nextEvent.Metadata["rotate_at"] = rotateAt.Format(time.RFC3339)
 
 		// Send the event through the schedule channel
 		select {
@@ -268,11 +282,13 @@ func (r *AWSOIDCRotator) scheduleNextRotation(event RotationEvent, resp *sts.Ass
 			r.logger.Info("scheduled next rotation",
 				"namespace", event.Namespace,
 				"name", event.Name,
+				"profile", event.Metadata["profile"],
 				"rotateAt", rotateAt)
 		default:
 			r.logger.Error(fmt.Errorf("schedule channel is full"), "failed to schedule next rotation",
 				"namespace", event.Namespace,
 				"name", event.Name,
+				"profile", event.Metadata["profile"],
 				"rotateAt", rotateAt)
 		}
 	}

@@ -90,7 +90,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	// Create and start the backend auth manager
-	backendAuthManager := NewBackendAuthManager(logger.WithName("backend-auth-manager"), sinkChan, c)
+	backendAuthManager := NewBackendAuthManager(logger.WithName("backend-auth-manager"), c)
 	go func() {
 		if err := backendAuthManager.Start(ctx); err != nil {
 			logger.Error(err, "Backend auth manager failed")

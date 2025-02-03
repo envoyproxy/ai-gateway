@@ -50,6 +50,7 @@ package backendauthrotators
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -87,6 +88,7 @@ type AWSCredentialsRotator struct {
 	KeyDeletionDelay time.Duration
 	// MinPropagationDelay is the minimum time to wait for new credentials to propagate
 	MinPropagationDelay time.Duration
+	iamMutex            sync.Mutex // protects IAMOps during concurrent operations
 }
 
 // -----------------------------------------------------------------------------
@@ -94,26 +96,35 @@ type AWSCredentialsRotator struct {
 // -----------------------------------------------------------------------------
 
 // NewAWSCredentialsRotator creates a new AWS credentials rotator
-func NewAWSCredentialsRotator(
-	client client.Client,
-	kube kubernetes.Interface,
-	logger logr.Logger,
-) (*AWSCredentialsRotator, error) {
-	cfg, err := getDefaultAWSConfig(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	iamClient := NewIAMClient(cfg)
-
-	return &AWSCredentialsRotator{
-		client:              client,
-		kube:                kube,
-		logger:              logger,
-		IAMOps:              iamClient,
+func NewAWSCredentialsRotator(config RotatorConfig) (*AWSCredentialsRotator, error) {
+	rotator := &AWSCredentialsRotator{
+		client:              config.Client,
+		kube:                config.KubeClient,
+		logger:              config.Logger,
 		KeyDeletionDelay:    defaultKeyDeletionDelay,
 		MinPropagationDelay: defaultMinPropagationDelay,
-	}, nil
+	}
+
+	// Use provided IAM operations if available
+	if config.IAMOperations != nil {
+		rotator.IAMOps = config.IAMOperations
+		return rotator, nil
+	}
+
+	// Use provided AWS config or load default
+	var awsCfg aws.Config
+	if config.AWSConfig != nil {
+		awsCfg = *config.AWSConfig
+	} else {
+		var err error
+		awsCfg, err = defaultAWSConfig(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+	}
+
+	rotator.IAMOps = NewIAMClient(awsCfg)
+	return rotator, nil
 }
 
 // Type returns the type of rotation this rotator handles
@@ -131,11 +142,30 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		"namespace", event.Namespace,
 		"name", event.Name)
 
-	// Create new secret struct
-	secret := newSecret(event.Namespace, event.Name)
+	// Get existing credentials from secret
+	existingSecret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup secret: %w", err)
+	}
+
+	existingCreds, err := validateAWSSecret(existingSecret)
+	if err != nil {
+		return fmt.Errorf("failed to validate AWS secret: %w", err)
+	}
+
+	// Determine which profile to use
+	profile, err := profileFromMetadata(event.Metadata, existingCreds)
+	if err != nil {
+		return fmt.Errorf("failed to determine AWS profile: %w", err)
+	}
+
+	// Configure AWS client if needed
+	if err := r.configureIAMClient(ctx, existingCreds.profiles[profile]); err != nil {
+		return fmt.Errorf("failed to configure IAM client: %w", err)
+	}
 
 	// Create new access key
-	result, err := r.IAMOps.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
+	result, err := r.createNewAccessKey(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create access key: %w", err)
 	}
@@ -145,12 +175,7 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		profiles: make(map[string]*awsCredentials),
 	}
 
-	// Update credentials
-	profile := defaultProfile
-	if p, ok := event.Metadata["profile"]; ok {
-		profile = p
-	}
-
+	// Update credentials using the same profile
 	credsFile.profiles[profile] = &awsCredentials{
 		profile:         profile,
 		accessKeyID:     aws.ToString(result.AccessKey.AccessKeyId),
@@ -158,9 +183,9 @@ func (r *AWSCredentialsRotator) Initialize(ctx context.Context, event RotationEv
 		region:          event.Metadata["region"],
 	}
 
-	// Update secret with credentials
-	updateAWSCredentialsInSecret(secret, credsFile)
-	return updateSecret(ctx, r.client, secret)
+	// Update the existing secret with new credentials
+	updateAWSCredentialsInSecret(existingSecret, credsFile)
+	return updateSecret(ctx, r.client, existingSecret)
 }
 
 // Rotate implements the Rotator interface for AWS IAM credentials
@@ -169,47 +194,152 @@ func (r *AWSCredentialsRotator) Rotate(ctx context.Context, event RotationEvent)
 		return err
 	}
 
+	r.logger.Info("starting AWS credentials rotation",
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"metadata", event.Metadata)
+
 	// Get existing secret
 	secret, err := lookupSecret(ctx, r.client, event.Namespace, event.Name)
 	if err != nil {
+		r.logger.Error(err, "failed to lookup secret",
+			"namespace", event.Namespace,
+			"name", event.Name)
 		return err
 	}
 
 	existingCreds, err := validateAWSSecret(secret)
 	if err != nil {
+		r.logger.Error(err, "failed to validate AWS secret",
+			"namespace", event.Namespace,
+			"name", event.Name)
 		return err
 	}
+
+	// Determine which profile to use
+	profile, err := profileFromMetadata(event.Metadata, existingCreds)
+	if err != nil {
+		r.logger.Error(err, "failed to determine AWS profile",
+			"namespace", event.Namespace,
+			"name", event.Name,
+			"metadata", event.Metadata)
+		return fmt.Errorf("failed to determine AWS profile: %w", err)
+	}
+
+	// Configure AWS client if needed
+	if err := r.configureIAMClient(ctx, existingCreds.profiles[profile]); err != nil {
+		r.logger.Error(err, "failed to configure IAM client",
+			"namespace", event.Namespace,
+			"name", event.Name,
+			"profile", profile)
+		return fmt.Errorf("failed to configure IAM client: %w", err)
+	}
+
+	r.logger.Info("creating new access key",
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"profile", profile)
 
 	createKeyOutput, err := r.createNewAccessKey(ctx)
 	if err != nil {
-		return err
+		r.logger.Error(err, "failed to create new access key",
+			"namespace", event.Namespace,
+			"name", event.Name,
+			"profile", profile)
+		return fmt.Errorf("failed to create new access key: %w", err)
 	}
 
-	// Update credentials in all profiles
-	for _, profile := range existingCreds.profiles {
-		profile.accessKeyID = aws.ToString(createKeyOutput.AccessKey.AccessKeyId)
-		profile.secretAccessKey = aws.ToString(createKeyOutput.AccessKey.SecretAccessKey)
-	}
+	r.logger.Info("successfully created new access key",
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"profile", profile,
+		"new_key_id", aws.ToString(createKeyOutput.AccessKey.AccessKeyId))
+
+	// Update only the specified profile's credentials
+	existingCreds.profiles[profile].accessKeyID = aws.ToString(createKeyOutput.AccessKey.AccessKeyId)
+	existingCreds.profiles[profile].secretAccessKey = aws.ToString(createKeyOutput.AccessKey.SecretAccessKey)
 
 	updateAWSCredentialsInSecret(secret, existingCreds)
 	if err := updateSecret(ctx, r.client, secret); err != nil {
+		r.logger.Error(err, "failed to update secret with new credentials",
+			"namespace", event.Namespace,
+			"name", event.Name,
+			"profile", profile)
 		return err
 	}
 
+	// Add the old key ID to metadata for deletion
+	if event.Metadata == nil {
+		event.Metadata = make(map[string]string)
+	}
+	event.Metadata["old_access_key_id"] = existingCreds.profiles[profile].accessKeyID
+
 	return r.scheduleOldKeyDeletion(ctx, event)
+}
+
+// configureIAMClient configures the IAM client if it hasn't been set
+func (r *AWSCredentialsRotator) configureIAMClient(ctx context.Context, creds *awsCredentials) error {
+	if r.IAMOps != nil {
+		return nil
+	}
+
+	cfg, err := awsConfigFromCredentials(ctx, creds)
+	if err != nil {
+		return fmt.Errorf("failed to configure AWS with credentials: %w", err)
+	}
+
+	r.iamMutex.Lock()
+	defer r.iamMutex.Unlock()
+
+	// Double-check after acquiring lock
+	if r.IAMOps == nil {
+		r.IAMOps = NewIAMClient(cfg)
+	}
+
+	return nil
 }
 
 // -----------------------------------------------------------------------------
 // AWS Operations
 // -----------------------------------------------------------------------------
 
-// createNewAccessKey creates a new AWS access key
+// createNewAccessKey creates a new AWS IAM access key
 func (r *AWSCredentialsRotator) createNewAccessKey(ctx context.Context) (*iam.CreateAccessKeyOutput, error) {
-	createKeyOutput, err := r.IAMOps.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
+	if r.IAMOps == nil {
+		return nil, fmt.Errorf("IAM operations not initialized")
+	}
+
+	r.iamMutex.Lock()
+	defer r.iamMutex.Unlock()
+
+	result, err := r.IAMOps.CreateAccessKey(ctx, &iam.CreateAccessKeyInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new access key: %w", err)
 	}
-	return createKeyOutput, nil
+
+	r.logger.Info("created new access key", "keyID", aws.ToString(result.AccessKey.AccessKeyId))
+	return result, nil
+}
+
+// deleteAccessKey deletes an AWS IAM access key
+func (r *AWSCredentialsRotator) deleteAccessKey(ctx context.Context, accessKeyID string) error {
+	if r.IAMOps == nil {
+		return fmt.Errorf("IAM operations not initialized")
+	}
+
+	r.iamMutex.Lock()
+	defer r.iamMutex.Unlock()
+
+	_, err := r.IAMOps.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
+		AccessKeyId: aws.String(accessKeyID),
+	})
+	if err != nil {
+		r.logger.Error(err, "failed to delete access key", "keyID", accessKeyID)
+		return fmt.Errorf("failed to delete access key: %w", err)
+	}
+
+	r.logger.Info("deleted access key", "keyID", accessKeyID)
+	return nil
 }
 
 // -----------------------------------------------------------------------------
@@ -241,7 +371,7 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 	case <-ctx.Done():
 		// Context was cancelled, but still ensure minimum propagation delay
 		time.Sleep(r.MinPropagationDelay)
-		r.deleteAccessKey(ctx, oldKeyID, true)
+		r.deleteAccessKey(ctx, oldKeyID)
 		return
 	case <-time.After(r.MinPropagationDelay):
 		// Minimum propagation delay satisfied, continue with normal flow
@@ -253,7 +383,7 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 		select {
 		case <-ctx.Done():
 			// Context cancelled after propagation delay, delete immediately
-			r.deleteAccessKey(ctx, oldKeyID, true)
+			r.deleteAccessKey(ctx, oldKeyID)
 			return
 		case <-time.After(remainingDelay):
 			// Normal delay-based deletion
@@ -261,21 +391,5 @@ func (r *AWSCredentialsRotator) handleKeyDeletion(ctx context.Context, oldKeyID 
 	}
 
 	// Proceed with deletion after all delays are satisfied
-	r.deleteAccessKey(ctx, oldKeyID, false)
-}
-
-// deleteAccessKey performs the actual deletion of the AWS access key
-func (r *AWSCredentialsRotator) deleteAccessKey(ctx context.Context, accessKeyID string, isCancelled bool) {
-	_, err := r.IAMOps.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
-		AccessKeyId: aws.String(accessKeyID),
-	})
-	if err != nil {
-		if isCancelled {
-			r.logger.Error(err, "failed to delete old access key after context cancellation",
-				"accessKeyId", accessKeyID)
-		} else {
-			r.logger.Error(err, "failed to delete old access key",
-				"accessKeyId", accessKeyID)
-		}
-	}
+	r.deleteAccessKey(ctx, oldKeyID)
 }

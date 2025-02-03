@@ -18,8 +18,7 @@ import (
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	eventChan := make(chan ConfigSinkEvent, 10)
-	tokenManager := NewBackendAuthManager(ctrl.Log.WithName("token-manager"), eventChan, cl)
+	tokenManager := NewBackendAuthManager(ctrl.Log.WithName("token-manager"), cl)
 	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch, tokenManager)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"

@@ -41,19 +41,60 @@ const (
 	defaultKeyDeletionDelay = 60 * time.Second
 	// defaultMinPropagationDelay is the minimum time to wait for credential propagation
 	defaultMinPropagationDelay = 30 * time.Second
-	// defaultProfile is the default AWS credentials profile name
-	defaultProfile = "default"
 	// credentialsKey is the key used to store AWS credentials in Kubernetes secrets
 	credentialsKey = "credentials"
 	// awsSessionNameFormat is the format string for AWS session names
 	awsSessionNameFormat = "ai-gateway-%s"
 )
 
-// getDefaultAWSConfig returns an AWS config with adaptive retry mode enabled.
+// profileFromMetadata determines which AWS credentials profile to use.
+// If a profile is specified in the metadata, that profile is used.
+// Otherwise, if there is only one profile in the credentials, that profile is used.
+// If there are multiple profiles and none specified, an error is returned.
+func profileFromMetadata(metadata map[string]string, creds *awsCredentialsFile) (string, error) {
+	// If profile is specified in metadata, use that
+	if profile, ok := metadata["profile"]; ok {
+		if _, exists := creds.profiles[profile]; !exists {
+			return "", fmt.Errorf("specified profile %q not found in credentials", profile)
+		}
+		return profile, nil
+	}
+
+	// If only one profile exists, use that
+	if len(creds.profiles) == 1 {
+		for profile := range creds.profiles {
+			return profile, nil
+		}
+	}
+
+	// Multiple profiles exist but none specified
+	return "", fmt.Errorf("multiple AWS credential profiles found but none specified in metadata")
+}
+
+// defaultAWSConfig returns an AWS config with adaptive retry mode enabled.
 // This ensures better handling of transient API failures and rate limiting.
-func getDefaultAWSConfig(ctx context.Context) (aws.Config, error) {
+func defaultAWSConfig(ctx context.Context) (aws.Config, error) {
 	return config.LoadDefaultConfig(ctx,
 		config.WithRetryMode(aws.RetryModeAdaptive),
+	)
+}
+
+// awsConfigFromCredentials creates an AWS config using the provided credentials.
+// This is used when we want to explicitly use credentials from a secret rather than
+// relying on the default credential chain.
+func awsConfigFromCredentials(ctx context.Context, creds *awsCredentials) (aws.Config, error) {
+	return config.LoadDefaultConfig(ctx,
+		config.WithRetryMode(aws.RetryModeAdaptive),
+		config.WithCredentialsProvider(aws.CredentialsProviderFunc(
+			func(ctx context.Context) (aws.Credentials, error) {
+				return aws.Credentials{
+					AccessKeyID:     creds.accessKeyID,
+					SecretAccessKey: creds.secretAccessKey,
+					SessionToken:    creds.sessionToken,
+				}, nil
+			},
+		)),
+		config.WithRegion(creds.region),
 	)
 }
 

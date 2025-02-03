@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/envoyproxy/ai-gateway/internal/controller/backendauthrotators"
@@ -26,20 +24,6 @@ const (
 	RotationTypeAWSOIDC RotationType = "aws-oidc"
 )
 
-// RotationEventType defines the type of rotation event
-type RotationEventType string
-
-const (
-	// RotationEventStarted indicates a rotation has started
-	RotationEventStarted RotationEventType = "Started"
-	// RotationEventSucceeded indicates a rotation has completed successfully
-	RotationEventSucceeded RotationEventType = "Succeeded"
-	// RotationEventFailed indicates a rotation has failed
-	RotationEventFailed RotationEventType = "Failed"
-	// RotationEventInitialization indicates an initialization event
-	RotationEventInitialization RotationEventType = "Initialization"
-)
-
 // RotationEvent represents a credential rotation event
 type RotationEvent struct {
 	// Namespace where the rotation should occur
@@ -50,18 +34,6 @@ type RotationEvent struct {
 	Type RotationType
 	// Metadata contains any additional data needed for rotation
 	Metadata map[string]string
-}
-
-// BackendAuthRotationEvent represents an event related to BackendAuth rotation
-type BackendAuthRotationEvent struct {
-	// Type of the event (Started, Succeeded, Failed)
-	EventType RotationEventType
-	// The rotation event that triggered this event
-	RotationEvent backendauthrotators.RotationEvent
-	// Error message if the event type is Failed
-	Error string
-	// Timestamp when the event occurred
-	Timestamp time.Time
 }
 
 // Rotator defines the interface for credential rotators
@@ -86,10 +58,6 @@ type BackendAuthManager struct {
 	scheduledRotations sync.Map
 	// rotationWindow is how long before expiry to rotate credentials
 	rotationWindow time.Duration
-	// publishChan is used to publish rotation events to subscribers
-	publishChan chan backendauthrotators.RotationEvent
-	// eventChan is used to publish events to the configSink
-	eventChan chan ConfigSinkEvent
 	// client is used for Kubernetes API operations
 	client client.Client
 }
@@ -102,15 +70,13 @@ type scheduledRotation struct {
 }
 
 // NewBackendAuthManager creates a new BackendAuth manager
-func NewBackendAuthManager(logger logr.Logger, eventChan chan ConfigSinkEvent, client client.Client) *BackendAuthManager {
+func NewBackendAuthManager(logger logr.Logger, client client.Client) *BackendAuthManager {
 	return &BackendAuthManager{
 		logger:         logger,
 		rotators:       make(map[backendauthrotators.RotationType]backendauthrotators.Rotator),
 		rotationChan:   make(chan backendauthrotators.RotationEvent, 100), // Buffer size of 100
-		publishChan:    make(chan backendauthrotators.RotationEvent, 100), // Buffer size of 100
 		stopChan:       make(chan struct{}),
 		client:         client,
-		eventChan:      eventChan,
 		rotationWindow: 5 * time.Minute, // Default to rotating 5 minutes before expiry
 	}
 }
@@ -132,76 +98,6 @@ func (tm *BackendAuthManager) RegisterRotator(r backendauthrotators.Rotator) err
 // RotationChannel returns a channel that will receive rotation events
 func (tm *BackendAuthManager) RotationChannel() <-chan backendauthrotators.RotationEvent {
 	return tm.rotationChan
-}
-
-// publishRotationEvent publishes a BackendAuth rotation event to the configSink
-func (tm *BackendAuthManager) publishRotationEvent(event BackendAuthRotationEvent) {
-	if tm.eventChan == nil {
-		return
-	}
-
-	// Create a Kubernetes event
-	k8sEvent := &corev1.Event{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("BackendAuth-rotation-%s-", strings.ToLower(string(event.EventType))),
-			Namespace:    event.RotationEvent.Namespace,
-		},
-		InvolvedObject: corev1.ObjectReference{
-			Kind:      "Secret",
-			Name:      event.RotationEvent.Name,
-			Namespace: event.RotationEvent.Namespace,
-		},
-		Reason:    fmt.Sprintf("BackendAuthRotation%s", event.EventType),
-		Message:   tm.formatEventMessage(event),
-		Type:      tm.EventType(event.EventType),
-		EventTime: metav1.MicroTime{Time: event.Timestamp},
-	}
-
-	// If there's an error in the event, ensure it's marked as a warning
-	if event.Error != "" {
-		k8sEvent.Type = corev1.EventTypeWarning
-	}
-
-	select {
-	case tm.eventChan <- k8sEvent:
-		tm.logger.V(1).Info("published rotation event",
-			"type", event.EventType,
-			"namespace", event.RotationEvent.Namespace,
-			"name", event.RotationEvent.Name)
-	default:
-		tm.logger.Error(fmt.Errorf("event channel is full"), "failed to publish rotation event",
-			"type", event.EventType,
-			"namespace", event.RotationEvent.Namespace,
-			"name", event.RotationEvent.Name)
-	}
-}
-
-// formatEventMessage formats the event message based on the event type
-func (tm *BackendAuthManager) formatEventMessage(event BackendAuthRotationEvent) string {
-	switch event.EventType {
-	case RotationEventStarted:
-		return fmt.Sprintf("Started rotation of %s BackendAuth", event.RotationEvent.Type)
-	case RotationEventSucceeded:
-		return fmt.Sprintf("Successfully rotated %s BackendAuth", event.RotationEvent.Type)
-	case RotationEventFailed:
-		return fmt.Sprintf("Failed to rotate %s BackendAuth: %s", event.RotationEvent.Type, event.Error)
-	default:
-		return fmt.Sprintf("Unknown rotation event for %s BackendAuth", event.RotationEvent.Type)
-	}
-}
-
-// EventType returns the appropriate Kubernetes event type
-func (tm *BackendAuthManager) EventType(eventType RotationEventType) string {
-	switch eventType {
-	case RotationEventStarted:
-		return corev1.EventTypeNormal
-	case RotationEventSucceeded:
-		return corev1.EventTypeNormal
-	case RotationEventFailed:
-		return corev1.EventTypeWarning
-	default:
-		return corev1.EventTypeNormal
-	}
 }
 
 // isBackendAuthInitialized checks if a BackendAuth has been initialized by verifying if its secret exists
@@ -230,42 +126,17 @@ func (tm *BackendAuthManager) checkRotatorExists(rotationType backendauthrotator
 	return exists
 }
 
-// publishEvent is a helper method to publish rotation events with consistent error handling
-func (tm *BackendAuthManager) publishEvent(event backendauthrotators.RotationEvent, eventType RotationEventType, err error) {
-	rotationEvent := BackendAuthRotationEvent{
-		EventType:     eventType,
-		RotationEvent: event,
-		Timestamp:     time.Now(),
-	}
-	if err != nil {
-		rotationEvent.Error = err.Error()
-	}
-	tm.publishRotationEvent(rotationEvent)
-}
-
-// handleError publishes an error event and returns a formatted error
+// handleError logs an error and returns a formatted error
 func (tm *BackendAuthManager) handleError(event backendauthrotators.RotationEvent, errMsg string, err error) error {
-	rotationEvent := BackendAuthRotationEvent{
-		EventType:     RotationEventFailed,
-		RotationEvent: event,
-		Timestamp:     time.Now(),
-	}
-
 	// Include namespace and name in the error message
 	contextMsg := fmt.Sprintf("%s for secret %s/%s", errMsg, event.Namespace, event.Name)
-	if err != nil {
-		rotationEvent.Error = fmt.Sprintf("%s: %s", contextMsg, err.Error())
-	} else {
-		rotationEvent.Error = contextMsg
-	}
 
-	// Also log the error with structured fields
+	// Log the error with structured fields
 	tm.logger.Error(err, contextMsg,
 		"namespace", event.Namespace,
 		"name", event.Name,
 		"type", event.Type)
 
-	tm.publishRotationEvent(rotationEvent)
 	if err != nil {
 		return fmt.Errorf("%s: %w", contextMsg, err)
 	}
@@ -295,34 +166,17 @@ func (tm *BackendAuthManager) RequestRotation(ctx context.Context, event backend
 	}
 	tm.mu.Unlock()
 
-	// Publish started event
-	tm.publishEvent(event, RotationEventStarted, nil)
+	tm.logger.Info("starting rotation",
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"type", event.Type)
 
-	// Try non-blocking sends to both channels
+	// Try non-blocking sends to rotation channel
 	select {
 	case tm.rotationChan <- event:
 		// Successfully sent to rotation channel
 	default:
 		return tm.handleError(event, "rotation channel is full", nil)
-	}
-
-	// Try non-blocking send to publish channel
-	select {
-	case <-ctx.Done():
-		// Context was cancelled after rotation channel send
-		// We don't return an error here since the rotation is already queued
-		tm.logger.Info("context cancelled before publishing event",
-			"type", event.Type,
-			"namespace", event.Namespace,
-			"name", event.Name)
-	case tm.publishChan <- event:
-		// Successfully sent to publish channel
-	default:
-		// Channel is full, log warning but don't fail the rotation
-		tm.logger.Info("publish channel is full, dropping rotation event",
-			"type", event.Type,
-			"namespace", event.Namespace,
-			"name", event.Name)
 	}
 
 	return nil
@@ -424,6 +278,11 @@ func (tm *BackendAuthManager) Start(ctx context.Context) error {
 	for {
 		select {
 		case event := <-tm.rotationChan:
+			tm.logger.Info("processing rotation event",
+				"namespace", event.Namespace,
+				"name", event.Name,
+				"type", event.Type)
+
 			// Check if we're shutting down before starting new work
 			select {
 			case <-tm.stopChan:
@@ -457,6 +316,11 @@ func (tm *BackendAuthManager) Start(ctx context.Context) error {
 								"type", e.Type)
 						}
 					}
+				} else {
+					tm.logger.Info("rotation completed successfully",
+						"namespace", e.Namespace,
+						"name", e.Name,
+						"type", e.Type)
 				}
 			}(event)
 
@@ -491,7 +355,7 @@ func (tm *BackendAuthManager) Start(ctx context.Context) error {
 
 // RequestInitialization handles the initialization of BackendAuths
 func (tm *BackendAuthManager) RequestInitialization(ctx context.Context, event backendauthrotators.RotationEvent) error {
-	tm.logger.Info("requesting BackendAuth initialization",
+	tm.logger.Info("starting BackendAuth initialization",
 		"namespace", event.Namespace,
 		"name", event.Name,
 		"type", event.Type)
@@ -507,16 +371,19 @@ func (tm *BackendAuthManager) RequestInitialization(ctx context.Context, event b
 		return tm.handleError(event, "rotator type mismatch", fmt.Errorf("rotator type %s does not match event type %s", r.Type(), event.Type))
 	}
 
-	// Publish initialization started event
-	tm.publishEvent(event, RotationEventInitialization, nil)
-
 	// Perform initialization
 	if err := r.Initialize(ctx, event); err != nil {
-		return tm.handleError(event, "failed to initialize BackendAuth", err)
+		tm.logger.Error(err, "BackendAuth initialization failed",
+			"namespace", event.Namespace,
+			"name", event.Name,
+			"type", event.Type)
+		return err
 	}
 
-	// Publish success event
-	tm.publishEvent(event, RotationEventSucceeded, nil)
+	tm.logger.Info("BackendAuth initialization succeeded",
+		"namespace", event.Namespace,
+		"name", event.Name,
+		"type", event.Type)
 
 	return nil
 }

@@ -10,28 +10,32 @@ import (
 
 // AWSFactory creates AWS rotators
 type AWSFactory struct {
-	k8sClient    client.Client
-	k8sClientset kubernetes.Interface
-	logger       logr.Logger
+	client     client.Client
+	kubeClient kubernetes.Interface
+	logger     logr.Logger
 }
 
 // NewAWSFactory creates a new AWS factory
 func NewAWSFactory(k8sClient client.Client, k8sClientset kubernetes.Interface, logger logr.Logger) *AWSFactory {
 	return &AWSFactory{
-		k8sClient:    k8sClient,
-		k8sClientset: k8sClientset,
-		logger:       logger,
+		client:     k8sClient,
+		kubeClient: k8sClientset,
+		logger:     logger,
 	}
 }
 
 // NewAWSCredentialsRotator creates a new AWS credentials rotator
 func (f *AWSFactory) NewAWSCredentialsRotator() (*backendauthrotators.AWSCredentialsRotator, error) {
-	return backendauthrotators.NewAWSCredentialsRotator(f.k8sClient, f.k8sClientset, f.logger)
+	return backendauthrotators.NewAWSCredentialsRotator(backendauthrotators.RotatorConfig{
+		Client:     f.client,
+		KubeClient: f.kubeClient,
+		Logger:     f.logger,
+	})
 }
 
 // NewAWSOIDCRotator creates a new AWS OIDC rotator
 func (f *AWSFactory) NewAWSOIDCRotator() (*backendauthrotators.AWSOIDCRotator, error) {
 	rotationChan := make(chan backendauthrotators.RotationEvent, 100)
 	scheduleChan := make(chan backendauthrotators.RotationEvent, 100)
-	return backendauthrotators.NewAWSOIDCRotator(f.k8sClient, f.k8sClientset, f.logger, rotationChan, scheduleChan)
+	return backendauthrotators.NewAWSOIDCRotator(f.client, f.kubeClient, f.logger, rotationChan, scheduleChan)
 }

@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-rotation-secret
+  namespace: default
+stringData:
+  credentials: |
+    [default]
+    AWS_ACCESS_KEY_ID=TESTKEY
+    AWS_SECRET_ACCESS_KEY=TESTSECRET
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: token-rotation-test
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: token-rotation-test
+  namespace: default
+spec:
+  gatewayClassName: token-rotation-test
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: token-rotation-test
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: token-rotation-test
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: test-model
+      backendRefs:
+        - name: token-rotation-test
+          weight: 100
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: token-rotation-test
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: token-rotation-test
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: token-rotation-test
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: token-rotation-test
+  namespace: default
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    credentialsFile:
+      secretRef:
+        name: test-rotation-secret
+    rotation:
+      enabled: true
+      config:
+        rotationInterval: "1m"
+        preRotationWindow: "1m" 
