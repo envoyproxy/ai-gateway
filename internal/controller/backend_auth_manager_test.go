@@ -611,9 +611,11 @@ func TestBackendAuthManager_ScheduleRotation(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), secret))
 
 	// Track rotation calls
+	rotationCalls := make(chan backendauthrotators.RotationEvent, 1)
 	rotator := &mockRotator{
 		rotateType: backendauthrotators.RotationTypeAWSCredentials,
 		rotateFn: func(ctx context.Context, event backendauthrotators.RotationEvent) error {
+			rotationCalls <- event
 			return nil
 		},
 	}
@@ -621,29 +623,38 @@ func TestBackendAuthManager_ScheduleRotation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start the manager
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- manager.Start(context.Background())
+		errChan <- manager.Start(ctx)
 	}()
 
-	// Schedule a rotation for the future
-	futureTime := time.Now().Add(1 * time.Hour)
-	err = manager.ScheduleRotation(context.Background(), backendauthrotators.RotationEvent{
+	// Schedule a rotation for the near future
+	nearFutureTime := time.Now().Add(100 * time.Millisecond)
+	event := backendauthrotators.RotationEvent{
 		Namespace: "default",
 		Name:      "test-secret",
 		Type:      backendauthrotators.RotationTypeAWSCredentials,
-	}, futureTime)
+	}
+	err = manager.ScheduleRotation(ctx, event, nearFutureTime)
 	require.NoError(t, err)
 
-	// Verify the event was published
+	// Wait for the rotation to occur
 	select {
-	case publishedEvent := <-manager.RotationChannel():
-		assert.Equal(t, backendauthrotators.RotationEvent{
-			Namespace: "default",
-			Name:      "test-secret",
-			Type:      backendauthrotators.RotationTypeAWSCredentials,
-		}, publishedEvent)
+	case rotatedEvent := <-rotationCalls:
+		assert.Equal(t, event.Namespace, rotatedEvent.Namespace)
+		assert.Equal(t, event.Name, rotatedEvent.Name)
+		assert.Equal(t, event.Type, rotatedEvent.Type)
 	case <-time.After(time.Second):
-		t.Fatal("rotation event was not published")
+		t.Fatal("scheduled rotation was not executed")
+	}
+
+	// Verify no errors from the manager
+	select {
+	case err := <-errChan:
+		require.NoError(t, err)
+	default:
 	}
 }
