@@ -277,4 +277,4 @@ func RegisterNewRotator(bam *BackendAuthManager) error {
    - Dynamic rotation scheduling
    - Batch processing
    - Enhanced error recovery
-   - Custom validation rules 
+   - Custom validation rules

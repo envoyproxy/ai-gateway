@@ -104,4 +104,4 @@ The token rotation system provides monitoring through:
 3. Error reporting
 4. Status updates
 
-For more information about AWS IAM best practices, see the [AWS IAM documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html). 
+For more information about AWS IAM best practices, see the [AWS IAM documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html).

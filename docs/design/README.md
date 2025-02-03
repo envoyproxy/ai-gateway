@@ -43,4 +43,4 @@ Design documents should include:
 - Implementation details
 - Security considerations
 - Testing strategy
-- Future enhancements 
+- Future enhancements
