@@ -3,6 +3,7 @@ package backendauthrotators
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,7 +37,6 @@ type RotatorTestHarness struct {
 
 // NewRotatorTestHarness creates a new base test harness
 func NewRotatorTestHarness(t *testing.T) *RotatorTestHarness {
-
 	return &RotatorTestHarness{
 		Ctx:    context.Background(),
 		Client: &mockClient{secrets: make(map[string]*corev1.Secret)},
@@ -72,6 +72,7 @@ func (h *RotatorTestHarness) GetSecret(t *testing.T, name string) *corev1.Secret
 // -----------------------------------------------------------------------------
 
 type mockClient struct {
+	mu      sync.RWMutex
 	secrets map[string]*corev1.Secret
 }
 
@@ -79,6 +80,9 @@ func (m *mockClient) Get(_ context.Context, key client.ObjectKey, obj client.Obj
 	if m.secrets == nil {
 		m.secrets = make(map[string]*corev1.Secret)
 	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	if secret, ok := obj.(*corev1.Secret); ok {
 		if stored, exists := m.secrets[key.Name]; exists {
@@ -94,6 +98,9 @@ func (m *mockClient) Create(_ context.Context, obj client.Object, _ ...client.Cr
 		m.secrets = make(map[string]*corev1.Secret)
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if secret, ok := obj.(*corev1.Secret); ok {
 		m.secrets[secret.Name] = secret.DeepCopy()
 		return nil
@@ -105,6 +112,9 @@ func (m *mockClient) Update(_ context.Context, obj client.Object, _ ...client.Up
 	if m.secrets == nil {
 		m.secrets = make(map[string]*corev1.Secret)
 	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if secret, ok := obj.(*corev1.Secret); ok {
 		m.secrets[secret.Name] = secret.DeepCopy()

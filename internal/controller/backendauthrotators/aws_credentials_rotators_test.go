@@ -158,8 +158,8 @@ func TestAWS_DeleteAccessKey(t *testing.T) {
 		h.Rotator.KeyDeletionDelay = 100 * time.Millisecond
 		h.Rotator.MinPropagationDelay = 50 * time.Millisecond
 
-		// Track deletion calls
-		var deletedKeyID string
+		// Track deletion calls with atomic operations
+		var deletedKeyID atomic.Value
 		h.MockIAM.createKeyFunc = func(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error) {
 			return &iam.CreateAccessKeyOutput{
 				AccessKey: &iamtypes.AccessKey{
@@ -169,7 +169,7 @@ func TestAWS_DeleteAccessKey(t *testing.T) {
 			}, nil
 		}
 		h.MockIAM.deleteKeyFunc = func(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
-			deletedKeyID = aws.ToString(params.AccessKeyId)
+			deletedKeyID.Store(aws.ToString(params.AccessKeyId))
 			return &iam.DeleteAccessKeyOutput{}, nil
 		}
 
@@ -184,7 +184,7 @@ func TestAWS_DeleteAccessKey(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Verify the correct key was deleted
-		assert.Equal(t, "OLDKEY", deletedKeyID)
+		assert.Equal(t, "OLDKEY", deletedKeyID.Load().(string))
 	})
 
 	t.Run("deletion failure", func(t *testing.T) {
