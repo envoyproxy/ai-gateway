@@ -45,9 +45,9 @@ graph TB
         subgraph "Rotator Implementations"
             AWS_CRED[AWS Credentials Rotator]
             AWS_OIDC[AWS OIDC Rotator]
-            OAUTH[OAuth Provider]
         end
         subgraph "Support Services"
+            OAUTH[OAuth Provider]
             SCHED[Rotation Scheduler]
             SEC_STORE[Secret Store]
         end
@@ -62,14 +62,14 @@ graph TB
     BAM --> CHAN
     BAM --> SCHED
     ROT --> AWS_CRED
-    ROT --> AWS_OIDC
-    ROT --> OAUTH
+    ROT --> AWS_OIDC 
     AWS_CRED --> AWS_IAM
     AWS_OIDC --> AWS_STS
-    AWS_OIDC --> OIDC
+    AWS_OIDC --> OAUTH
     AWS_CRED --> SEC_STORE
     AWS_OIDC --> SEC_STORE
     OAUTH --> SEC_STORE
+    OAUTH --> OIDC
     SEC_STORE --> K8S
 ```
 
