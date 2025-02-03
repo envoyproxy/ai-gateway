@@ -116,11 +116,19 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	// Forward rotation events to the backend auth manager
 	go func() {
-		for event := range rotationChan {
-			if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
-				logger.Error(err, "failed to process rotation event",
-					"namespace", event.Namespace,
-					"name", event.Name)
+		for {
+			select {
+			case event, ok := <-rotationChan:
+				if !ok {
+					return
+				}
+				if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
+					logger.Error(err, "failed to process rotation event",
+						"namespace", event.Namespace,
+						"name", event.Name)
+				}
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
@@ -136,11 +144,19 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	// Process scheduled rotation events
 	go func() {
-		for event := range scheduleChan {
-			if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
-				logger.Error(err, "failed to schedule rotation",
-					"namespace", event.Namespace,
-					"name", event.Name)
+		for {
+			select {
+			case event, ok := <-scheduleChan:
+				if !ok {
+					return
+				}
+				if err := backendAuthManager.RequestRotation(ctx, event); err != nil {
+					logger.Error(err, "failed to schedule rotation",
+						"namespace", event.Namespace,
+						"name", event.Name)
+				}
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
