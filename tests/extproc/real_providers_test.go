@@ -120,7 +120,7 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -208,7 +208,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("response: %+v", acc)
 					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -261,7 +261,7 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return returnsToolCall
-				}, 10*time.Second, 500*time.Millisecond)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
