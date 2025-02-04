@@ -1,10 +1,5 @@
 package awsbedrock
 
-import (
-	"encoding/json"
-	"strings"
-)
-
 const (
 	// StopReasonEndTurn is a StopReason enum value.
 	StopReasonEndTurn = "end_turn"
@@ -390,12 +385,6 @@ type ConverseStreamEvent struct {
 	StopReason        *string                               `json:"stopReason,omitempty"`
 	Usage             *TokenUsage                           `json:"usage,omitempty"`
 	Start             *ContentBlockStart                    `json:"start,omitempty"`
-}
-
-// String implements fmt.Stringer.
-func (c ConverseStreamEvent) String() string {
-	buf, _ := json.Marshal(c)
-	return strings.ReplaceAll(string(buf), ",", ", ")
 }
 
 // ConverseStreamEventContentBlockDelta is defined in the AWS Bedrock API:

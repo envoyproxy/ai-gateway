@@ -7,9 +7,11 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   style:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Check
     runs-on: ubuntu-latest
     steps:
@@ -26,5 +28,5 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Run code style check
+      - name: Ensure `make precommit` is executed
         run: make check
