@@ -639,6 +639,10 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
 			require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
 			require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+
+			for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
+				require.True(t, v.ReadOnly)
+			}
 			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
@@ -755,25 +759,18 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	spec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: "some-cm-policy",
+				Name: "extproc-config",
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "some-cm-policy",
+							Name: "extproc-config",
 						},
 					},
 				},
 			},
 		},
 		Containers: []corev1.Container{
-			{
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "some-cm-policy",
-						MountPath: "some-path",
-					},
-				},
-			},
+			{VolumeMounts: []corev1.VolumeMount{{Name: "extproc-config", MountPath: "some-path", ReadOnly: true}}},
 		},
 	}
 
@@ -821,6 +818,10 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
+
+	for _, v := range updatedSpec.Containers[0].VolumeMounts {
+		require.True(t, v.ReadOnly, v.Name)
+	}
 }
 
 func Test_backendSecurityPolicyVolumeName(t *testing.T) {
