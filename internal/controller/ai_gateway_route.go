@@ -26,10 +26,10 @@ const (
 	managedByLabel        = "app.kubernetes.io/managed-by"
 	expProcConfigFileName = "extproc-config.yaml"
 
-	ConditionReconciled           = "Reconciled"
-	ReasonReconciliationSucceeded = "ReconciliationSucceeded"
-	ReasonConfigMapError          = "ConfigMapError"
-	ReaseExtensionPolicyError     = "ExtensionPolicyError"
+	conditionReconciled           = "Reconciled"
+	reasonReconciliationSucceeded = "ReconciliationSucceeded"
+	reasonConfigMapError          = "ConfigMapError"
+	reaseExtensionPolicyError     = "ExtensionPolicyError"
 )
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
@@ -86,9 +86,9 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "failed to reconcile extProc config map")
 		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-			Type:    ConditionReconciled,
+			Type:    conditionReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  ReasonConfigMapError,
+			Reason:  reasonConfigMapError,
 			Message: fmt.Sprintf("failed to reconcile config map: %v", err),
 		})
 		if updateErr := c.client.Status().Update(ctx, &aiGatewayRoute); updateErr != nil {
@@ -102,9 +102,9 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		logger.Error(err, "failed to reconcile extension policy")
 
 		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-			Type:    ConditionReconciled,
+			Type:    conditionReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  ReaseExtensionPolicyError,
+			Reason:  reaseExtensionPolicyError,
 			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		})
 		if updateErr := c.client.Status().Update(ctx, &aiGatewayRoute); updateErr != nil {
