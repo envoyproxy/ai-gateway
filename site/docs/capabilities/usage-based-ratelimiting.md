@@ -17,8 +17,6 @@ AI Gateway leverages Envoy Gateway's Global Rate Limit API to provide token-base
 - Model-specific rate limiting using AI Gateway headers (`x-ai-eg-model`)
 - Support for custom token cost calculations using CEL expressions
 
-<<<<<<< HEAD
-=======
 ## Token Usage Behavior
 
 AI Gateway has specific behavior for token tracking and rate limiting:
@@ -45,7 +43,6 @@ AI Gateway has specific behavior for token tracking and rate limiting:
 The token counts are extracted from the model's response. Make sure your model backend provides token usage information in a format compatible with the OpenAI schema.
 :::
 
->>>>>>> update-docs
 ## Configuration
 
 ### 1. Configure Token Tracking
@@ -73,14 +70,6 @@ spec:
       celExpression: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
 ```
 
-<<<<<<< HEAD
-### 2. Configure Model-Specific Rate Limits
-
-The following example shows how to use AI Gateway's token tracking with user and model identification to implement rate limits. In this example, we limit each user to 10,000 tokens per hour when using the GPT-4 model. This configuration:
-- Uses the `x-user-id` header to identify users
-- Uses the `x-ai-eg-model` header to apply limits to specific models
-- Leverages AI Gateway's token counting (configured in step 2) to enforce the limits
-=======
 ### 2. Configure Rate Limits
 
 AI Gateway uses Envoy Gateway's Global Rate Limit API to configure rate limits. Rate limits should be defined using a combination of user and model identifiers to properly control costs at the model level. Configure this using a `BackendTrafficPolicy`:
@@ -91,7 +80,6 @@ The following example demonstrates a common use case where different models have
 - You want to limit expensive models (like GPT-4) more strictly than cheaper ones
 - You need to implement different quotas for different tiers of service
 - You want to prevent cost overruns while still allowing flexibility with cheaper models
->>>>>>> update-docs
 
 ```yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -108,11 +96,8 @@ spec:
     type: Global
     global:
       rules:
-<<<<<<< HEAD
-=======
         # Rate limit rule for GPT-4: 1000 total tokens per hour per user
         # Stricter limit due to higher cost per token
->>>>>>> update-docs
         - clientSelectors:
             - headers:
                 - name: x-user-id
@@ -121,31 +106,16 @@ spec:
                   type: Exact
                   value: gpt-4
           limit:
-<<<<<<< HEAD
-            requests: 10000   # Token limit for GPT-4
-=======
             requests: 1000    # 1000 total tokens per hour
->>>>>>> update-docs
             unit: Hour
           cost:
             request:
               from: Number
-<<<<<<< HEAD
-              number: 0      # Only count tokens, not requests
-=======
               number: 0      # Set to 0 so only token usage counts
->>>>>>> update-docs
             response:
               from: Metadata
               metadata:
                 namespace: io.envoy.ai_gateway
-<<<<<<< HEAD
-                key: llm_total_token
-```
-
-:::warning
-When configuring the rate limit cost, set the number to 0 to ensure only token usage counts towards the limit. If not explicitly set to 0, the cost defaults to 1 for backward compatibility, which would count each request against the limit.
-=======
                 key: llm_total_token    # Uses total tokens from the response
         
         # Rate limit rule for GPT-3.5: 5000 total tokens per hour per user
@@ -176,31 +146,20 @@ When configuring rate limits:
 1. Always set the request cost number to 0 to ensure only token usage counts towards the limit
 2. Set appropriate limits for different models based on their costs and capabilities
 3. Ensure both user and model identifiers are used in rate limiting rules
->>>>>>> update-docs
 :::
 
 ## Making Requests
 
-<<<<<<< HEAD
-When making requests, include the required AI Gateway headers:
-
-=======
 For proper cost control and rate limiting, requests must include:
 - `x-user-id`: Identifies the user making the request
 - `x-ai-eg-model`: Identifies the model being used
 
 Example request:
->>>>>>> update-docs
 ```shell
 curl --fail \
     -H "Content-Type: application/json" \
     -H "x-user-id: user123" \
-<<<<<<< HEAD
-    -H "x-ai-eg-model: gpt-4" \
-    -H "x-ai-eg-model-provider: openai" \
-=======
     -H "x-ai-eg-model: gpt-4" \    # Both user ID and model are required
->>>>>>> update-docs
     -d '{
         "messages": [
             {
@@ -211,12 +170,3 @@ curl --fail \
     }' \
     $GATEWAY_URL/v1/chat/completions
 ```
-<<<<<<< HEAD
-
-## Best Practices
-
-1. **Model-Specific Limits**: Set appropriate token limits based on model capabilities and costs
-2. **User Identification**: Ensure consistent user identification across requests
-3. **Token Tracking Strategy**: Choose appropriate token tracking methods for your use case
-=======
->>>>>>> update-docs
