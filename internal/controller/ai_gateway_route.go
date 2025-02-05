@@ -113,10 +113,8 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile extension policy: %w", err)
 	}
-
 	// Send a copy to the config sink for a full reconciliation on HTTPRoute as well as the extproc config.
 	c.eventChan <- aiGatewayRoute.DeepCopy()
-
 	return reconcile.Result{}, nil
 }
 
