@@ -1,0 +1,106 @@
+---
+id: deepseek
+title: Connect DeepSeek
+sidebar_position: 3
+---
+
+# Connect DeepSeek
+
+This guide will help you configure Envoy AI Gateway to work with DeepSeek's models.
+
+## Prerequisites
+
+Before you begin, you'll need:
+
+- [Ollama](https://ollama.com/) installed on local machine considering for self-hosted model
+- Serve DeepSeek R1 model (DeepSeek-R1-Distill-Qwen-7B) on your local machine
+
+```
+ollama pull deepseek-r1:7b
+OLLAMA_HOST=0.0.0.0 ollama serve --model deepseek-r1:7b
+```
+
+- Basic setup completed from the [Basic Usage](../basic-usage.md) guide
+- Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
+
+## Configuration Steps
+
+:::info Ready to proceed?
+Ensure you have followed the steps in [Connect Providers](../connect-providers/)
+:::
+
+### Apply Configuration
+
+Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
+then the secret credential update will be picked up automatically in a few seconds.
+
+```shell
+kubectl apply -f basic.yaml
+
+kubectl wait pods --timeout=2m \
+  -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
+  -n envoy-gateway-system \
+  --for=condition=Ready
+```
+
+### 3. Test the Configuration
+
+You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
+See the [Basic Usage](../basic-usage.md) page for instructions.
+
+```shell
+curl --fail \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-r1:7b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi."
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1/chat/completions
+```
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. Verify that Ollama has loaded the model and you have memory and computer available on your local machine to run LLM
+
+2. Check pod status:
+
+   ```shell
+   kubectl get pods -n envoy-gateway-system
+   ```
+
+3. View controller logs:
+
+   ```shell
+   kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
+   ```
+
+4. View External Process Logs
+
+   ```shell
+   kubectl logs services/ai-eg-route-extproc-envoy-ai-gateway-basic
+   ```
+5. If you are running Kubernetes locally, ensure that Envoy Service URL is correct and port 8080 is available on your local
+
+```
+export ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system \       
+    --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \ 
+    -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
+```
+
+6. Common errors:
+   - 500: Incorrect Model Id in the HTTP request. Check basic.yaml for host name in backend configuration
+   - 503: DeepSeek service unavailable or request time out because of latency by model
+
+## Next Steps
+
+After configuring DeepSeek:
+
+- [Connect AWS Bedrock](./aws-bedrock.md) to add another provider

@@ -34,6 +34,13 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
+              value: deepseek-r1:7b
+      backendRefs:
+        - name: envoy-ai-gateway-basic-deepseek
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
               value: gpt-4o-mini
       backendRefs:
         - name: envoy-ai-gateway-basic-openai
@@ -240,3 +247,28 @@ spec:
       port: 80
       targetPort: 8080
   type: ClusterIP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-deepseek
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: envoy-ai-gateway-basic-deepseek
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-deepseek
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: host.docker.internal 
+        port: 11434
+---
