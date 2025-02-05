@@ -24,6 +24,11 @@ import (
 const (
 	managedByLabel        = "app.kubernetes.io/managed-by"
 	expProcConfigFileName = "extproc-config.yaml"
+
+	ConditionReconciled           = "Reconciled"
+	ReasonReconciliationSucceeded = "ReconciliationSucceeded"
+	ReasonConfigMapError          = "ConfigMapError"
+	ReaseExtensionPolicyError     = "ExtensionPolicyError"
 )
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
@@ -78,29 +83,32 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	}
 
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
-		logger.Error(err, "Failed to reconcile extProc config map")
+		logger.Error(err, "failed to reconcile extProc config map")
 		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-			Type:    "Reconciled",
+			Type:    ConditionReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  "ConfigMapError",
-			Message: fmt.Sprintf("Failed to reconcile config map: %v", err),
+			Reason:  ReasonConfigMapError,
+			Message: fmt.Sprintf("failed to reconcile config map: %v", err),
 		})
 		if updateErr := c.client.Status().Update(ctx, &aiGatewayRoute); updateErr != nil {
-			c.logger.Error(updateErr, "Failed to update AIGatewayRoute status")
+			c.logger.Error(updateErr, "failed to update AIGatewayRoute status")
 		}
 
 		return ctrl.Result{}, err
 	}
 
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
-		logger.Error(err, "Failed to reconcile extension policy")
+		logger.Error(err, "failed to reconcile extension policy")
 
 		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-			Type:    "Reconciled",
+			Type:    ConditionReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  "ExtensionPolicyError",
-			Message: fmt.Sprintf("Failed to reconcile extension policy: %v", err),
+			Reason:  ReaseExtensionPolicyError,
+			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		})
+		if updateErr := c.client.Status().Update(ctx, &aiGatewayRoute); updateErr != nil {
+			c.logger.Error(updateErr, "failed to update AIGatewayRoute status")
+		}
 
 		return ctrl.Result{}, err
 	}
@@ -108,13 +116,14 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	c.eventChan <- aiGatewayRoute.DeepCopy()
 
 	aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-		Type:    "Reconciled",
+		Type:    ConditionReconciled,
 		Status:  metav1.ConditionTrue,
-		Reason:  "ReconciliationSucceeded",
+		Reason:  ReasonReconciliationSucceeded,
 		Message: "Reconciliation completed successfully",
 	})
 	if err := c.client.Status().Update(ctx, &aiGatewayRoute); err != nil {
-		c.logger.Error(err, "Failed to update AIGatewayRoute status")
+		c.logger.Error(err, "failed to update AIGatewayRoute status")
+		return ctrl.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
