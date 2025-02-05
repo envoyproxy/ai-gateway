@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -121,7 +120,7 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -135,8 +134,8 @@ func TestWithRealProviders(t *testing.T) {
 			require.NoError(t, err)
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
-				UsedToken any `json:"used_token"`
-				SomeCel   any `json:"some_cel"`
+				UsedToken float64 `json:"used_token,omitempty"`
+				SomeCel   float64 `json:"some_cel,omitempty"`
 			}
 			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
 			for scanner.Scan() {
@@ -147,19 +146,18 @@ func TestWithRealProviders(t *testing.T) {
 					continue
 				}
 				t.Logf("line: %s", line)
-				if !anyCostGreaterThanZero(l.SomeCel) {
+				if l.SomeCel == 0 {
 					t.Log("some_cel is not existent or greater than zero")
 					continue
 				}
-				if !anyCostGreaterThanZero(l.UsedToken) {
+				if l.UsedToken == 0 {
 					t.Log("used_token is not existent or greater than zero")
 					continue
 				}
-				t.Log("cannot find used token in line")
 				return true
 			}
 			return false
-		}, 10*time.Second, 1*time.Second)
+		}, 30*time.Second, 2*time.Second)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -205,8 +203,12 @@ func TestWithRealProviders(t *testing.T) {
 							nonEmptyCompletion = true
 						}
 					}
+					if !nonEmptyCompletion {
+						// Log the whole response for debugging.
+						t.Logf("response: %+v", acc)
+					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -259,21 +261,8 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return returnsToolCall
-				}, 10*time.Second, 500*time.Millisecond)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
-}
-
-func anyCostGreaterThanZero(cost any) bool {
-	// The access formatter somehow changed its behavior sometimes between 1.31 and the latest Envoy,
-	// so we need to check for both float64 and string.
-	if num, ok := cost.(float64); ok && num > 0 {
-		return true
-	} else if str, ok := cost.(string); ok {
-		if num, err := strconv.Atoi(str); err == nil && num > 0 {
-			return true
-		}
-	}
-	return false
 }

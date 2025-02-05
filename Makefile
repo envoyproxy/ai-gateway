@@ -107,6 +107,8 @@ check: precommit
 	@if [ ! -z "`git status -s`" ]; then \
 		echo "The following differences will fail CI until committed:"; \
 		git diff --exit-code; \
+		echo "Please ensure you have run 'make precommit' and committed the changes."; \
+		exit 1; \
 	fi
 
 # This runs the editorconfig-checker on the codebase.

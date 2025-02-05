@@ -19,8 +19,6 @@ helm upgrade -i aieg oci://ghcr.io/envoyproxy/ai-gateway/ai-gateway-helm \
     --namespace envoy-ai-gateway-system \
     --create-namespace
 
-kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=create
-
 kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
 ```
 

@@ -28,17 +28,37 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-func TestConfigSink_init(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
+	builder := fake.NewClientBuilder().WithScheme(scheme)
+	err := applyIndexing(func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+		builder = builder.WithIndex(obj, field, extractValue)
+		return nil
+	})
+	require.NoError(t, err)
+	return builder.Build()
+}
+
+func TestConfigSink_handleEvent(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
+
+	_, err := kube.CoreV1().ConfigMaps("ns").Create(context.Background(), &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "ai-eg-route-extproc-apple", Namespace: "ns"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	s.handleEvent(ConfigSinkEventSecretUpdate{Namespace: "ns", Name: "some-secret"})
+	s.handleEvent(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(&aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
 }
 
 func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent, 10)
@@ -115,31 +135,51 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	// Create the AI Gateway Route that references the backend.
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), route, &client.CreateOptions{}))
+
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}})
+	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
+		},
+	})
 }
 
 func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 
 	backend := aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "tomato", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "new-backend-security-policy"},
+			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "apple"},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
+	})
 }
 
 func Test_updateHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
@@ -148,6 +188,13 @@ func Test_updateHTTPRoute(t *testing.T) {
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec: aigv1a1.AIGatewayRouteSpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
+					},
+				},
+			},
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
@@ -262,7 +309,7 @@ func Test_updateHTTPRoute(t *testing.T) {
 }
 
 func Test_updateExtProcConfigMap(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -458,7 +505,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 }
 
 func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -615,6 +662,10 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
 			require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
 			require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+
+			for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
+				require.True(t, v.ReadOnly)
+			}
 			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
@@ -622,25 +673,21 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 
 func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	// Create simple case
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	err := s.init(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := s.init(ctx)
 	require.NoError(t, err)
 	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 
 	for _, secret := range []*corev1.Secret{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-1"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"},
-		},
+		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"}},
 	} {
 		require.NoError(t, fakeClient.Create(context.Background(), secret, &client.CreateOptions{}))
 	}
@@ -735,25 +782,18 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	spec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: "some-cm-policy",
+				Name: "extproc-config",
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "some-cm-policy",
+							Name: "extproc-config",
 						},
 					},
 				},
 			},
 		},
 		Containers: []corev1.Container{
-			{
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "some-cm-policy",
-						MountPath: "some-path",
-					},
-				},
-			},
+			{VolumeMounts: []corev1.VolumeMount{{Name: "extproc-config", MountPath: "some-path", ReadOnly: true}}},
 		},
 	}
 
@@ -801,6 +841,10 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
+
+	for _, v := range updatedSpec.Containers[0].VolumeMounts {
+		require.True(t, v.ReadOnly, v.Name)
+	}
 }
 
 func Test_backendSecurityPolicyVolumeName(t *testing.T) {
@@ -809,7 +853,7 @@ func Test_backendSecurityPolicyVolumeName(t *testing.T) {
 }
 
 func Test_annotateExtProcPods(t *testing.T) {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
 	eventChan := make(chan ConfigSinkEvent)
@@ -842,4 +886,19 @@ func Test_annotateExtProcPods(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uuid, pod.Annotations[extProcConfigAnnotationKey])
 	}
+}
+
+func Test_syncSecret(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+
+	eventChan := make(chan ConfigSinkEvent)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
+
+	_, err := kube.CoreV1().Secrets("ns").Create(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "ns"},
+		Data:       map[string][]byte{"key": []byte("value")},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	s.syncSecret("ns", "some-secret")
 }

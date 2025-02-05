@@ -31,4 +31,10 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.IsType(t, &aigv1a1.BackendSecurityPolicy{}, item)
 	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
 	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
+
+	// Test the case where the BackendSecurityPolicy is being deleted.
+	err = cl.Delete(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	require.NoError(t, err)
 }

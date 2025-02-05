@@ -10,22 +10,61 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
+func TestAIGatewayRouteController_Reconcile(t *testing.T) {
+	ch := make(chan ConfigSinkEvent, 100)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := NewAIGatewayRouteController(cl, fake2.NewClientset(), ctrl.Log, ch)
+
+	err := cl.Create(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	require.NoError(t, err)
+	item, ok := <-ch
+	require.True(t, ok)
+	require.IsType(t, &aigv1a1.AIGatewayRoute{}, item)
+	require.Equal(t, "myroute", item.(*aigv1a1.AIGatewayRoute).Name)
+	require.Equal(t, "default", item.(*aigv1a1.AIGatewayRoute).Namespace)
+
+	// Do it for the second time with a slightly different configuration.
+	current := item.(*aigv1a1.AIGatewayRoute)
+	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
+	}
+	err = cl.Update(context.Background(), current)
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	require.NoError(t, err)
+	item, ok = <-ch
+	require.True(t, ok)
+	require.IsType(t, &aigv1a1.AIGatewayRoute{}, item)
+	r := item.(*aigv1a1.AIGatewayRoute)
+	require.Equal(t, "myroute", r.Name)
+	require.Equal(t, "default", r.Namespace)
+	require.Len(t, r.Spec.TargetRefs, 1)
+	require.Equal(t, "mytarget", string(r.Spec.TargetRefs[0].Name))
+
+	// Test the case where the AIGatewayRoute is being deleted.
+	err = cl.Delete(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	require.NoError(t, err)
+}
+
 func Test_extProcName(t *testing.T) {
-	actual := extProcName(&aigv1a1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "myroute",
-		},
-	})
+	actual := extProcName(&aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute"}})
 	require.Equal(t, "ai-eg-route-extproc-myroute", actual)
 }
 

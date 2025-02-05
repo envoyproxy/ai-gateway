@@ -33,4 +33,14 @@ func TestSecretController_Reconcile(t *testing.T) {
 	item, ok := <-ch
 	require.True(t, ok)
 	require.Equal(t, ConfigSinkEventSecretUpdate{Namespace: "default", Name: "mysecret"}, item)
+
+	// Test the case where the Secret is being deleted.
+	err = cl.Delete(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
+	})
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{
+		Namespace: "default", Name: "mysecret",
+	}})
+	require.NoError(t, err)
 }

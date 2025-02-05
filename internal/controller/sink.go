@@ -520,15 +520,17 @@ func (c *configSink) updateHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aig
 	}
 
 	// Adds the default route rule with "/" path.
-	rules = append(rules, gwapiv1.HTTPRouteRule{
-		Matches: []gwapiv1.HTTPRouteMatch{
-			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
-		},
-		BackendRefs: []gwapiv1.HTTPBackendRef{
-			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
-		},
-		Filters: rewriteFilters,
-	})
+	if len(rules) > 0 {
+		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Matches: []gwapiv1.HTTPRouteMatch{
+				{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
+			},
+			BackendRefs: []gwapiv1.HTTPBackendRef{
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
+			},
+			Filters: rewriteFilters,
+		})
+	}
 
 	dst.Spec.Rules = rules
 
@@ -601,7 +603,11 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 										"-logLevel", c.extProcLogLevel,
 									},
 									VolumeMounts: []corev1.VolumeMount{
-										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
+										{
+											Name:      "config",
+											MountPath: "/etc/ai-gateway/extproc",
+											ReadOnly:  true,
+										},
 									},
 								},
 							},
@@ -620,7 +626,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 				},
 			}
 			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
-				c.logger.Error(err, "failed to set controller reference for deployment", "namespace", deployment.Namespace, "name", deployment.Name)
+				panic(fmt.Errorf("BUG: failed to set controller reference for deployment: %w", err))
 			}
 			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
@@ -666,7 +672,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 		},
 	}
 	if err = ctrlutil.SetControllerReference(aiGatewayRoute, service, c.client.Scheme()); err != nil {
-		c.logger.Error(err, "failed to set controller reference for service", "namespace", service.Namespace, "name", service.Name)
+		panic(fmt.Errorf("BUG: failed to set controller reference for service: %w", err))
 	}
 	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
 		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)
@@ -723,6 +729,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 					Name:      volumeName,
 					MountPath: backendSecurityMountPath(volumeName),
+					ReadOnly:  true,
 				})
 			}
 		}
