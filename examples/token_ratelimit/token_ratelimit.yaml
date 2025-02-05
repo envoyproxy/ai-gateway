@@ -37,7 +37,6 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: envoy-ai-gateway-token-ratelimit-testupstream
-          weight: 100
   # The following metadata keys are used to store the costs from the LLM request.
   llmRequestCosts:
     - metadataKey: llm_input_token
