@@ -329,7 +329,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	})
 	err = c.client.Status().Update(context.Background(), aiGatewayRoute)
 	if err != nil {
-		c.logger.Error(err, "failed to update AIGatewayRoute status")
+		c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 }
