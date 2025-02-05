@@ -207,23 +207,6 @@ func Test_updateHTTPRoute(t *testing.T) {
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
 				},
 			},
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Name: "gtw1", Kind: "Gateway1", Group: "gateway.networking.k8s.io",
-					},
-				},
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Name: "gtw2", Kind: "Gateway2", Group: "gateway.networking.k8s.io",
-					},
-				},
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Name: "gtw3", Kind: "Gateway3", Group: "gateway.networking.k8s.io",
-					},
-				},
-			},
 		},
 	}
 	for _, backend := range []*aigv1a1.AIServiceBackend{
