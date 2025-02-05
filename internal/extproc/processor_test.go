@@ -3,6 +3,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -71,18 +72,18 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
 		require.NoError(t, err)
-		p := &Processor{translator: mt, logger: slog.Default(), config: &processorConfig{
+		p := &Processor{translator: mt, logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
 			requestCosts: []processorConfigRequestCost{
-				{LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
-				{LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 				{
 					celProg:        celProgInt,
-					LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel_int"},
+					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel_int"},
 				},
 				{
 					celProg:        celProgUint,
-					LLMRequestCost: &filterconfig.LLMRequestCost{Type: filterconfig.LLMRequestCostTypeCELExpression, MetadataKey: "cel_uint"},
+					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel_uint"},
 				},
 			},
 		}}
@@ -125,11 +126,11 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: make(map[filterconfig.VersionedAPISchema]translator.Factory),
+			factories: make(map[filterapi.VersionedAPISchema]translator.Factory),
 		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to find factory for output schema {\"some-schema\" \"v10.0\"}")
@@ -139,12 +140,12 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retErr: errors.New("test error"), expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
@@ -156,12 +157,12 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retTranslator: mockTranslator{t: t, retErr: errors.New("test error")}, expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
@@ -174,7 +175,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo", retRb: someBody}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterconfig.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		headerMut := &extprocv3.HeaderMutation{}
 		bodyMut := &extprocv3.BodyMutation{}
@@ -182,7 +183,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		factory := mockTranslatorFactory{t: t, retTranslator: mt, expPath: "/foo"}
 		p := &Processor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[filterconfig.VersionedAPISchema]translator.Factory{
+			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",

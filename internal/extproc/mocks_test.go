@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/envoyproxy/ai-gateway/extprocapi"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
@@ -21,7 +21,7 @@ import (
 var (
 	_ ProcessorIface        = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
-	_ extprocapi.Router     = &mockRouter{}
+	_ x.Router              = &mockRouter{}
 )
 
 func newMockProcessor(_ *processorConfig, _ *slog.Logger) *mockProcessor {
@@ -111,14 +111,14 @@ type mockRouter struct {
 	t                     *testing.T
 	expHeaders            map[string]string
 	retBackendName        string
-	retVersionedAPISchema filterconfig.VersionedAPISchema
+	retVersionedAPISchema filterapi.VersionedAPISchema
 	retErr                error
 }
 
 // Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (*filterconfig.Backend, error) {
+func (m mockRouter) Calculate(headers map[string]string) (*filterapi.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	b := &filterconfig.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
+	b := &filterapi.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
 	return b, m.retErr
 }
 

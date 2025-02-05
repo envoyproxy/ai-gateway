@@ -1,11 +1,21 @@
-name: Commit
+name: Tests
 on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
+
   push:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
+
   # If the PR is coming from a fork, they are not allowed to access secrets by default.
   # This even is triggered only if the PR gets labeled with 'safe to test' which can only be added by the maintainers.
   # Jobs do not use secrets in the workflow will ignore this event.
@@ -19,28 +29,11 @@ concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
   cancel-in-progress: true
 
-jobs:
-  style:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    name: Code Style Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          cache: false
-          go-version-file: go.mod
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-            ~/go/pkg/mod
-            ~/go/bin
-          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Run code style check
-        run: make check
+permissions:
+  contents: read
+  packages: write
 
+jobs:
   unittest:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Unit Test
@@ -59,7 +52,7 @@ jobs:
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Run unit tests
-        run: make test
+        run: make test-coverage
 
   test_cel_validation:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -109,8 +102,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.33.0
-            envoy_version: envoyproxy/envoy:v1.33.0
+          - name: v1.33
+            envoy_version: envoyproxy/envoy:v1.33-latest
           - name: latest
             envoy_version: envoyproxy/envoy-dev:latest
     runs-on: ubuntu-latest
@@ -156,8 +149,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.3.0-rc.1
-            envoy_gateway_version: v1.3.0-rc.1
+          - name: v1.3.0
+            envoy_gateway_version: v1.3.0
           - name: latest
             envoy_gateway_version: v0.0.0-latest
     steps:
@@ -193,10 +186,10 @@ jobs:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [style, unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
+    needs: [unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
 
-  push_helm:
+  helm_push:
     name: Push Helm chart
     # Only push the Helm chart to the GHR when merged into the main branch.
     if: github.event_name == 'push'

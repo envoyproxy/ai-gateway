@@ -1,10 +1,97 @@
 package mainlib
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func Test_parseAndValidateFlags(t *testing.T) {
+	t.Run("ok flags", func(t *testing.T) {
+		for _, tc := range []struct {
+			name       string
+			args       []string
+			configPath string
+			addr       string
+			logLevel   slog.Level
+		}{
+			{
+				name:       "minimal flags",
+				args:       []string{"-configPath", "/path/to/config.yaml"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
+			{
+				name:       "custom addr",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
+				configPath: "/path/to/config.yaml",
+				addr:       "unix:///tmp/ext_proc.sock",
+				logLevel:   slog.LevelInfo,
+			},
+			{
+				name:       "log level debug",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelDebug,
+			},
+			{
+				name:       "log level warn",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelWarn,
+			},
+			{
+				name:       "log level error",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelError,
+			},
+			{
+				name:       "all flags",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock", "-logLevel", "debug"},
+				configPath: "/path/to/config.yaml",
+				addr:       "unix:///tmp/ext_proc.sock",
+				logLevel:   slog.LevelDebug,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				configPath, addr, logLevel, err := parseAndValidateFlags(tc.args)
+				assert.Equal(t, tc.configPath, configPath)
+				assert.Equal(t, tc.addr, addr)
+				assert.Equal(t, tc.logLevel, logLevel)
+				assert.NoError(t, err)
+			})
+		}
+	})
+	t.Run("invalid flags", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			flags  []string
+			expErr string
+		}{
+			{
+				name:   "missing configPath",
+				flags:  []string{"-extProcAddr", ":1063"},
+				expErr: "configPath must be provided",
+			},
+			{
+				name:   "invalid logLevel",
+				flags:  []string{"-configPath", "/path/to/config.yaml", "-logLevel", "invalid"},
+				expErr: `failed to unmarshal log level: slog: level string "invalid": unknown name`,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, _, err := parseAndValidateFlags(tc.flags)
+				assert.EqualError(t, err, tc.expErr)
+			})
+		}
+	})
+}
 
 func TestListenAddress(t *testing.T) {
 	tests := []struct {
@@ -12,7 +99,6 @@ func TestListenAddress(t *testing.T) {
 		wantNetwork string
 		wantAddress string
 	}{
-		{"", "tcp", defaultAddress},
 		{":8080", "tcp", ":8080"},
 		{"unix:///var/run/ai-gateway/extproc.sock", "unix", "/var/run/ai-gateway/extproc.sock"},
 	}

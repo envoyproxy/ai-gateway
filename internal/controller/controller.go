@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -41,9 +40,9 @@ func MustInitializeScheme(scheme *runtime.Scheme) {
 
 // Options defines the program configurable options that may be passed on the command line.
 type Options struct {
+	ExtProcLogLevel      string
 	ExtProcImage         string
 	EnableLeaderElection bool
-	ZapOptions           zap.Options
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -64,7 +63,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
-	if err = applyIndexing(indexer); err != nil {
+	if err = applyIndexing(indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
@@ -106,7 +105,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("config-sink"), sinkChan, options.ExtProcImage)
+		WithName("config-sink"), sinkChan, options.ExtProcImage, options.ExtProcLogLevel)
 
 	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
 	if err = sink.init(ctx); err != nil {
@@ -131,18 +130,18 @@ const (
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 )
 
-func applyIndexing(indexer client.FieldIndexer) error {
-	err := indexer.IndexField(context.Background(), &aigv1a1.AIGatewayRoute{},
+func applyIndexing(indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
+	err := indexer(context.Background(), &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
-	err = indexer.IndexField(context.Background(), &aigv1a1.AIServiceBackend{},
+	err = indexer(context.Background(), &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
 	}
-	err = indexer.IndexField(context.Background(), &aigv1a1.BackendSecurityPolicy{},
+	err = indexer(context.Background(), &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)

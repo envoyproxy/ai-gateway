@@ -60,13 +60,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if v := r.Header.Get(testupstreamlib.ExpectedHostKey); v != "" {
 		if r.Host != v {
-			fmt.Printf("unexpected host: got %q, expected %q\n", r.Host, v)
+			logger.Printf("unexpected host: got %q, expected %q\n", r.Host, v)
 			http.Error(w, "unexpected host: got "+r.Host+", expected "+v, http.StatusBadRequest)
 			return
 		}
-		fmt.Println("host matched:", v)
+		logger.Println("host matched:", v)
 	} else {
-		fmt.Println("no expected host: got", r.Host)
+		logger.Println("no expected host: got", r.Host)
 	}
 	if v := r.Header.Get(testupstreamlib.ExpectedHeadersKey); v != "" {
 		expectedHeaders, err := base64.StdEncoding.DecodeString(v)
@@ -212,7 +212,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(status)
 
 		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
@@ -221,6 +220,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		w.WriteHeader(status)
 		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
 			line := string(line)
 			if line == "" {
@@ -244,7 +244,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		r.Context().Done()
 	case "aws-event-stream":
 		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
-		w.WriteHeader(status)
 
 		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
@@ -253,6 +252,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		w.WriteHeader(status)
 		e := eventstream.NewEncoder()
 		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
 			// Write each line as a chunk with AWS Event Stream format.
@@ -281,7 +281,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		r.Context().Done()
 	default:
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
 
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); expResponseBody == "" {
@@ -301,61 +300,59 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if _, err := w.Write(responseBody); err != nil {
-			logger.Println("failed to write the response body")
-		}
+		w.WriteHeader(status)
+		_, _ = w.Write(responseBody)
 		logger.Println("response sent:", string(responseBody))
 	}
 }
 
-var (
-	r                           = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	chatCompletionFakeResponses = []string{
-		`This is a test.`,
-		`The quick brown fox jumps over the lazy dog.`,
-		`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
-		`To be or not to be, that is the question.`,
-		`All your base are belong to us.`,
-		`I am the bone of my sword.`,
-		`I am the master of my fate.`,
-		`I am the captain of my soul.`,
-		`I am the master of my fate, I am the captain of my soul.`,
-		`I am the bone of my sword, steel is my body, and fire is my blood.`,
-		`The quick brown fox jumps over the lazy dog.`,
-		`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
-		`To be or not to be, that is the question.`,
-		`All your base are belong to us.`,
-		`Omae wa mou shindeiru.`,
-		`Nani?`,
-		`I am inevitable.`,
-		`May the Force be with you.`,
-		`Houston, we have a problem.`,
-		`I'll be back.`,
-		`You can't handle the truth!`,
-		`Here's looking at you, kid.`,
-		`Go ahead, make my day.`,
-		`I see dead people.`,
-		`Hasta la vista, baby.`,
-		`You're gonna need a bigger boat.`,
-		`E.T. phone home.`,
-		`I feel the need - the need for speed.`,
-		`I'm king of the world!`,
-		`Show me the money!`,
-		`You had me at hello.`,
-		`I'm the king of the world!`,
-		`To infinity and beyond!`,
-		`You're a wizard, Harry.`,
-		`I solemnly swear that I am up to no good.`,
-		`Mischief managed.`,
-		`Expecto Patronum!`,
-	}
-)
+var chatCompletionFakeResponses = []string{
+	`This is a test.`,
+	`The quick brown fox jumps over the lazy dog.`,
+	`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+	`To be or not to be, that is the question.`,
+	`All your base are belong to us.`,
+	`I am the bone of my sword.`,
+	`I am the master of my fate.`,
+	`I am the captain of my soul.`,
+	`I am the master of my fate, I am the captain of my soul.`,
+	`I am the bone of my sword, steel is my body, and fire is my blood.`,
+	`The quick brown fox jumps over the lazy dog.`,
+	`Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+	`To be or not to be, that is the question.`,
+	`All your base are belong to us.`,
+	`Omae wa mou shindeiru.`,
+	`Nani?`,
+	`I am inevitable.`,
+	`May the Force be with you.`,
+	`Houston, we have a problem.`,
+	`I'll be back.`,
+	`You can't handle the truth!`,
+	`Here's looking at you, kid.`,
+	`Go ahead, make my day.`,
+	`I see dead people.`,
+	`Hasta la vista, baby.`,
+	`You're gonna need a bigger boat.`,
+	`E.T. phone home.`,
+	`I feel the need - the need for speed.`,
+	`I'm king of the world!`,
+	`Show me the money!`,
+	`You had me at hello.`,
+	`I'm the king of the world!`,
+	`To infinity and beyond!`,
+	`You're a wizard, Harry.`,
+	`I solemnly swear that I am up to no good.`,
+	`Mischief managed.`,
+	`Expecto Patronum!`,
+}
 
 func getFakeResponse(path string) ([]byte, error) {
 	switch path {
 	case "/v1/chat/completions":
 		const template = `{"choices":[{"message":{"content":"%s"}}]}`
-		msg := fmt.Sprintf(template, chatCompletionFakeResponses[r.Intn(len(chatCompletionFakeResponses))])
+		msg := fmt.Sprintf(template,
+			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))). //nolint:gosec
+														Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)

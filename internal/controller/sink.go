@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -53,13 +53,13 @@ type ConfigSinkEventSecretUpdate struct {
 // consolidate the information from both objects to generate the ExtProc ConfigMap
 // and HTTPRoute objects.
 type configSink struct {
-	client                        client.Client
-	kube                          kubernetes.Interface
-	logger                        logr.Logger
-	defaultExtProcImage           string
-	defaultExtProcImagePullPolicy corev1.PullPolicy
-
-	eventChan chan ConfigSinkEvent
+	client                 client.Client
+	kube                   kubernetes.Interface
+	logger                 logr.Logger
+	extProcImage           string
+	extProcImagePullPolicy corev1.PullPolicy
+	extProcLogLevel        string
+	eventChan              chan ConfigSinkEvent
 }
 
 func newConfigSink(
@@ -68,14 +68,16 @@ func newConfigSink(
 	logger logr.Logger,
 	eventChan chan ConfigSinkEvent,
 	extProcImage string,
+	extProcLogLevel string,
 ) *configSink {
 	c := &configSink{
-		client:                        kubeClient,
-		kube:                          kube,
-		logger:                        logger,
-		defaultExtProcImage:           extProcImage,
-		defaultExtProcImagePullPolicy: corev1.PullIfNotPresent,
-		eventChan:                     eventChan,
+		client:                 kubeClient,
+		kube:                   kube,
+		logger:                 logger,
+		extProcImage:           extProcImage,
+		extProcImagePullPolicy: corev1.PullIfNotPresent,
+		extProcLogLevel:        extProcLogLevel,
+		eventChan:              eventChan,
 	}
 	return c
 }
@@ -170,8 +172,8 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
-		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
-			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
+			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
 		}
 	} else if err != nil {
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
@@ -259,17 +261,17 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(aiGatewayRoute), err))
 	}
 
-	ec := &filterconfig.Config{UUID: uuid}
+	ec := &filterapi.Config{UUID: uuid}
 	spec := &aiGatewayRoute.Spec
 
-	ec.Schema.Name = filterconfig.APISchemaName(spec.APISchema.Name)
+	ec.Schema.Name = filterapi.APISchemaName(spec.APISchema.Name)
 	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
-	ec.Rules = make([]filterconfig.RouteRule, len(spec.Rules))
+	ec.Rules = make([]filterapi.RouteRule, len(spec.Rules))
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
-		ec.Rules[i].Backends = make([]filterconfig.Backend, len(rule.BackendRefs))
+		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backend := &rule.BackendRefs[j]
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
@@ -279,7 +281,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
-				ec.Rules[i].Backends[j].Schema.Name = filterconfig.APISchemaName(backendObj.Spec.APISchema.Name)
+				ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
 
@@ -294,16 +296,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-					ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-						APIKey: &filterconfig.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
-						ec.Rules[i].Backends[j].Auth = &filterconfig.BackendAuth{
-							AWSAuth: &filterconfig.AWSAuth{
+						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
@@ -315,7 +317,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				}
 			}
 		}
-		ec.Rules[i].Headers = make([]filterconfig.HeaderMatch, len(rule.Matches))
+		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
@@ -324,16 +326,16 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
-		fc := filterconfig.LLMRequestCost{MetadataKey: cost.MetadataKey}
+		fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
 		switch cost.Type {
 		case aigv1a1.LLMRequestCostTypeInputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeInputToken
+			fc.Type = filterapi.LLMRequestCostTypeInputToken
 		case aigv1a1.LLMRequestCostTypeOutputToken:
-			fc.Type = filterconfig.LLMRequestCostTypeOutputToken
+			fc.Type = filterapi.LLMRequestCostTypeOutputToken
 		case aigv1a1.LLMRequestCostTypeTotalToken:
-			fc.Type = filterconfig.LLMRequestCostTypeTotalToken
+			fc.Type = filterapi.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterconfig.LLMRequestCostTypeCELExpression
+			fc.Type = filterapi.LLMRequestCostTypeCELExpression
 			expr := *cost.CELExpression
 			// Sanity check the CEL expression.
 			_, err := llmcostcel.NewProgram(expr)
@@ -406,15 +408,17 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 	}
 
 	// Adds the default route rule with "/" path.
-	rules = append(rules, gwapiv1.HTTPRouteRule{
-		Matches: []gwapiv1.HTTPRouteMatch{
-			{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
-		},
-		BackendRefs: []gwapiv1.HTTPBackendRef{
-			{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
-		},
-		Filters: rewriteFilters,
-	})
+	if len(rules) > 0 {
+		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Matches: []gwapiv1.HTTPRouteMatch{
+				{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
+			},
+			BackendRefs: []gwapiv1.HTTPBackendRef{
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
+			},
+			Filters: rewriteFilters,
+		})
+	}
 
 	dst.Spec.Rules = rules
 
@@ -479,15 +483,19 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           c.defaultExtProcImage,
-									ImagePullPolicy: c.defaultExtProcImagePullPolicy,
+									Image:           c.extProcImage,
+									ImagePullPolicy: c.extProcImagePullPolicy,
 									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
-										"-logLevel", "info",
+										"-logLevel", c.extProcLogLevel,
 									},
 									VolumeMounts: []corev1.VolumeMount{
-										{Name: "config", MountPath: "/etc/ai-gateway/extproc"},
+										{
+											Name:      "config",
+											MountPath: "/etc/ai-gateway/extproc",
+											ReadOnly:  true,
+										},
 									},
 								},
 							},
@@ -506,7 +514,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 				},
 			}
 			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
-				c.logger.Error(err, "failed to set controller reference for deployment", "namespace", deployment.Namespace, "name", deployment.Name)
+				panic(fmt.Errorf("BUG: failed to set controller reference for deployment: %w", err))
 			}
 			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
@@ -552,7 +560,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 		},
 	}
 	if err = ctrlutil.SetControllerReference(aiGatewayRoute, service, c.client.Scheme()); err != nil {
-		c.logger.Error(err, "failed to set controller reference for service", "namespace", service.Namespace, "name", service.Name)
+		panic(fmt.Errorf("BUG: failed to set controller reference for service: %w", err))
 	}
 	if _, err = c.kube.CoreV1().Services(aiGatewayRoute.Namespace).Create(ctx, service, metav1.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
 		return fmt.Errorf("failed to create Service %s.%s: %w", name, aiGatewayRoute.Namespace, err)
@@ -609,6 +617,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 					Name:      volumeName,
 					MountPath: backendSecurityMountPath(volumeName),
+					ReadOnly:  true,
 				})
 			}
 		}

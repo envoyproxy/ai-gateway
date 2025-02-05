@@ -6,18 +6,18 @@ import (
 
 	"golang.org/x/exp/rand"
 
-	"github.com/envoyproxy/ai-gateway/extprocapi"
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
-// router implements [extprocapi.Router].
+// router implements [filterapi.Router].
 type router struct {
-	rules []filterconfig.RouteRule
+	rules []filterapi.RouteRule
 	rng   *rand.Rand
 }
 
-// NewRouter creates a new [extprocapi.Router] implementation for the given config.
-func NewRouter(config *filterconfig.Config, newCustomFn extprocapi.NewCustomRouterFn) (extprocapi.Router, error) {
+// NewRouter creates a new [filterapi.Router] implementation for the given config.
+func NewRouter(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Router, error) {
 	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))} //nolint:gosec
 	if newCustomFn != nil {
 		customRouter := newCustomFn(r, config)
@@ -26,9 +26,9 @@ func NewRouter(config *filterconfig.Config, newCustomFn extprocapi.NewCustomRout
 	return r, nil
 }
 
-// Calculate implements [extprocapi.Router.Calculate].
-func (r *router) Calculate(headers map[string]string) (backend *filterconfig.Backend, err error) {
-	var rule *filterconfig.RouteRule
+// Calculate implements [filterapi.Router.Calculate].
+func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backend, err error) {
+	var rule *filterapi.RouteRule
 	for i := range r.rules {
 		_rule := &r.rules[i]
 		for _, hdr := range _rule.Headers {
@@ -46,7 +46,7 @@ func (r *router) Calculate(headers map[string]string) (backend *filterconfig.Bac
 	return r.selectBackendFromRule(rule), nil
 }
 
-func (r *router) selectBackendFromRule(rule *filterconfig.RouteRule) (backend *filterconfig.Backend) {
+func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filterapi.Backend) {
 	// Each backend has a weight, so we randomly select depending on the weight.
 	// This is a pretty naive implementation and can be buggy, so fix it later.
 	totalWeight := 0

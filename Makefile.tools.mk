@@ -13,6 +13,7 @@ CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
 YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 KIND ?= $(LOCALBIN)/kind
 CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
+GO_TEST_COVERAGE ?= $(LOCALBIN)/go-test-coverage
 
 ## Tool versions.
 CONTROLLER_TOOLS_VERSION ?= v0.17.1
@@ -23,6 +24,7 @@ GCI_VERSION ?= v0.13.5
 EDITORCONFIG_CHECKER_VERSION ?= v3.1.2
 KIND_VERSION ?= v0.26.0
 CRD_REF_DOCS_VERSION ?= v0.1.0
+GO_TEST_COVERAGE_VERSION ?= v2.11.4
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -59,11 +61,15 @@ kind: $(KIND)
 $(KIND): $(LOCALBIN)
 	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
 
-.PHONY:
+.PHONY: crd-ref-docs
 crd-ref-docs: $(CRD_REF_DOCS)
 $(CRD_REF_DOCS): $(LOCALBIN)
 	$(call go-install-tool,$(CRD_REF_DOCS),github.com/elastic/crd-ref-docs,$(CRD_REF_DOCS_VERSION))
 
+.PHONY: go-test-coverage
+go-test-coverage: $(GO_TEST_COVERAGE)
+$(GO_TEST_COVERAGE): $(LOCALBIN)
+	$(call go-install-tool,$(GO_TEST_COVERAGE),github.com/vladopajic/go-test-coverage/v2,$(GO_TEST_COVERAGE_VERSION))
 
 .bin/.venv/%:
 	mkdir -p $(@D)

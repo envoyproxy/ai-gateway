@@ -15,7 +15,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -25,15 +25,15 @@ func TestExtProcCustomRouter(t *testing.T) {
 	requireRunEnvoy(t, "/dev/null")
 	requireTestUpstream(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
-		Rules: []filterconfig.RouteRule{
+		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "testupstream", Schema: openAISchema}},
-				Headers:  []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: openAISchema}},
+				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
 			},
 		},
 	})

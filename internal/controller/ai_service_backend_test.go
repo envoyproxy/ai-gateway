@@ -33,6 +33,12 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.IsType(t, &aigv1a1.AIServiceBackend{}, item)
 	require.Equal(t, "mybackend", item.(*aigv1a1.AIServiceBackend).Name)
 	require.Equal(t, "default", item.(*aigv1a1.AIServiceBackend).Namespace)
+
+	// Test the case where the AIServiceBackend is being deleted.
+	err = cl.Delete(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
+	require.NoError(t, err)
 }
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {

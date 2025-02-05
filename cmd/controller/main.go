@@ -2,10 +2,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"log/slog"
 	"net"
 	"os"
 
 	"github.com/envoyproxy/gateway/proto/extension"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,42 +18,86 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
-var setupLog = ctrl.Log.WithName("setup")
+// parseAndValidateFlags parses the command-line arguments provided in args,
+// validates them, and returns the parsed configuration.
+func parseAndValidateFlags(args []string) (
+	extProcLogLevel string,
+	extProcImage string,
+	enableLeaderElection bool,
+	logLevel zapcore.Level,
+	extensionServerPort string,
+	err error,
+) {
+	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
-// defaultOptions returns the default values for the program options.
-func defaultOptions() controller.Options {
-	return controller.Options{
-		ExtProcImage:         "ghcr.io/envoyproxy/ai-gateway/extproc:latest",
-		EnableLeaderElection: false,
+	extProcLogLevelPtr := fs.String(
+		"extProcLogLevel",
+		"info",
+		"The log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	extProcImagePtr := fs.String(
+		"extProcImage",
+		"ghcr.io/envoyproxy/ai-gateway/extproc:latest",
+		"The image for the external processor",
+	)
+	enableLeaderElectionPtr := fs.Bool(
+		"enableLeaderElection",
+		true,
+		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.",
+	)
+	logLevelPtr := fs.String(
+		"logLevel",
+		"info",
+		"The log level for the controller manager. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	extensionServerPortPtr := fs.String(
+		"port",
+		":1063",
+		"gRPC port for the extension server",
+	)
+
+	if err = fs.Parse(args); err != nil {
+		err = fmt.Errorf("failed to parse flags: %w", err)
+		return
 	}
-}
 
-// getOptions parses the program flags and returns them as Options.
-func getOptions() (opts controller.Options, extensionServerPort *string) {
-	opts = defaultOptions()
-	flag.StringVar(&opts.ExtProcImage, "extprocImage", opts.ExtProcImage, "The image for the external processor")
-	flag.BoolVar(&opts.EnableLeaderElection, "leader-elect", opts.EnableLeaderElection,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	extensionServerPort = flag.String("port", ":1063", "gRPC port for the extension server")
-	zapOpts := zap.Options{Development: true}
-	zapOpts.BindFlags(flag.CommandLine)
-	opts.ZapOptions = zapOpts
-	flag.Parse()
-	return
+	var slogLevel slog.Level
+	if err = slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
+		err = fmt.Errorf("invalid external processor log level: %q", *extProcLogLevelPtr)
+		return
+	}
+
+	var zapLogLevel zapcore.Level
+	if err = zapLogLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
+		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
+		return
+	}
+	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, nil
 }
 
 func main() {
-	options, extensionServerPort := getOptions()
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&options.ZapOptions)))
+	setupLog := ctrl.Log.WithName("setup")
+
+	flagExtProcLogLevel,
+		flagExtProcImage,
+		flagEnableLeaderElection,
+		zapLogLevel,
+		flagExtensionServerPort,
+		err := parseAndValidateFlags(os.Args[1:])
+	if err != nil {
+		setupLog.Error(err, "failed to parse and validate flags")
+		os.Exit(1)
+	}
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapLogLevel})))
 	k8sConfig, err := ctrl.GetConfig()
 	if err != nil {
 		setupLog.Error(err, "failed to get k8s config")
 	}
 
-	lis, err := net.Listen("tcp", *extensionServerPort)
+	lis, err := net.Listen("tcp", flagExtensionServerPort)
 	if err != nil {
-		setupLog.Error(err, "failed to listen", "port", *extensionServerPort)
+		setupLog.Error(err, "failed to listen", "port", flagExtensionServerPort)
 		os.Exit(1)
 	}
 
@@ -72,7 +119,11 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), options); err != nil {
+	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
+		ExtProcImage:         flagExtProcImage,
+		ExtProcLogLevel:      flagExtProcLogLevel,
+		EnableLeaderElection: flagEnableLeaderElection,
+	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
 }

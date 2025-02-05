@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-// ConfigReceiver is an interface that can receive *filterconfig.Config updates.
+// ConfigReceiver is an interface that can receive *filterapi.Config updates.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(config *filterconfig.Config) error
+	LoadConfig(config *filterapi.Config) error
 }
 
 type configWatcher struct {
@@ -81,7 +81,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.diff(previous, current)
 	}
 
-	cfg, err := filterconfig.UnmarshalConfigYaml(cw.path)
+	cfg, err := filterapi.UnmarshalConfigYaml(cw.path)
 	if err != nil {
 		return err
 	}

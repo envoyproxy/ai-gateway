@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterconfig"
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
@@ -58,31 +57,31 @@ func TestWithRealProviders(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, awsFile.Sync())
 
-	requireWriteFilterConfig(t, configPath, &filterconfig.Config{
+	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
-		LLMRequestCosts: []filterconfig.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterconfig.LLMRequestCostTypeInputToken},
-			{MetadataKey: "some_cel", Type: filterconfig.LLMRequestCostTypeCELExpression, CELExpression: "1+1"},
+		LLMRequestCosts: []filterapi.LLMRequestCost{
+			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
+			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCELExpression, CELExpression: "1+1"},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
 		SelectedBackendHeaderKey: "x-selected-backend-name",
 		ModelNameHeaderKey:       "x-model-name",
-		Rules: []filterconfig.RouteRule{
+		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterconfig.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterconfig.BackendAuth{
-					APIKey: &filterconfig.APIKeyAuth{Filename: apiKeyFilePath},
+				Backends: []filterapi.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+					APIKey: &filterapi.APIKeyAuth{Filename: apiKeyFilePath},
 				}}},
-				Headers: []filterconfig.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
-				Backends: []filterconfig.Backend{
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterconfig.BackendAuth{AWSAuth: &filterconfig.AWSAuth{
+				Backends: []filterapi.Backend{
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
 						CredentialFileName: awsFilePath,
 						Region:             "us-east-1",
 					}}},
 				},
-				Headers: []filterconfig.HeaderMatch{
+				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
 					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
 				},
@@ -121,7 +120,7 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -135,8 +134,8 @@ func TestWithRealProviders(t *testing.T) {
 			require.NoError(t, err)
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
-				UsedToken any `json:"used_token"`
-				SomeCel   any `json:"some_cel"`
+				UsedToken float64 `json:"used_token,omitempty"`
+				SomeCel   float64 `json:"some_cel,omitempty"`
 			}
 			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
 			for scanner.Scan() {
@@ -147,19 +146,18 @@ func TestWithRealProviders(t *testing.T) {
 					continue
 				}
 				t.Logf("line: %s", line)
-				if !anyCostGreaterThanZero(l.SomeCel) {
+				if l.SomeCel == 0 {
 					t.Log("some_cel is not existent or greater than zero")
 					continue
 				}
-				if !anyCostGreaterThanZero(l.UsedToken) {
+				if l.UsedToken == 0 {
 					t.Log("used_token is not existent or greater than zero")
 					continue
 				}
-				t.Log("cannot find used token in line")
 				return true
 			}
 			return false
-		}, 10*time.Second, 1*time.Second)
+		}, 30*time.Second, 2*time.Second)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -205,8 +203,12 @@ func TestWithRealProviders(t *testing.T) {
 							nonEmptyCompletion = true
 						}
 					}
+					if !nonEmptyCompletion {
+						// Log the whole response for debugging.
+						t.Logf("response: %+v", acc)
+					}
 					return nonEmptyCompletion
-				}, 10*time.Second, 1*time.Second)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
@@ -259,21 +261,8 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return returnsToolCall
-				}, 10*time.Second, 500*time.Millisecond)
+				}, 30*time.Second, 2*time.Second)
 			})
 		}
 	})
-}
-
-func anyCostGreaterThanZero(cost any) bool {
-	// The access formatter somehow changed its behavior sometimes between 1.31 and the latest Envoy,
-	// so we need to check for both float64 and string.
-	if num, ok := cost.(float64); ok && num > 0 {
-		return true
-	} else if str, ok := cost.(string); ok {
-		if num, err := strconv.Atoi(str); err == nil && num > 0 {
-			return true
-		}
-	}
-	return false
 }
