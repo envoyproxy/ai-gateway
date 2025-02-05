@@ -1,19 +1,19 @@
 ---
-id: deepseek
-title: Connect DeepSeek
+id: localmodel
+title: Connect Local Model
 sidebar_position: 3
 ---
 
-# Connect DeepSeek
+# Connect Local Model
 
-This guide will help you configure Envoy AI Gateway to work with DeepSeek's models.
+This guide will help you configure Envoy AI Gateway to work with locally hosted model such as [DeepSeek R1](https://github.com/deepseek-ai/DeepSeek-R1).
 
 ## Prerequisites
 
 Before you begin, you'll need:
 
 - [Ollama](https://ollama.com/) installed on local machine considering for self-hosted model
-- Serve DeepSeek R1 model (DeepSeek-R1-Distill-Qwen-7B) on your local machine
+- Serve DeepSeek R1 or similar model on your local machine
 
 ```
 ollama pull deepseek-r1:7b
@@ -97,7 +97,7 @@ kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 
 6. Common errors:
    - 500: Incorrect Model Id in the HTTP request. Check basic.yaml for host name in backend configuration
-   - 503: DeepSeek service unavailable or request time out because of latency by model
+   - 503: Model is unavailable or request time out because of latency by model
 
 ## Next Steps
 
