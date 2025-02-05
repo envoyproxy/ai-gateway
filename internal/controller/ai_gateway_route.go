@@ -115,17 +115,6 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	// Send a copy to the config sink for a full reconciliation on HTTPRoute as well as the extproc config.
 	c.eventChan <- aiGatewayRoute.DeepCopy()
 
-	aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
-		Type:    ConditionReconciled,
-		Status:  metav1.ConditionTrue,
-		Reason:  ReasonReconciliationSucceeded,
-		Message: "Reconciliation completed successfully",
-	})
-	if err := c.client.Status().Update(ctx, &aiGatewayRoute); err != nil {
-		c.logger.Error(err, "failed to update AIGatewayRoute status")
-		return ctrl.Result{}, err
-	}
-
 	return reconcile.Result{}, nil
 }
 

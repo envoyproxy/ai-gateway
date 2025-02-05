@@ -320,6 +320,18 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 		}
 		return
 	}
+
+	aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
+		Type:    ConditionReconciled,
+		Status:  metav1.ConditionTrue,
+		Reason:  ReasonReconciliationSucceeded,
+		Message: "Reconciliation completed successfully",
+	})
+	err = c.client.Status().Update(context.Background(), aiGatewayRoute)
+	if err != nil {
+		c.logger.Error(err, "failed to update AIGatewayRoute status")
+		return
+	}
 }
 
 func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
