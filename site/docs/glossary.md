@@ -18,105 +18,92 @@ This glossary provides definitions for key terms and concepts used in AI Gateway
 ### Content Filtering
 A mechanism to screen and moderate AI-generated content to ensure compliance with ethical standards, company policies, or regulatory requirements.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Model Routing](#model-routing) · [GenAI Gateway](#genai-gateway)</small></div>
-
 ### Context Window
 The maximum amount of text (in tokens) that a model can process in a single request.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Token Cost](#token-cost) · [Token Usage Limiting](#llm-token-usage-limiting)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token)</small></div>
 
 ### Fine-Tuned Model
 A version of a base Generative AI model that has been customized for specific tasks or domains using additional training data.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Foundation Model](#foundation-model) · [Model Provider](#model-provider) · [Model Endpoint](#model-endpoint)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Foundation Model](#foundation-model)</small></div>
 
 ### Foundation Model
 Foundation models are large-scale, pre-trained AI models designed to handle a broad range of tasks. They are trained on extensive datasets and can be fine-tuned or adapted to specific use cases.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Fine-Tuned Model](#fine-tuned-model) · [Model Provider](#model-provider) · [Model Endpoint](#model-endpoint)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Fine-Tuned Model](#fine-tuned-model)</small></div>
 
 ## G-I
 ### GenAI Gateway
 A specialized gateway solution designed to manage, monitor, and route traffic to Generative AI models. It provides capabilities such as load balancing, authorization, token usage monitoring, and integration with multiple model providers.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Hybrid GenAI Gateway](#hybrid-genai-gateway) · [Inference Instance Gateway](#inference-instance-gateway) · [Model Routing](#model-routing)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Model Provider](#model-provider)</small></div>
 
 ### GenAI Usage Analytics
 The collection and analysis of data regarding how users interact with AI models via the GenAI Gateway, including token usage, request patterns, and latency metrics.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Usage Monitoring](#genai-usage-monitoring) · [Token Usage Limiting](#llm-token-usage-limiting)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Gateway](#genai-gateway) · [Token](#token)</small></div>
 
 ### GenAI Usage Monitoring
 The tracking of resource consumption across different types of models, including token-based monitoring for LLMs, image resolution and compute resources for LVMs, and combined metrics for multimodal models.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Token Usage Limiting](#llm-token-usage-limiting) · [GenAI Usage Analytics](#genai-usage-analytics) · [Token Cost](#token-cost)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token)</small></div>
 
 ### Hybrid GenAI Gateway
 A GenAI Gateway configuration that supports both local inference instances and external cloud-based AI models, providing flexibility in deployment and cost management.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Gateway](#genai-gateway) · [Inference Instance Gateway](#inference-instance-gateway) · [Model Provider](#model-provider)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Gateway](#genai-gateway) · [Inference Instance](#inference-instance) · [Model Provider](#model-provider)</small></div>
 
 ### Inference Instance
 An individual compute resource or container used to run a machine learning model for generating AI outputs (inference).
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Inference Service](#inference-service) · [Inference Instance Gateway](#inference-instance-gateway) · [Model Endpoint](#model-endpoint)</small></div>
-
 ### Inference Instance Gateway
-A gateway specifically configured to route requests to one or more inference instances, handling load balancing, scaling, and traffic management at the level of the instances.
+See [Gateway API Inference Extension](#gateway-api-inference-extension).
 
-<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Gateway](#genai-gateway) · [Inference Instance](#inference-instance)</small></div>
+### Gateway API Inference Extension
+A Kubernetes SIG Network extension for Gateway API that provides specialized routing and load balancing capabilities for AI/ML workloads, handling traffic management at the level of inference instances. Formerly known as the Inference Instance Gateway.
 
 ### Inference Service
 A service that provides model inference capabilities, including model loading, input processing, inference execution, and output formatting.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Inference Instance](#inference-instance) · [Model Endpoint](#model-endpoint) · [Model Provider](#model-provider)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Inference Instance](#inference-instance)</small></div>
 
 ## L-P
 ### LLM Token Usage Limiting
 A mechanism to monitor and control the number of tokens processed by an LLM GenAI model, including input, output, and total token limits.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Token Cost](#token-cost) · [GenAI Usage Monitoring](#genai-usage-monitoring)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [GenAI Gateway](#genai-gateway)</small></div>
 
 ### Model Endpoint
 The API endpoint provided by a specific AI model, whether hosted by a cloud provider, open-source solution, or private deployment.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Model Provider](#model-provider) · [Foundation Model](#foundation-model) · [Fine-Tuned Model](#fine-tuned-model)</small></div>
-
 ### Model Provider
-External service providing AI model capabilities through APIs, such as OpenAI, AWS Bedrock, Azure OpenAI Service, or Anthropic.
-
-<div style={{marginBottom: '1rem'}}><small>Related: [Model Endpoint](#model-endpoint) · [Foundation Model](#foundation-model) · [Fine-Tuned Model](#fine-tuned-model)</small></div>
+Services providing AI model capabilities through APIs, which can be either first-party providers who develop their own models (like OpenAI, Anthropic) or third-party providers who host other companies' models (like AWS Bedrock, Azure OpenAI Service).
 
 ### Model Routing
 A feature in GenAI Gateways that dynamically routes requests to specific models or model versions based on client configuration, use case requirements, or service level agreements.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Model Endpoint](#model-endpoint) · [GenAI Gateway](#genai-gateway)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [GenAI Gateway](#genai-gateway)</small></div>
 
 ### Prompt
 The input text that guides the AI model's response, including instructions, context, and specific queries.
-
-<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Context Window](#context-window) · [Temperature](#temperature)</small></div>
 
 ## R-T
 ### Rate of LLM Token Consumption
 The speed at which tokens are consumed by an AI model during processing. This metric is crucial for cost estimation and performance optimization.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Token Cost](#token-cost) · [Token Usage Limiting](#llm-token-usage-limiting)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token)</small></div>
 
 ### Temperature
 A parameter that controls the randomness/creativity of model outputs, typically ranging from 0 (deterministic) to 1 (more creative).
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Foundation Model](#foundation-model) · [Model Provider](#model-provider) · [Prompt](#prompt)</small></div>
-
 ### Token
 The basic unit of text processing in LLMs, representing parts of words or characters.
-
-<div style={{marginBottom: '1rem'}}><small>Related: [Context Window](#context-window) · [Token Cost](#token-cost) · [Token Usage Limiting](#llm-token-usage-limiting)</small></div>
 
 ### Token Cost
 The financial or resource cost associated with token usage in model requests.
 
-<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token) · [Rate of LLM Token Consumption](#rate-of-llm-token-consumption) · [Token Usage Limiting](#llm-token-usage-limiting)</small></div>
+<div style={{marginBottom: '1rem'}}><small>Related: [Token](#token)</small></div>
 
 </TabItem>
 
@@ -136,7 +123,7 @@ The financial or resource cost associated with token usage in model requests.
 
 ## Gateway Components
 - [GenAI Gateway](#genai-gateway)
-- [Inference Instance Gateway](#inference-instance-gateway)
+- [Gateway API Inference Extension](#gateway-api-inference-extension)
 - [Hybrid GenAI Gateway](#hybrid-genai-gateway)
 
 ## Usage & Analytics
@@ -183,4 +170,4 @@ This glossary is continuously evolving as the field of GenAI traffic handling de
 - Check our [Getting Started](./getting-started/index.md) guide for practical examples
 - Visit our [Capabilities](./capabilities/index.md) section for detailed feature documentation
 - Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA) for discussions
-::: 
+:::
