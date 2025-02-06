@@ -1,4 +1,4 @@
-//go:build test_cel_validation
+//go:build test_crdcel
 
 package celvalidation
 
