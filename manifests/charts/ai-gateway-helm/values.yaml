@@ -33,6 +33,18 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # Example of a podEnv
+  #  - key: AI_GATEWY_STS_PROXY_URL
+  #    value: some-proxy-placeholder
+  podEnv: {}
+  # Example of volumes
+  #  - mountPath: /placeholder/path
+  #      name: volume-name
+  #      subPath: placeholder-sub-path
+  #      configmap:
+  #        defaultMode: placeholder
+  #        name: configmap-name
+  volumes: {}
   service:
     type: ClusterIP
     ports:
