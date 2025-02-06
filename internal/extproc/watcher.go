@@ -74,12 +74,12 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	if cw.l.Enabled(ctx, slog.LevelDebug) {
 		// Re-hydrate the current config file for later diffing.
 		previous := cw.current
-		current, err := cw.getConfigString()
+		cw.current, err = cw.getConfigString()
 		if err != nil {
 			return fmt.Errorf("failed to read the config file: %w", err)
 		}
 
-		cw.diff(previous, current)
+		cw.diff(previous, cw.current)
 	}
 
 	cfg, err := filterapi.UnmarshalConfigYaml(cw.path)
@@ -96,10 +96,7 @@ func (cw *configWatcher) getConfigString() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	current := string(currentByte)
-	cw.current = current
-
-	return current, nil
+	return string(currentByte), nil
 }
 
 func (cw *configWatcher) diff(oldConfig, newConfig string) {
