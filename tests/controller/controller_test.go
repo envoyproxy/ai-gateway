@@ -134,6 +134,9 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, aiGatewayRoute.Spec.Rules, 1)
 				require.Len(t, aiGatewayRoute.Spec.Rules[0].BackendRefs, 2)
 
+				require.Len(t, aiGatewayRoute.Status.Condition)
+				require.Equal(t, metav1.ConditionTrue, aiGatewayRoute.Status.Conditions[0].Status)
+
 				require.Equal(t, "backend1", aiGatewayRoute.Spec.Rules[0].BackendRefs[0].Name)
 				require.Equal(t, "backend2", aiGatewayRoute.Spec.Rules[0].BackendRefs[1].Name)
 
@@ -401,6 +404,10 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
+
+		// Verify status
+		require.Len(t, created.Status.Condition, 1)
+		require.Equal(t, metav1.ConditionTrue, created.Status.Conditions[0].Status)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -423,6 +430,10 @@ func TestAIGatewayRouteController(t *testing.T) {
 		created := item.(*aigv1a1.AIGatewayRoute)
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
+
+		// Verify status
+		require.Len(t, created.Status.Condition, 1)
+		require.Equal(t, metav1.ConditionTrue, created.Status.Conditions[0].Status)
 	})
 }
 
