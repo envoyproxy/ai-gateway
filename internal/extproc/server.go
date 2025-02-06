@@ -44,7 +44,7 @@ func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*process
 }
 
 // LoadConfig updates the configuration of the external processor.
-func (s *Server[P]) LoadConfig(config *filterapi.Config) error {
+func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) error {
 	bodyParser, err := router.NewRequestBodyParser(config.Schema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)
@@ -66,7 +66,7 @@ func (s *Server[P]) LoadConfig(config *filterapi.Config) error {
 			}
 
 			if b.Auth != nil {
-				h, err := backendauth.NewHandler(b.Auth)
+				h, err := backendauth.NewHandler(ctx, b.Auth)
 				if err != nil {
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
 				}
