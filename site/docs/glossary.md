@@ -167,6 +167,6 @@ This glossary is continuously evolving as the field of GenAI traffic handling de
 :::
 
 :::tip See Also
-- Check our [Getting Started](/getting-started/index) guide for practical examples
+- Check our [Getting Started](./getting-started/index.md) guide for practical examples
 - Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA) for discussions
 :::
