@@ -18,7 +18,7 @@ func (c *dummyCustomRouter) Calculate(map[string]string) (*filterapi.Backend, er
 }
 
 func TestRouter_NewRouter_Custom(t *testing.T) {
-	r, err := NewRouter(&filterapi.Config{}, func(defaultRouter x.Router, config *filterapi.Config) x.Router {
+	r, err := NewRouter(&filterapi.Config{}, func(defaultRouter x.Router, _ *filterapi.Config) x.Router {
 		require.NotNil(t, defaultRouter)
 		_, ok := defaultRouter.(*router)
 		require.True(t, ok) // Checking if the default router is correctly passed.

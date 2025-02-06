@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -42,9 +41,6 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 }
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, aigv1a1.AddToScheme(scheme))
-
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithIndex(&aigv1a1.AIServiceBackend{}, k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc).

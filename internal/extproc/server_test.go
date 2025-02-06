@@ -30,7 +30,7 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(&filterapi.Config{
+		err := s.LoadConfig(context.Background(), &filterapi.Config{
 			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
 		require.Error(t, err)
@@ -73,7 +73,7 @@ func TestServer_LoadConfig(t *testing.T) {
 			},
 		}
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(config)
+		err := s.LoadConfig(context.Background(), config)
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)

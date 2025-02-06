@@ -18,9 +18,8 @@ import (
 func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
-	} else {
-		return nil, fmt.Errorf("unsupported path: %s", path)
 	}
+	return nil, fmt.Errorf("unsupported path: %s", path)
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
@@ -70,10 +69,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map
 			},
 		}
 		mut := &extprocv3.BodyMutation_Body{}
-		if errBody, err := json.Marshal(openaiError); err != nil {
+		mut.Body, err = json.Marshal(openaiError)
+		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
-		} else {
-			mut.Body = errBody
 		}
 		headerMutation = &extprocv3.HeaderMutation{}
 		setContentLength(headerMutation, mut.Body)

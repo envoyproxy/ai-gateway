@@ -260,7 +260,7 @@ func TestStartControllers(t *testing.T) {
 		// Verify that the HTTPRoute resource is recreated.
 		require.Eventually(t, func() bool {
 			var egExtPolicy egv1a1.EnvoyExtensionPolicy
-			err := c.Get(ctx, client.ObjectKey{Name: policyName, Namespace: policyNamespace}, &egExtPolicy)
+			err = c.Get(ctx, client.ObjectKey{Name: policyName, Namespace: policyNamespace}, &egExtPolicy)
 			if err != nil {
 				t.Logf("failed to get envoy extension policy %s: %v", policyName, err)
 				return false
@@ -277,7 +277,7 @@ func TestStartControllers(t *testing.T) {
 		// Verify that the HTTPRoute resource is recreated.
 		require.Eventually(t, func() bool {
 			var httpRoute gwapiv1.HTTPRoute
-			err := c.Get(ctx, client.ObjectKey{Name: routeName, Namespace: routeNamespace}, &httpRoute)
+			err = c.Get(ctx, client.ObjectKey{Name: routeName, Namespace: routeNamespace}, &httpRoute)
 			if err != nil {
 				t.Logf("failed to get http route %s: %v", routeName, err)
 				return false
@@ -296,7 +296,7 @@ func TestStartControllers(t *testing.T) {
 		// Verify that the deployment is recreated.
 		require.Eventually(t, func() bool {
 			var deployment appsv1.Deployment
-			err := c.Get(ctx, client.ObjectKey{Name: deployName, Namespace: deployNamespace}, &deployment)
+			err = c.Get(ctx, client.ObjectKey{Name: deployName, Namespace: deployNamespace}, &deployment)
 			if err != nil {
 				t.Logf("failed to get deployment %s: %v", deployName, err)
 				return false

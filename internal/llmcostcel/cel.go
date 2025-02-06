@@ -38,7 +38,7 @@ func init() {
 func NewProgram(expr string) (prog cel.Program, err error) {
 	ast, issues := env.Compile(expr)
 	if issues != nil && issues.Err() != nil {
-		err := issues.Err()
+		err = issues.Err()
 		return nil, fmt.Errorf("cannot compile CEL expression: %w", err)
 	}
 	prog, err = env.Program(ast)

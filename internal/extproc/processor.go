@@ -80,7 +80,7 @@ func (p *Processor) ProcessRequestHeaders(_ context.Context, headers *corev3.Hea
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (p *Processor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	path := p.requestHeaders[":path"]
 	model, body, err := p.config.bodyParser(path, rawBody)
 	if err != nil {
@@ -122,7 +122,7 @@ func (p *Processor) ProcessRequestBody(_ context.Context, rawBody *extprocv3.Htt
 	})
 
 	if authHandler, ok := p.config.backendAuthHandlers[b.Name]; ok {
-		if err := authHandler.Do(p.requestHeaders, headerMutation, bodyMutation); err != nil {
+		if err := authHandler.Do(ctx, p.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 	}

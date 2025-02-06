@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -22,9 +21,6 @@ func TestMain(m *testing.M) {
 }
 
 func Test_aiGatewayRouteIndexFunc(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, aigv1a1.AddToScheme(scheme))
-
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc).
@@ -137,9 +133,6 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 		},
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
-			scheme := runtime.NewScheme()
-			require.NoError(t, aigv1a1.AddToScheme(scheme))
-
 			c := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithIndex(&aigv1a1.BackendSecurityPolicy{}, k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc).

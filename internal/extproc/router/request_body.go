@@ -32,7 +32,6 @@ func openAIParseBody(path string, body *extprocv3.HttpBody) (modelName string, r
 			return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 		}
 		return openAIReq.Model, &openAIReq, nil
-	} else {
-		return "", nil, fmt.Errorf("unsupported path: %s", path)
 	}
+	return "", nil, fmt.Errorf("unsupported path: %s", path)
 }

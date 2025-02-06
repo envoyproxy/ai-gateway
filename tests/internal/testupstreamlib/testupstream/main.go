@@ -47,7 +47,7 @@ func doMain(l net.Listener) {
 		}
 	}
 	defer l.Close()
-	http.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) { writer.WriteHeader(http.StatusOK) })
+	http.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusOK) })
 	http.HandleFunc("/", handler)
 	if err := http.Serve(l, nil); err != nil { // nolint: gosec
 		logger.Printf("failed to serve: %v", err)
@@ -127,9 +127,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			logger.Println(msg)
 			http.Error(w, msg, http.StatusBadRequest)
 			return
-		} else {
-			logger.Println("testupstream-id matched:", v)
 		}
+		logger.Println("testupstream-id matched:", v)
 	} else {
 		logger.Println("no expected testupstream-id")
 	}
@@ -157,7 +156,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if expectedReqBody := r.Header.Get(testupstreamlib.ExpectedRequestBodyHeaderKey); expectedReqBody != "" {
-		expectedBody, err := base64.StdEncoding.DecodeString(expectedReqBody)
+		var expectedBody []byte
+		expectedBody, err = base64.StdEncoding.DecodeString(expectedReqBody)
 		if err != nil {
 			logger.Println("failed to decode the expected request body")
 			http.Error(w, "failed to decode the expected request body", http.StatusBadRequest)
@@ -174,7 +174,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if v := r.Header.Get(testupstreamlib.ResponseHeadersKey); v != "" {
-		responseHeaders, err := base64.StdEncoding.DecodeString(v)
+		var responseHeaders []byte
+		responseHeaders, err = base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			logger.Println("failed to decode the response headers")
 			http.Error(w, "failed to decode the response headers", http.StatusBadRequest)
@@ -212,8 +213,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
-
-		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
+		var expResponseBody []byte
+		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
 			logger.Println("failed to decode the response body")
 			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
@@ -245,7 +246,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	case "aws-event-stream":
 		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
 
-		expResponseBody, err := base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
+		var expResponseBody []byte
+		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
 			logger.Println("failed to decode the response body")
 			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
@@ -260,7 +262,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			time.Sleep(streamingInterval)
-			if err := e.Encode(w, eventstream.Message{
+			if err = e.Encode(w, eventstream.Message{
 				Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
 				Payload: line,
 			}); err != nil {
@@ -270,7 +272,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			logger.Println("response line sent:", string(line))
 		}
 
-		if err := e.Encode(w, eventstream.Message{
+		if err = e.Encode(w, eventstream.Message{
 			Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("end")}},
 			Payload: []byte("this-is-end"),
 		}); err != nil {
@@ -351,8 +353,9 @@ func getFakeResponse(path string) ([]byte, error) {
 	case "/v1/chat/completions":
 		const template = `{"choices":[{"message":{"content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
-			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))). //nolint:gosec
-														Intn(len(chatCompletionFakeResponses))])
+			//nolint:gosec
+			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
+				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)

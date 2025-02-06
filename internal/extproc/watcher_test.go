@@ -22,7 +22,7 @@ type mockReceiver struct {
 }
 
 // LoadConfig implements ConfigReceiver.
-func (m *mockReceiver) LoadConfig(cfg *filterapi.Config) error {
+func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg

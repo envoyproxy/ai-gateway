@@ -42,7 +42,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	cfg, err = env.Start()
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := env.Stop(); err != nil {
+		if err = env.Stop(); err != nil {
 			panic(fmt.Sprintf("Failed to stop testenv: %v", err))
 		}
 	})
@@ -59,9 +59,11 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 // It returns the path to the CRD as-is to make it easier to use in the caller.
 func requireThirdPartyCRDDownloaded(t *testing.T, path, url string) string {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		crd, err := http.DefaultClient.Get(url)
+		var crd *http.Response
+		crd, err = http.DefaultClient.Get(url)
 		require.NoError(t, err)
-		body, err := os.Create(path)
+		var body *os.File
+		body, err = os.Create(path)
 		defer func() {
 			_ = crd.Body.Close()
 		}()

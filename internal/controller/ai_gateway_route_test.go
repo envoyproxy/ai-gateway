@@ -157,7 +157,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			},
 		},
 	}
-	t.Run("not panic", func(t *testing.T) {
+	t.Run("not panic", func(_ *testing.T) {
 		applyExtProcDeploymentConfigUpdate(dep, nil)
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{

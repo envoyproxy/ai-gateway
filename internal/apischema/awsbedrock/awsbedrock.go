@@ -337,7 +337,9 @@ type ConverseMetrics struct {
 	LatencyMs *int64 `json:"latencyMs"`
 }
 
-type ConverseOutput struct {
+// ConverseResponse is the response from a call to Converse.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+type ConverseResponse struct {
 	// Metrics for the call to Converse.
 	//
 	// Metrics is a required field
@@ -346,7 +348,7 @@ type ConverseOutput struct {
 	// The result from the call to Converse.
 	//
 	// Output is a required field
-	Output *ConverseOutput_ `json:"output"`
+	Output *ConverseOutput `json:"output"`
 
 	// The reason why the model stopped generating output.
 	//
@@ -362,9 +364,9 @@ type ConverseOutput struct {
 	Usage *TokenUsage `json:"usage"`
 }
 
-// ConverseOutput_ ConverseResponseOutput is defined in the AWS Bedrock API:
+// ConverseOutput is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseOutput.html
-type ConverseOutput_ struct {
+type ConverseOutput struct {
 	Message Message `json:"message,omitempty"`
 }
 

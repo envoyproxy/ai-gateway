@@ -97,7 +97,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (head
 }
 
 // ResponseBody implements [translator.Translator.ResponseBody].
-func (m mockTranslator) ResponseBody(respHeader map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -179,7 +179,7 @@ func (m mockExternalProcessingStream) Recv() (*extprocv3.ProcessingRequest, erro
 }
 
 // SetHeader implements [extprocv3.ExternalProcessor_ProcessServer].
-func (m mockExternalProcessingStream) SetHeader(md metadata.MD) error { panic("TODO") }
+func (m mockExternalProcessingStream) SetHeader(_ metadata.MD) error { panic("TODO") }
 
 // SendHeader implements [extprocv3.ExternalProcessor_ProcessServer].
 func (m mockExternalProcessingStream) SendHeader(metadata.MD) error { panic("TODO") }

@@ -25,9 +25,8 @@ import (
 func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
-	} else {
-		return nil, fmt.Errorf("unsupported path: %s", path)
 	}
+	return nil, fmt.Errorf("unsupported path: %s", path)
 }
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
@@ -92,10 +91,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
-	if b, err := json.Marshal(bedrockReq); err != nil {
+	if mut.Body, err = json.Marshal(bedrockReq); err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to marshal body: %w", err)
-	} else {
-		mut.Body = b
 	}
 	setContentLength(headerMutation, mut.Body)
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
@@ -238,9 +235,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		}
 		return chatMessage, nil
-	} else {
-		return nil, fmt.Errorf("unexpected content type")
 	}
+	return nil, fmt.Errorf("unexpected content type")
 }
 
 // unmarshalToolCallArguments is a helper method to unmarshal tool call arguments.
@@ -468,7 +464,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 	var openaiError openai.Error
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v == jsonContentType {
 		var bedrockError awsbedrock.BedrockException
-		if err := json.NewDecoder(body).Decode(&bedrockError); err != nil {
+		if err = json.NewDecoder(body).Decode(&bedrockError); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal error body: %w", err)
 		}
 		openaiError = openai.Error{
@@ -480,7 +476,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 			},
 		}
 	} else {
-		buf, err := io.ReadAll(body)
+		var buf []byte
+		buf, err = io.ReadAll(body)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 		}
@@ -494,10 +491,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 		}
 	}
 	mut := &extprocv3.BodyMutation_Body{}
-	if errBody, err := json.Marshal(openaiError); err != nil {
+	mut.Body, err = json.Marshal(openaiError)
+	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
-	} else {
-		mut.Body = errBody
 	}
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
@@ -508,9 +504,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if v, ok := respHeaders[statusHeaderName]; ok {
-		if v, err := strconv.Atoi(v); err == nil {
-			if !isGoodStatusCode(v) {
+	if statusStr, ok := respHeaders[statusHeaderName]; ok {
+		var status int
+		if status, err = strconv.Atoi(statusStr); err == nil {
+			if !isGoodStatusCode(status) {
 				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
 				return headerMutation, bodyMutation, LLMTokenUsage{}, err
 			}
@@ -518,7 +515,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	}
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
-		buf, err := io.ReadAll(body)
+		var buf []byte
+		buf, err = io.ReadAll(body)
 		if err != nil {
 			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 		}
@@ -538,7 +536,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			if !ok {
 				continue
 			}
-			oaiEventBytes, err := json.Marshal(oaiEvent)
+			var oaiEventBytes []byte
+			oaiEventBytes, err = json.Marshal(oaiEvent)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}
@@ -553,8 +552,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 	}
 
-	var bedrockResp awsbedrock.ConverseOutput
-	if err := json.NewDecoder(body).Decode(&bedrockResp); err != nil {
+	var bedrockResp awsbedrock.ConverseResponse
+	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
@@ -590,10 +589,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		openAIResp.Choices = append(openAIResp.Choices, choice)
 	}
 
-	if b, err := json.Marshal(openAIResp); err != nil {
+	mut.Body, err = json.Marshal(openAIResp)
+	if err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to marshal body: %w", err)
-	} else {
-		mut.Body = b
 	}
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)

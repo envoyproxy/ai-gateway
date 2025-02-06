@@ -12,9 +12,10 @@ import (
 )
 
 // ConfigReceiver is an interface that can receive *filterapi.Config updates.
+// This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(config *filterapi.Config) error
+	LoadConfig(ctx context.Context, config *filterapi.Config) error
 }
 
 type configWatcher struct {
@@ -73,19 +74,19 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	if cw.l.Enabled(ctx, slog.LevelDebug) {
 		// Re-hydrate the current config file for later diffing.
 		previous := cw.current
-		current, err := cw.getConfigString()
+		cw.current, err = cw.getConfigString()
 		if err != nil {
 			return fmt.Errorf("failed to read the config file: %w", err)
 		}
 
-		cw.diff(previous, current)
+		cw.diff(previous, cw.current)
 	}
 
 	cfg, err := filterapi.UnmarshalConfigYaml(cw.path)
 	if err != nil {
 		return err
 	}
-	return cw.rcv.LoadConfig(cfg)
+	return cw.rcv.LoadConfig(ctx, cfg)
 }
 
 // getConfigString gets a string representation of the current config
@@ -95,10 +96,7 @@ func (cw *configWatcher) getConfigString() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	current := string(currentByte)
-	cw.current = current
-
-	return current, nil
+	return string(currentByte), nil
 }
 
 func (cw *configWatcher) diff(oldConfig, newConfig string) {
