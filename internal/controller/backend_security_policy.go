@@ -71,7 +71,6 @@ func (b backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl
 	return
 }
 
-// Move to rotator file
 func isBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) bool {
 	if spec.AWSCredentials != nil {
 		return spec.AWSCredentials.OIDCExchangeToken != nil
