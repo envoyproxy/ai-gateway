@@ -12,9 +12,10 @@ import (
 )
 
 // ConfigReceiver is an interface that can receive *filterapi.Config updates.
+// This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(config *filterapi.Config) error
+	LoadConfig(ctx context.Context, config *filterapi.Config) error
 }
 
 type configWatcher struct {
@@ -85,7 +86,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return cw.rcv.LoadConfig(cfg)
+	return cw.rcv.LoadConfig(ctx, cfg)
 }
 
 // getConfigString gets a string representation of the current config
