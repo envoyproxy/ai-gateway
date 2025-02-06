@@ -132,7 +132,7 @@ test-crdcel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/cel-validation $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
+                 go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
