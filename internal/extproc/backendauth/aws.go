@@ -27,7 +27,7 @@ type awsHandler struct {
 	region      string
 }
 
-func newAWSHandler(awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
+func newAWSHandler(awsAuth *filterapi.AWSAuth) (Handler, error) {
 	var credentials aws.Credentials
 	var region string
 
@@ -60,7 +60,7 @@ func newAWSHandler(awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
 //
 // This assumes that during the transformation, the path is set in the header mutation as well as
 // the body in the body mutation.
-func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, bodyMut *extprocv3.BodyMutation) error {
+func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, bodyMut *extprocv3.BodyMutation) error {
 	method := requestHeaders[":method"]
 	path := ""
 	if headerMut.SetHeaders != nil {
@@ -90,7 +90,7 @@ func (a *awsHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.H
 		return fmt.Errorf("cannot create request: %w", err)
 	}
 
-	err = a.signer.SignHTTP(context.Background(), a.credentials, req,
+	err = a.signer.SignHTTP(ctx, a.credentials, req,
 		hex.EncodeToString(payloadHash[:]), "bedrock", a.region, time.Now())
 	if err != nil {
 		return fmt.Errorf("cannot sign request: %w", err)
