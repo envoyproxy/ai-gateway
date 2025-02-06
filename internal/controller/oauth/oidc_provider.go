@@ -52,7 +52,6 @@ func (p *OIDCProvider) getOIDCMetadata(ctx context.Context, issuerURL string) (*
 	}
 
 	resp, err := p.httpClient.Do(req)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch OIDC metadata: %w", err)
 	}

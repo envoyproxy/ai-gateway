@@ -8,7 +8,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -27,6 +29,8 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -40,6 +44,10 @@ const (
 //
 //	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 const mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
+
+// preRotationWindow specifies how long before expiry to rotate credentials
+// temporarily a fixed duration
+const preRotationWindow = 5 * time.Minute
 
 // ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an AIServiceBackend, an AIGatewayRoute, or a deletion event.
@@ -65,6 +73,7 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
+	oidcTokenCache         map[string]*oauth.TokenResponse
 }
 
 func newConfigSink(
@@ -83,6 +92,7 @@ func newConfigSink(
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
 		eventChan:              eventChan,
+		oidcTokenCache:         make(map[string]*oauth.TokenResponse),
 	}
 	return c
 }
@@ -256,6 +266,48 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 		aiBackend := &aiServiceBackends.Items[i]
 		c.syncAIServiceBackend(ctx, aiBackend)
 	}
+
+	if isBackendSecurityPolicyAuthOIDC(bsp.Spec) {
+		tokenResponse, ok := c.oidcTokenCache[key]
+		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.ExpiresAt) {
+			baseProvider := oauth.NewBaseProvider(c.client, c.logger, &http.Client{Timeout: 30 * time.Second})
+			oidcProvider := oauth.NewOIDCProvider(baseProvider, getBackendSecurityPolicyAuthOIDC(bsp.Spec))
+
+			tokenRes, err := oidcProvider.FetchToken(context.TODO())
+			if err != nil {
+				c.logger.Error(err, "failed to fetch OIDC provider token")
+				return
+			}
+			c.oidcTokenCache[key] = tokenRes
+			tokenResponse = tokenRes
+		}
+
+		awsCredentials := bsp.Spec.AWSCredentials
+		rotator, err := backendauthrotators.NewAWSOIDCRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
+		if err != nil {
+			c.logger.Error(err, "failed to create AWS OIDC rotator")
+			return
+		}
+
+		expired, err := rotator.IsExpired()
+		if err != nil {
+			c.logger.Error(err, "failed to check if AWS OIDC rotator is expired")
+			return
+		}
+
+		if expired {
+			token := tokenResponse.IDToken
+			if token == "" {
+				token = tokenResponse.AccessToken
+			}
+
+			err = rotator.Rotate(context.Background(), awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+			if err != nil {
+				c.logger.Error(err, "failed to rotate AWS OIDC exchange token")
+				return
+			}
+		}
+	}
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
@@ -309,7 +361,7 @@ func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute 
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
-					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
@@ -607,8 +659,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(ctx context.Context, spec
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
-						// Will introduce OIDC in a following PR
-						continue
+						secretName = backendSecurityPolicy.Name
 					}
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
