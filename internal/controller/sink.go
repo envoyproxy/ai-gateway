@@ -82,17 +82,17 @@ func newConfigSink(
 	return c
 }
 
-func (c *configSink) backend(namespace, name string) (*aigv1a1.AIServiceBackend, error) {
+func (c *configSink) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
 	backend := &aigv1a1.AIServiceBackend{}
-	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
+	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return nil, err
 	}
 	return backend, nil
 }
 
-func (c *configSink) backendSecurityPolicy(namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
+func (c *configSink) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
 	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
-	if err := c.client.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy); err != nil {
+	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy); err != nil {
 		return nil, err
 	}
 	return backendSecurityPolicy, nil
@@ -107,7 +107,7 @@ func (c *configSink) init(ctx context.Context) error {
 				close(c.eventChan)
 				return
 			case event := <-c.eventChan:
-				c.handleEvent(event)
+				c.handleEvent(ctx, event)
 			}
 		}
 	}()
@@ -115,25 +115,25 @@ func (c *configSink) init(ctx context.Context) error {
 }
 
 // handleEvent handles the event received from the controllers in a single goroutine.
-func (c *configSink) handleEvent(event ConfigSinkEvent) {
+func (c *configSink) handleEvent(ctx context.Context, event ConfigSinkEvent) {
 	switch e := event.(type) {
 	case *aigv1a1.AIServiceBackend:
-		c.syncAIServiceBackend(e)
+		c.syncAIServiceBackend(ctx, e)
 	case *aigv1a1.AIGatewayRoute:
-		c.syncAIGatewayRoute(e)
+		c.syncAIGatewayRoute(ctx, e)
 	case *aigv1a1.BackendSecurityPolicy:
-		c.syncBackendSecurityPolicy(e)
+		c.syncBackendSecurityPolicy(ctx, e)
 	case ConfigSinkEventSecretUpdate:
-		c.syncSecret(e.Namespace, e.Name)
+		c.syncSecret(ctx, e.Namespace, e.Name)
 	default:
 		panic(fmt.Sprintf("unexpected event type: %T", e))
 	}
 }
 
-func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) {
+func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRouteFilter exists in the namespace.
 	var httpRouteFilter egv1a1.HTTPRouteFilter
-	err := c.client.Get(context.Background(),
+	err := c.client.Get(ctx,
 		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
 	if apierrors.IsNotFound(err) {
 		httpRouteFilter = egv1a1.HTTPRouteFilter{
@@ -149,7 +149,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 				},
 			},
 		}
-		if err := c.client.Create(context.Background(), &httpRouteFilter); err != nil {
+		if err := c.client.Create(ctx, &httpRouteFilter); err != nil {
 			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
 			return
 		}
@@ -161,7 +161,7 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	// Check if the HTTPRoute exists.
 	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
-	err = c.client.Get(context.Background(), client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
+	err = c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
 	if apierrors.IsNotFound(err) {
 		// This means that this AIGatewayRoute is a new one.
@@ -181,20 +181,20 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err := c.newHTTPRoute(&httpRoute, aiGatewayRoute); err != nil {
+	if err := c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 
 	if existingRoute {
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err := c.client.Update(context.Background(), &httpRoute); err != nil {
+		if err := c.client.Update(ctx, &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err := c.client.Create(context.Background(), &httpRoute); err != nil {
+		if err := c.client.Create(ctx, &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
@@ -202,30 +202,30 @@ func (c *configSink) syncAIGatewayRoute(aiGatewayRoute *aigv1a1.AIGatewayRoute) 
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err := c.updateExtProcConfigMap(aiGatewayRoute, uuid); err != nil {
+	if err := c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 
 	// Deploy extproc deployment with potential updates.
-	err = c.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+	err = c.syncExtProcDeployment(ctx, aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 
 	// Annotate all pods with the new config.
-	err = c.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
 	if err != nil {
 		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 }
 
-func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
+func (c *configSink) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) {
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
-	err := c.client.List(context.Background(), &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
+	err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
 	if err != nil {
 		c.logger.Error(err, "failed to list AIGatewayRoute", "backend", key)
 		return
@@ -235,27 +235,27 @@ func (c *configSink) syncAIServiceBackend(aiBackend *aigv1a1.AIServiceBackend) {
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		c.syncAIGatewayRoute(&aiGatewayRoute)
+		c.syncAIGatewayRoute(ctx, &aiGatewayRoute)
 	}
 }
 
-func (c *configSink) syncBackendSecurityPolicy(bsp *aigv1a1.BackendSecurityPolicy) {
+func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) {
 	key := fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
 	var aiServiceBackends aigv1a1.AIServiceBackendList
-	err := c.client.List(context.Background(), &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
+	err := c.client.List(ctx, &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
 	if err != nil {
 		c.logger.Error(err, "failed to list AIServiceBackendList", "backendSecurityPolicy", key)
 		return
 	}
 	for i := range aiServiceBackends.Items {
 		aiBackend := &aiServiceBackends.Items[i]
-		c.syncAIServiceBackend(aiBackend)
+		c.syncAIServiceBackend(ctx, aiBackend)
 	}
 }
 
 // updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
-func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
-	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(ctx, extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {
 		// This is a bug since we should have created the configmap before sending the AIGatewayRoute to the configSink.
 		panic(fmt.Errorf("failed to get configmap %s: %w", extProcName(aiGatewayRoute), err))
@@ -277,7 +277,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
 			ec.Rules[i].Backends[j].Name = key
 			ec.Rules[i].Backends[j].Weight = backend.Weight
-			backendObj, err := c.backend(aiGatewayRoute.Namespace, backend.Name)
+			backendObj, err := c.backend(ctx, aiGatewayRoute.Namespace, backend.Name)
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			} else {
@@ -289,7 +289,7 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 				volumeName := backendSecurityPolicyVolumeName(
 					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
 				)
-				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(bspRef.Name))
+				backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
 				if err != nil {
 					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
 				}
@@ -357,14 +357,14 @@ func (c *configSink) updateExtProcConfigMap(aiGatewayRoute *aigv1a1.AIGatewayRou
 		configMap.Data = make(map[string]string)
 	}
 	configMap.Data[expProcConfigFileName] = string(marshaled)
-	if _, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Update(context.Background(), configMap, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Update(ctx, configMap, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update configmap %s: %w", configMap.Name, err)
 	}
 	return nil
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *configSink) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range aiGatewayRoute.Spec.Rules {
@@ -374,7 +374,7 @@ func (c *configSink) newHTTPRoute(dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a
 				continue
 			}
 			dedup[key] = struct{}{}
-			backend, err := c.backend(aiGatewayRoute.Namespace, br.Name)
+			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 			if err != nil {
 				return fmt.Errorf("AIServiceBackend %s not found", key)
 			}
@@ -516,7 +516,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
 				panic(fmt.Errorf("BUG: failed to set controller reference for deployment: %w", err))
 			}
-			updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
+			updatedSpec, err := c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
 			}
@@ -530,7 +530,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
 	} else {
-		updatedSpec, err := c.mountBackendSecurityPolicySecrets(&deployment.Spec.Template.Spec, aiGatewayRoute)
+		updatedSpec, err := c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
 		}
@@ -569,7 +569,7 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 }
 
 // mountBackendSecurityPolicySecrets will mount secrets based on backendSecurityPolicies attached to AIServiceBackend.
-func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
+func (c *configSink) mountBackendSecurityPolicySecrets(ctx context.Context, spec *corev1.PodSpec, aiGatewayRoute *aigv1a1.AIGatewayRoute) (*corev1.PodSpec, error) {
 	// Mount from scratch to avoid secrets that should be unmounted.
 	// Only keep the original mount which should be the config volume.
 	spec.Volumes = spec.Volumes[:1]
@@ -580,13 +580,13 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 		rule := &aiGatewayRoute.Spec.Rules[i]
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
-			backend, err := c.backend(aiGatewayRoute.Namespace, backendRef.Name)
+			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
 			}
 
 			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-				backendSecurityPolicy, err := c.backendSecurityPolicy(aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+				backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
 				if err != nil {
 					return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
 				}
@@ -626,9 +626,9 @@ func (c *configSink) mountBackendSecurityPolicySecrets(spec *corev1.PodSpec, aiG
 }
 
 // syncSecret syncs the state of all resource referencing the given secret.
-func (c *configSink) syncSecret(namespace, name string) {
+func (c *configSink) syncSecret(ctx context.Context, namespace, name string) {
 	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
-	err := c.client.List(context.Background(), &backendSecurityPolicies,
+	err := c.client.List(ctx, &backendSecurityPolicies,
 		client.MatchingFields{
 			k8sClientIndexSecretToReferencingBackendSecurityPolicy: fmt.Sprintf("%s.%s", name, namespace),
 		},
@@ -639,7 +639,7 @@ func (c *configSink) syncSecret(namespace, name string) {
 	}
 	for i := range backendSecurityPolicies.Items {
 		backendSecurityPolicy := &backendSecurityPolicies.Items[i]
-		c.syncBackendSecurityPolicy(backendSecurityPolicy)
+		c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy)
 	}
 }
 

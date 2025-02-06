@@ -30,7 +30,7 @@ import (
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(scheme)
-	err := applyIndexing(func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	err := applyIndexing(context.Background(), func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	})
@@ -51,10 +51,10 @@ func TestConfigSink_handleEvent(t *testing.T) {
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	s.handleEvent(ConfigSinkEventSecretUpdate{Namespace: "ns", Name: "some-secret"})
-	s.handleEvent(&aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
-	s.handleEvent(&aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
-	s.handleEvent(&aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(context.Background(), ConfigSinkEventSecretUpdate{Namespace: "ns", Name: "some-secret"})
+	s.handleEvent(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
 }
 
 func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
@@ -105,7 +105,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		require.NoError(t, err)
 
 		// Then sync, which should update the HTTPRoute.
-		s.syncAIGatewayRoute(route)
+		s.syncAIGatewayRoute(context.Background(), route)
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), route, &client.CreateOptions{}))
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncAIServiceBackend(&aigv1a1.AIServiceBackend{
+	s.syncAIServiceBackend(context.Background(), &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
@@ -166,7 +166,7 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncBackendSecurityPolicy(&aigv1a1.BackendSecurityPolicy{
+	s.syncBackendSecurityPolicy(context.Background(), &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 	})
 }
@@ -235,7 +235,7 @@ func Test_newHTTPRoute(t *testing.T) {
 		err := s.client.Create(context.Background(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-	err := s.newHTTPRoute(httpRoute, aiGatewayRoute)
+	err := s.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expRules := []gwapiv1.HTTPRouteRule{
@@ -466,7 +466,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			}, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			err = s.updateExtProcConfigMap(tc.route, tc.exp.UUID)
+			err = s.updateExtProcConfigMap(context.Background(), tc.route, tc.exp.UUID)
 			require.NoError(t, err)
 
 			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(context.Background(), extProcName(tc.route), metav1.GetOptions{})
@@ -776,7 +776,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 
 	require.NoError(t, fakeClient.Create(context.Background(), &aiGateway, &client.CreateOptions{}))
 
-	updatedSpec, err := s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
+	updatedSpec, err := s.mountBackendSecurityPolicySecrets(context.Background(), &spec, &aiGateway)
 	require.NoError(t, err)
 
 	require.Len(t, updatedSpec.Volumes, 3)
@@ -809,7 +809,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 	require.NotNil(t, s)
 
-	updatedSpec, err = s.mountBackendSecurityPolicySecrets(&spec, &aiGateway)
+	updatedSpec, err = s.mountBackendSecurityPolicySecrets(context.Background(), &spec, &aiGateway)
 	require.NoError(t, err)
 
 	require.Len(t, updatedSpec.Volumes, 3)
@@ -877,5 +877,5 @@ func Test_syncSecret(t *testing.T) {
 		Data:       map[string][]byte{"key": []byte("value")},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
-	s.syncSecret("ns", "some-secret")
+	s.syncSecret(context.Background(), "ns", "some-secret")
 }
