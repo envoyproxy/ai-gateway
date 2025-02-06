@@ -167,7 +167,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				Reason:  reasonHTTPRouteFilterCreateError,
 				Message: fmt.Sprintf("failed to create HTTPRouteFilter: %v", err),
 			})
-			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 				c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 			}
 			return
@@ -180,7 +180,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonHTTPRouteFilterGetError,
 			Message: fmt.Sprintf("failed to get HTTPRouteFilter: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
@@ -200,7 +200,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
-		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
+		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
 			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
 				Type:    conditionReconciled,
@@ -220,7 +220,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonHTTPRouteGetError,
 			Message: fmt.Sprintf("failed to get HTTPRoute: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
@@ -235,7 +235,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonHTTPRouteUpdateError,
 			Message: fmt.Sprintf("failed to update HTTPRoute: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
@@ -251,7 +251,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				Reason:  reasonHTTPRouteUpdateError,
 				Message: fmt.Sprintf("failed to update HTTPRoute: %v", err),
 			})
-			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 				c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 			}
 			return
@@ -266,7 +266,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				Reason:  reasonHTTPRouteCreateError,
 				Message: fmt.Sprintf("failed to create HTTPRoute: %v", err),
 			})
-			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 				c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 			}
 			return
@@ -283,7 +283,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonExtProcConfigMapUpdateError,
 			Message: fmt.Sprintf("failed to update extproc configmap: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
