@@ -23,13 +23,13 @@ import (
 // For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 //
 //   - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-//     The name of these resources are ai-eg-route-extproc-{name}.
+//     The name of these resources are `ai-eg-route-extproc-${name}`.
 //   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
 //     The name of the HTTPRoute is the same as the AIGatewayRoute.
 //   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-//     The name of the EnvoyExtensionPolicy is ai-eg-route-extproc-{name} which is the same as the Deployment, etc.
+//     The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
 //   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
-//     The name of the HTTPRouteFilter is ai-eg-host-rewrite.
+//     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 //
 // All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
 // detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
