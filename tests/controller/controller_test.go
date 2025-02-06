@@ -134,7 +134,7 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, aiGatewayRoute.Spec.Rules, 1)
 				require.Len(t, aiGatewayRoute.Spec.Rules[0].BackendRefs, 2)
 
-				require.Len(t, aiGatewayRoute.Status.Condition)
+				require.Len(t, aiGatewayRoute.Status.Condition, 1)
 				require.Equal(t, metav1.ConditionTrue, aiGatewayRoute.Status.Conditions[0].Status)
 
 				require.Equal(t, "backend1", aiGatewayRoute.Spec.Rules[0].BackendRefs[0].Name)
