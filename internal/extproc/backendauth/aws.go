@@ -27,7 +27,7 @@ type awsHandler struct {
 	region      string
 }
 
-func newAWSHandler(awsAuth *filterapi.AWSAuth) (Handler, error) {
+func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (Handler, error) {
 	var credentials aws.Credentials
 	var region string
 
@@ -35,14 +35,14 @@ func newAWSHandler(awsAuth *filterapi.AWSAuth) (Handler, error) {
 		region = awsAuth.Region
 		if len(awsAuth.CredentialFileName) != 0 {
 			cfg, err := config.LoadDefaultConfig(
-				context.Background(),
+				ctx,
 				config.WithSharedCredentialsFiles([]string{awsAuth.CredentialFileName}),
 				config.WithRegion(awsAuth.Region),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("cannot load from credentials file: %w", err)
 			}
-			credentials, err = cfg.Credentials.Retrieve(context.Background())
+			credentials, err = cfg.Credentials.Retrieve(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
 			}
