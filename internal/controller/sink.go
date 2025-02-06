@@ -227,7 +227,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err = c.updateHTTPRoute(&httpRoute, aiGatewayRoute); err != nil {
+	if err = c.updateHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		aiGatewayRoute.Status.Conditions = append(aiGatewayRoute.Status.Conditions, metav1.Condition{
 			Type:    conditionReconciled,
