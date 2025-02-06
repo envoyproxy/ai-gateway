@@ -83,7 +83,7 @@ func (p *OIDCProvider) validateIDToken(ctx context.Context, rawIDToken, issuerUR
 		return nil, fmt.Errorf("context error before validation: %w", err)
 	}
 
-	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(rawIDToken, func(_ *jwt.Token) (interface{}, error) {
 		// For now, we skip signature validation as we don't have the key
 		// TODO: Implement JWKS validation
 		return jwt.UnsafeAllowNoneSignatureType, nil
@@ -204,7 +204,7 @@ func (p *OIDCProvider) SupportsFlow(flowType FlowType) bool {
 }
 
 // ValidateToken implements token validation for both access tokens and ID tokens
-func (p *OIDCProvider) ValidateToken(ctx context.Context, token string) error {
+func (p *OIDCProvider) ValidateToken(_ context.Context, _ string) error {
 	// For ID tokens, we expect them to have been validated during GetToken
 	// For access tokens, we could implement introspection here if needed
 	return nil
