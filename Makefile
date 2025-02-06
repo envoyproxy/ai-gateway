@@ -124,11 +124,11 @@ test:
 
 ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 
-# This runs the integration tests of CEL validation rules in API definitions.
+# This runs the integration tests of CEL validation rules in CRD definitions.
 #
 # This requires the EnvTest binary to be built.
-.PHONY: test-cel
-test-cel: envtest apigen
+.PHONY: test-crdcel
+test-crdcel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
