@@ -3,7 +3,6 @@ Package backendauthrotators provides credential rotation implementations.
 This file contains common AWS functionality shared between different AWS credential
 rotators. It provides:
 1. AWS Client Interfaces and Implementations:
-- IAMOperations for AWS IAM API operations
 - STSOperations for AWS STS API operations
 - Concrete implementations with proper AWS SDK integration
 2. Credential File Management:
@@ -22,50 +21,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	corev1 "k8s.io/api/core/v1"
 )
 
 // Common constants for AWS operations
 const (
-	// defaultKeyDeletionDelay is the time to wait before deleting old access keys
-	defaultKeyDeletionDelay = 60 * time.Second
-	// defaultMinPropagationDelay is the minimum time to wait for credential propagation
-	defaultMinPropagationDelay = 30 * time.Second
 	// credentialsKey is the key used to store AWS credentials in Kubernetes secrets
 	credentialsKey = "credentials"
 	// awsSessionNameFormat is the format string for AWS session names
 	awsSessionNameFormat = "ai-gateway-%s"
 )
-
-// profileFromMetadata determines which AWS credentials profile to use.
-// If a profile is specified in the metadata, that profile is used.
-// Otherwise, if there is only one profile in the credentials, that profile is used.
-// If there are multiple profiles and none specified, an error is returned.
-func profileFromMetadata(metadata map[string]string, creds *awsCredentialsFile) (string, error) {
-	// If profile is specified in metadata, use that
-	if profile, ok := metadata["profile"]; ok {
-		if _, exists := creds.profiles[profile]; !exists {
-			return "", fmt.Errorf("specified profile %q not found in credentials", profile)
-		}
-		return profile, nil
-	}
-
-	// If only one profile exists, use that
-	if len(creds.profiles) == 1 {
-		for profile := range creds.profiles {
-			return profile, nil
-		}
-	}
-
-	// Multiple profiles exist but none specified
-	return "", fmt.Errorf("multiple AWS credential profiles found but none specified in metadata")
-}
 
 // defaultAWSConfig returns an AWS config with adaptive retry mode enabled.
 // This ensures better handling of transient API failures and rate limiting.
@@ -75,66 +44,12 @@ func defaultAWSConfig(ctx context.Context) (aws.Config, error) {
 	)
 }
 
-// awsConfigFromCredentials creates an AWS config using the provided credentials.
-// This is used when we want to explicitly use credentials from a secret rather than
-// relying on the default credential chain.
-func awsConfigFromCredentials(ctx context.Context, creds *awsCredentials) (aws.Config, error) {
-	return config.LoadDefaultConfig(ctx,
-		config.WithRetryMode(aws.RetryModeAdaptive),
-		config.WithCredentialsProvider(aws.CredentialsProviderFunc(
-			func(ctx context.Context) (aws.Credentials, error) {
-				return aws.Credentials{
-					AccessKeyID:     creds.accessKeyID,
-					SecretAccessKey: creds.secretAccessKey,
-					SessionToken:    creds.sessionToken,
-				}, nil
-			},
-		)),
-		config.WithRegion(creds.region),
-	)
-}
-
-// IAMOperations defines the interface for AWS IAM operations required by the rotators.
-// This interface allows for easier testing through mocks and provides a clear
-// contract for required IAM functionality.
-type IAMOperations interface {
-	// CreateAccessKey creates a new IAM access key
-	CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error)
-	// DeleteAccessKey deletes an existing IAM access key
-	DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error)
-}
-
 // STSOperations defines the interface for AWS STS operations required by the rotators.
 // This interface encapsulates the STS API operations needed for OIDC token exchange
 // and role assumption.
 type STSOperations interface {
 	// AssumeRoleWithWebIdentity exchanges a web identity token for temporary AWS credentials
 	AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
-}
-
-// IAMClient implements the IAMOperations interface using the AWS SDK v2.
-// It provides a concrete implementation for IAM operations using the official AWS SDK.
-type IAMClient struct {
-	client *iam.Client
-}
-
-// NewIAMClient creates a new IAMClient with the given AWS config.
-// The client is configured with the provided AWS configuration, which should
-// include appropriate credentials and region settings.
-func NewIAMClient(cfg aws.Config) *IAMClient {
-	return &IAMClient{
-		client: iam.NewFromConfig(cfg),
-	}
-}
-
-// CreateAccessKey implements the IAMOperations interface by creating a new IAM access key.
-func (c *IAMClient) CreateAccessKey(ctx context.Context, params *iam.CreateAccessKeyInput, optFns ...func(*iam.Options)) (*iam.CreateAccessKeyOutput, error) {
-	return c.client.CreateAccessKey(ctx, params, optFns...)
-}
-
-// DeleteAccessKey implements the IAMOperations interface by deleting an IAM access key.
-func (c *IAMClient) DeleteAccessKey(ctx context.Context, params *iam.DeleteAccessKeyInput, optFns ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
-	return c.client.DeleteAccessKey(ctx, params, optFns...)
 }
 
 // STSClient implements the STSOperations interface using the AWS SDK v2.
@@ -182,63 +97,6 @@ type awsCredentialsFile struct {
 	profiles map[string]*awsCredentials
 }
 
-// parseAWSCredentialsFile parses an AWS credentials file with multiple profiles.
-// The file format follows the standard AWS credentials file format:
-//
-//	[profile-name]
-//	aws_access_key_id = AKIAXXXXXXXXXXXXXXXX
-//	aws_secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//	aws_session_token = xxxxxxxx (optional)
-//	region = xx-xxxx-x (optional)
-//
-// Returns a structured representation of the credentials file.
-func parseAWSCredentialsFile(data string) *awsCredentialsFile {
-	file := &awsCredentialsFile{
-		profiles: make(map[string]*awsCredentials),
-	}
-
-	var currentCreds *awsCredentials
-
-	for _, line := range strings.Split(data, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			profileName := strings.TrimPrefix(strings.TrimSuffix(line, "]"), "[")
-			currentCreds = &awsCredentials{profile: profileName}
-			file.profiles[profileName] = currentCreds
-			continue
-		}
-
-		if currentCreds == nil {
-			continue
-		}
-
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		switch key {
-		case "aws_access_key_id":
-			currentCreds.accessKeyID = value
-		case "aws_secret_access_key":
-			currentCreds.secretAccessKey = value
-		case "aws_session_token":
-			currentCreds.sessionToken = value
-		case "region":
-			currentCreds.region = value
-		}
-	}
-
-	return file
-}
-
 // formatAWSCredentialsFile formats multiple AWS credential profiles into a credentials file.
 // The output follows the standard AWS credentials file format and ensures:
 // - Consistent ordering of profiles through sorting
@@ -271,20 +129,6 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 		}
 	}
 	return builder.String()
-}
-
-// validateAWSSecret validates that a secret contains valid AWS credentials
-func validateAWSSecret(secret *corev1.Secret) (*awsCredentialsFile, error) {
-	if secret.Data == nil || len(secret.Data[credentialsKey]) == 0 {
-		return nil, fmt.Errorf("secret contains no AWS credentials")
-	}
-
-	creds := parseAWSCredentialsFile(string(secret.Data[credentialsKey]))
-	if creds == nil || len(creds.profiles) == 0 {
-		return nil, fmt.Errorf("no valid AWS credentials found in secret")
-	}
-
-	return creds, nil
 }
 
 // updateAWSCredentialsInSecret updates AWS credentials in a secret
