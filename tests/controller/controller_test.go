@@ -21,11 +21,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -133,9 +135,6 @@ func TestStartControllers(t *testing.T) {
 
 				require.Len(t, aiGatewayRoute.Spec.Rules, 1)
 				require.Len(t, aiGatewayRoute.Spec.Rules[0].BackendRefs, 2)
-
-				require.Len(t, aiGatewayRoute.Status.Conditions, 1)
-				require.Equal(t, metav1.ConditionTrue, aiGatewayRoute.Status.Conditions[0].Status)
 
 				require.Equal(t, "backend1", aiGatewayRoute.Spec.Rules[0].BackendRefs[0].Name)
 				require.Equal(t, "backend2", aiGatewayRoute.Spec.Rules[0].BackendRefs[1].Name)
@@ -404,10 +403,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
-
-		// Verify status
-		require.Len(t, created.Status.Conditions, 1)
-		require.Equal(t, metav1.ConditionTrue, created.Status.Conditions[0].Status)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -430,10 +425,25 @@ func TestAIGatewayRouteController(t *testing.T) {
 		created := item.(*aigv1a1.AIGatewayRoute)
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
+	})
 
-		// Verify status
-		require.Len(t, created.Status.Conditions, 1)
-		require.Equal(t, metav1.ConditionTrue, created.Status.Conditions[0].Status)
+	t.Run("reconcile", func(t *testing.T) {
+		routeName := "route1"
+		routeNamespace := "default"
+
+		_, err := rc.Reconcile(context.Background(), reconcile.Request{
+			NamespacedName: types.NamespacedName{Namespace: routeNamespace, Name: routeName},
+		})
+		require.NoError(t, err)
+
+		item, ok := <-ch
+		require.True(t, ok)
+		require.IsType(t, &aigv1a1.AIGatewayRoute{}, item)
+
+		// Verify status.
+		reconciled := item.(*aigv1a1.AIGatewayRoute)
+		require.Len(t, reconciled.Status.Conditions, 1)
+		require.Equal(t, metav1.ConditionTrue, reconciled.Status.Conditions[0].Status)
 	})
 }
 
