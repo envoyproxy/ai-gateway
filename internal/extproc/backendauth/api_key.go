@@ -1,6 +1,7 @@
 package backendauth
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -27,7 +28,7 @@ func newAPIKeyHandler(auth *filterapi.APIKeyAuth) (Handler, error) {
 // Do implements [Handler.Do].
 //
 // Extracts the api key from the local file and set it as an authorization header.
-func (a *apiKeyHandler) Do(requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", a.apiKey)
 	headerMut.SetHeaders = append(headerMut.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte(requestHeaders["Authorization"])},
