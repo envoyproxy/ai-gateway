@@ -92,7 +92,7 @@ func (p *ClientCredentialsProvider) SupportsFlow(flowType FlowType) bool {
 	return flowType == FlowClientCredentials
 }
 
-func (p *ClientCredentialsProvider) ValidateToken(ctx context.Context, token string) error {
+func (p *ClientCredentialsProvider) ValidateToken(_ context.Context, _ string) error {
 	// Implement token validation logic
 	// This might involve introspection endpoint if available
 	return nil
