@@ -428,7 +428,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 	})
 
 	t.Run("reconcile", func(t *testing.T) {
-		routeName := "route1"
+		routeName := "myroute"
 		routeNamespace := "default"
 
 		_, err := rc.Reconcile(context.Background(), reconcile.Request{
