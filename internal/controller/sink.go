@@ -149,7 +149,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				},
 			},
 		}
-		if err := c.client.Create(ctx, &httpRouteFilter); err != nil {
+		if err = c.client.Create(ctx, &httpRouteFilter); err != nil {
 			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
 			return
 		}
@@ -181,20 +181,20 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err := c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
+	if err = c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
 
 	if existingRoute {
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err := c.client.Update(ctx, &httpRoute); err != nil {
+		if err = c.client.Update(ctx, &httpRoute); err != nil {
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err := c.client.Create(ctx, &httpRoute); err != nil {
+		if err = c.client.Create(ctx, &httpRoute); err != nil {
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			return
 		}
@@ -202,7 +202,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err := c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		return
 	}
@@ -277,19 +277,20 @@ func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute 
 			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
 			ec.Rules[i].Backends[j].Name = key
 			ec.Rules[i].Backends[j].Weight = backend.Weight
-			backendObj, err := c.backend(ctx, aiGatewayRoute.Namespace, backend.Name)
+			var backendObj *aigv1a1.AIServiceBackend
+			backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backend.Name)
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
-			} else {
-				ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-				ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 			}
+			ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
+			ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 
 			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 				volumeName := backendSecurityPolicyVolumeName(
 					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
 				)
-				backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+				var backendSecurityPolicy *aigv1a1.BackendSecurityPolicy
+				backendSecurityPolicy, err = c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
 				if err != nil {
 					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
 				}
@@ -338,7 +339,7 @@ func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute 
 			fc.Type = filterapi.LLMRequestCostTypeCELExpression
 			expr := *cost.CELExpression
 			// Sanity check the CEL expression.
-			_, err := llmcostcel.NewProgram(expr)
+			_, err = llmcostcel.NewProgram(expr)
 			if err != nil {
 				return fmt.Errorf("invalid CEL expression: %w", err)
 			}
@@ -513,10 +514,11 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 					},
 				},
 			}
-			if err := ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
+			if err = ctrlutil.SetControllerReference(aiGatewayRoute, deployment, c.client.Scheme()); err != nil {
 				panic(fmt.Errorf("BUG: failed to set controller reference for deployment: %w", err))
 			}
-			updatedSpec, err := c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
+			var updatedSpec *corev1.PodSpec
+			updatedSpec, err = c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
 			}
@@ -530,7 +532,8 @@ func (c *configSink) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *
 			return fmt.Errorf("failed to get deployment: %w", err)
 		}
 	} else {
-		updatedSpec, err := c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
+		var updatedSpec *corev1.PodSpec
+		updatedSpec, err = c.mountBackendSecurityPolicySecrets(ctx, &deployment.Spec.Template.Spec, aiGatewayRoute)
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
 		}

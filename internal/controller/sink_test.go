@@ -30,7 +30,7 @@ import (
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(scheme)
-	err := applyIndexing(context.Background(), func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	err := applyIndexing(context.Background(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	})
@@ -501,8 +501,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), bsp, &client.CreateOptions{})
-		require.NoError(t, err)
+		require.NoError(t, fakeClient.Create(context.Background(), bsp, &client.CreateOptions{}))
 	}
 
 	for _, b := range []*aigv1a1.AIServiceBackend{
@@ -530,8 +529,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), b, &client.CreateOptions{})
-		require.NoError(t, err)
+		require.NoError(t, fakeClient.Create(context.Background(), b, &client.CreateOptions{}))
 	}
 	require.NotNil(t, s)
 
