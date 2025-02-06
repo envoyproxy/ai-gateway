@@ -1,6 +1,7 @@
 package backendauth
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestAWSHandler_Do(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		handler *awsHandler
+		handler Handler
 	}{
 		{
 			name:    "Using AWS Credential File",
@@ -64,7 +65,7 @@ func TestAWSHandler_Do(t *testing.T) {
 					Body: []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`),
 				},
 			}
-			err = tc.handler.Do(requestHeaders, headerMut, bodyMut)
+			err = tc.handler.Do(context.Background(), requestHeaders, headerMut, bodyMut)
 			require.NoError(t, err)
 		})
 	}
