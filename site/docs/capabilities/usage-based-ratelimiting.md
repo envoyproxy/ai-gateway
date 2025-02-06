@@ -116,8 +116,7 @@ spec:
               from: Metadata
               metadata:
                 namespace: io.envoy.ai_gateway
-                key: llm_total_token    # Uses total tokens from the response
-        
+                key: llm_total_token    # Uses total tokens from the responses
         # Rate limit rule for GPT-3.5: 5000 total tokens per hour per user
         # Higher limit since the model is more cost-effective
         - clientSelectors:
