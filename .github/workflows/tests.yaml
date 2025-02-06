@@ -54,9 +54,9 @@ jobs:
       - name: Run unit tests
         run: make test-coverage
 
-  test_cel_validation:
+  test_crdcel:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
-    name: CEL Validation Test
+    name: CRD CEL Validation Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +72,7 @@ jobs:
             ~/go/bin
           key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Run unit tests
-        run: make test-cel
+        run: make test-crdcel
 
   test_controller:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -186,7 +186,7 @@ jobs:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [unittest, test_cel_validation, test_controller, test_extproc, test_e2e]
+    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
 
   helm_push:

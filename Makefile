@@ -32,12 +32,12 @@ help:
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
 	@echo "  test            	 Run the unit tests for the codebase."
-	@echo "  test-coverage     	 Run the unit tests for the codebase with coverage check."
-	@echo "  test-cel        	 Run the integration tests of CEL validation rules in API definitions with envtest."
+	@echo "  test-coverage		 Run the unit tests for the codebase with coverage check."
+	@echo "  test-crdcel      	 Run the integration tests of CEL validation in CRD definitions with envtest."
 	@echo "                  	 This will be needed when changing API definitions."
 	@echo "  test-extproc    	 Run the integration tests for extproc without controller or k8s at all."
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
-	@echo "  test-e2e          	 Run the end-to-end tests with a local kind cluster."
+	@echo "  test-e2e       	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
 	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
@@ -48,7 +48,7 @@ help:
 .PHONY: lint
 lint: golangci-lint
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==test_cel_validation,test_controller,test_extproc ./...
+	@$(GOLANGCI_LINT) run --build-tags==test_crdcel,test_controller,test_extproc ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -132,7 +132,7 @@ test-cel: envtest apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
         KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
-                 go test ./tests/cel-validation $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_cel_validation; \
+                 go test ./tests/cel-validation $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
