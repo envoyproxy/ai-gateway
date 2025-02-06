@@ -66,11 +66,10 @@ func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) er
 			}
 
 			if b.Auth != nil {
-				h, err := backendauth.NewHandler(ctx, b.Auth)
+				backendAuthHandlers[b.Name], err = backendauth.NewHandler(ctx, b.Auth)
 				if err != nil {
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
 				}
-				backendAuthHandlers[b.Name] = h
 			}
 		}
 	}
