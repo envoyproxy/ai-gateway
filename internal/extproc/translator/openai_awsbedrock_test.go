@@ -881,18 +881,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 	})
 	tests := []struct {
 		name   string
-		input  awsbedrock.ConverseOutput
+		input  awsbedrock.ConverseResponse
 		output openai.ChatCompletionResponse
 	}{
 		{
 			name: "basic_testing",
-			input: awsbedrock.ConverseOutput{
+			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
 					InputTokens:  10,
 					OutputTokens: 20,
 					TotalTokens:  30,
 				},
-				Output: &awsbedrock.ConverseOutput_{
+				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: "assistant",
 						Content: []*awsbedrock.ContentBlock{
@@ -940,14 +940,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		},
 		{
 			name: "test stop reason",
-			input: awsbedrock.ConverseOutput{
+			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
 					InputTokens:  10,
 					OutputTokens: 20,
 					TotalTokens:  30,
 				},
 				StopReason: ptr.To("stop_sequence"),
-				Output: &awsbedrock.ConverseOutput_{
+				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
 						Content: []*awsbedrock.ContentBlock{
@@ -977,9 +977,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 		},
 		{
 			name: "test tool use",
-			input: awsbedrock.ConverseOutput{
+			input: awsbedrock.ConverseResponse{
 				StopReason: ptr.To(awsbedrock.StopReasonToolUse),
-				Output: &awsbedrock.ConverseOutput_{
+				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
 						Content: []*awsbedrock.ContentBlock{

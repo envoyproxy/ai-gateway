@@ -50,10 +50,6 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 
-		for key, values := range resp.Header {
-			t.Logf("key: %s, values: %v\n", key, values)
-		}
-
 		body, err := io.ReadAll(resp.Body)
 		if resp.StatusCode == http.StatusOK {
 			var oaiBody openai.ChatCompletion
@@ -70,19 +66,35 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	// Test the input token limit.
 	baseID := int(time.Now().UnixNano()) // To avoid collision with previous runs.
 	usedID := strconv.Itoa(baseID)
+	// This input number exceeds the limit.
 	makeRequest(usedID, 10000, 0, 0, 200)
-	makeRequest(usedID, 1, 0, 0, 429)
+	// Any request with the same user ID should be rejected.
+	makeRequest(usedID, 0, 0, 0, 429)
 
 	// Test the output token limit.
 	usedID = strconv.Itoa(baseID + 1)
-	makeRequest(usedID, 0, 20, 0, 200) // This output number exceeds the input limit, but should still be allowed.
+	// This output number exceeds the input limit, but should still be allowed.
+	makeRequest(usedID, 0, 20, 0, 200)
+	// This output number exceeds the output limit.
 	makeRequest(usedID, 0, 10000, 0, 200)
-	makeRequest(usedID, 0, 1, 0, 429)
+	// Any request with the same user ID should be rejected.
+	makeRequest(usedID, 0, 0, 0, 429)
 
 	// Test the total token limit.
 	usedID = strconv.Itoa(baseID + 2)
-	makeRequest(usedID, 0, 0, 20, 200)  // This total number exceeds the input limit, but should still be allowed.
-	makeRequest(usedID, 0, 0, 200, 200) // This total number exceeds the output limit, but should still be allowed.
+	// This total number exceeds the input limit, but should still be allowed.
+	makeRequest(usedID, 0, 0, 20, 200)
+	// This total number exceeds the output limit, but should still be allowed.
+	makeRequest(usedID, 0, 0, 200, 200)
+	// This total number exceeds the total limit.
 	makeRequest(usedID, 0, 0, 1000000, 200)
-	makeRequest(usedID, 0, 0, 1, 429)
+	// Any request with the same user ID should be rejected.
+	makeRequest(usedID, 0, 0, 0, 429)
+
+	// Test the CEL token limit.
+	usedID = strconv.Itoa(baseID + 3)
+	// When the input number is 3, the CEL expression returns 100000000 which exceeds the limit.
+	makeRequest(usedID, 3, 0, 0, 200)
+	// Any request with the same user ID should be rejected.
+	makeRequest(usedID, 0, 0, 0, 429)
 }

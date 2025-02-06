@@ -37,7 +37,6 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: envoy-ai-gateway-token-ratelimit-testupstream
-          weight: 100
   # The following metadata keys are used to store the costs from the LLM request.
   llmRequestCosts:
     - metadataKey: llm_input_token
@@ -46,6 +45,12 @@ spec:
       type: OutputToken
     - metadataKey: llm_total_token
       type: TotalToken
+    # This configures the token limit based on the CEL expression.
+    # For a demonstration purpose, the CEL expression returns 100000000 only when the input token is 3,
+    # otherwise it returns 0 (no token usage).
+    - metadataKey: llm_cel_calculated_token
+      type: CEL
+      celExpression: "input_tokens == uint(3) ? 100000000 : 0"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -139,3 +144,22 @@ spec:
               metadata:
                 namespace: io.envoy.ai_gateway
                 key: llm_total_token
+
+        # Repeat the same configuration for a different token type.
+        # This configures the token limit based on the CEL expression.
+        - clientSelectors:
+            - headers:
+                - name: x-user-id
+                  type: Distinct
+          limit:
+            requests: 1000
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_cel_calculated_token
