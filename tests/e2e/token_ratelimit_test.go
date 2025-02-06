@@ -93,7 +93,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 	// Test the CEL token limit.
 	usedID = strconv.Itoa(baseID + 3)
-	// When the input number is 7, the CEL expression returns 100000000 which exceeds the limit.
+	// When the input number is 3, the CEL expression returns 100000000 which exceeds the limit.
 	makeRequest(usedID, 3, 0, 0, 200)
 	// Any request with the same user ID should be rejected.
 	makeRequest(usedID, 0, 0, 0, 429)
