@@ -208,7 +208,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				Reason:  reasonControllerRefSetError,
 				Message: fmt.Sprintf("failed to set controller reference: %v", err),
 			})
-			if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+			if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 				c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 			}
 		}
@@ -299,7 +299,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonExtProcDeployError,
 			Message: fmt.Sprintf("failed to deploy ext proc: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
@@ -315,7 +315,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Reason:  reasonPodAnnotateError,
 			Message: fmt.Sprintf("failed to annotate pods: %v", err),
 		})
-		if err := c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
+		if err = c.client.Status().Update(context.Background(), aiGatewayRoute); err != nil {
 			c.logger.Error(err, "failed to update AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		}
 		return
