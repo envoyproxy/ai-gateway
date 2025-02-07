@@ -14,7 +14,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [TranslatorFactory] for OpenAI to OpenAI translation.
+// newOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
 func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
@@ -29,7 +29,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	bufferingDone bool
 }
 
-// RequestBody implements [RequestBody].
+// RequestBody implements [Translator.RequestBody].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {

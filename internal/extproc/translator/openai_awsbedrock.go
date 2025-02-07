@@ -21,7 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToAWSBedrockTranslator implements [TranslatorFactory] for OpenAI to AWS Bedrock translation.
+// newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
 func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
