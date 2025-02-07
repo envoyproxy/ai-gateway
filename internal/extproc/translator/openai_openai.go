@@ -14,7 +14,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [TranslatorFactory] for OpenAI to OpenAI translation.
+// newOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
 func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
@@ -29,7 +29,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	bufferingDone bool
 }
 
-// RequestBody implements [RequestBody].
+// RequestBody implements [Translator.RequestBody].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
@@ -40,6 +40,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 	if req.Stream {
 		o.stream = true
 		override = &extprocv3http.ProcessingMode{
+			// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
+			// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
 			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
 			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
 		}
