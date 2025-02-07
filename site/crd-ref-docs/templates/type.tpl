@@ -30,7 +30,9 @@ _Appears in:_
 - **{{ .Name }}**
   - **Type:** _{{ markdownRenderType .Type }}_
   - **Required:** {{ if .Markers.optional }}No{{ else }}Yes{{ end }}
-  - **Description:** {{ template "type_members" . }}
+  {{- if .Doc }}
+  - **Description:** {{ .Doc }}
+  {{- end }}
 {{ end -}}
 {{- end -}}
 {{- end -}}
