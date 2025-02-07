@@ -47,6 +47,9 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 			refreshTime := time.Now().String()
 			for _, backendSecurityPolicy := range backendSecPolicyList.Items {
 				if isBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) {
+					if len(backendSecurityPolicy.Annotations) == 0 {
+						backendSecurityPolicy.Annotations = make(map[string]string)
+					}
 					backendSecurityPolicy.Annotations["refresh"] = refreshTime
 				}
 				err = b.client.Update(ctx, &backendSecurityPolicy)
