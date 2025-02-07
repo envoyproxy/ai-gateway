@@ -24,23 +24,44 @@ import (
 //
 // This handles the BackendSecurityPolicy resource and sends it to the config sink so that it can modify configuration.
 type backendSecurityPolicyController struct {
-	client    client.Client
-	kube      kubernetes.Interface
-	logger    logr.Logger
-	eventChan chan ConfigSinkEvent
+	client       client.Client
+	kube         kubernetes.Interface
+	logger       logr.Logger
+	eventChan    chan ConfigSinkEvent
+	reconcileAll bool
 }
 
 func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
-		client:    client,
-		kube:      kube,
-		logger:    logger,
-		eventChan: ch,
+		client:       client,
+		kube:         kube,
+		logger:       logger,
+		eventChan:    ch,
+		reconcileAll: true,
 	}
 }
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
-func (b backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
+func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
+	if b.reconcileAll {
+		var backendSecPolicyList aigv1a1.BackendSecurityPolicyList
+		err = b.client.List(ctx, &backendSecPolicyList)
+		if err != nil {
+			b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resources")
+		} else {
+			refreshTime := time.Now().String()
+			for _, backendSecurityPolicy := range backendSecPolicyList.Items {
+				if isBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) {
+					backendSecurityPolicy.Annotations["refresh"] = refreshTime
+				}
+				err = b.client.Update(ctx, &backendSecurityPolicy)
+				if err != nil {
+					b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resource", "name", backendSecurityPolicy.Name)
+				}
+			}
+			b.reconcileAll = false
+		}
+	}
 	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
 	if err = b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if errors.IsNotFound(err) {
