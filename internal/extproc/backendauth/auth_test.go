@@ -1,6 +1,7 @@
 package backendauth
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -40,7 +41,7 @@ aws_secret_access_key = test
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewHandler(tt.config)
+			_, err := NewHandler(context.Background(), tt.config)
 			require.NoError(t, err)
 		})
 	}

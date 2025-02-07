@@ -153,7 +153,7 @@ func (c *aiGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Con
 			},
 			Data: map[string]string{expProcConfigFileName: filterapi.DefaultConfig},
 		}
-		if err := ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
+		if err = ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
 			panic(fmt.Errorf("BUG: failed to set controller reference for extproc configmap: %w", err))
 		}
 		_, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})

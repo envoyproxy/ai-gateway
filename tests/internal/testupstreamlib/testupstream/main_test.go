@@ -275,7 +275,8 @@ func Test_main(t *testing.T) {
 
 		decoder := eventstream.NewDecoder()
 		for i := 0; i < 5; i++ {
-			message, err := decoder.Decode(response.Body, nil)
+			var message eventstream.Message
+			message, err = decoder.Decode(response.Body, nil)
 			require.NoError(t, err)
 			require.Equal(t, "content", message.Headers.Get("event-type").String())
 			require.Equal(t, fmt.Sprintf("%d", i+1), string(message.Payload))
