@@ -40,6 +40,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.Reque
 	if req.Stream {
 		o.stream = true
 		override = &extprocv3http.ProcessingMode{
+			// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
+			// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
 			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
 			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
 		}
