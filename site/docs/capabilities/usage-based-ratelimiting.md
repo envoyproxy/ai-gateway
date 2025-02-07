@@ -40,7 +40,7 @@ AI Gateway has specific behavior for token tracking and rate limiting:
    - Custom limits using CEL expressions
 
 :::note
-The token counts are extracted from the model's response. Make sure your model backend provides token usage information in a format compatible with the OpenAI schema.
+For model providers with OpenAI schema transformations (like AWS Bedrock), AI Gateway automatically captures token usage through its request/response transformer. This enables consistent token tracking and rate limiting across different AI services using a unified OpenAI-compatible format.
 :::
 
 ## Configuration
