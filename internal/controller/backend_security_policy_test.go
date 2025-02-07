@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -54,7 +56,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	err = cl.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}, oidcBackendSecurityPolicy)
 	require.NoError(t, err)
 	require.Len(t, oidcBackendSecurityPolicy.Annotations, 1)
-	time, ok := oidcBackendSecurityPolicy.Annotations["refresh"]
+	time, ok := oidcBackendSecurityPolicy.Annotations["reconcile"]
 	require.True(t, ok)
 	require.NotEmpty(t, time)
 
@@ -63,4 +65,66 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
+}
+
+func TestBackendSecurityController_IsBackendSecurityPolicyAuthOIDC(t *testing.T) {
+	require.False(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,
+		APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{},
+	}))
+
+	require.False(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Region:          "us-east-1",
+			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
+		},
+	}))
+
+	require.True(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Region:            "us-east-1",
+			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+		},
+	}))
+}
+
+func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,
+		APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{},
+	}))
+
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Region:          "us-east-1",
+			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
+		},
+	}))
+
+	oidc := egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{
+			Issuer: "https://oidc.example.com",
+		},
+		ClientID: "client-id",
+		ClientSecret: gwapiv1.SecretObjectReference{
+			Name: "client-secret",
+		},
+	}
+
+	actualOIDC := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Region: "us-east-1",
+			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: oidc,
+			},
+		},
+	})
+	require.NotNil(t, actualOIDC)
+	require.Equal(t, oidc.ClientID, actualOIDC.ClientID)
+	require.Equal(t, oidc.Provider.Issuer, actualOIDC.Provider.Issuer)
+	require.Equal(t, oidc.ClientSecret.Name, actualOIDC.ClientSecret.Name)
 }
