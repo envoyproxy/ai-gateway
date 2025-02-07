@@ -2,11 +2,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,6 +38,8 @@ func newBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 	}
 }
 
+type patchBackendSecurityPolicy struct{}
+
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
 	if b.reconcileAll {
@@ -44,17 +48,12 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		if err != nil {
 			b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resources")
 		} else {
-			refreshTime := time.Now().String()
 			for _, backendSecurityPolicy := range backendSecPolicyList.Items {
 				if isBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) {
-					if len(backendSecurityPolicy.Annotations) == 0 {
-						backendSecurityPolicy.Annotations = make(map[string]string)
+					err = b.client.Patch(ctx, &backendSecurityPolicy, patchBackendSecurityPolicy{})
+					if err != nil {
+						b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resource", "name", backendSecurityPolicy.Name)
 					}
-					backendSecurityPolicy.Annotations["refresh"] = refreshTime
-				}
-				err = b.client.Update(ctx, &backendSecurityPolicy)
-				if err != nil {
-					b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resource", "name", backendSecurityPolicy.Name)
 				}
 			}
 			b.reconcileAll = false
@@ -104,4 +103,12 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 		}
 	}
 	return nil
+}
+
+func (p patchBackendSecurityPolicy) Type() types.PatchType {
+	return types.MergePatchType
+}
+
+func (p patchBackendSecurityPolicy) Data(_ client.Object) ([]byte, error) {
+	return []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, "reconcile", time.Now().String())), nil
 }
