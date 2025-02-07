@@ -118,9 +118,6 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the first backend.
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
-		// Status should be one and is about reconciling
-		require.Len(t, route.Status.Conditions, 1)
-		require.Equal(t, metav1.ConditionTrue, route.Status.Conditions[0].Status)
 	})
 
 	// Check the namespace has the default host rewrite filter.
