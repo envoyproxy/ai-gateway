@@ -2,7 +2,7 @@
 {{- $type := . -}}
 {{- if markdownShouldRenderType $type -}}
 
-## {{ $type.Name }}
+### {{ $type.Name }}
 
 {{ if $type.IsAlias }}_Underlying type:_ _{{ markdownRenderTypeLink $type.UnderlyingType  }}_{{ end }}
 
@@ -16,20 +16,25 @@ _Appears in:_
 {{- end }}
 
 {{ if $type.Members -}}
-| Field | Type | Required | Description |
-| ---   | ---  | ---      | ---         |
 {{ if $type.GVK -}}
-| `apiVersion` | _string_ | |`{{ $type.GVK.Group }}/{{ $type.GVK.Version }}`
-| `kind` | _string_ | |`{{ $type.GVK.Kind }}`
+- **apiVersion**
+  - **Type:** _string_
+  - **Value:** `{{ $type.GVK.Group }}/{{ $type.GVK.Version }}`
+- **kind**
+  - **Type:** _string_
+  - **Value:** `{{ $type.GVK.Kind }}`
 {{ end -}}
-
 {{ range $type.Members -}}
 {{- with .Markers.notImplementedHide -}}
 {{- else -}}
-| `{{ .Name  }}` | _{{ markdownRenderType .Type }}_ | {{ with .Markers.optional }} {{ "false" }} {{ else }} {{ "true" }} {{end}} | {{ template "type_members" . }} |
+- **{{ .Name }}**
+  - **Type:** _{{ markdownRenderType .Type }}_
+  - **Required:** {{ if .Markers.optional }}No{{ else }}Yes{{ end }}
+  - **Description:** {{ template "type_members" . }}
 {{ end -}}
 {{- end -}}
 {{- end -}}
+
 {{ if $type.EnumValues -}}
 | Value | Description |
 | ----- | ----------- |
@@ -37,5 +42,6 @@ _Appears in:_
 | `{{ .Name }}` | {{ markdownRenderFieldDoc .Doc }} |
 {{ end -}}
 {{- end -}}
+
 {{- end -}}
 {{- end -}}
