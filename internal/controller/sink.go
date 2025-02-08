@@ -157,7 +157,7 @@ func (c *configSink) patchAIGatewayRouteStatus(ctx context.Context, copyRoute *a
 		return err
 	}
 
-	err = c.client.Status().Patch(ctx, &originRoute, client.RawPatch(types.StrategicMergePatchType, patchData))
+	err = c.client.Status().Patch(ctx, &originRoute, client.RawPatch(types.MergePatchType, patchData))
 	if err != nil {
 		return err
 	}

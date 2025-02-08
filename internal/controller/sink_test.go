@@ -125,6 +125,12 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 	err := s.client.Get(context.Background(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
 	require.NoError(t, err)
 	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
+
+	// Check status is patched
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = s.client.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
 }
 
 func TestConfigSink_syncAIServiceBackend(t *testing.T) {

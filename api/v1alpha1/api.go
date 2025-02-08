@@ -9,6 +9,7 @@ import (
 )
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 //
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
