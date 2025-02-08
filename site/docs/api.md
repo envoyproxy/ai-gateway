@@ -112,7 +112,7 @@ _Appears in:_
 | `kind` | _string_ | |`AIGatewayRoute`
 | `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
 | `spec` | _[AIGatewayRouteSpec](#aigatewayroutespec)_ |  true  | Spec defines the details of the AIGatewayRoute. |
-| `status` | _[AIGatewayRouteStatus](#aigatewayroutestatus)_ |  true  |  |
+| `status` | _[AIGatewayRouteStatus](#aigatewayroutestatus)_ |  true  | Status defines the status details of the AIGatewayRoute. |
 
 
 #### AIGatewayRouteList
