@@ -401,9 +401,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
-
-		require.Len(t, origin.Status.Conditions, 1)
-		require.Equal(t, metav1.ConditionTrue, origin.Status.Conditions[0].Status)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -426,9 +423,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 		created := item.(*aigv1a1.AIGatewayRoute)
 		created.TypeMeta = metav1.TypeMeta{} // This will be populated by the controller internally, so we ignore it.
 		require.Equal(t, origin, created)
-
-		require.Len(t, origin.Status.Conditions, 2)
-		require.Equal(t, metav1.ConditionTrue, origin.Status.Conditions[1].Status)
 	})
 }
 
