@@ -31,7 +31,7 @@ const (
 	conditionReconciled           = "Reconciled"
 	reasonReconciliationSucceeded = "ReconciliationSucceeded"
 	reasonConfigMapError          = "ConfigMapError"
-	reaseExtensionPolicyError     = "ExtensionPolicyError"
+	reasonExtensionPolicyError    = "ExtensionPolicyError"
 )
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
@@ -106,7 +106,7 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		condition := metav1.Condition{
 			Type:    conditionReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  reaseExtensionPolicyError,
+			Reason:  reasonExtensionPolicyError,
 			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		}
 		if err := c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {

@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path"
 
@@ -147,18 +146,11 @@ func (c *configSink) patchAIGatewayRouteStatus(ctx context.Context, copyRoute *a
 	if err := c.client.Get(ctx, client.ObjectKey{Name: copyRoute.Name, Namespace: copyRoute.Namespace}, &originRoute); err != nil {
 		return err
 	}
+	originRoute.Status.Conditions = append(originRoute.Status.Conditions, condition)
 
-	patch := map[string]interface{}{
-		"conditions": []metav1.Condition{condition},
-	}
+	patch := client.MergeFrom(originRoute.DeepCopy())
 
-	patchData, err := json.Marshal(patch)
-	if err != nil {
-		return err
-	}
-
-	err = c.client.Status().Patch(ctx, &originRoute, client.RawPatch(types.MergePatchType, patchData))
-	if err != nil {
+	if err := c.client.Status().Patch(context.TODO(), &originRoute, patch); err != nil {
 		return err
 	}
 
