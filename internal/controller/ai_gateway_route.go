@@ -93,8 +93,8 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 			Reason:  reasonConfigMapError,
 			Message: fmt.Sprintf("failed to reconcile config map: %v", err),
 		}
-		if updateErr := c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); updateErr != nil {
-			c.logger.Error(updateErr, "failed to patch AIGatewayRoute status")
+		if err = c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status")
 		}
 
 		return ctrl.Result{}, fmt.Errorf("failed to ensure extproc configmap exists: %w", err)
@@ -109,8 +109,8 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 			Reason:  reaseExtensionPolicyError,
 			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		}
-		if updateErr := c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); updateErr != nil {
-			c.logger.Error(updateErr, "failed to patch AIGatewayRoute status")
+		if err := c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status")
 		}
 
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile extension policy: %w", err)

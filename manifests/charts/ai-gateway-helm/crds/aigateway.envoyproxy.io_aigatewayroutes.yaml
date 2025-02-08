@@ -458,8 +458,7 @@ spec:
             - targetRefs
             type: object
           status:
-            description: AIGatewayRouteStatus contains the conditions by the reconciliation
-              result.
+            description: Status defines the status details of the AIGatewayRoute.
             properties:
               conditions:
                 items:

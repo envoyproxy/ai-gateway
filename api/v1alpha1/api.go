@@ -40,6 +40,7 @@ type AIGatewayRoute struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the details of the AIGatewayRoute.
 	Spec   AIGatewayRouteSpec   `json:"spec,omitempty"`
+	// Status defines the status details of the AIGatewayRoute.
 	Status AIGatewayRouteStatus `json:"status,omitempty"`
 }
 
