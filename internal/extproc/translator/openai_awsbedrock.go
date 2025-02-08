@@ -21,7 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToAWSBedrockTranslator implements [TranslatorFactory] for OpenAI to AWS Bedrock translation.
+// newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
 func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
 		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
@@ -52,6 +52,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 	if openAIReq.Stream {
 		o.stream = true
 		// We need to change the processing mode for streaming requests.
+		// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
+		// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
 		override = &extprocv3http.ProcessingMode{
 			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
 			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
