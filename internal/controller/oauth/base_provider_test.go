@@ -15,7 +15,7 @@ import (
 func TestNewBaseProvider(t *testing.T) {
 	scheme := runtime.NewScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	require.NotNil(t, NewBaseProvider(cl, ctrl.Log, nil))
+	require.NotNil(t, NewBaseProvider(cl, ctrl.Log))
 }
 
 func TestBaseProvider_GetClientSecret(t *testing.T) {
@@ -24,7 +24,7 @@ func TestBaseProvider_GetClientSecret(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log, nil)
+	baseProvider := NewBaseProvider(cl, ctrl.Log)
 
 	secretName, secretNamespace := "secret", "secret-ns"
 	err := cl.Create(context.Background(), &corev1.Secret{

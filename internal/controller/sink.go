@@ -8,12 +8,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"path"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"golang.org/x/oauth2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -73,7 +73,7 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
-	oidcTokenCache         map[string]*oauth.TokenResponse
+	oidcTokenCache         map[string]*oauth2.Token
 }
 
 func newConfigSink(
@@ -92,7 +92,7 @@ func newConfigSink(
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
 		eventChan:              eventChan,
-		oidcTokenCache:         make(map[string]*oauth.TokenResponse),
+		oidcTokenCache:         make(map[string]*oauth2.Token),
 	}
 	return c
 }
@@ -269,9 +269,9 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 
 	if isBackendSecurityPolicyAuthOIDC(bsp.Spec) {
 		tokenResponse, ok := c.oidcTokenCache[key]
-		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.ExpiresAt) {
-			baseProvider := oauth.NewBaseProvider(c.client, c.logger, &http.Client{Timeout: 30 * time.Second})
-			oidcProvider := oauth.NewOIDCProvider(baseProvider, getBackendSecurityPolicyAuthOIDC(bsp.Spec))
+		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
+			baseProvider := oauth.NewBaseProvider(c.client, c.logger)
+			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(baseProvider), getBackendSecurityPolicyAuthOIDC(bsp.Spec))
 
 			tokenRes, err := oidcProvider.FetchToken(context.TODO())
 			if err != nil {
@@ -296,7 +296,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 		}
 
 		if expired {
-			token := tokenResponse.IDToken
+			token := tokenResponse.AccessToken
 			if token == "" {
 				token = tokenResponse.AccessToken
 			}
