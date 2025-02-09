@@ -3,8 +3,6 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -15,19 +13,13 @@ import (
 type BaseProvider struct {
 	client client.Client
 	logger logr.Logger
-	http   *http.Client
 }
 
 // NewBaseProvider creates a new base provider
-func NewBaseProvider(client client.Client, logger logr.Logger, httpClient *http.Client) *BaseProvider {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
+func NewBaseProvider(client client.Client, logger logr.Logger) *BaseProvider {
 	return &BaseProvider{
 		client: client,
 		logger: logger,
-		http:   httpClient,
 	}
 }
 
