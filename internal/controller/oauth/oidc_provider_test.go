@@ -43,7 +43,7 @@ func TestOIDCProvider_GetOIDCMetadata(t *testing.T) {
 		ClientID: "some-client-id",
 	}
 
-	oidcProvider := NewOIDCProvider(NewMockClientCredentialsProvider(baseProvider), oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(baseProvider), oidc)
 	metadata, err := oidcProvider.getOIDCMetadata(context.Background(), ts.URL)
 	require.NoError(t, err)
 	require.Equal(t, "token_endpoint", metadata.TokenEndpoint)
@@ -91,8 +91,10 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 			Namespace: &namespaceRef,
 		},
 	}
-
-	oidcProvider := NewOIDCProvider(NewMockClientCredentialsProvider(baseProvider), oidc)
+	clientCredentialProvider := NewClientCredentialsProvider(baseProvider)
+	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{BaseProvider: baseProvider}
+	require.NotNil(t, clientCredentialProvider)
+	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
 	token, err := oidcProvider.FetchToken(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)

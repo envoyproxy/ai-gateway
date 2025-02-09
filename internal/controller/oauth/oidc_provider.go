@@ -14,7 +14,7 @@ import (
 
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support
 type OIDCProvider struct {
-	tokenProvider  TokenProvider
+	tokenProvider  *ClientCredentialsTokenProvider
 	httpClient     *http.Client
 	oidcCredential *egv1a1.OIDC
 }
@@ -29,7 +29,7 @@ type OIDCMetadata struct {
 }
 
 // NewOIDCProvider creates a new OIDC-aware provider
-func NewOIDCProvider(tokenProvider TokenProvider, oidcCredentials *egv1a1.OIDC) *OIDCProvider {
+func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredentials *egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
 		tokenProvider:  tokenProvider,
 		httpClient:     &http.Client{Timeout: 30 * time.Second},
