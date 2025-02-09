@@ -2,14 +2,12 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -19,13 +17,14 @@ type ClientCredentialsProvider struct {
 }
 
 // NewClientCredentialsProvider creates a new client credentials provider
-func NewClientCredentialsProvider(base *BaseProvider) *ClientCredentialsProvider {
+func NewClientCredentialsProvider(base *BaseProvider) TokenProvider {
 	return &ClientCredentialsProvider{
 		BaseProvider: base,
 	}
 }
 
-func (p *ClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*TokenResponse, error) {
+// FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
+func (p *ClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
 	clientSecret, err := p.getClientSecret(ctx, &corev1.SecretReference{
 		Name:      string(oidc.ClientSecret.Name),
 		Namespace: string(*oidc.ClientSecret.Namespace),
@@ -33,67 +32,26 @@ func (p *ClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1
 	if err != nil {
 		return nil, err
 	}
+	return p.getTokenWithClientCredentialConfig(ctx, oidc, clientSecret)
+}
 
-	// Prepare token request
-	form := url.Values{}
-	form.Set("grant_type", "client_credentials")
-	form.Set("client_id", oidc.ClientID)
-	form.Set("client_secret", clientSecret)
-	if len(oidc.Scopes) > 0 {
-		form.Set("scope", strings.Join(oidc.Scopes, " "))
+// getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config
+func (p *ClientCredentialsProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
+	oauth2Config := clientcredentials.Config{
+		ClientID:     oidc.ClientID,
+		ClientSecret: clientSecret,
+		// Discovery returns the OAuth2 endpoints.
+		TokenURL: *oidc.Provider.TokenEndpoint,
+		Scopes:   oidc.Scopes,
 	}
-
-	// Make request
-	req, err := http.NewRequestWithContext(ctx, "POST", *oidc.Provider.TokenEndpoint,
-		strings.NewReader(form.Encode()))
+	token, err := oauth2Config.Token(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("token request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Parse response
-	var raw map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// Convert to TokenResponse
-	token := &TokenResponse{
-		Raw: raw,
-	}
-
-	// Extract standard fields
-	if v, ok := raw["access_token"].(string); ok {
-		token.AccessToken = v
-	}
-	if v, ok := raw["token_type"].(string); ok {
-		token.TokenType = v
-	}
-	if v, ok := raw["scope"].(string); ok {
-		token.Scope = v
+		return nil, fmt.Errorf("fail to get oauth2 token %w", err)
 	}
 
 	// Handle expiration
-	if v, ok := raw["expires_in"].(float64); ok {
-		token.ExpiresAt = time.Now().Add(time.Duration(v) * time.Second)
+	if token.ExpiresIn > 0 {
+		token.Expiry = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 	}
-
 	return token, nil
-}
-
-func (p *ClientCredentialsProvider) SupportsFlow(flowType FlowType) bool {
-	return flowType == FlowClientCredentials
-}
-
-func (p *ClientCredentialsProvider) ValidateToken(_ context.Context, _ string) error {
-	// Implement token validation logic
-	// This might involve introspection endpoint if available
-	return nil
 }

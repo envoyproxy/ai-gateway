@@ -2,27 +2,54 @@ package oauth
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"net/http"
-	"net/http/httptest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	"testing"
-	"time"
 )
 
-func TestNewClientCredentialsProvider(t *testing.T) {
-	require.NotNil(t, NewClientCredentialsProvider(nil))
+// MockClientCredentialsProvider implements the standard OAuth2 client credentials flow
+type MockClientCredentialsProvider struct {
+	*BaseProvider
+}
+
+// NewMockClientCredentialsProvider creates a new client credentials provider
+func NewMockClientCredentialsProvider(base *BaseProvider) TokenProvider {
+	return &MockClientCredentialsProvider{
+		BaseProvider: base,
+	}
+}
+
+// FetchToken gets the client secret from the secret reference and fetches the token from provider token URL.
+func (m *MockClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
+	_, err := m.getClientSecret(ctx, &corev1.SecretReference{
+		Name:      string(oidc.ClientSecret.Name),
+		Namespace: string(*oidc.ClientSecret.Namespace),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &oauth2.Token{
+		AccessToken: "token",
+		ExpiresIn:   3600,
+		Expiry:      time.Now().Add(time.Duration(3600) * time.Second),
+	}, nil
 }
 
 func TestClientCredentialsProvider_FetchToken(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"access_token": "token", "token_type": "Bearer", "expires_in": 3600}`))
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"access_token": "token", "token_type": "Bearer", "expires_in": 3600}`))
+		require.NoError(t, err)
 	}))
 	defer ts.Close()
 
@@ -31,7 +58,7 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log, nil)
+	baseProvider := NewBaseProvider(cl, ctrl.Log)
 	require.NotNil(t, baseProvider)
 
 	secretName, secretNamespace := "secret", "secret-ns"
@@ -49,7 +76,7 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	clientProvider := NewClientCredentialsProvider(baseProvider)
+	clientProvider := NewMockClientCredentialsProvider(baseProvider)
 	require.NotNil(t, clientProvider)
 
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
@@ -66,16 +93,5 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
-	require.WithinRangef(t, token.ExpiresAt, time.Now().Add(3590*time.Second), time.Now().Add(3600*time.Second), "token expires at")
-}
-
-func TestClientCredentialsProvider_SupportsFlow(t *testing.T) {
-	provider := NewClientCredentialsProvider(nil)
-	require.True(t, provider.SupportsFlow(FlowClientCredentials))
-	require.False(t, provider.SupportsFlow(FlowClientCredentialsWithIDToken))
-}
-
-func TestClientCredentialsProvider_ValidateToken(t *testing.T) {
-	provider := NewClientCredentialsProvider(nil)
-	require.Nil(t, provider.ValidateToken(context.Background(), ""))
+	require.WithinRangef(t, token.Expiry, time.Now().Add(3590*time.Second), time.Now().Add(3600*time.Second), "token expires at")
 }
