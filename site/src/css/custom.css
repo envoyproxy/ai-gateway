@@ -46,6 +46,57 @@
   --custom-required-badge-text: #dc2626;
 }
 
+/* Index Header */
+.heroBanner {
+  font-family: "Nunito", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding: 2rem 0rem 10rem 0rem;
+  text-align: center;
+  overflow: hidden;
+  background-color: #6c1899;
+  background-image: linear-gradient(0deg, #6c1899, #b923ff);
+  clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%);
+  color: #fff;
+  position: relative;
+
+
+  .hero__subtitle{
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .heroImage{
+    max-height: 30vh;
+  }
+}
+
+  @media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem 0rem 10rem 0rem;
+    align-items: start;
+    clip-path: polygon(0 0, 100% 0, 100% 87%, 0 100%);
+  }
+}
+  @media screen and (max-width: 500px) {
+    .heroBanner {
+      padding: 2rem 0rem 5rem 0rem;
+      align-items: start;
+      clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%);
+      .heroImage{
+        max-height: 15vh;
+      }
+    }
+  }
+  
+.navbar {
+    box-shadow: none;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Word wrapping rules */
 .markdown {
   overflow-wrap: break-word;
