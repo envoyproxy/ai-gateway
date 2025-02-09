@@ -108,60 +108,6 @@
   border-radius: 0 8px 8px 0;
 }
 
-/* Lists Enhancement */
-.markdown ul, .markdown ol {
-  padding-left: 1.5rem;
-}
-
-/* API Documentation List Styles */
-.markdown ul,
-.markdown ol {
-  padding-left: 1.25rem;
-  margin: 1rem 0;
-  list-style-position: outside;
-}
-
-.markdown ul {
-  list-style-type: none;
-}
-
-.markdown ul li {
-  position: relative;
-  padding-left: 1.5rem;
-  margin-bottom: 0.75rem;
-  line-height: 1.6;
-}
-
-.markdown ul li::before {
-  content: "•";
-  color: var(--ifm-color-primary);
-  font-weight: bold;
-  position: absolute;
-  left: 0;
-  top: -1px;
-  font-size: 1.2em;
-}
-
-.markdown ol li {
-  padding-left: 0.5rem;
-  margin-bottom: 0.75rem;
-  line-height: 1.6;
-}
-
-
-
-/* Nested list items */
-.markdown ul li li::before {
-  content: "◦";
-  font-size: 1.1em;
-}
-
-.markdown ul li li li::before {
-  content: "▪";
-  font-size: 0.8em;
-  top: 2px;
-}
-
 /* Tables Enhancement */
 .markdown table {
   border-collapse: separate;
@@ -222,9 +168,7 @@
   font-family: var(--ifm-font-family-monospace);
   font-size: 0.9rem;
   color: var(--ifm-color-primary);
-  background: transparent;
-  padding: 0;
-  margin: 0;
+  background-color: var(--custom-code-background);
 }
 
 .api-field[data-type="enum"] .api-field__description {

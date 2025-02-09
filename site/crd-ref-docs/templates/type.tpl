@@ -6,7 +6,7 @@
 
 {{ if $type.IsAlias }}**Underlying type:** {{ markdownRenderTypeLink $type.UnderlyingType  }}{{ end }}
 {{ if $type.References }}
-**Appears in**
+**Appears in:**
 {{- range $type.SortedReferences }}
 - {{ markdownRenderTypeLink . }}
 {{- end }}
