@@ -2,48 +2,65 @@
 {{- $type := . -}}
 {{- if markdownShouldRenderType $type -}}
 
-### {{ $type.Name }}
+#### {{ $type.Name }}
 
-{{ if $type.IsAlias }}_Underlying type:_ _{{ markdownRenderTypeLink $type.UnderlyingType  }}_{{ end }}
-
-{{ $type.Doc }}
-
-{{ if $type.References -}}
-_Appears in:_
+{{ if $type.IsAlias }}**Underlying type:** {{ markdownRenderTypeLink $type.UnderlyingType  }}{{ end }}
+{{ if $type.References }}
+**Appears in**
 {{- range $type.SortedReferences }}
 - {{ markdownRenderTypeLink . }}
 {{- end }}
 {{- end }}
 
+{{ $type.Doc }}
+
 {{ if $type.Members -}}
+
+##### Fields
+
 {{ if $type.GVK -}}
-- **apiVersion**
-  - **Type:** _string_
-  - **Value:** `{{ $type.GVK.Group }}/{{ $type.GVK.Version }}`
-- **kind**
-  - **Type:** _string_
-  - **Value:** `{{ $type.GVK.Kind }}`
-{{ end -}}
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>{{ $type.GVK.Group }}/{{ $type.GVK.Version }}</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>{{ $type.GVK.Kind }}</code> resource"
+/>
+{{- end }}
+
 {{ range $type.Members -}}
-{{- with .Markers.notImplementedHide -}}
-{{- else -}}
-- **{{ .Name }}**
-  - **Type:** _{{ markdownRenderType .Type }}_
-  - **Required:** {{ if .Markers.optional }}No{{ else }}Yes{{ end }}
-  {{- if .Doc }}
-  - **Description:** {{ .Doc }}
+{{- if not .Markers.notImplementedHide -}}
+<ApiField
+  name="{{ .Name }}"
+  type="{{ markdownRenderType .Type }}"
+  required="{{ if .Markers.optional }}false{{ else }}true{{ end }}"
+  {{- if .Default }}
+  defaultValue="{{ .Default }}"
   {{- end }}
-{{ end -}}
-{{- end -}}
-{{- end -}}
+  description="{{ template "type_members" . }}"
+/>
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{ if $type.EnumValues -}}
-| Value | Description |
-| ----- | ----------- |
-{{ range $type.EnumValues -}}
-| `{{ .Name }}` | {{ markdownRenderFieldDoc .Doc }} |
-{{ end -}}
-{{- end -}}
+##### Possible Values
 
-{{- end -}}
+{{ range $type.EnumValues -}}
+<ApiField
+  name="{{ .Name }}"
+  type="enum"
+  required="false"
+  description="{{ markdownRenderFieldDoc .Doc }}"
+/>
+{{- end }}
+{{- end }}
+
+{{- end }}
 {{- end -}}

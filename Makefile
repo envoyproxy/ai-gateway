@@ -86,20 +86,22 @@ apigen: controller-gen
 	@$(CONTROLLER_GEN) object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
-.PHONY: apidoc
-apidoc: crd-ref-docs
+.PHONY: apidoc-all
+apidoc-all: apidoc-core
+
+.PHONY: apidoc-core
+apidoc-core: crd-ref-docs
 	@$(CRD_REF_DOCS) \
-    	--source-path=api/v1alpha1 \
-    	--config=site/crd-ref-docs/config.yaml \
-    	--templates-dir=site/crd-ref-docs/templates \
-    	--output-path=API.md \
-    	--max-depth 20 \
-    	--output-path site/docs/api.md \
-    	--renderer=markdown
+		--source-path=api/v1alpha1 \
+		--config=site/crd-ref-docs/config-core.yaml \
+		--templates-dir=site/crd-ref-docs/templates \
+		--max-depth 20 \
+		--output-path site/docs/api/api.mdx \
+		--renderer=markdown
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-lint
+precommit: tidy codespell apigen apidoc-all format lint editorconfig yamllint helm-lint
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
