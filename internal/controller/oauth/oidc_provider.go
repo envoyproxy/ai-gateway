@@ -12,7 +12,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// OIDCProvider extends ClientCredentialsProvider with OIDC support
+// OIDCProvider extends ClientCredentialsTokenProvider with OIDC support
 type OIDCProvider struct {
 	tokenProvider  TokenProvider
 	httpClient     *http.Client

@@ -97,6 +97,63 @@ type awsCredentialsFile struct {
 	profiles map[string]*awsCredentials
 }
 
+// parseAWSCredentialsFile parses an AWS credentials file with multiple profiles.
+// The file format follows the standard AWS credentials file format:
+//
+//	[profile-name]
+//	aws_access_key_id = AKIAXXXXXXXXXXXXXXXX
+//	aws_secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//	aws_session_token = xxxxxxxx (optional)
+//	region = xx-xxxx-x (optional)
+//
+// Returns a structured representation of the credentials file.
+func parseAWSCredentialsFile(data string) *awsCredentialsFile {
+	file := &awsCredentialsFile{
+		profiles: make(map[string]*awsCredentials),
+	}
+
+	var currentCreds *awsCredentials
+
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			profileName := strings.TrimPrefix(strings.TrimSuffix(line, "]"), "[")
+			currentCreds = &awsCredentials{profile: profileName}
+			file.profiles[profileName] = currentCreds
+			continue
+		}
+
+		if currentCreds == nil {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "aws_access_key_id":
+			currentCreds.accessKeyID = value
+		case "aws_secret_access_key":
+			currentCreds.secretAccessKey = value
+		case "aws_session_token":
+			currentCreds.sessionToken = value
+		case "region":
+			currentCreds.region = value
+		}
+	}
+
+	return file
+}
+
 // formatAWSCredentialsFile formats multiple AWS credential profiles into a credentials file.
 // The output follows the standard AWS credentials file format and ensures:
 // - Consistent ordering of profiles through sorting
