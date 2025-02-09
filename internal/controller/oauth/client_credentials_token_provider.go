@@ -11,20 +11,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ClientCredentialsProvider implements the standard OAuth2 client credentials flow
-type ClientCredentialsProvider struct {
+// ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow
+type ClientCredentialsTokenProvider struct {
 	*BaseProvider
 }
 
 // NewClientCredentialsProvider creates a new client credentials provider
 func NewClientCredentialsProvider(base *BaseProvider) TokenProvider {
-	return &ClientCredentialsProvider{
+	return &ClientCredentialsTokenProvider{
 		BaseProvider: base,
 	}
 }
 
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
-func (p *ClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
+func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
 	clientSecret, err := p.getClientSecret(ctx, &corev1.SecretReference{
 		Name:      string(oidc.ClientSecret.Name),
 		Namespace: string(*oidc.ClientSecret.Namespace),
@@ -36,7 +36,7 @@ func (p *ClientCredentialsProvider) FetchToken(ctx context.Context, oidc *egv1a1
 }
 
 // getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config
-func (p *ClientCredentialsProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
+func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
 	oauth2Config := clientcredentials.Config{
 		ClientID:     oidc.ClientID,
 		ClientSecret: clientSecret,
