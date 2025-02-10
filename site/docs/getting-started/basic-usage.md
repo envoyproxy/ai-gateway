@@ -75,7 +75,7 @@ Then set up port forwarding (this will block the terminal):
 ```shell
 export ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system \
     --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
-    -o jsonpath='{.items[0].metadata.name}')
+    -o jsonpath='{.items[0].config.name}')
 
 kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 ```
