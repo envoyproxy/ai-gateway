@@ -14,7 +14,7 @@ This guide focuses on AI Gateway's specific capabilities for token-based rate li
 AI Gateway leverages Envoy Gateway's Global Rate Limit API to provide token-based rate limiting for LLM requests. Key features include:
 - Token usage tracking based on model and user identifiers
 - Configuration for tracking input, output, and total token metadata from LLM responses
-- Model-specific rate limiting using AI Gateway headers (`x-ai-eg-model`) which is extracted from the request body.
+- Model-specific rate limiting using AI Gateway headers (`x-ai-eg-model`) which is inserted by the AI Gateway filter with the model name extracted from the request body.
 - Support for custom token cost calculations using CEL expressions
 
 ## Token Usage Behavior
