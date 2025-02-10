@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.8
 	github.com/aws/aws-sdk-go-v2/config v1.29.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.12
+	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/envoyproxy/gateway v1.3.0
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/go-logr/logr v1.4.2
@@ -54,6 +55,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
@@ -87,6 +89,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
