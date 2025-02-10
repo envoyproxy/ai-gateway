@@ -43,6 +43,7 @@ func TestAWSHandler_Do(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Handler.Do is called concurrently, so we test it with 100 goroutines to ensure it is thread-safe.
 	var wg sync.WaitGroup
 	wg.Add(100)
 	for range 100 {
@@ -64,6 +65,14 @@ func TestAWSHandler_Do(t *testing.T) {
 			}
 			err := credentialFileHandler.Do(context.Background(), requestHeaders, headerMut, bodyMut)
 			require.NoError(t, err)
+
+			// Ensures that the headers are set.
+			headers := map[string]string{}
+			for _, h := range headerMut.SetHeaders {
+				headers[h.Header.Key] = h.Header.Value
+			}
+			require.Contains(t, headers, "X-Amz-Date")
+			require.Contains(t, headers, "Authorization")
 		}()
 	}
 
