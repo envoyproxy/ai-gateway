@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +21,7 @@ func TestNewOIDCProvider(t *testing.T) {
 	require.NotNil(t, NewOIDCProvider(nil, &egv1a1.OIDC{}))
 }
 
-func TestOIDCProvider_GetOIDCMetadata(t *testing.T) {
+func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
 		require.NoError(t, err)
@@ -43,11 +44,13 @@ func TestOIDCProvider_GetOIDCMetadata(t *testing.T) {
 		ClientID: "some-client-id",
 	}
 
+	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
 	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(baseProvider), oidc)
-	metadata, err := oidcProvider.getOIDCMetadata(context.Background(), ts.URL)
+	config, supportedScope, err := oidcProvider.getOIDCProviderConfig(ctx, ts.URL)
 	require.NoError(t, err)
-	require.Equal(t, "token_endpoint", metadata.TokenEndpoint)
-	require.Equal(t, "issuer", metadata.Issuer)
+	require.Equal(t, "token_endpoint", config.TokenURL)
+	require.Equal(t, "issuer", config.IssuerURL)
+	require.Empty(t, supportedScope)
 }
 
 func TestOIDCProvider_FetchToken(t *testing.T) {
@@ -94,8 +97,9 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	clientCredentialProvider := NewClientCredentialsProvider(baseProvider)
 	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{BaseProvider: baseProvider}
 	require.NotNil(t, clientCredentialProvider)
+	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
-	token, err := oidcProvider.FetchToken(context.Background())
+	token, err := oidcProvider.FetchToken(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
 	require.Equal(t, "Bearer", token.Type())

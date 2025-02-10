@@ -110,7 +110,7 @@ _Appears in:_
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`AIGatewayRoute`
-| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  |  |
 | `spec` | _[AIGatewayRouteSpec](#aigatewayroutespec)_ |  true  | Spec defines the details of the AIGatewayRoute. |
 
 
@@ -126,7 +126,7 @@ AIGatewayRouteList contains a list of AIGatewayRoute.
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`AIGatewayRouteList`
-| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  |  |
 | `items` | _[AIGatewayRoute](#aigatewayroute) array_ |  true  |  |
 
 
@@ -214,7 +214,7 @@ _Appears in:_
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`AIServiceBackend`
-| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  |  |
 | `spec` | _[AIServiceBackendSpec](#aiservicebackendspec)_ |  true  | Spec defines the details of AIServiceBackend. |
 
 
@@ -230,7 +230,7 @@ AIServiceBackendList contains a list of AIServiceBackends.
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`AIServiceBackendList`
-| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  |  |
 | `items` | _[AIServiceBackend](#aiservicebackend) array_ |  true  |  |
 
 
@@ -314,7 +314,7 @@ _Appears in:_
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`BackendSecurityPolicy`
-| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)_ |  true  |  |
 | `spec` | _[BackendSecurityPolicySpec](#backendsecuritypolicyspec)_ |  true  |  |
 
 
@@ -360,7 +360,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 | ---   | ---  | ---      | ---         |
 | `apiVersion` | _string_ | |`aigateway.envoyproxy.io/v1alpha1`
 | `kind` | _string_ | |`BackendSecurityPolicyList`
-| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  | Refer to Kubernetes API documentation for fields of `metadata`. |
+| `metadata` | _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)_ |  true  |  |
 | `items` | _[BackendSecurityPolicy](#backendsecuritypolicy) array_ |  true  |  |
 
 

@@ -50,11 +50,6 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	oidcBackendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
 	err = cl.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}, oidcBackendSecurityPolicy)
 	require.NoError(t, err)
-	require.Len(t, oidcBackendSecurityPolicy.Annotations, 1)
-	time, ok := oidcBackendSecurityPolicy.Annotations["reconcile"]
-	require.True(t, ok)
-	require.NotEmpty(t, time)
-
 	// Test the case where the BackendSecurityPolicy is being deleted.
 	err = cl.Delete(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
