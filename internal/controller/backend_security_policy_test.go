@@ -62,29 +62,6 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestBackendSecurityController_IsBackendSecurityPolicyAuthOIDC(t *testing.T) {
-	require.False(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
-		Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,
-		APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{},
-	}))
-
-	require.False(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
-		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-			Region:          "us-east-1",
-			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
-		},
-	}))
-
-	require.True(t, isBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
-		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-			Region:            "us-east-1",
-			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
-		},
-	}))
-}
-
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,

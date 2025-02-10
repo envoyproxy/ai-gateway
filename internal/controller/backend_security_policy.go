@@ -42,23 +42,6 @@ type patchBackendSecurityPolicy struct{}
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
-	if b.reconcileAll {
-		var backendSecPolicyList aigv1a1.BackendSecurityPolicyList
-		err = b.client.List(ctx, &backendSecPolicyList)
-		if err != nil {
-			b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resources")
-		} else {
-			for _, backendSecurityPolicy := range backendSecPolicyList.Items {
-				if isBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) {
-					err = b.client.Patch(ctx, &backendSecurityPolicy, patchBackendSecurityPolicy{})
-					if err != nil {
-						b.logger.Error(err, "failed to trigger refresh for existing backendSecPolicy resource", "name", backendSecurityPolicy.Name)
-					}
-				}
-			}
-			b.reconcileAll = false
-		}
-	}
 	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
 	if err = b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if errors.IsNotFound(err) {
@@ -69,7 +52,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	if isBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) {
+	if getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) != nil {
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
@@ -89,15 +72,8 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	return
 }
 
-func isBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) bool {
-	if spec.AWSCredentials != nil {
-		return spec.AWSCredentials.OIDCExchangeToken != nil
-	}
-	return false
-}
-
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	if isBackendSecurityPolicyAuthOIDC(spec) {
+	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 		if spec.AWSCredentials.OIDCExchangeToken != nil {
 			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 		}
