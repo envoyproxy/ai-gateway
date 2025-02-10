@@ -4,38 +4,63 @@
 
 #### {{ $type.Name }}
 
-{{ if $type.IsAlias }}_Underlying type:_ _{{ markdownRenderTypeLink $type.UnderlyingType  }}_{{ end }}
-
-{{ $type.Doc }}
-
-{{ if $type.References -}}
-_Appears in:_
+{{ if $type.IsAlias }}**Underlying type:** {{ markdownRenderTypeLink $type.UnderlyingType  }}{{ end }}
+{{ if $type.References }}
+**Appears in:**
 {{- range $type.SortedReferences }}
 - {{ markdownRenderTypeLink . }}
 {{- end }}
 {{- end }}
 
+{{ $type.Doc }}
+
 {{ if $type.Members -}}
-| Field | Type | Required | Description |
-| ---   | ---  | ---      | ---         |
+
+##### Fields
+
 {{ if $type.GVK -}}
-| `apiVersion` | _string_ | |`{{ $type.GVK.Group }}/{{ $type.GVK.Version }}`
-| `kind` | _string_ | |`{{ $type.GVK.Kind }}`
-{{ end -}}
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>{{ $type.GVK.Group }}/{{ $type.GVK.Version }}</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>{{ $type.GVK.Kind }}</code> resource"
+/>
+{{- end }}
 
 {{ range $type.Members -}}
-{{- with .Markers.notImplementedHide -}}
-{{- else -}}
-| `{{ .Name  }}` | _{{ markdownRenderType .Type }}_ | {{ with .Markers.optional }} {{ "false" }} {{ else }} {{ "true" }} {{end}} | {{ template "type_members" . }} |
-{{ end -}}
-{{- end -}}
-{{- end -}}
+{{- if not .Markers.notImplementedHide -}}
+<ApiField
+  name="{{ .Name }}"
+  type="{{ markdownRenderType .Type }}"
+  required="{{ if .Markers.optional }}false{{ else }}true{{ end }}"
+  {{- if .Default }}
+  defaultValue="{{ .Default }}"
+  {{- end }}
+  description="{{ template "type_members" . }}"
+/>
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{ if $type.EnumValues -}}
-| Value | Description |
-| ----- | ----------- |
+##### Possible Values
+
 {{ range $type.EnumValues -}}
-| `{{ .Name }}` | {{ markdownRenderFieldDoc .Doc }} |
-{{ end -}}
-{{- end -}}
-{{- end -}}
+<ApiField
+  name="{{ .Name }}"
+  type="enum"
+  required="false"
+  description="{{ markdownRenderFieldDoc .Doc }}"
+/>
+{{- end }}
+{{- end }}
+
+{{- end }}
 {{- end -}}
