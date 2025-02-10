@@ -76,7 +76,7 @@ filter will only check if the rate limit budget is left based on the consumed to
 On the response path, the external processor does the following:
 1. Response Transformation: It transforms the response from the AI provider so that the client can understand the response.
 2. Token Usage Extraction/Calculation: When configured, it extracts the token usage from the response and
-calculates the token usage based on the configuration. The calculated number is stored in the per-request dynamic config of
+calculates the token usage based on the configuration. The calculated number is stored in the per-request dynamic metadata of
 Envoy filter chain so that the rate limiting filter can reduce the rate limit budget based on that token usage when
 the HTTP request completes.
 
