@@ -18,15 +18,6 @@ type OIDCProvider struct {
 	oidcCredential *egv1a1.OIDC
 }
 
-// OIDCMetadata represents the OpenID Connect provider metadata
-type OIDCMetadata struct {
-	Issuer                string   `json:"issuer"`
-	AuthorizationEndpoint string   `json:"authorization_endpoint"`
-	TokenEndpoint         string   `json:"token_endpoint"`
-	JWKSURI               string   `json:"jwks_uri"`
-	SupportedScopes       []string `json:"scopes_supported"`
-}
-
 // NewOIDCProvider creates a new OIDC-aware provider
 func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredentials *egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
