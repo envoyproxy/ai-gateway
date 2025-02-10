@@ -3,6 +3,7 @@ package backendauth
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -40,17 +41,13 @@ func TestAWSHandler_Do(t *testing.T) {
 		CredentialFileName: awsCredentialFile,
 		Region:             "us-east-1",
 	})
+	require.NoError(t, err)
 
-	for _, tc := range []struct {
-		name    string
-		handler Handler
-	}{
-		{
-			name:    "Using AWS Credential File",
-			handler: credentialFileHandler,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(100)
+	for range 100 {
+		go func() {
+			defer wg.Done()
 			requestHeaders := map[string]string{":method": "POST"}
 			headerMut := &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{
@@ -65,8 +62,10 @@ func TestAWSHandler_Do(t *testing.T) {
 					Body: []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`),
 				},
 			}
-			err = tc.handler.Do(context.Background(), requestHeaders, headerMut, bodyMut)
+			err := credentialFileHandler.Do(context.Background(), requestHeaders, headerMut, bodyMut)
 			require.NoError(t, err)
-		})
+		}()
 	}
+
+	wg.Wait()
 }
