@@ -2,12 +2,11 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"golang.org/x/oauth2"
 )
@@ -37,69 +36,65 @@ func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredenti
 	}
 }
 
-// getOIDCMetadata retrieves or creates OIDC metadata for the given issuer URL
-func (p *OIDCProvider) getOIDCMetadata(ctx context.Context, issuerURL string) (*OIDCMetadata, error) {
+// getOIDCProviderConfig retrieves or creates OIDC config for the given issuer URL
+func (p *OIDCProvider) getOIDCProviderConfig(ctx context.Context, issuerURL string) (*oidc.ProviderConfig, *[]string, error) {
 	// Check context before proceeding
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("context error before discovery: %w", err)
+		return nil, nil, fmt.Errorf("context error before discovery: %w", err)
 	}
 
-	// Fetch OIDC configuration
-	wellKnown := strings.TrimSuffix(issuerURL, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, "GET", wellKnown, nil)
+	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery request: %w", err)
+		return nil, nil, fmt.Errorf("failed to create go-oidc provider %q: %w", issuerURL, err)
 	}
 
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch OIDC metadata: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code from discovery endpoint: %d", resp.StatusCode)
+	var config oidc.ProviderConfig
+	if err = provider.Claims(&config); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode provider config claims %q: %w", issuerURL, err)
 	}
 
-	var metadata OIDCMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
-		return nil, fmt.Errorf("failed to decode OIDC metadata: %w", err)
+	// Unmarshall supported scopes
+	var claims struct {
+		SupportedScopes []string `json:"scopes_supported"`
+	}
+	if err = provider.Claims(&claims); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode provider scope supported claims: %w", err)
 	}
 
 	// Validate required fields
-	if metadata.Issuer == "" {
-		return nil, fmt.Errorf("issuer is required in OIDC metadata")
+	if config.IssuerURL == "" {
+		return nil, nil, fmt.Errorf("issuer is required in OIDC provider config")
 	}
-	if metadata.TokenEndpoint == "" {
-		return nil, fmt.Errorf("token_endpoint is required in OIDC metadata")
+	if config.TokenURL == "" {
+		return nil, nil, fmt.Errorf("token_endpoint is required in OIDC provider config")
 	}
 
-	return &metadata, nil
+	return &config, &claims.SupportedScopes, nil
 }
 
 // FetchToken retrieves and validates tokens using the client credentials flow with OIDC support
 func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	// If issuer URL is provided, fetch OIDC metadata
 	if issuerURL := p.oidcCredential.Provider.Issuer; issuerURL != "" {
-		metadata, err := p.getOIDCMetadata(ctx, issuerURL)
+		config, supportedScopes, err := p.getOIDCProviderConfig(ctx, issuerURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get OIDC metadata: %w", err)
+			return nil, fmt.Errorf("failed to get OIDC config: %w", err)
 		}
 
 		// Use discovered token endpoint if not explicitly provided
 		if p.oidcCredential.Provider.TokenEndpoint == nil {
-			p.oidcCredential.Provider.TokenEndpoint = &metadata.TokenEndpoint
+			p.oidcCredential.Provider.TokenEndpoint = &config.TokenURL
 		}
 
 		// Add discovered scopes if available
-		if len(metadata.SupportedScopes) > 0 {
+		if supportedScopes != nil && len(*supportedScopes) > 0 {
 			requestedScopes := make(map[string]bool)
 			for _, scope := range p.oidcCredential.Scopes {
 				requestedScopes[scope] = true
 			}
 
 			// Add supported scopes that aren't already requested
-			for _, scope := range metadata.SupportedScopes {
+			for _, scope := range *supportedScopes {
 				if !requestedScopes[scope] {
 					p.oidcCredential.Scopes = append(p.oidcCredential.Scopes, scope)
 				}
