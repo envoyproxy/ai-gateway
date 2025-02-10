@@ -262,11 +262,11 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 		c.syncAIServiceBackend(ctx, aiBackend)
 	}
 
-	if isBackendSecurityPolicyAuthOIDC(bsp.Spec) {
+	if oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec); oidc != nil {
 		tokenResponse, ok := c.oidcTokenCache[key]
 		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
 			baseProvider := oauth.NewBaseProvider(c.client, c.logger)
-			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(baseProvider), getBackendSecurityPolicyAuthOIDC(bsp.Spec))
+			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(baseProvider), oidc)
 
 			tokenRes, err := oidcProvider.FetchToken(context.TODO())
 			if err != nil {
@@ -292,10 +292,6 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 
 		if expired {
 			token := tokenResponse.AccessToken
-			if token == "" {
-				token = tokenResponse.AccessToken
-			}
-
 			err = rotator.Rotate(context.Background(), awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 			if err != nil {
 				c.logger.Error(err, "failed to rotate AWS OIDC exchange token")
