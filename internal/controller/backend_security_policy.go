@@ -19,20 +19,18 @@ import (
 //
 // This handles the BackendSecurityPolicy resource and sends it to the config sink so that it can modify configuration.
 type backendSecurityPolicyController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	eventChan    chan ConfigSinkEvent
-	reconcileAll bool
+	client    client.Client
+	kube      kubernetes.Interface
+	logger    logr.Logger
+	eventChan chan ConfigSinkEvent
 }
 
 func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
-		client:       client,
-		kube:         kube,
-		logger:       logger,
-		eventChan:    ch,
-		reconcileAll: true,
+		client:    client,
+		kube:      kube,
+		logger:    logger,
+		eventChan: ch,
 	}
 }
 
