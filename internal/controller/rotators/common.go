@@ -55,11 +55,11 @@ func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name 
 }
 
 // updateExpirationSecretAnnotation will set the expiration time of credentials set in secret annotation
-func updateExpirationSecretAnnotation(secret *corev1.Secret, time time.Time) {
+func updateExpirationSecretAnnotation(secret *corev1.Secret, updateTime time.Time) {
 	if secret.Annotations == nil {
 		secret.Annotations = make(map[string]string)
 	}
-	secret.Annotations[ExpirationTimeAnnotationKey] = time.String()
+	secret.Annotations[ExpirationTimeAnnotationKey] = updateTime.Format(time.RFC3339)
 }
 
 // GetExpirationSecretAnnotation will get the expiration time of credentials set in secret annotation
