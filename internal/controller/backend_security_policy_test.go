@@ -8,8 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"testing"
-
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	"testing"
+	"time"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -37,29 +37,35 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-				Region:            "us-east-1",
-				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+				Region: "us-east-1",
+				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+					OIDC: egv1a1.OIDC{},
+				},
 			},
 		},
 	})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	res, err := c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
+	require.False(t, res.Requeue)
 	item, ok := <-ch
 	require.True(t, ok)
 	require.IsType(t, &aigv1a1.BackendSecurityPolicy{}, item)
 	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
 	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
 
-	// Test backendSecurityPolicy with OIDC credentials have the annotation added
-	oidcBackendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
-	err = cl.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}, oidcBackendSecurityPolicy)
+	res, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
 	require.NoError(t, err)
+	require.True(t, res.Requeue)
+	require.Equal(t, res.RequeueAfter, time.Minute)
+
 	// Test the case where the BackendSecurityPolicy is being deleted.
-	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	err = cl.Delete(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName), Namespace: namespace}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+
+	res, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
 	require.NoError(t, err)
+	require.False(t, res.Requeue)
 }
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {

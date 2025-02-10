@@ -72,7 +72,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 }
 
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
+	if spec.AWSCredentials != nil {
 		if spec.AWSCredentials.OIDCExchangeToken != nil {
 			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 		}
