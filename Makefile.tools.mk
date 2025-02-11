@@ -14,6 +14,7 @@ YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 KIND ?= $(LOCALBIN)/kind
 CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
 GO_TEST_COVERAGE ?= $(LOCALBIN)/go-test-coverage
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool versions.
 # Note: Ensure no blank after version and no comments, or the version value would have a blank as suffix.
@@ -35,6 +36,8 @@ KIND_VERSION ?= v0.26.0
 CRD_REF_DOCS_VERSION ?= v0.1.0
 # https://github.com/vladopajic/go-test-coverage/releases
 GO_TEST_COVERAGE_VERSION ?= v2.11.4
+# https://github.com/helm/helm/releases
+HELM_VERSION ?= v3.17.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -80,6 +83,11 @@ $(CRD_REF_DOCS): $(LOCALBIN)
 go-test-coverage: $(GO_TEST_COVERAGE)
 $(GO_TEST_COVERAGE): $(LOCALBIN)
 	$(call go-install-tool,$(GO_TEST_COVERAGE),github.com/vladopajic/go-test-coverage/v2,$(GO_TEST_COVERAGE_VERSION))
+
+.PHONY: helm
+helm: $(HELM)
+$(HELM): $(LOCALBIN)
+	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,$(HELM_VERSION))
 
 .bin/.venv/%:
 	mkdir -p $(@D)

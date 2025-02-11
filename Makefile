@@ -158,7 +158,7 @@ test-controller: envtest apigen
 #
 # This requires the docker images to be built.
 .PHONY: test-e2e
-test-e2e: kind
+test-e2e: helm kind
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
