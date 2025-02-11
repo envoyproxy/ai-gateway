@@ -84,15 +84,6 @@ func requireBinaries(t *testing.T) {
 	require.NoErrorf(t, err, "testupstream binary not found in the root of the repository")
 }
 
-// getEnvVarOrSkip requires an environment variable to be set.
-func getEnvVarOrSkip(t *testing.T, envVar string) string {
-	value := os.Getenv(envVar)
-	if value == "" {
-		t.Skipf("Environment variable %s is not set", envVar)
-	}
-	return value
-}
-
 // requireWriteFilterConfig writes the provided [filterapi.Config] to the configPath in YAML format.
 func requireWriteFilterConfig(t *testing.T, configPath string, config *filterapi.Config) {
 	configBytes, err := yaml.Marshal(config)
