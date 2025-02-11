@@ -1,8 +1,8 @@
 import React from 'react';
-import ApiField from '../components/ApiField';
+import MDXComponents from '@theme-original/MDXComponents';
+import ApiField from '@site/src/components/ApiField';
 
-const MDXComponents = {
+export default {
+  ...MDXComponents,
   ApiField,
 };
-
-export default MDXComponents;

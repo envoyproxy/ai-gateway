@@ -36,6 +36,7 @@ kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for
 ```
 
 :::tip Verify Installation
+
 Check the status of the pods. All pods should be in the `Running` state with `Ready` status.
 
 Check AI Gateway pods:
@@ -47,6 +48,7 @@ Check Envoy Gateway pods:
 ```shell
 kubectl get pods -n envoy-gateway-system
 ```
+
 :::
 
 ## Next Steps

@@ -60,7 +60,9 @@ kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-contr
 Check out Making a Request in the [Basic Usage Guide](./basic-usage.md)
 
 :::tip
+
 For detailed instructions and explanations, start with the [Prerequisites](./prerequisites.md) section.
+
 :::
 
 ## Need Help?

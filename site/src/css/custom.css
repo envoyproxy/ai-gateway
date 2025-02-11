@@ -18,6 +18,7 @@
   --ifm-code-font-size: 95%;
   --ifm-code-font-family: "Nunito", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --ifm-heading-font-family: "Nunito", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ifm-font-family-base: "Nunito", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
   --ifm-navbar-background-color: #b923ff;
   --ifm-footer-background-color: #f8ebff;
@@ -44,6 +45,8 @@
   --custom-required-badge-bg: #fef2f2;
   --custom-required-badge-border: #fecaca;
   --custom-required-badge-text: #dc2626;
+
+
 }
 
 /* Index Header */
@@ -91,6 +94,10 @@
     box-shadow: none;
 }
 
+.navbar-sidebar .menu__link{
+  color: #fff;
+}
+
 .buttons {
   display: flex;
   align-items: center;
@@ -135,56 +142,12 @@
   border-bottom-color: currentColor;
 }
 
-/* Enhanced Code Blocks */
-.markdown pre {
-  background-color: var(--custom-code-background);
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.markdown code {
-  background-color: var(--custom-code-background);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-/* Important Information Highlighting */
-.markdown blockquote {
-  border-left: 4px solid var(--ifm-color-primary);
-  background-color: #f8f9fa;
-  margin: 1.5rem 0;
-  padding: 1rem;
-  border-radius: 0 8px 8px 0;
-}
-
-/* Tables Enhancement */
 .markdown table {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: 100%;
-  margin: 2rem 0;
-  border: 1px solid #e2e8f0;
+  width: fit-content;
+  border-collapse: collapse;
   border-radius: 8px;
   overflow: hidden;
-}
-
-.markdown table th {
-  background-color: #f8f9fa;
-  font-weight: 700;
-  text-align: left;
-  padding: 1rem;
-  border-bottom: 2px solid #e2e8f0;
-}
-
-.markdown table td {
-  padding: 1rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.markdown table tr:last-child td {
-  border-bottom: none;
+  border: 1px solid rgba(60, 60, 67, 0.15);
 }
 
 /* API Field Component Styles */

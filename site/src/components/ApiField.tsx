@@ -1,6 +1,5 @@
 import React from 'react';
 import clsx from 'clsx';
-import MDXContent from '@theme/MDXContent';
 
 interface ApiFieldProps {
   name: string;
