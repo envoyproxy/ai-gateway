@@ -16,15 +16,16 @@ CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
 GO_TEST_COVERAGE ?= $(LOCALBIN)/go-test-coverage
 
 ## Tool versions.
-CONTROLLER_TOOLS_VERSION ?= v0.17.1 # https://github.com/kubernetes-sigs/controller-tools/releases
-ENVTEST_VERSION ?= release-0.20 # https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
-GOLANGCI_LINT_VERSION ?= v1.63.4 # https://github.com/golangci/golangci-lint/releases
-GO_FUMPT_VERSION ?= v0.7.0 # https://github.com/mvdan/gofumpt/releases
-GCI_VERSION ?= v0.13.5 # https://github.com/daixiang0/gci/releases
-EDITORCONFIG_CHECKER_VERSION ?= v3.2.0 # https://github.com/editorconfig-checker/editorconfig-checker/releases
-KIND_VERSION ?= v0.26.0 # https://github.com/kubernetes-sigs/kind/releases
-CRD_REF_DOCS_VERSION ?= v0.1.0 # https://github.com/elastic/crd-ref-docs/releases
-GO_TEST_COVERAGE_VERSION ?= v2.11.4 # https://github.com/vladopajic/go-test-coverage/releases
+## Ensure no blank after version, or the version value would have a blank as suffix.
+CONTROLLER_TOOLS_VERSION ?= v0.17.1# https://github.com/kubernetes-sigs/controller-tools/releases
+ENVTEST_VERSION ?= release-0.20# https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
+GOLANGCI_LINT_VERSION ?= v1.63.4# https://github.com/golangci/golangci-lint/releases
+GO_FUMPT_VERSION ?= v0.7.0# https://github.com/mvdan/gofumpt/releases
+GCI_VERSION ?= v0.13.5# https://github.com/daixiang0/gci/releases
+EDITORCONFIG_CHECKER_VERSION ?= v3.2.0# https://github.com/editorconfig-checker/editorconfig-checker/releases
+KIND_VERSION ?= v0.26.0# https://github.com/kubernetes-sigs/kind/releases
+CRD_REF_DOCS_VERSION ?= v0.1.0# https://github.com/elastic/crd-ref-docs/releases
+GO_TEST_COVERAGE_VERSION ?= v2.11.4# https://github.com/vladopajic/go-test-coverage/releases
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -85,7 +86,7 @@ $(YAMLLINT): .bin/.venv/yamllint@1.35.1
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f "$(strip $(1)-$(3))" ] || { \
+@[ -f "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
