@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -183,28 +184,64 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	})
 }
 
-func Test_patchAIGatewayRouteStatus(t *testing.T) {
-	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
-	route := &aigv1a1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myroute",
-			Namespace: "default",
+func TestAiGatewayRouteController_patchAIGatewayRouteStatus(t *testing.T) {
+	type testCase struct {
+		route       *aigv1a1.AIGatewayRoute
+		needCreate  bool
+		expectError bool
+	}
+
+	testCases := []testCase{
+		{
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "myroute",
+					Namespace: "default",
+				},
+			},
+			needCreate:  true,
+			expectError: false,
+		},
+		{
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nonexist",
+					Namespace: "default",
+				},
+			},
+			needCreate:  false,
+			expectError: true,
 		},
 	}
-	err := c.client.Create(context.Background(), route)
-	require.NoError(t, err)
+
+	c := &aiGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 
 	condition := metav1.Condition{
 		Type:   conditionReconciled,
 		Status: metav1.ConditionFalse,
 	}
 
-	err = c.patchAIGatewayRouteStatus(context.Background(), route, condition)
-	require.NoError(t, err)
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("test patchAIGatewayRouteStatus, expected success: %t", !tc.expectError), func(t *testing.T) {
+			if tc.needCreate {
+				err := c.client.Create(context.Background(), tc.route)
+				require.NoError(t, err)
+			}
 
-	var updatedRoute aigv1a1.AIGatewayRoute
-	err = c.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &updatedRoute)
-	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, condition, updatedRoute.Status.Conditions[0])
+			err := c.patchAIGatewayRouteStatus(context.Background(), tc.route, condition)
+
+			// bad case
+			if tc.expectError {
+				require.Error(t, err)
+				return
+			}
+
+			// happy case
+			var updatedRoute aigv1a1.AIGatewayRoute
+			err = c.client.Get(context.Background(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &updatedRoute)
+			require.NoError(t, err)
+			require.Len(t, updatedRoute.Status.Conditions, 1)
+			require.Equal(t, condition, updatedRoute.Status.Conditions[0])
+		})
+	}
 }
