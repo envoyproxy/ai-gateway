@@ -115,16 +115,16 @@ func Main() {
 		s.GracefulStop()
 	}()
 
-	// Add prometheus metrics
-	metrics.InitMetrics()
+	// Initialize metrics
+	metricsInstance := metrics.GetOrCreate()
+
+	// Setup prometheus handler
+	http.Handle("/metrics", promhttp.HandlerFor(metricsInstance.Registry, promhttp.HandlerOpts{}))
 
 	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.HandlerFor(metrics.GetRegistry(), promhttp.HandlerOpts{}))
-
 		server := &http.Server{
 			Addr:              promPort,
-			Handler:           mux,
+			Handler:           nil,
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
 			WriteTimeout:      10 * time.Second,

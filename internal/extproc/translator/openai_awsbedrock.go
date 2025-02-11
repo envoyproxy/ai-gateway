@@ -26,7 +26,7 @@ import (
 // newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
 func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
-		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
+		return newOpenAIToAWSBedrockTranslatorV1ChatCompletion(), nil
 	}
 	return nil, fmt.Errorf("unsupported path: %s", path)
 }
@@ -45,6 +45,14 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	lastTokenTime  time.Time
 	backendName    string
 	modelName      string
+	metrics        *metrics.Metrics
+}
+
+func newOpenAIToAWSBedrockTranslatorV1ChatCompletion() *openAIToAWSBedrockTranslatorV1ChatCompletion {
+	return &openAIToAWSBedrockTranslatorV1ChatCompletion{
+		metrics:        metrics.GetOrCreate(),
+		firstTokenSent: true,
+	}
 }
 
 // RequestBody implements [Translator.RequestBody].
@@ -564,10 +572,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		}
 		if o.backendName != "" && o.modelName != "" {
 			now := time.Now()
-			if !o.firstTokenSent {
-				o.firstTokenSent = true
-				metrics.FirstTokenLatency.WithLabelValues(o.backendName, o.modelName).
+			if o.firstTokenSent {
+				o.metrics.FirstTokenLatency.WithLabelValues(o.backendName, o.modelName).
 					Observe(now.Sub(o.requestStart).Seconds())
+				o.firstTokenSent = false
+				o.lastTokenTime = now
 			} else {
 				// Calculate the time between tokens.
 				// Since we are only interested in the time between tokens, and openai streaming is by chunk,
@@ -578,7 +587,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 					div = 1
 				}
 				itl := now.Sub(o.lastTokenTime).Seconds() / float64(div)
-				metrics.InterTokenLatency.WithLabelValues(o.backendName, o.modelName).
+				o.metrics.InterTokenLatency.WithLabelValues(o.backendName, o.modelName).
 					Observe(itl)
 				o.lastTokenTime = now
 			}

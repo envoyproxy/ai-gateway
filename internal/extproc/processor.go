@@ -57,7 +57,11 @@ type ProcessorIface interface {
 
 // NewProcessor creates a new processor.
 func NewProcessor(config *processorConfig, logger *slog.Logger) *Processor {
-	return &Processor{config: config, logger: logger}
+	return &Processor{
+		config:   config,
+		logger:   logger,
+		metrics: metrics.GetOrCreate(),
+	}
 }
 
 // Processor handles the processing of the request and response messages for a single stream.
@@ -74,6 +78,7 @@ type Processor struct {
 	requestStart time.Time
 	modelName    string
 	backendName  string
+	metrics      *metrics.Metrics
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -93,7 +98,7 @@ func (p *Processor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.H
 	model, body, err := p.config.bodyParser(path, rawBody)
 	if err != nil {
 		// Add to metrics tracker
-		metrics.RequestsTotal.WithLabelValues("unknown", "unknown", "error").Inc()
+		p.metrics.RequestsTotal.WithLabelValues("unknown", "unknown", "error").Inc()
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	p.logger.Info("Processing request", "path", path, "model", model)
@@ -112,7 +117,7 @@ func (p *Processor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.H
 
 	t, err := factory(path)
 	if err != nil {
-		metrics.RequestsTotal.WithLabelValues("unknown", model, "error").Inc()
+		p.metrics.RequestsTotal.WithLabelValues("unknown", model, "error").Inc()
 		return nil, fmt.Errorf("failed to create translator: %w", err)
 	}
 	p.translator = t
@@ -202,8 +207,8 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 	headerMutation, bodyMutation, tokenUsage, err := p.translator.ResponseBody(p.responseHeaders, br, body.EndOfStream, p.backendName, p.modelName)
 	if err != nil {
 		if p.backendName != "" && p.modelName != "" {
-			metrics.RequestsTotal.WithLabelValues(p.backendName, p.modelName, "error").Inc()
-			metrics.BackendLatency.WithLabelValues(p.backendName, p.modelName, "error").
+			p.metrics.RequestsTotal.WithLabelValues(p.backendName, p.modelName, "error").Inc()
+			p.metrics.BackendLatency.WithLabelValues(p.backendName, p.modelName, "error").
 				Observe(time.Since(p.requestStart).Seconds())
 		}
 		return nil, fmt.Errorf("failed to transform response: %w", err)
@@ -227,13 +232,13 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 
 	// Track token usage metrics
 	if tokenUsage.InputTokens > 0 {
-		metrics.TokensTotal.WithLabelValues(p.modelName, "prompt").Add(float64(tokenUsage.InputTokens))
+		p.metrics.TokensTotal.WithLabelValues(p.modelName, "prompt").Add(float64(tokenUsage.InputTokens))
 	}
 	if tokenUsage.OutputTokens > 0 {
-		metrics.TokensTotal.WithLabelValues(p.modelName, "completion").Add(float64(tokenUsage.OutputTokens))
+		p.metrics.TokensTotal.WithLabelValues(p.modelName, "completion").Add(float64(tokenUsage.OutputTokens))
 	}
 	if tokenUsage.TotalTokens > 0 {
-		metrics.TokensTotal.WithLabelValues(p.modelName, "total").Add(float64(tokenUsage.TotalTokens))
+		p.metrics.TokensTotal.WithLabelValues(p.modelName, "total").Add(float64(tokenUsage.TotalTokens))
 	}
 
 	if body.EndOfStream && len(p.config.requestCosts) > 0 {
@@ -242,8 +247,8 @@ func (p *Processor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpB
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
 		if p.backendName != "" && p.modelName != "" {
-			metrics.RequestsTotal.WithLabelValues(p.backendName, p.modelName, "success").Inc()
-			metrics.BackendLatency.WithLabelValues(p.backendName, p.modelName, "success").
+			p.metrics.RequestsTotal.WithLabelValues(p.backendName, p.modelName, "success").Inc()
+			p.metrics.BackendLatency.WithLabelValues(p.backendName, p.modelName, "success").
 				Observe(time.Since(p.requestStart).Seconds())
 		}
 	}

@@ -16,16 +16,27 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
+type OpenAIToOpenAI struct {
+	metrics *metrics.Metrics
+}
+
+func NewOpenAIToOpenAI() *OpenAIToOpenAI {
+	return &OpenAIToOpenAI{
+		metrics: metrics.GetOrCreate(),
+	}
+}
+
 // newOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
 func newOpenAIToOpenAITranslator(path string) (Translator, error) {
 	if path == "/v1/chat/completions" {
-		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
+		return newOpenAIToOpenAITranslatorV1ChatCompletion(), nil
 	}
 	return nil, fmt.Errorf("unsupported path: %s", path)
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
+	metrics       *metrics.Metrics
 	stream        bool
 	buffered      []byte
 	bufferingDone bool
@@ -35,6 +46,12 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	lastTokenTime  time.Time
 	backendName    string
 	modelName      string
+}
+
+func newOpenAIToOpenAITranslatorV1ChatCompletion() *openAIToOpenAITranslatorV1ChatCompletion {
+	return &openAIToOpenAITranslatorV1ChatCompletion{
+		metrics: metrics.GetOrCreate(),
+	}
 }
 
 // RequestBody implements [Translator.RequestBody].
@@ -166,7 +183,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			now := time.Now()
 			if !o.firstTokenSent {
 				o.firstTokenSent = true
-				metrics.FirstTokenLatency.WithLabelValues(o.backendName, o.modelName).
+				o.metrics.FirstTokenLatency.WithLabelValues(o.backendName, o.modelName).
 					Observe(now.Sub(o.requestStart).Seconds())
 			} else {
 				// Calculate the time between tokens.
@@ -178,7 +195,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 					div = 1
 				}
 				itl := now.Sub(o.lastTokenTime).Seconds() / float64(div)
-				metrics.InterTokenLatency.WithLabelValues(o.backendName, o.modelName).
+				o.metrics.InterTokenLatency.WithLabelValues(o.backendName, o.modelName).
 					Observe(itl)
 				o.lastTokenTime = now
 			}

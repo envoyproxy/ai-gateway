@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -20,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestNewOpenAIToAWSBedrockTranslator(t *testing.T) {
@@ -729,13 +731,21 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{
+			stream:         true,
+			backendName:    "some-backend",
+			modelName:      "some-model",
+			metrics:        metrics.GetOrCreate(),
+			firstTokenSent: true,
+			requestStart:   time.Now(),
+		}
+
 		buf, err := base64.StdEncoding.DecodeString(base64RealStreamingEvents)
 		require.NoError(t, err)
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, "", "")
+			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, "some-model", "some-backend")
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -876,7 +886,7 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, "", "")
+		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, "some-model", "some-backend")
 		require.Error(t, err)
 	})
 	tests := []struct {
@@ -1027,7 +1037,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, "", "")
+			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, "some-model", "some-backend")
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)

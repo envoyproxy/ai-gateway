@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestNewOpenAIToOpenAITranslator(t *testing.T) {
@@ -139,6 +141,14 @@ func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
 
 func TestOpenAIToOpenAITranslatorV1ChatCompletionResponseBody(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{
+			stream:         true,
+			metrics:        metrics.GetOrCreate(),
+			firstTokenSent: true,
+			requestStart:   time.Now(),
+			buffered:       make([]byte, 0),
+		}
+
 		// This is the real event stream from OpenAI.
 		wholeBody := []byte(`
 data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
@@ -175,9 +185,8 @@ data: [DONE]
 
 `)
 
-		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
 		for i := 0; i < len(wholeBody); i++ {
-			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false, "", "")
+			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false, "some-model", "some-backend")
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
@@ -188,17 +197,21 @@ data: [DONE]
 	})
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
-			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, "", "")
+			o := &openAIToOpenAITranslatorV1ChatCompletion{
+				metrics: metrics.GetOrCreate(),
+			}
+			_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, "some-model", "some-backend")
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
+			o := &openAIToOpenAITranslatorV1ChatCompletion{
+				metrics: metrics.GetOrCreate(),
+			}
 			var resp openai.ChatCompletionResponse
 			resp.Usage.TotalTokens = 42
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
-			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, "", "")
+			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, "some-model", "some-backend")
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		})
