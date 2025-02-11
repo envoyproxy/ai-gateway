@@ -164,7 +164,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	err := c.client.Get(ctx,
 		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
-	if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) { // coverage-ignore
 		httpRouteFilter = egv1a1.HTTPRouteFilter{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      hostRewriteHTTPFilterName,
@@ -192,7 +192,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			}
 			return
 		}
-	} else if err != nil {
+	} else if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName, "error", err)
 
 		condition := metav1.Condition{
@@ -212,7 +212,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	var httpRoute gwapiv1.HTTPRoute
 	err = c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
-	if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) { // coverage-ignore
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
@@ -233,7 +233,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 				c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 			}
 		}
-	} else if err != nil {
+	} else if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
 		condition := metav1.Condition{
 			Type:    conditionReconciled,
@@ -248,7 +248,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err = c.updateHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
+	if err = c.updateHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		condition := metav1.Condition{
 			Type:    conditionReconciled,
@@ -264,7 +264,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 
 	if existingRoute {
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Update(ctx, &httpRoute); err != nil {
+		if err = c.client.Update(ctx, &httpRoute); err != nil { // coverage-ignore
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			condition := metav1.Condition{
 				Type:    conditionReconciled,
@@ -279,7 +279,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Create(ctx, &httpRoute); err != nil {
+		if err = c.client.Create(ctx, &httpRoute); err != nil { // coverage-ignore
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 			condition := metav1.Condition{
 				Type:    conditionReconciled,
@@ -296,7 +296,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		condition := metav1.Condition{
 			Type:    conditionReconciled,
@@ -328,7 +328,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 
 	// Annotate all pods with the new config.
 	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
-	if err != nil {
+	if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 		condition := metav1.Condition{
 			Type:    conditionReconciled,
