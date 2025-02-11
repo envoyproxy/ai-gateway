@@ -105,7 +105,9 @@ curl --fail \
 ```
 
 :::tip
+
 If you're opening a new terminal, you'll need to set the `GATEWAY_URL` variable again.
+
 :::
 
 ### Expected Response
@@ -125,8 +127,10 @@ You should receive a response like:
 ```
 
 :::note
+
 This response comes from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
 For real AI model responses, see the [Connect Providers](./connect-providers) guide.
+
 :::
 
 ### Understanding the Response Format
@@ -139,4 +143,4 @@ The basic setup includes a mock backend that demonstrates the API structure but 
 
 Now that you've tested the basic setup, you can:
 - Configure [real AI model backends](./connect-providers) like OpenAI or AWS Bedrock
-- Explore the [API Reference](../api.md) for more details about available endpoints
+- Explore the [API Reference](../api/) for more details about available endpoints

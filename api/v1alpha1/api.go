@@ -105,7 +105,7 @@ type AIGatewayRouteSpec struct {
 	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
 	//
 	// For example, let's say we have the following LLMRequestCosts configuration:
-	//
+	// ```yaml
 	//	llmRequestCosts:
 	//	- metadataKey: llm_input_token
 	//	  type: InputToken
@@ -113,12 +113,13 @@ type AIGatewayRouteSpec struct {
 	//	  type: OutputToken
 	//	- metadataKey: llm_total_token
 	//	  type: TotalToken
-	//
+	// ```
 	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
 	// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,
 	// the other is for the output token, and the last one is for the total token.
 	// Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
 	//
+	// ```yaml
 	//	apiVersion: gateway.envoyproxy.io/v1alpha1
 	//	kind: BackendTrafficPolicy
 	//	metadata:
@@ -188,7 +189,7 @@ type AIGatewayRouteSpec struct {
 	//	              metadata:
 	//	                namespace: io.envoy.ai_gateway
 	//	                key: llm_total_token
-	//
+	// ```
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`

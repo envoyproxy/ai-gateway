@@ -89,13 +89,12 @@ apigen: controller-gen
 .PHONY: apidoc
 apidoc: crd-ref-docs
 	@$(CRD_REF_DOCS) \
-    	--source-path=api/v1alpha1 \
-    	--config=site/crd-ref-docs/config.yaml \
-    	--templates-dir=site/crd-ref-docs/templates \
-    	--output-path=API.md \
-    	--max-depth 20 \
-    	--output-path site/docs/api.md \
-    	--renderer=markdown
+		--source-path=api/v1alpha1 \
+		--config=site/crd-ref-docs/config-core.yaml \
+		--templates-dir=site/crd-ref-docs/templates \
+		--max-depth 20 \
+		--output-path site/docs/api/api.mdx \
+		--renderer=markdown
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit

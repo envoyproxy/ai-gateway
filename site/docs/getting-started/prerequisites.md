@@ -66,7 +66,9 @@ The server version in the output should show version 1.29 or higher:
 ```
 
 :::caution
+
 If your cluster is running a version lower than 1.29, you'll need to upgrade it before proceeding with the installation.
+
 :::
 
 </TabItem>
@@ -90,11 +92,13 @@ kubectl cluster-info
 The output should show that the Kubernetes control plane is running.
 
 :::tip
+
 Docker Desktop's Kubernetes is a great choice for local development as it:
 - Comes pre-installed with Docker Desktop
 - Runs locally on your machine
 - Integrates well with Docker Desktop's UI
 - Requires minimal setup
+
 :::
 
 </TabItem>
@@ -118,6 +122,7 @@ kind create cluster
 ## Envoy Gateway
 
 :::warning Important
+
 Ensure you're using a clean Envoy Gateway deployment. If you have an existing Envoy Gateway installation with custom configurations, it may conflict with AI Gateway's requirements. We recommend:
 - Using a fresh Kubernetes cluster, or
 - Uninstalling any existing Envoy Gateway deployments before proceeding:
@@ -125,10 +130,13 @@ Ensure you're using a clean Envoy Gateway deployment. If you have an existing En
   helm uninstall eg -n envoy-gateway-system
   kubectl delete namespace envoy-gateway-system
   ```
+
 :::
 
 :::info Version Requirements
+
 Envoy AI Gateway requires Envoy Gateway version 1.3.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
+
 :::
 
 Envoy AI Gateway is built on top of Envoy Gateway. Install it using Helm and wait for the deployment to be ready:

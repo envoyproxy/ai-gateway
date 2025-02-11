@@ -34,3 +34,10 @@ render:
     - name: ExtProc
       package: github.com/envoyproxy/gateway/api/v1alpha1
       link: https://gateway.envoyproxy.io/docs/api/extension_types/#extproc
+    - name: OIDC
+      package: github.com/envoyproxy/gateway/api/v1alpha1
+      link: https://gateway.envoyproxy.io/docs/api/extension_types/#oidc
+
+navigation:
+  includeTOC: true
+  includeBackToTopLinks: true

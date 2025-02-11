@@ -5,12 +5,9 @@
 ---
 id: api_references
 title: API Reference
+toc_min_heading_level: 2
+toc_max_heading_level: 4
 ---
-
-## Packages
-{{- range $groupVersions }}
-- {{ markdownRenderGVLink . }}
-{{- end }}
 
 {{ range $groupVersions }}
 {{ template "gvDetails" . }}
