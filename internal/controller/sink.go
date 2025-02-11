@@ -268,7 +268,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 			baseProvider := oauth.NewBaseProvider(c.client, c.logger)
 			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(baseProvider), oidc)
 
-			tokenRes, err := oidcProvider.FetchToken(context.TODO())
+			tokenRes, err := oidcProvider.FetchToken(ctx)
 			if err != nil {
 				c.logger.Error(err, "failed to fetch OIDC provider token")
 				return
@@ -292,7 +292,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 
 		if expired {
 			token := tokenResponse.AccessToken
-			err = rotator.Rotate(context.Background(), awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+			err = rotator.Rotate(ctx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 			if err != nil {
 				c.logger.Error(err, "failed to rotate AWS OIDC exchange token")
 				return
