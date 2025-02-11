@@ -19,17 +19,21 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
-	s, err := NewServer[*mockProcessor](slog.Default(), newMockProcessor)
+func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	s.config = &processorConfig{}
-	return s
+
+	m := newMockProcessor(s.config, s.logger)
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface { return m })
+
+	return s, m.(*mockProcessor)
 }
 
 func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(t.Context(), &filterapi.Config{
 			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
@@ -72,7 +76,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				},
 			},
 		}
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(t.Context(), config)
 		require.NoError(t, err)
 
@@ -100,7 +104,7 @@ func TestServer_LoadConfig(t *testing.T) {
 }
 
 func TestServer_Check(t *testing.T) {
-	s := requireNewServerWithMockProcessor(t)
+	s, _ := requireNewServerWithMockProcessor(t)
 
 	res, err := s.Check(t.Context(), nil)
 	require.NoError(t, err)
@@ -109,7 +113,7 @@ func TestServer_Check(t *testing.T) {
 }
 
 func TestServer_Watch(t *testing.T) {
-	s := requireNewServerWithMockProcessor(t)
+	s, _ := requireNewServerWithMockProcessor(t)
 
 	err := s.Watch(nil, nil)
 	require.Error(t, err)
@@ -118,14 +122,12 @@ func TestServer_Watch(t *testing.T) {
 
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 		_, err := s.processMsg(t.Context(), p, &extprocv3.ProcessingRequest{})
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
@@ -141,8 +143,7 @@ func TestServer_processMsg(t *testing.T) {
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("request body", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}
@@ -158,8 +159,7 @@ func TestServer_processMsg(t *testing.T) {
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("response headers", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -175,8 +175,7 @@ func TestServer_processMsg(t *testing.T) {
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("error response headers", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", Value: "504"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -192,8 +191,7 @@ func TestServer_processMsg(t *testing.T) {
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("response body", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
-		p := s.newProcessor(nil, slog.Default())
+		s, p := requireNewServerWithMockProcessor(t)
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
@@ -212,7 +210,7 @@ func TestServer_processMsg(t *testing.T) {
 
 func TestServer_Process(t *testing.T) {
 	t.Run("context done", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
@@ -221,32 +219,31 @@ func TestServer_Process(t *testing.T) {
 		require.ErrorContains(t, err, "context canceled")
 	})
 	t.Run("recv iof", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		ms := &mockExternalProcessingStream{t: t, retErr: io.EOF, ctx: t.Context()}
 		err := s.Process(ms)
 		require.NoError(t, err)
 	})
 	t.Run("recv canceled", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		ms := &mockExternalProcessingStream{t: t, retErr: status.Error(codes.Canceled, "someerror"), ctx: t.Context()}
 		err := s.Process(ms)
 		require.NoError(t, err)
 	})
 	t.Run("recv generic error", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, _ := requireNewServerWithMockProcessor(t)
 		ms := &mockExternalProcessingStream{t: t, retErr: errors.New("some error"), ctx: t.Context()}
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "some error")
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		s := requireNewServerWithMockProcessor(t)
+		s, p := requireNewServerWithMockProcessor(t)
 
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 
-		p := s.newProcessor(nil, slog.Default())
-		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/"}, {Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
 		p.t = t
 		p.expHeaderMap = hm
@@ -256,8 +253,64 @@ func TestServer_Process(t *testing.T) {
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
-		err := s.process(p, ms)
-		require.Error(t, err, "context canceled")
+		err := s.Process(ms)
+		require.ErrorContains(t, err, "context deadline exceeded")
+	})
+}
+
+func TestServer_ProcessorSelection(t *testing.T) {
+	s, err := NewServer(slog.Default())
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	s.config = &processorConfig{}
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface {
+		// Returning nil guarantees that the test will fail if this processor is selected
+		return nil
+	})
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface {
+		return &mockProcessor{
+			t:                     t,
+			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
+		}
+	})
+
+	t.Run("unknown path", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/unknown"}}},
+				},
+			},
+		}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
+
+		err = s.Process(ms)
+		require.Equal(t, codes.NotFound, status.Convert(err).Code())
+		require.ErrorContains(t, err, "no processor defined for path: /unknown")
+	})
+
+	t.Run("known path", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+				},
+			},
+		}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
+
+		err = s.Process(ms)
+		require.ErrorContains(t, err, "context deadline exceeded")
 	})
 }
 
@@ -307,4 +360,15 @@ func TestFilterSensitiveBody(t *testing.T) {
 		}
 	}
 	require.Contains(t, buf.String(), "filtering sensitive header")
+}
+
+func Test_headersToMap(t *testing.T) {
+	hm := &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{
+			{Key: "foo", Value: "bar"},
+			{Key: "dog", RawValue: []byte("cat")},
+		},
+	}
+	m := headersToMap(hm)
+	require.Equal(t, map[string]string{"foo": "bar", "dog": "cat"}, m)
 }

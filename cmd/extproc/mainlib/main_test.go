@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
-	t.Run("ok flags", func(t *testing.T) {
+	t.Run("ok extProcFlags", func(t *testing.T) {
 		for _, tc := range []struct {
 			name       string
 			args       []string
@@ -17,7 +18,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			logLevel   slog.Level
 		}{
 			{
-				name:       "minimal flags",
+				name:       "minimal extProcFlags",
 				args:       []string{"-configPath", "/path/to/config.yaml"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
@@ -52,44 +53,31 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelError,
 			},
 			{
-				name:       "all flags",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock", "-logLevel", "debug"},
+				name: "all extProcFlags",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-extProcAddr", "unix:///tmp/ext_proc.sock",
+					"-logLevel", "debug",
+				},
 				configPath: "/path/to/config.yaml",
 				addr:       "unix:///tmp/ext_proc.sock",
 				logLevel:   slog.LevelDebug,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				configPath, addr, logLevel, err := parseAndValidateFlags(tc.args)
-				assert.Equal(t, tc.configPath, configPath)
-				assert.Equal(t, tc.addr, addr)
-				assert.Equal(t, tc.logLevel, logLevel)
-				assert.NoError(t, err)
+				flags, err := parseAndValidateFlags(tc.args)
+				require.NoError(t, err)
+				assert.Equal(t, tc.configPath, flags.configPath)
+				assert.Equal(t, tc.addr, flags.extProcAddr)
+				assert.Equal(t, tc.logLevel, flags.logLevel)
 			})
 		}
 	})
-	t.Run("invalid flags", func(t *testing.T) {
-		for _, tc := range []struct {
-			name   string
-			flags  []string
-			expErr string
-		}{
-			{
-				name:   "missing configPath",
-				flags:  []string{"-extProcAddr", ":1063"},
-				expErr: "configPath must be provided",
-			},
-			{
-				name:   "invalid logLevel",
-				flags:  []string{"-configPath", "/path/to/config.yaml", "-logLevel", "invalid"},
-				expErr: `failed to unmarshal log level: slog: level string "invalid": unknown name`,
-			},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				_, _, _, err := parseAndValidateFlags(tc.flags)
-				assert.EqualError(t, err, tc.expErr)
-			})
-		}
+
+	t.Run("invalid extProcFlags", func(t *testing.T) {
+		_, err := parseAndValidateFlags([]string{"-logLevel", "invalid"})
+		assert.EqualError(t, err, `configPath must be provided
+failed to unmarshal log level: slog: level string "invalid": unknown name`)
 	})
 }
 

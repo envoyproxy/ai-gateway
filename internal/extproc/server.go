@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -31,20 +33,23 @@ const (
 var sensitiveHeaderKeys = []string{"authorization"}
 
 // Server implements the external process server.
-type Server[P ProcessorIface] struct {
-	logger       *slog.Logger
-	config       *processorConfig
-	newProcessor func(*processorConfig, *slog.Logger) P
+type Server struct {
+	logger     *slog.Logger
+	config     *processorConfig
+	processors map[string]ProcessorFactory
 }
 
 // NewServer creates a new external processor server.
-func NewServer[P ProcessorIface](logger *slog.Logger, newProcessor func(*processorConfig, *slog.Logger) P) (*Server[P], error) {
-	srv := &Server[P]{logger: logger, newProcessor: newProcessor}
+func NewServer(logger *slog.Logger) (*Server, error) {
+	srv := &Server{
+		logger:     logger,
+		processors: make(map[string]ProcessorFactory),
+	}
 	return srv, nil
 }
 
 // LoadConfig updates the configuration of the external processor.
-func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) error {
+func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
 	bodyParser, err := router.NewRequestBodyParser(config.Schema)
 	if err != nil {
 		return fmt.Errorf("cannot create request body parser: %w", err)
@@ -54,8 +59,11 @@ func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) er
 		return fmt.Errorf("cannot create router: %w", err)
 	}
 
-	factories := make(map[filterapi.VersionedAPISchema]translator.Factory)
-	backendAuthHandlers := make(map[string]backendauth.Handler)
+	var (
+		factories           = make(map[filterapi.VersionedAPISchema]translator.Factory)
+		backendAuthHandlers = make(map[string]backendauth.Handler)
+		declaredModels      []string
+	)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
 			if _, ok := factories[b.Schema]; !ok {
@@ -71,6 +79,18 @@ func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) er
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
 				}
 			}
+		}
+		// Collect declared models from configured header routes. These will be used to
+		// serve requests to the /v1/models endpoint.
+		// TODO(nacx): note that currently we only support exact matching in the headers. When
+		// header matching is extended, this will need to be updated.
+		for _, h := range r.Headers {
+			// If explicitly set to something that is not an exact match, skip.
+			// If not set, we assume it's an exact match.
+			if h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact {
+				continue
+			}
+			declaredModels = append(declaredModels, h.Value)
 		}
 	}
 
@@ -96,20 +116,37 @@ func (s *Server[P]) LoadConfig(ctx context.Context, config *filterapi.Config) er
 		backendAuthHandlers:      backendAuthHandlers,
 		metadataNamespace:        config.MetadataNamespace,
 		requestCosts:             costs,
+		declaredModels:           declaredModels,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
 }
 
-// Process implements [extprocv3.ExternalProcessorServer].
-func (s *Server[P]) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	p := s.newProcessor(s.config, s.logger)
-	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.uuid))
-	return s.process(p, stream)
+// Register a new processor for the given request path.
+func (s *Server) Register(path string, newProcessor ProcessorFactory) {
+	s.processors[path] = newProcessor
 }
 
-func (s *Server[P]) process(p P, stream extprocv3.ExternalProcessor_ProcessServer) error {
+// processorForPath returns the processor for the given path.
+// Only exact path matching is supported currently
+func (s *Server) processorForPath(requestHeaders map[string]string) (ProcessorIface, error) {
+	path := requestHeaders[":path"]
+	newProcessor, ok := s.processors[path]
+	if !ok {
+		return nil, fmt.Errorf("no processor defined for path: %v", path)
+	}
+	return newProcessor(s.config, requestHeaders, s.logger), nil
+}
+
+// Process implements [extprocv3.ExternalProcessorServer].
+func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
+	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.uuid))
 	ctx := stream.Context()
+
+	// The processor will be instantiated when the first message containing the request headers is received.
+	// The :path header is used to determine the processor to use, based on the registered ones.
+	var p ProcessorIface
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -125,6 +162,16 @@ func (s *Server[P]) process(p P, stream extprocv3.ExternalProcessor_ProcessServe
 			return status.Errorf(codes.Unknown, "cannot receive stream request: %v", err)
 		}
 
+		// If we're processing the request headers, read the :path header to instantiate the
+		// right processor.
+		if headers := req.GetRequestHeaders().GetHeaders(); headers != nil {
+			p, err = s.processorForPath(headersToMap(headers))
+			if err != nil {
+				s.logger.Error("cannot get processor", slog.String("error", err.Error()))
+				return status.Error(codes.NotFound, err.Error())
+			}
+		}
+
 		resp, err := s.processMsg(ctx, p, req)
 		if err != nil {
 			s.logger.Error("error processing request message", slog.String("error", err.Error()))
@@ -137,7 +184,7 @@ func (s *Server[P]) process(p P, stream extprocv3.ExternalProcessor_ProcessServe
 	}
 }
 
-func (s *Server[P]) processMsg(ctx context.Context, p P, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, p ProcessorIface, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers
@@ -188,12 +235,12 @@ func (s *Server[P]) processMsg(ctx context.Context, p P, req *extprocv3.Processi
 }
 
 // Check implements [grpc_health_v1.HealthServer].
-func (s *Server[P]) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (s *Server) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
 // Watch implements [grpc_health_v1.HealthServer].
-func (s *Server[P]) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
+func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
@@ -250,4 +297,18 @@ func filterSensitiveBody(resp *extprocv3.ProcessingResponse, logger *slog.Logger
 		}
 	}
 	return filteredResp
+}
+
+// headersToMap converts a [corev3.HeaderMap] to a Go map for easier processing.
+func headersToMap(headers *corev3.HeaderMap) map[string]string {
+	// TODO: handle multiple headers with the same key.
+	hdrs := make(map[string]string)
+	for _, h := range headers.GetHeaders() {
+		if len(h.Value) > 0 {
+			hdrs[h.GetKey()] = h.Value
+		} else if utf8.Valid(h.RawValue) {
+			hdrs[h.GetKey()] = string(h.RawValue)
+		}
+	}
+	return hdrs
 }

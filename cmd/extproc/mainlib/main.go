@@ -2,6 +2,7 @@ package mainlib
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -21,59 +22,66 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
-// parseAndValidateFlags parses and validates the flags passed to the external processor.
-func parseAndValidateFlags(args []string) (configPath, addr string, logLevel slog.Level, err error) {
-	fs := flag.NewFlagSet("AI Gateway External Processor", flag.ContinueOnError)
-	configPathPtr := fs.String(
+// extProcFlags is the struct that holds the flags passed to the external processor.
+type extProcFlags struct {
+	configPath  string     // path to the configuration file.
+	extProcAddr string     // gRPC address for the external processor.
+	logLevel    slog.Level // log level for the external processor.
+}
+
+// parseAndValidateFlags parses and validates the flas passed to the external processor.
+func parseAndValidateFlags(args []string) (extProcFlags, error) {
+	var (
+		flags extProcFlags
+		errs  []error
+		fs    = flag.NewFlagSet("AI Gateway External Processor", flag.ContinueOnError)
+	)
+
+	fs.StringVar(&flags.configPath,
 		"configPath",
 		"",
 		"path to the configuration file. The file must be in YAML format specified in filterapi.Config type. "+
 			"The configuration file is watched for changes.",
 	)
-	extProcAddrPtr := fs.String(
+	fs.StringVar(&flags.extProcAddr,
 		"extProcAddr",
 		":1063",
 		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock",
 	)
 	logLevelPtr := fs.String(
 		"logLevel",
-		"info", "log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+		"info",
+		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
 
-	if err = fs.Parse(args); err != nil {
-		err = fmt.Errorf("failed to parse flags: %w", err)
-		return
+	if err := fs.Parse(args); err != nil {
+		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
 	}
 
-	if *configPathPtr == "" {
-		err = fmt.Errorf("configPath must be provided")
-		return
+	if flags.configPath == "" {
+		errs = append(errs, fmt.Errorf("configPath must be provided"))
+	}
+	if err := flags.logLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
+		errs = append(errs, fmt.Errorf("failed to unmarshal log level: %w", err))
 	}
 
-	if err = logLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
-		err = fmt.Errorf("failed to unmarshal log level: %w", err)
-		return
-	}
-
-	configPath = *configPathPtr
-	addr = *extProcAddrPtr
-	return
+	return flags, errors.Join(errs...)
 }
 
 // Main is a main function for the external processor exposed
 // for allowing users to build their own external processor.
 func Main() {
-	configPath, extProcAddr, level, err := parseAndValidateFlags(os.Args[1:])
+	flags, err := parseAndValidateFlags(os.Args[1:])
 	if err != nil {
-		log.Fatalf("failed to parse and validate flags: %v", err)
+		log.Fatalf("failed to parse and validate extProcFlags: %v", err)
 	}
 
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: flags.logLevel}))
 
 	l.Info("starting external processor",
 		slog.String("version", version.Version),
-		slog.String("address", extProcAddr),
-		slog.String("configPath", configPath),
+		slog.String("address", flags.extProcAddr),
+		slog.String("configPath", flags.configPath),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,17 +92,19 @@ func Main() {
 		cancel()
 	}()
 
-	lis, err := net.Listen(listenAddress(extProcAddr))
+	lis, err := net.Listen(listenAddress(flags.extProcAddr))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	server, err := extproc.NewServer[*extproc.Processor](l, extproc.NewProcessor)
+	server, err := extproc.NewServer(l)
 	if err != nil {
 		log.Fatalf("failed to create external processor server: %v", err)
 	}
+	server.Register("/v1/chat/completions", extproc.NewChatCompletionProcessor)
+	server.Register("/v1/models", extproc.NewModelsProcessor)
 
-	if err := extproc.StartConfigWatcher(ctx, configPath, server, l, time.Second*5); err != nil {
+	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		log.Fatalf("failed to start config watcher: %v", err)
 	}
 

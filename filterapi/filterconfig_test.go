@@ -14,7 +14,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
-	server, err := extproc.NewServer(slog.Default(), extproc.NewProcessor)
+	server, err := extproc.NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, server)
 

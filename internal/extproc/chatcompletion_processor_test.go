@@ -16,21 +16,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-func TestProcessor_ProcessRequestHeaders(t *testing.T) {
-	p := &Processor{}
+func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
+	p := &chatCompletionProcessor{}
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
 	})
 	require.NoError(t, err)
 	_, ok := res.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 	require.True(t, ok)
-	require.Equal(t, map[string]string{"foo": "bar"}, p.requestHeaders)
 }
 
-func TestProcessor_ProcessResponseHeaders(t *testing.T) {
+func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mt := &mockTranslator{t: t, expHeaders: make(map[string]string)}
-		p := &Processor{translator: mt}
+		p := &chatCompletionProcessor{translator: mt}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseHeaders(t.Context(), nil)
 		require.ErrorContains(t, err, "test error")
@@ -41,7 +40,7 @@ func TestProcessor_ProcessResponseHeaders(t *testing.T) {
 		}
 		expHeaders := map[string]string{"foo": "bar", "dog": "cat"}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
-		p := &Processor{translator: mt}
+		p := &chatCompletionProcessor{translator: mt}
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
@@ -49,10 +48,10 @@ func TestProcessor_ProcessResponseHeaders(t *testing.T) {
 	})
 }
 
-func TestProcessor_ProcessResponseBody(t *testing.T) {
+func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mt := &mockTranslator{t: t}
-		p := &Processor{translator: mt}
+		p := &chatCompletionProcessor{translator: mt}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
@@ -71,7 +70,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
 		require.NoError(t, err)
-		p := &Processor{translator: mt, logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), config: &processorConfig{
+		p := &chatCompletionProcessor{translator: mt, logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), config: &processorConfig{
 			metadataNamespace: "ai_gateway_llm_ns",
 			requestCosts: []processorConfigRequestCost{
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
@@ -105,10 +104,10 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 	})
 }
 
-func TestProcessor_ProcessRequestBody(t *testing.T) {
+func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retErr: errors.New("test error")}
-		p := &Processor{config: &processorConfig{bodyParser: rbp.impl}}
+		p := &chatCompletionProcessor{config: &processorConfig{bodyParser: rbp.impl}}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to parse request body: test error")
 	})
@@ -116,7 +115,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
-		p := &Processor{config: &processorConfig{bodyParser: rbp.impl, router: rt}, requestHeaders: headers, logger: slog.Default()}
+		p := &chatCompletionProcessor{config: &processorConfig{bodyParser: rbp.impl, router: rt}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
 	})
@@ -127,7 +126,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
-		p := &Processor{config: &processorConfig{
+		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: make(map[filterapi.VersionedAPISchema]translator.Factory),
 		}, requestHeaders: headers, logger: slog.Default()}
@@ -142,7 +141,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retErr: errors.New("test error"), expPath: "/foo"}
-		p := &Processor{config: &processorConfig{
+		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
@@ -159,7 +158,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		factory := mockTranslatorFactory{t: t, retTranslator: mockTranslator{t: t, retErr: errors.New("test error")}, expPath: "/foo"}
-		p := &Processor{config: &processorConfig{
+		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
@@ -180,7 +179,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		bodyMut := &extprocv3.BodyMutation{}
 		mt := mockTranslator{t: t, expRequestBody: someBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		factory := mockTranslatorFactory{t: t, retTranslator: mt, expPath: "/foo"}
-		p := &Processor{config: &processorConfig{
+		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
 			factories: map[filterapi.VersionedAPISchema]translator.Factory{
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
@@ -204,15 +203,4 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
 		require.Equal(t, "some-backend", string(hdrs[1].Header.RawValue))
 	})
-}
-
-func Test_headersToMap(t *testing.T) {
-	hm := &corev3.HeaderMap{
-		Headers: []*corev3.HeaderValue{
-			{Key: "foo", Value: "bar"},
-			{Key: "dog", RawValue: []byte("cat")},
-		},
-	}
-	m := headersToMap(hm)
-	require.Equal(t, map[string]string{"foo": "bar", "dog": "cat"}, m)
 }
