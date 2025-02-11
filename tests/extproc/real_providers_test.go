@@ -279,10 +279,10 @@ func requireNewCredentialContext(t *testing.T) (ctx credentialsContext) {
 	var awsCredentialsBody string
 	if awsSessionToken != "" {
 		awsCredentialsBody = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_SESSION_TOKEN=%s\n",
-			awsAccessKeyID, awsSecretAccessKey, awsSessionToken)
+			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"), awsSessionToken)
 	} else {
 		awsCredentialsBody = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n",
-			awsAccessKeyID, awsSecretAccessKey)
+			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"))
 	}
 	awsFilePath := t.TempDir() + "/aws-credential-file"
 	awsFile, err := os.Create(awsFilePath)
