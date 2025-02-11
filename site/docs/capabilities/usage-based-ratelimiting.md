@@ -158,10 +158,10 @@ curl --fail \
     -H "Content-Type: application/json" \
     -H "x-user-id: user123" \
     -d '{
+        "model": "gpt-4",
         "messages": [
             {
                 "role": "user",
-                "model": "gpt-4",
                 "content": "Hello!"
             }
         ]
