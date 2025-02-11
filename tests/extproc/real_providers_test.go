@@ -27,7 +27,7 @@ func TestWithRealProviders(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
-	cc := requireNewCredentialContext(t)
+	cc := requireNewCredentialsContext(t)
 
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
@@ -66,8 +66,8 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("health-checking", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: credentialsContextRequireOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: credentialsContextRequireAWS},
+			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
 		} {
 			cc.maybeSkip(t, tc.required)
 			t.Run(tc.modelName, func(t *testing.T) {
@@ -98,7 +98,7 @@ func TestWithRealProviders(t *testing.T) {
 	// Read all access logs and check if the used token is logged.
 	// If the used token is set correctly in the metadata, it should be logged in the access log.
 	t.Run("check-used-token-metadata-access-log", func(t *testing.T) {
-		cc.maybeSkip(t, credentialsContextRequireOpenAI|credentialsContextRequireAWS)
+		cc.maybeSkip(t, requiredCredentialOpenAI|requiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
 		require.Eventually(t, func() bool {
 			accessLog, err := os.ReadFile(accessLogPath)
@@ -134,8 +134,8 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: credentialsContextRequireOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: credentialsContextRequireAWS},
+			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.maybeSkip(t, tc.required)
@@ -183,7 +183,7 @@ func TestWithRealProviders(t *testing.T) {
 	})
 
 	t.Run("Bedrock calls tool get_weather function", func(t *testing.T) {
-		cc.maybeSkip(t, credentialsContextRequireAWS)
+		cc.maybeSkip(t, requiredCredentialAWS)
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		require.Eventually(t, func() bool {
 			chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
@@ -233,14 +233,14 @@ func TestWithRealProviders(t *testing.T) {
 type realProvidersTestCase struct {
 	name      string
 	modelName string
-	required  credentialsContextRequire
+	required  requiredCredential
 }
 
-type credentialsContextRequire byte
+type requiredCredential byte
 
 const (
-	credentialsContextRequireOpenAI credentialsContextRequire = 1 << iota
-	credentialsContextRequireAWS
+	requiredCredentialOpenAI requiredCredential = 1 << iota
+	requiredCredentialAWS
 )
 
 // credentialsContext holds the context for the credentials used in the tests.
@@ -252,17 +252,17 @@ type credentialsContext struct {
 }
 
 // maybeSkip skips the test if the required credentials are not set.
-func (c credentialsContext) maybeSkip(t *testing.T, required credentialsContextRequire) {
-	if required&credentialsContextRequireOpenAI != 0 && !c.openAIValid {
+func (c credentialsContext) maybeSkip(t *testing.T, required requiredCredential) {
+	if required&requiredCredentialOpenAI != 0 && !c.openAIValid {
 		t.Skip("skipping test as OpenAI API key is not set in TEST_OPENAI_API_KEY")
 	}
-	if required&credentialsContextRequireAWS != 0 && !c.awsValid {
+	if required&requiredCredentialAWS != 0 && !c.awsValid {
 		t.Skip("skipping test as AWS credentials are not set in TEST_AWS_ACCESS_KEY_ID and TEST_AWS_SECRET_ACCESS_KEY")
 	}
 }
 
-// requireNewCredentialContext creates a new credential context for the tests from the environment variables.
-func requireNewCredentialContext(t *testing.T) (ctx credentialsContext) {
+// requireNewCredentialsContext creates a new credential context for the tests from the environment variables.
+func requireNewCredentialsContext(t *testing.T) (ctx credentialsContext) {
 	// Set up credential file for OpenAI.
 	openAIAPIKey := os.Getenv("TEST_OPENAI_API_KEY")
 
