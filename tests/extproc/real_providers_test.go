@@ -69,8 +69,8 @@ func TestWithRealProviders(t *testing.T) {
 			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
 			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
 		} {
-			cc.maybeSkip(t, tc.required)
 			t.Run(tc.modelName, func(t *testing.T) {
+				cc.maybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
