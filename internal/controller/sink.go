@@ -144,13 +144,15 @@ func (c *configSink) handleEvent(ctx context.Context, event ConfigSinkEvent) {
 func (c *configSink) patchAIGatewayRouteStatus(ctx context.Context, copyRoute *aigv1a1.AIGatewayRoute, condition metav1.Condition) error {
 	var originRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, client.ObjectKey{Name: copyRoute.Name, Namespace: copyRoute.Namespace}, &originRoute); err != nil {
+		c.logger.Error(err, "failed to get route")
 		return err
 	}
+
+	base := originRoute.DeepCopy()
+
 	originRoute.Status.Conditions = append(originRoute.Status.Conditions, condition)
 
-	patch := client.MergeFrom(originRoute.DeepCopy())
-
-	if err := c.client.Status().Patch(context.TODO(), &originRoute, patch); err != nil {
+	if err := c.client.Patch(context.TODO(), &originRoute, client.MergeFrom(base)); err != nil {
 		return err
 	}
 

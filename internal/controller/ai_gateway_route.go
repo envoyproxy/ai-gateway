@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -11,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -109,7 +107,7 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 			Reason:  reasonExtensionPolicyError,
 			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		}
-		if err := c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
+		if err = c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
 			c.logger.Error(err, "failed to patch AIGatewayRoute status")
 		}
 
@@ -210,16 +208,10 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 
 // patchAIGatewayRouteStatus patches status for AIGatewayRoute object.
 func (c *aiGatewayRouteController) patchAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, condition metav1.Condition) error {
-	patch := map[string]interface{}{
-		"conditions": []metav1.Condition{condition},
-	}
+	base := route.DeepCopy()
+	route.Status.Conditions = append(route.Status.Conditions, condition)
 
-	patchData, err := json.Marshal(patch)
-	if err != nil {
-		return err
-	}
-
-	err = c.client.Status().Patch(ctx, route, client.RawPatch(types.MergePatchType, patchData))
+	err := c.client.Patch(ctx, route, client.MergeFrom(base))
 	if err != nil {
 		return err
 	}
