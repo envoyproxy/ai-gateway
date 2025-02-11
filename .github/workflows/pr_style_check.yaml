@@ -38,6 +38,12 @@ jobs:
             echo "The first line of the PR description must be '**Commit Message**'"
             exit 1
           fi
+      - name: Check no markdown format link in '**Commit Message**'
+        run: |
+          if [[ echo "$input" | grep -q '\[.*\]\(.*\)']]; then
+            echo "PR description contains markdown format link. Please remove all of them."
+            exit 1
+          fi
 
   title:
     name: Title
