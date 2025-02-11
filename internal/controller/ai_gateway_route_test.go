@@ -197,15 +197,14 @@ func Test_patchAIGatewayRouteStatus(t *testing.T) {
 	condition := metav1.Condition{
 		Type:   conditionReconciled,
 		Status: metav1.ConditionFalse,
-		Reason: reasonExtensionPolicyError,
 	}
 
 	err = c.patchAIGatewayRouteStatus(context.Background(), route, condition)
 	require.NoError(t, err)
 
-	var newRoute aigv1a1.AIGatewayRoute
-	err = c.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &newRoute)
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = c.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &updatedRoute)
 	require.NoError(t, err)
-	require.Len(t, newRoute.Status.Conditions, 1)
-	require.Equal(t, condition, newRoute.Status.Conditions[0])
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, condition, updatedRoute.Status.Conditions[0])
 }

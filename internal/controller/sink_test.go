@@ -884,3 +884,35 @@ func Test_syncSecret(t *testing.T) {
 	require.NoError(t, err)
 	s.syncSecret(context.Background(), "ns", "some-secret")
 }
+
+func TestConfigSink_patchAIGatewayRouteStatus(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+
+	eventChan := make(chan ConfigSinkEvent)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
+
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myroute",
+			Namespace: "default",
+		},
+	}
+	err := s.client.Create(context.Background(), route)
+	require.NoError(t, err)
+
+	condition := metav1.Condition{
+		Type:   conditionReconciled,
+		Status: metav1.ConditionFalse,
+		Reason: reasonExtensionPolicyError,
+	}
+
+	err = s.patchAIGatewayRouteStatus(context.Background(), route, condition)
+	require.NoError(t, err)
+
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = s.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, condition, updatedRoute.Status.Conditions[0])
+}
