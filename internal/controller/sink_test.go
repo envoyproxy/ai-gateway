@@ -7,8 +7,12 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
@@ -176,6 +180,106 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	})
 }
 
+func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventChan := make(chan ConfigSinkEvent)
+	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
+
+	require.Empty(t, s.oidcTokenCache)
+
+	// Test with OIDC backend
+	backend := aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "potato", Namespace: "ns"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "orange"},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
+
+	clientSecret := "secretName"
+	secretNamespace := "ns"
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clientSecret,
+			Namespace: secretNamespace,
+		},
+		Data: map[string][]byte{
+			"client-secret": []byte("client-secret"),
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), &secret, &client.CreateOptions{}))
+
+	secret = corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "orange",
+			Namespace: secretNamespace,
+			Annotations: map[string]string{
+				"rotators/expiration-time": "3025-01-01T01:01:00.000-00:00",
+			},
+		},
+		Data: map[string][]byte{
+			"credentials": []byte("credentials"),
+		},
+	}
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		println("123")
+
+		w.Header().Add("Content-Type", "application/json")
+		type tokenJSON struct {
+			AccessToken string `json:"access_token"`
+			TokenType   string `json:"token_type"`
+			ExpiresIn   string `json:"expires_in"`
+		}
+		b, err := json.Marshal(tokenJSON{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: "60"})
+		require.NoError(t, err)
+		_, err = w.Write(b)
+		require.NoError(t, err)
+
+	}))
+	defer tokenServer.Close()
+
+	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		require.NoError(t, err)
+	}))
+	defer discoveryServer.Close()
+
+	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), discoveryServer.URL)
+	namespaceRef := gwapiv1.Namespace(secretNamespace)
+
+	s.syncBackendSecurityPolicy(ctx, &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns"},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+				Region: "us-east-1",
+				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+					OIDC: egv1a1.OIDC{
+						Provider: egv1a1.OIDCProvider{
+							Issuer:        discoveryServer.URL,
+							TokenEndpoint: &tokenServer.URL,
+						},
+						ClientID: "some-client-id",
+						ClientSecret: gwapiv1.SecretObjectReference{
+							Name:      gwapiv1.ObjectName(clientSecret),
+							Namespace: &namespaceRef,
+						},
+					},
+					GrantType:  "placeholder",
+					Aud:        "placeholder",
+					AwsRoleArn: "placeholder",
+				},
+			},
+		},
+	})
+	require.Len(t, s.oidcTokenCache, 1)
+	token, ok := s.oidcTokenCache["orange.ns"]
+	require.True(t, ok)
+	require.Equal(t, "some-access-token", token.AccessToken)
+}
+
 func Test_newHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := requireNewFakeClientWithIndexes(t)
@@ -322,6 +426,16 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-3", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					Region:            "us-east-1",
+					OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+				},
+			},
+		},
 	} {
 		err := fakeClient.Create(t.Context(), bsp, &client.CreateOptions{})
 		require.NoError(t, err)
@@ -356,6 +470,13 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-2"},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "dog", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend5", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-3"},
 			},
 		},
 	} {
@@ -397,6 +518,14 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}}},
+							},
+						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								{Name: "dog", Weight: 1},
+							},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}}},
 							},
 						},
 					},
@@ -454,6 +583,15 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 							},
 						}}},
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
+					},
+					{
+						Backends: []filterapi.Backend{{Name: "dog.ns", Weight: 1, Auth: &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
+								CredentialFileName: "/etc/backend_security_policy/rule3-backref0-some-backend-security-policy-3/credentials",
+								Region:             "us-east-1",
+							},
+						}}},
+						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}},
 					},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{
@@ -668,6 +806,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-1"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "aws-oidc-name"}},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), secret, &client.CreateOptions{}))
 	}
@@ -688,6 +827,16 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
 				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "aws-oidc-name", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+					Region:            "us-east-1",
 				},
 			},
 		},
@@ -719,7 +868,6 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-1"},
 			},
 		},
-
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
@@ -728,6 +876,16 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 				},
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-aws"},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "dog", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaAWSBedrock,
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "aws-oidc-name"},
 			},
 		},
 	} {
@@ -753,6 +911,14 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-2"}}},
+					},
+				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "dog", Weight: 1},
+					},
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-3"}}},
 					},
 				},
 			},
@@ -782,18 +948,23 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	updatedSpec, err := s.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 3)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
+	require.Len(t, updatedSpec.Volumes, 4)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 4)
 	// API Key.
 	require.Equal(t, "some-secret-policy-1", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-1", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-1", updatedSpec.Containers[0].VolumeMounts[1].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule0-backref0-some-other-backend-security-policy-1", updatedSpec.Containers[0].VolumeMounts[1].MountPath)
-	// AWS.
+	// AWS CredentialFile.
 	require.Equal(t, "some-secret-policy-3", updatedSpec.Volumes[2].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Volumes[2].Name)
 	require.Equal(t, "rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
+	// AWS OIDC.
+	require.Equal(t, "aws-oidc-name", updatedSpec.Volumes[3].VolumeSource.Secret.SecretName)
+	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Volumes[3].Name)
+	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].Name)
+	require.Equal(t, "/etc/backend_security_policy/rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].MountPath)
 
 	require.NoError(t, fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
 
@@ -815,8 +986,8 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	updatedSpec, err = s.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 3)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 3)
+	require.Len(t, updatedSpec.Volumes, 4)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 4)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
