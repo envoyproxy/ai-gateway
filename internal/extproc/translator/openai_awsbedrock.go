@@ -588,6 +588,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
 			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
 		}
+		// TODO: merge the choice message with the
+		// update dont append
 		openAIResp.Choices = append(openAIResp.Choices, choice)
 	}
 
