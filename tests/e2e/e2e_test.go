@@ -63,11 +63,6 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	if err := initRateLimitServer(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
 	code := m.Run()
 	cancel()
 	os.Exit(code)
@@ -145,6 +140,10 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
 	}
+	initLog("\tWaiting for Ratelimit deployment to be ready")
+	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+		return
+	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
 }
@@ -186,24 +185,6 @@ func initTestupstream(ctx context.Context) (err error) {
 	}
 	initLog("\twaiting for deployment")
 	return kubectlWaitForDeploymentReady("default", "testupstream")
-}
-
-func initRateLimitServer(ctx context.Context) (err error) {
-	initLog("Installing Redis for Rate limits")
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
-	}()
-	initLog("\tapplying manifests")
-	if err = kubectlApplyManifest(ctx, "./init/ratelimit/"); err != nil {
-		return
-	}
-	initLog("\twaiting for deployment")
-	if err := kubectlWaitForDeploymentReady("redis-system", "redis"); err != nil {
-		return err
-	}
-	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit")
 }
 
 func kubectl(ctx context.Context, args ...string) *exec.Cmd {
