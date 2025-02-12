@@ -69,15 +69,6 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		return ctrl.Result{}, err
 	}
 
-	// https://github.com/kubernetes-sigs/controller-runtime/issues/1517#issuecomment-844703142
-	gvks, unversioned, err := c.client.Scheme().ObjectKinds(&aiGatewayRoute)
-	if err != nil {
-		panic(err)
-	}
-	if !unversioned && len(gvks) == 1 {
-		aiGatewayRoute.SetGroupVersionKind(gvks[0])
-	}
-
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure extproc configmap exists: %w", err)
 	}
