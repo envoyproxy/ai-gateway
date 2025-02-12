@@ -40,7 +40,7 @@ jobs:
           fi
       - name: Check no markdown format link in PR description.
         run: |
-          if echo "$BODY" | grep -q '\[.*\]\(.*\)'; then
+          if echo "$BODY" | grep -q '\[[^]]\+\](\([^)]\+\))'; then
             echo "PR description contains markdown format link. Please remove all of them."
             exit 1
           fi
