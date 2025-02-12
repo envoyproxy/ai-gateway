@@ -33,9 +33,8 @@ All test targets are prefixed with `test-*` and can be run via `make test-<targe
 Some test commands might require additional dependencies to be installed on your machine.
 For example,
 
-* The latest `kubectl` and `helm` binary for running `make test-e2e`.
-  * kubectl: https://kubernetes.io/docs/tasks/tools/
-  * helm: https://helm.sh/docs/intro/install/
+* The latest `kubectl` binary for running `make test-e2e`.
+  * See: https://kubernetes.io/docs/tasks/tools/
 * The latest `envoy` binary for running `make test-extproc`.
   * See: https://www.envoyproxy.io/docs/envoy/latest/start/install
 
