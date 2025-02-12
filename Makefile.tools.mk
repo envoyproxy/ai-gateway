@@ -23,7 +23,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.17.1
 # https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
 ENVTEST_VERSION ?= release-0.20
 # https://github.com/golangci/golangci-lint/releases
-GOLANGCI_LINT_VERSION ?= v1.63.4
+GOLANGCI_LINT_VERSION ?= v1.64.2
 # https://github.com/mvdan/gofumpt/releases
 GO_FUMPT_VERSION ?= v0.7.0
 # https://github.com/daixiang0/gci/releases

@@ -171,6 +171,11 @@ test-coverage: go-test-coverage
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
 	@${GO_TEST_COVERAGE} --config=.testcoverage.yml
 
+.PHONY: clean
+clean:
+	rm -rf $(OUTPUT_DIR)
+	go clean -modcache
+
 # This builds a binary for the given command under the internal/cmd directory.
 #
 # Example:

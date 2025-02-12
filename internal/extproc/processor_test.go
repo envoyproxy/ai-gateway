@@ -1,7 +1,6 @@
 package extproc
 
 import (
-	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -19,7 +18,7 @@ import (
 
 func TestProcessor_ProcessRequestHeaders(t *testing.T) {
 	p := &Processor{}
-	res, err := p.ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{
+	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
 	})
 	require.NoError(t, err)
@@ -33,7 +32,7 @@ func TestProcessor_ProcessResponseHeaders(t *testing.T) {
 		mt := &mockTranslator{t: t, expHeaders: make(map[string]string)}
 		p := &Processor{translator: mt}
 		mt.retErr = errors.New("test error")
-		_, err := p.ProcessResponseHeaders(context.Background(), nil)
+		_, err := p.ProcessResponseHeaders(t.Context(), nil)
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
@@ -43,7 +42,7 @@ func TestProcessor_ProcessResponseHeaders(t *testing.T) {
 		expHeaders := map[string]string{"foo": "bar", "dog": "cat"}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
 		p := &Processor{translator: mt}
-		res, err := p.ProcessResponseHeaders(context.Background(), inHeaders)
+		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
 		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
@@ -55,7 +54,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		mt := &mockTranslator{t: t}
 		p := &Processor{translator: mt}
 		mt.retErr = errors.New("test error")
-		_, err := p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
@@ -87,7 +86,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 				},
 			},
 		}}
-		res, err := p.ProcessResponseBody(context.Background(), inBody)
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.Equal(t, expBodyMut, commonRes.BodyMutation)
@@ -110,7 +109,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retErr: errors.New("test error")}
 		p := &Processor{config: &processorConfig{bodyParser: rbp.impl}}
-		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to parse request body: test error")
 	})
 	t.Run("router error", func(t *testing.T) {
@@ -118,7 +117,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
 		p := &Processor{config: &processorConfig{bodyParser: rbp.impl, router: rt}, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
 	})
 	t.Run("translator not found", func(t *testing.T) {
@@ -132,7 +131,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			bodyParser: rbp.impl, router: rt,
 			factories: make(map[filterapi.VersionedAPISchema]translator.Factory),
 		}, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to find factory for output schema {\"some-schema\" \"v10.0\"}")
 	})
 	t.Run("translator factory error", func(t *testing.T) {
@@ -149,7 +148,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to create translator: test error")
 	})
 	t.Run("translator error", func(t *testing.T) {
@@ -166,7 +165,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 				{Name: "some-schema", Version: "v10.0"}: factory.impl,
 			},
 		}, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to transform request: test error")
 	})
 	t.Run("ok", func(t *testing.T) {
@@ -189,7 +188,7 @@ func TestProcessor_ProcessRequestBody(t *testing.T) {
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
 			modelNameHeaderKey:       "x-ai-gateway-model-key",
 		}, requestHeaders: headers, logger: slog.Default()}
-		resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.NoError(t, err)
 		require.Equal(t, mt, p.translator)
 		require.NotNil(t, resp)

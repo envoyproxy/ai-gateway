@@ -17,11 +17,8 @@ import (
 
 // TestExamplesBasic tests the basic example in examples/basic directory.
 func Test_Examples_Basic(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
 	const manifest = "../../examples/basic/basic.yaml"
-	require.NoError(t, kubectlApplyManifest(ctx, manifest))
+	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
 	requireWaitForPodReady(t, egNamespace, egSelector)

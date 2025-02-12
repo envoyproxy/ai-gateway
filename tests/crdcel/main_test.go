@@ -21,8 +21,6 @@ var testdata embed.FS
 
 func TestAIGatewayRoutes(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
-	defer cancel()
 
 	for _, tc := range []struct {
 		name   string
@@ -68,9 +66,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 func TestAIServiceBackends(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
-	defer cancel()
-
 	for _, tc := range []struct {
 		name   string
 		expErr string
@@ -102,9 +97,6 @@ func TestAIServiceBackends(t *testing.T) {
 
 func TestBackendSecurityPolicies(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
-
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Second))
-	defer cancel()
 
 	for _, tc := range []struct {
 		name   string

@@ -26,6 +26,8 @@ the list of commands that you can run to build, test, and run the project.
 
 For example, `make precommit test` will run the precommit checks and the unit tests.
 These are the must-run commands before you submit or pushing commits to a PR.
+If anything goes wrong, please try to run `make clean` and then run the command again.
+
 All test targets are prefixed with `test-*` and can be run via `make test-<target>`.
 
 Some test commands might require additional dependencies to be installed on your machine.

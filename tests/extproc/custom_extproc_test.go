@@ -3,7 +3,6 @@
 package extproc
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -53,7 +52,7 @@ func TestExtProcCustomRouter(t *testing.T) {
 			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
 				base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"This is a test."}}]}`)),
 			))
-		chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
 			Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage("Say this is a test"),
 			}),

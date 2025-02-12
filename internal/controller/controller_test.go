@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,16 +47,16 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, c.Create(context.Background(), aiGatewayRoute))
+	require.NoError(t, c.Create(t.Context(), aiGatewayRoute))
 
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
-	err := c.List(context.Background(), &aiGatewayRoutes,
+	err := c.List(t.Context(), &aiGatewayRoutes,
 		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend1.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
 
-	err = c.List(context.Background(), &aiGatewayRoutes,
+	err = c.List(t.Context(), &aiGatewayRoutes,
 		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
@@ -138,10 +137,10 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 				WithIndex(&aigv1a1.BackendSecurityPolicy{}, k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc).
 				Build()
 
-			require.NoError(t, c.Create(context.Background(), bsp.backendSecurityPolicy))
+			require.NoError(t, c.Create(t.Context(), bsp.backendSecurityPolicy))
 
 			var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
-			err := c.List(context.Background(), &backendSecurityPolicies,
+			err := c.List(t.Context(), &backendSecurityPolicies,
 				client.MatchingFields{k8sClientIndexSecretToReferencingBackendSecurityPolicy: bsp.expKey})
 			require.NoError(t, err)
 

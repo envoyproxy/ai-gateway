@@ -1,7 +1,6 @@
 package extensionserver
 
 import (
-	"context"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -17,7 +16,7 @@ func TestNew(t *testing.T) {
 func TestCheck(t *testing.T) {
 	logger := logr.Discard()
 	s := New(logger)
-	_, err := s.Check(context.Background(), nil)
+	_, err := s.Check(t.Context(), nil)
 	require.NoError(t, err)
 }
 

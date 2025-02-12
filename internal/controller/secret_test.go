@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,13 +18,13 @@ func TestSecretController_Reconcile(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewSecretController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
-	err := cl.Create(context.Background(), &corev1.Secret{
+	err := cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
 		StringData: map[string]string{"key": "value"},
 	})
 	require.NoError(t, err)
 
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{
 		Namespace: "default", Name: "mysecret",
 	}})
 	require.NoError(t, err)
@@ -35,11 +34,11 @@ func TestSecretController_Reconcile(t *testing.T) {
 	require.Equal(t, ConfigSinkEventSecretUpdate{Namespace: "default", Name: "mysecret"}, item)
 
 	// Test the case where the Secret is being deleted.
-	err = cl.Delete(context.Background(), &corev1.Secret{
+	err = cl.Delete(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
 	})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{
 		Namespace: "default", Name: "mysecret",
 	}})
 	require.NoError(t, err)

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -28,9 +27,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewAIGatewayRouteController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
-	err := cl.Create(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	err := cl.Create(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
 	item, ok := <-ch
 	require.True(t, ok)
@@ -43,9 +42,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
 	}
-	err = cl.Update(context.Background(), current)
+	err = cl.Update(t.Context(), current)
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
 	item, ok = <-ch
 	require.True(t, ok)
@@ -57,9 +56,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "mytarget", string(r.Spec.TargetRefs[0].Name))
 
 	// Test the case where the AIGatewayRoute is being deleted.
-	err = cl.Delete(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	err = cl.Delete(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
 }
 
@@ -77,10 +76,10 @@ func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	}
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
 
-	err := c.ensuresExtProcConfigMapExists(context.Background(), aiGatewayRoute)
+	err := c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
 	require.NoError(t, err)
 
-	configMap, err := c.kube.CoreV1().ConfigMaps("default").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+	configMap, err := c.kube.CoreV1().ConfigMaps("default").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, extProcName(aiGatewayRoute), configMap.Name)
 	require.Equal(t, "default", configMap.Namespace)
@@ -88,7 +87,7 @@ func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
 	require.Equal(t, filterapi.DefaultConfig, configMap.Data[expProcConfigFileName])
 
 	// Doing it again should not fail.
-	err = c.ensuresExtProcConfigMapExists(context.Background(), aiGatewayRoute)
+	err = c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
 	require.NoError(t, err)
 }
 
@@ -110,10 +109,10 @@ func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) 
 			},
 		},
 	}
-	err := c.reconcileExtProcExtensionPolicy(context.Background(), aiGatewayRoute)
+	err := c.reconcileExtProcExtensionPolicy(t.Context(), aiGatewayRoute)
 	require.NoError(t, err)
 	var extPolicy egv1a1.EnvoyExtensionPolicy
-	err = c.client.Get(context.Background(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
+	err = c.client.Get(t.Context(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
 	require.NoError(t, err)
 
 	require.Equal(t, len(aiGatewayRoute.Spec.TargetRefs), len(extPolicy.Spec.TargetRefs))
@@ -137,10 +136,10 @@ func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) 
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "cat"}},
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "bird"}},
 	}
-	err = c.reconcileExtProcExtensionPolicy(context.Background(), aiGatewayRoute)
+	err = c.reconcileExtProcExtensionPolicy(t.Context(), aiGatewayRoute)
 	require.NoError(t, err)
 
-	err = c.client.Get(context.Background(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
+	err = c.client.Get(t.Context(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
 	require.NoError(t, err)
 
 	require.Len(t, extPolicy.Spec.TargetRefs, 3)

@@ -21,11 +21,8 @@ import (
 )
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
 	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
-	require.NoError(t, kubectlApplyManifest(ctx, manifest))
+	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	requireWaitForPodReady(t, egNamespace, egSelector)

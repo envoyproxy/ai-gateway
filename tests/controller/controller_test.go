@@ -6,7 +6,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -53,8 +52,8 @@ func TestStartControllers(t *testing.T) {
 	}
 	l := logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))
 	klog.SetLogger(l)
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
-	defer cancel()
+
+	ctx := t.Context()
 	go func() {
 		err := controller.StartControllers(ctx, cfg, l, opts)
 		require.NoError(t, err)
@@ -341,8 +340,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.AIGatewayRoute{}).Complete(rc)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
-	defer cancel()
+	ctx := t.Context()
 	go func() {
 		err := mgr.Start(ctx)
 		require.NoError(t, err)
@@ -439,8 +437,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.AIServiceBackend{}).Complete(bc)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
-	defer cancel()
+	ctx := t.Context()
 	go func() {
 		err := mgr.Start(ctx)
 		require.NoError(t, err)
@@ -483,8 +480,7 @@ func TestSecretController(t *testing.T) {
 	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(2*time.Minute))
-	defer cancel()
+	ctx := t.Context()
 	go func() {
 		err := mgr.Start(ctx)
 		require.NoError(t, err)

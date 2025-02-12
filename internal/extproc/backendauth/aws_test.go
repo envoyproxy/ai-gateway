@@ -1,7 +1,6 @@
 package backendauth
 
 import (
-	"context"
 	"os"
 	"sync"
 	"testing"
@@ -17,7 +16,7 @@ func TestNewAWSHandler(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
 
-	handler, err := newAWSHandler(context.Background(), &filterapi.AWSAuth{})
+	handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{})
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
@@ -37,7 +36,7 @@ func TestAWSHandler_Do(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Sync())
 
-	credentialFileHandler, err := newAWSHandler(context.Background(), &filterapi.AWSAuth{
+	credentialFileHandler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
 		CredentialFileName: awsCredentialFile,
 		Region:             "us-east-1",
 	})
@@ -63,7 +62,7 @@ func TestAWSHandler_Do(t *testing.T) {
 					Body: []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`),
 				},
 			}
-			err := credentialFileHandler.Do(context.Background(), requestHeaders, headerMut, bodyMut)
+			err := credentialFileHandler.Do(t.Context(), requestHeaders, headerMut, bodyMut)
 			require.NoError(t, err)
 
 			// Ensures that the headers are set.

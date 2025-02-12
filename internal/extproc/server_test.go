@@ -30,7 +30,7 @@ func requireNewServerWithMockProcessor(t *testing.T) *Server[*mockProcessor] {
 func TestServer_LoadConfig(t *testing.T) {
 	t.Run("invalid input schema", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(context.Background(), &filterapi.Config{
+		err := s.LoadConfig(t.Context(), &filterapi.Config{
 			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
 		})
 		require.Error(t, err)
@@ -73,7 +73,7 @@ func TestServer_LoadConfig(t *testing.T) {
 			},
 		}
 		s := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(context.Background(), config)
+		err := s.LoadConfig(t.Context(), config)
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
@@ -102,7 +102,7 @@ func TestServer_LoadConfig(t *testing.T) {
 func TestServer_Check(t *testing.T) {
 	s := requireNewServerWithMockProcessor(t)
 
-	res, err := s.Check(context.Background(), nil)
+	res, err := s.Check(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, res.Status)
@@ -120,7 +120,7 @@ func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 		p := s.newProcessor(nil, slog.Default())
-		_, err := s.processMsg(context.Background(), p, &extprocv3.ProcessingRequest{})
+		_, err := s.processMsg(t.Context(), p, &extprocv3.ProcessingRequest{})
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(context.Background(), p, req)
+		resp, err := s.processMsg(t.Context(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -152,7 +152,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestBody{RequestBody: reqBody},
 		}
-		resp, err := s.processMsg(context.Background(), p, req)
+		resp, err := s.processMsg(t.Context(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -169,7 +169,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(context.Background(), p, req)
+		resp, err := s.processMsg(t.Context(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -186,7 +186,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(context.Background(), p, req)
+		resp, err := s.processMsg(t.Context(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -203,7 +203,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: reqBody},
 		}
-		resp, err := s.processMsg(context.Background(), p, req)
+		resp, err := s.processMsg(t.Context(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -213,7 +213,7 @@ func TestServer_processMsg(t *testing.T) {
 func TestServer_Process(t *testing.T) {
 	t.Run("context done", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx}
@@ -222,19 +222,19 @@ func TestServer_Process(t *testing.T) {
 	})
 	t.Run("recv iof", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		ms := &mockExternalProcessingStream{t: t, retErr: io.EOF, ctx: context.Background()}
+		ms := &mockExternalProcessingStream{t: t, retErr: io.EOF, ctx: t.Context()}
 		err := s.Process(ms)
 		require.NoError(t, err)
 	})
 	t.Run("recv canceled", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		ms := &mockExternalProcessingStream{t: t, retErr: status.Error(codes.Canceled, "someerror"), ctx: context.Background()}
+		ms := &mockExternalProcessingStream{t: t, retErr: status.Error(codes.Canceled, "someerror"), ctx: t.Context()}
 		err := s.Process(ms)
 		require.NoError(t, err)
 	})
 	t.Run("recv generic error", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
-		ms := &mockExternalProcessingStream{t: t, retErr: errors.New("some error"), ctx: context.Background()}
+		ms := &mockExternalProcessingStream{t: t, retErr: errors.New("some error"), ctx: t.Context()}
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "some error")
 	})
@@ -242,7 +242,7 @@ func TestServer_Process(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		s := requireNewServerWithMockProcessor(t)
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 
 		p := s.newProcessor(nil, slog.Default())

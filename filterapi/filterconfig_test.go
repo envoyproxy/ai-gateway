@@ -1,7 +1,6 @@
 package filterapi_test
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path"
@@ -23,7 +22,7 @@ func TestDefaultConfig(t *testing.T) {
 	err = yaml.Unmarshal([]byte(filterapi.DefaultConfig), &cfg)
 	require.NoError(t, err)
 
-	err = server.LoadConfig(context.Background(), &cfg)
+	err = server.LoadConfig(t.Context(), &cfg)
 	require.NoError(t, err)
 }
 
