@@ -12,6 +12,7 @@ require (
 	github.com/google/cel-go v0.23.2
 	github.com/google/go-cmp v0.6.0
 	github.com/openai/openai-go v0.1.0-alpha.56
+	github.com/prometheus/client_golang v1.20.5
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.27.0
@@ -75,7 +76,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.20.5 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect

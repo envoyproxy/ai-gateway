@@ -80,7 +80,7 @@ type Translator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//
 	// TODO: this is coupled with "LLM" specific. Once we have another use case, we need to refactor this.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, backendName, modelName string) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,

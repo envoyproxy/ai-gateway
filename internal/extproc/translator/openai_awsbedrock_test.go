@@ -735,7 +735,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 
 		var results []string
 		for i := 0; i < len(buf); i++ {
-			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1)
+			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, "", "")
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -876,7 +876,7 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false)
+		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, "", "")
 		require.Error(t, err)
 	})
 	tests := []struct {
@@ -1027,7 +1027,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false)
+			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, "", "")
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)

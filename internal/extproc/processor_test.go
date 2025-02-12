@@ -14,6 +14,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestProcessor_ProcessRequestHeaders(t *testing.T) {
@@ -58,6 +59,7 @@ func TestProcessor_ProcessResponseBody(t *testing.T) {
 		require.ErrorContains(t, err, "test error")
 	})
 	t.Run("ok", func(t *testing.T) {
+		metrics.InitMetrics()
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}

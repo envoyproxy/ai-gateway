@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -19,6 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
@@ -37,6 +39,12 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams
 	role string
+	// Add new fields for tracking streaming metrics
+	firstTokenSent bool
+	requestStart   time.Time
+	lastTokenTime  time.Time
+	backendName    string
+	modelName      string
 }
 
 // RequestBody implements [Translator.RequestBody].
@@ -97,6 +105,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.R
 		return nil, nil, nil, fmt.Errorf("failed to marshal body: %w", err)
 	}
 	setContentLength(headerMutation, mut.Body)
+	o.requestStart = time.Now()
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
 }
 
@@ -503,7 +512,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 }
 
 // ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, backendName, modelName string) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if statusStr, ok := respHeaders[statusHeaderName]; ok {
@@ -519,6 +528,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if o.stream {
 		var buf []byte
 		buf, err = io.ReadAll(body)
+		o.backendName = backendName
+		o.modelName = modelName
 		if err != nil {
 			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 		}
@@ -550,6 +561,27 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 
 		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
+		}
+		if o.backendName != "" && o.modelName != "" {
+			now := time.Now()
+			if !o.firstTokenSent {
+				o.firstTokenSent = true
+				metrics.FirstTokenLatency.WithLabelValues(o.backendName, o.modelName).
+					Observe(now.Sub(o.requestStart).Seconds())
+			} else {
+				// Calculate the time between tokens.
+				// Since we are only interested in the time between tokens, and openai streaming is by chunk,
+				// we can calculate the time between tokens by the time between the last token and the current token, divided by the number of tokens.
+				// And in some cases, the number of tokens can be 0, so we need to check for that.
+				div := tokenUsage.OutputTokens
+				if div == 0 {
+					div = 1
+				}
+				itl := now.Sub(o.lastTokenTime).Seconds() / float64(div)
+				metrics.InterTokenLatency.WithLabelValues(o.backendName, o.modelName).
+					Observe(itl)
+				o.lastTokenTime = now
+			}
 		}
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 	}

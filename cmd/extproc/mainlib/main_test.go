@@ -52,18 +52,26 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelError,
 			},
 			{
+				name:       "prometheus port",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-promPort", ":9190"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
+			{
 				name:       "all flags",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock", "-logLevel", "debug"},
+				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock", "-logLevel", "debug", "-promPort", ":9190"},
 				configPath: "/path/to/config.yaml",
 				addr:       "unix:///tmp/ext_proc.sock",
 				logLevel:   slog.LevelDebug,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				configPath, addr, logLevel, err := parseAndValidateFlags(tc.args)
+				configPath, addr, logLevel, promPort, err := parseAndValidateFlags(tc.args)
 				assert.Equal(t, tc.configPath, configPath)
 				assert.Equal(t, tc.addr, addr)
 				assert.Equal(t, tc.logLevel, logLevel)
+				assert.Equal(t, ":9190", promPort)
 				assert.NoError(t, err)
 			})
 		}
@@ -86,7 +94,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				_, _, _, err := parseAndValidateFlags(tc.flags)
+				_, _, _, _, err := parseAndValidateFlags(tc.flags)
 				assert.EqualError(t, err, tc.expErr)
 			})
 		}
