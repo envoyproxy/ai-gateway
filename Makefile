@@ -251,7 +251,7 @@ HELM_DIR := ./manifests/charts/ai-gateway-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
 .PHONY: helm-lint
-helm-lint:
+helm-lint: helm
 	@echo "helm-lint => .${HELM_DIR}"
 	@$(HELM) lint ${HELM_DIR}
 
