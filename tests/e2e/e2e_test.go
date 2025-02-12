@@ -20,6 +20,8 @@ const (
 	egLatest      = "v0.0.0-latest" // This defaults to the latest dev version.
 	egNamespace   = "envoy-gateway-system"
 	egDefaultPort = 10080
+
+	helmPath = "../../.bin/helm"
 )
 
 var egVersion = func() string {
@@ -126,7 +128,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "eg",
+	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -155,7 +157,7 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "ai-eg",
+	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
