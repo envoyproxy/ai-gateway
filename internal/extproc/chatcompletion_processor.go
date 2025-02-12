@@ -66,12 +66,7 @@ func (p *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	if !ok {
 		return nil, fmt.Errorf("failed to find factory for output schema %q", b.Schema)
 	}
-
-	t, err := factory(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create translator: %w", err)
-	}
-	p.translator = t
+	p.translator = factory()
 
 	headerMutation, bodyMutation, override, err := p.translator.RequestBody(body)
 	if err != nil {

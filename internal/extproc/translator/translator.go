@@ -28,11 +28,8 @@ func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
 }
 
-// Factory creates a [Translator] for the given API schema combination and request path.
-//
-//   - `path`: the path of the request.
-//   - `l`: the logger.
-type Factory func(path string) (Translator, error)
+// Factory creates a [Translator] for the given API schema combination.
+type Factory func() Translator
 
 // NewFactory returns a callback function that creates a translator for the given API schema combination.
 func NewFactory(in, out filterapi.VersionedAPISchema) (Factory, error) {

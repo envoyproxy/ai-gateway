@@ -22,18 +22,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-func TestNewOpenAIToAWSBedrockTranslator(t *testing.T) {
-	t.Run("unsupported path", func(t *testing.T) {
-		_, err := newOpenAIToAWSBedrockTranslator("unsupported-path")
-		require.Error(t, err)
-	})
-	t.Run("v1/chat/completions", func(t *testing.T) {
-		translator, err := newOpenAIToAWSBedrockTranslator("/v1/chat/completions")
-		require.NoError(t, err)
-		require.NotNil(t, translator)
-	})
-}
-
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}

@@ -22,11 +22,8 @@ import (
 )
 
 // newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
-	if path == "/v1/chat/completions" {
-		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
-	}
-	return nil, fmt.Errorf("unsupported path: %s", path)
+func newOpenAIToAWSBedrockTranslator() Translator {
+	return &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 }
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.

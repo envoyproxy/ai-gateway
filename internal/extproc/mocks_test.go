@@ -142,15 +142,12 @@ func (m *mockRequestBodyParser) impl(path string, body *extprocv3.HttpBody) (mod
 // mockTranslatorFactory implements [translator.Factory] for testing.
 type mockTranslatorFactory struct {
 	t             *testing.T
-	expPath       string
 	retTranslator translator.Translator
-	retErr        error
 }
 
 // NewTranslator implements [translator.Factory].
-func (m mockTranslatorFactory) impl(path string) (translator.Translator, error) {
-	require.Equal(m.t, m.expPath, path)
-	return m.retTranslator, m.retErr
+func (m mockTranslatorFactory) impl() translator.Translator {
+	return m.retTranslator
 }
 
 // mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.

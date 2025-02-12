@@ -23,12 +23,7 @@ func TestNewFactory(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NotNil(t, f)
-
-		tl, err := f("/v1/chat/completions")
-		require.NoError(t, err)
-		require.NotNil(t, tl)
-		_, ok := tl.(*openAIToOpenAITranslatorV1ChatCompletion)
-		require.True(t, ok)
+		require.IsType(t, &openAIToOpenAITranslatorV1ChatCompletion{}, f())
 	})
 	t.Run("openai to aws bedrock", func(t *testing.T) {
 		f, err := NewFactory(
@@ -37,11 +32,6 @@ func TestNewFactory(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NotNil(t, f)
-
-		tl, err := f("/v1/chat/completions")
-		require.NoError(t, err)
-		require.NotNil(t, tl)
-		_, ok := tl.(*openAIToAWSBedrockTranslatorV1ChatCompletion)
-		require.True(t, ok)
+		require.IsType(t, &openAIToAWSBedrockTranslatorV1ChatCompletion{}, f())
 	})
 }
