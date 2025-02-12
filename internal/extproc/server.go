@@ -164,6 +164,9 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 		// If we're processing the request headers, read the :path header to instantiate the
 		// right processor.
+		// Note that `req.GetRequestHeaders()` will only return non-nil if the request is
+		// of type `ProcessingRequest_RequestHeaders`, so this will be executed only once per
+		// request, and the processor will be instantiated only once.
 		if headers := req.GetRequestHeaders().GetHeaders(); headers != nil {
 			p, err = s.processorForPath(headersToMap(headers))
 			if err != nil {
