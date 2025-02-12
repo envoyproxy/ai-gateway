@@ -16,15 +16,25 @@ CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
 GO_TEST_COVERAGE ?= $(LOCALBIN)/go-test-coverage
 
 ## Tool versions.
-CONTROLLER_TOOLS_VERSION ?= v0.17.1 # https://github.com/kubernetes-sigs/controller-tools/releases
-ENVTEST_VERSION ?= release-0.20 # https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
-GOLANGCI_LINT_VERSION ?= v1.63.4 # https://github.com/golangci/golangci-lint/releases
-GO_FUMPT_VERSION ?= v0.7.0 # https://github.com/mvdan/gofumpt/releases
-GCI_VERSION ?= v0.13.5 # https://github.com/daixiang0/gci/releases
-EDITORCONFIG_CHECKER_VERSION ?= v3.2.0 # https://github.com/editorconfig-checker/editorconfig-checker/releases
-KIND_VERSION ?= v0.26.0 # https://github.com/kubernetes-sigs/kind/releases
-CRD_REF_DOCS_VERSION ?= v0.1.0 # https://github.com/elastic/crd-ref-docs/releases
-GO_TEST_COVERAGE_VERSION ?= v2.11.4 # https://github.com/vladopajic/go-test-coverage/releases
+# Note: Ensure no blank after version and no comments, or the version value would have a blank as suffix.
+# https://github.com/kubernetes-sigs/controller-tools/releases
+CONTROLLER_TOOLS_VERSION ?= v0.17.1
+# https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
+ENVTEST_VERSION ?= release-0.20
+# https://github.com/golangci/golangci-lint/releases
+GOLANGCI_LINT_VERSION ?= v1.63.4
+# https://github.com/mvdan/gofumpt/releases
+GO_FUMPT_VERSION ?= v0.7.0
+# https://github.com/daixiang0/gci/releases
+GCI_VERSION ?= v0.13.5
+# https://github.com/editorconfig-checker/editorconfig-checker/releases
+EDITORCONFIG_CHECKER_VERSION ?= v3.2.0
+# https://github.com/kubernetes-sigs/kind/releases
+KIND_VERSION ?= v0.26.0
+# https://github.com/elastic/crd-ref-docs/releases
+CRD_REF_DOCS_VERSION ?= v0.1.0
+# https://github.com/vladopajic/go-test-coverage/releases
+GO_TEST_COVERAGE_VERSION ?= v2.11.4
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)

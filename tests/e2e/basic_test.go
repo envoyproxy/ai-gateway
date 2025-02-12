@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"cmp"
 	"context"
 	"os"
 	"strings"
@@ -33,30 +34,24 @@ func Test_Examples_Basic(t *testing.T) {
 	//   - TEST_AWS_SECRET_ACCESS_KEY
 	//   - TEST_OPENAI_API_KEY
 	//
-	// The test will be skipped if any of these are not set.
+	// A test case will be skipped if the corresponding environment variable is not set.
 	t.Run("with credentials", func(t *testing.T) {
-		openAiApiKey := getEnvVarOrSkip(t, "TEST_OPENAI_API_KEY")
-		awsAccessKeyID := getEnvVarOrSkip(t, "TEST_AWS_ACCESS_KEY_ID")
-		awsSecretAccessKey := getEnvVarOrSkip(t, "TEST_AWS_SECRET_ACCESS_KEY")
 		read, err := os.ReadFile(manifest)
 		require.NoError(t, err)
-		// Replace the placeholder with the actual API key.
-		replaced := strings.ReplaceAll(string(read), "OPENAI_API_KEY", openAiApiKey)
-		replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", awsAccessKeyID)
-		replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", awsSecretAccessKey)
+		// Replace the placeholder with the actual credentials.
+		openAiApiKey := os.Getenv("TEST_OPENAI_API_KEY")
+		awsAccessKeyID := os.Getenv("TEST_AWS_ACCESS_KEY_ID")
+		awsSecretAccessKey := os.Getenv("TEST_AWS_SECRET_ACCESS_KEY")
+		replaced := strings.ReplaceAll(string(read), "OPENAI_API_KEY", cmp.Or(openAiApiKey, "dummy-openai-api-key"))
+		replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", cmp.Or(awsAccessKeyID, "dummy-aws-access-key-id"))
+		replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", cmp.Or(awsSecretAccessKey, "dummy-aws-secret-access-key"))
 		require.NoError(t, kubectlApplyManifestStdin(ctx, replaced))
 
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
 		for _, tc := range []examplesBasicTestCase{
-			{
-				name:      "openai",
-				modelName: "gpt-4o-mini",
-			},
-			{
-				name:      "aws",
-				modelName: "us.meta.llama3-2-1b-instruct-v1:0",
-			},
+			{name: "openai", modelName: "gpt-4o-mini", skip: openAiApiKey == ""},
+			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: awsAccessKeyID == "" || awsSecretAccessKey == ""},
 		} {
 			tc.run(t, egNamespace, egSelector)
 		}
@@ -66,10 +61,14 @@ func Test_Examples_Basic(t *testing.T) {
 type examplesBasicTestCase struct {
 	name      string
 	modelName string
+	skip      bool
 }
 
 func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string) {
 	t.Run(tc.name, func(t *testing.T) {
+		if tc.skip {
+			t.Skip("skipped due to missing credentials")
+		}
 		require.Eventually(t, func() bool {
 			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 			defer fwd.kill()
