@@ -325,12 +325,3 @@ func (f portForwarder) kill() {
 func (f portForwarder) address() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
 }
-
-// getEnvVarOrSkip requires an environment variable to be set.
-func getEnvVarOrSkip(t *testing.T, envVar string) string {
-	value := os.Getenv(envVar)
-	if value == "" {
-		t.Skipf("Environment variable %s is not set", envVar)
-	}
-	return value
-}
