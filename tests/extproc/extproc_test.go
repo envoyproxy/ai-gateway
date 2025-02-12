@@ -69,7 +69,6 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Kill() })
 }
 
 // requireBinaries requires Envoy to be present in the PATH as well as the Extproc and testuptream binaries in the out directory.

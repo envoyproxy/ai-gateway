@@ -3,11 +3,9 @@
 package celvalidation
 
 import (
-	"context"
 	"embed"
 	"path"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -21,6 +19,7 @@ var testdata embed.FS
 
 func TestAIGatewayRoutes(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
+	ctx := t.Context()
 
 	for _, tc := range []struct {
 		name   string
@@ -65,6 +64,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 
 func TestAIServiceBackends(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
+	ctx := t.Context()
 
 	for _, tc := range []struct {
 		name   string
@@ -97,6 +97,7 @@ func TestAIServiceBackends(t *testing.T) {
 
 func TestBackendSecurityPolicies(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
+	ctx := t.Context()
 
 	for _, tc := range []struct {
 		name   string
