@@ -31,6 +31,7 @@ help:
 	@echo ""
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
+	@echo "  clean           	 Clears all cached files and built artifacts. Whenever you run into issues with the target like 'precommit' or 'test', try running this target."
 	@echo "  test            	 Run the unit tests for the codebase."
 	@echo "  test-coverage		 Run the unit tests for the codebase with coverage check."
 	@echo "  test-crdcel      	 Run the integration tests of CEL validation in CRD definitions with envtest."
@@ -171,6 +172,9 @@ test-coverage: go-test-coverage
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
 	@${GO_TEST_COVERAGE} --config=.testcoverage.yml
 
+# This clears all cached files and built artifacts.
+#
+# Whenever you run into issues with the target like `precommit` or `test`, try running this target.
 .PHONY: clean
 clean:
 	rm -rf $(OUTPUT_DIR)
