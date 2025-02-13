@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
@@ -71,6 +76,8 @@ format:
 	@find . -type f -name '*.go' | xargs go tool gofumpt -l -w
 	@echo "gci => *.go"
 	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
+	@echo "licenses => **"
+	@go tool license-eye header fix
 
 # This runs go mod tidy on every module.
 .PHONY: tidy

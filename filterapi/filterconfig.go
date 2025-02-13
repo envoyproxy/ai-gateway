@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 // Package filterapi provides the configuration for the AI Gateway-implemented filter
 // which is currently an external processor (See https://github.com/envoyproxy/ai-gateway/issues/90).
 //

@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 // Package llmcostcel provides functions to create and evaluate CEL programs to calculate costs.
 //
 // This exists as a separate package to be used both in the controller to validate the expression
