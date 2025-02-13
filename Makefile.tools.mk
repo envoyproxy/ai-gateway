@@ -14,6 +14,7 @@ YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 KIND ?= $(LOCALBIN)/kind
 CRD_REF_DOCS = $(LOCALBIN)/crd-ref-docs
 GO_TEST_COVERAGE ?= $(LOCALBIN)/go-test-coverage
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool versions.
 # Note: Ensure no blank after version and no comments, or the version value would have a blank as suffix.
@@ -22,7 +23,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.17.1
 # https://github.com/kubernetes-sigs/controller-runtime/releases Note: this needs to point to a release branch.
 ENVTEST_VERSION ?= release-0.20
 # https://github.com/golangci/golangci-lint/releases
-GOLANGCI_LINT_VERSION ?= v1.63.4
+GOLANGCI_LINT_VERSION ?= v1.64.2
 # https://github.com/mvdan/gofumpt/releases
 GO_FUMPT_VERSION ?= v0.7.0
 # https://github.com/daixiang0/gci/releases
@@ -35,6 +36,8 @@ KIND_VERSION ?= v0.26.0
 CRD_REF_DOCS_VERSION ?= v0.1.0
 # https://github.com/vladopajic/go-test-coverage/releases
 GO_TEST_COVERAGE_VERSION ?= v2.11.4
+# https://github.com/helm/helm/releases
+HELM_VERSION ?= v3.17.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT)
@@ -80,6 +83,11 @@ $(CRD_REF_DOCS): $(LOCALBIN)
 go-test-coverage: $(GO_TEST_COVERAGE)
 $(GO_TEST_COVERAGE): $(LOCALBIN)
 	$(call go-install-tool,$(GO_TEST_COVERAGE),github.com/vladopajic/go-test-coverage/v2,$(GO_TEST_COVERAGE_VERSION))
+
+.PHONY: helm
+helm: $(HELM)
+$(HELM): $(LOCALBIN)
+	$(call go-install-tool,$(HELM),helm.sh/helm/v3/cmd/helm,$(HELM_VERSION))
 
 .bin/.venv/%:
 	mkdir -p $(@D)

@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -72,7 +71,7 @@ func TestWithRealProviders(t *testing.T) {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.maybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
-					chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+					chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage("Say this is a test"),
 						}),
@@ -140,7 +139,7 @@ func TestWithRealProviders(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.maybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
-					stream := client.Chat.Completions.NewStreaming(context.Background(), openai.ChatCompletionNewParams{
+					stream := client.Chat.Completions.NewStreaming(t.Context(), openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage("Say this is a test"),
 						}),
@@ -186,7 +185,7 @@ func TestWithRealProviders(t *testing.T) {
 		cc.maybeSkip(t, requiredCredentialAWS)
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		require.Eventually(t, func() bool {
-			chatCompletion, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
+			chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
 				Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 					openai.UserMessage("What is the weather like in Paris today?"),
 				}),

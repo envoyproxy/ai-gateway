@@ -20,6 +20,8 @@ const (
 	egLatest      = "v0.0.0-latest" // This defaults to the latest dev version.
 	egNamespace   = "envoy-gateway-system"
 	egDefaultPort = 10080
+
+	helmPath = "../../.bin/helm"
 )
 
 var egVersion = func() string {
@@ -57,11 +59,6 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := initTestupstream(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if err := initRateLimitServer(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -126,7 +123,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "eg",
+	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -143,6 +140,10 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
 	}
+	initLog("\tWaiting for Ratelimit deployment to be ready")
+	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+		return
+	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
 }
@@ -155,7 +156,7 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "helm", "upgrade", "-i", "ai-eg",
+	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -184,24 +185,6 @@ func initTestupstream(ctx context.Context) (err error) {
 	}
 	initLog("\twaiting for deployment")
 	return kubectlWaitForDeploymentReady("default", "testupstream")
-}
-
-func initRateLimitServer(ctx context.Context) (err error) {
-	initLog("Installing Redis for Rate limits")
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
-	}()
-	initLog("\tapplying manifests")
-	if err = kubectlApplyManifest(ctx, "./init/ratelimit/"); err != nil {
-		return
-	}
-	initLog("\twaiting for deployment")
-	if err := kubectlWaitForDeploymentReady("redis-system", "redis"); err != nil {
-		return err
-	}
-	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit")
 }
 
 func kubectl(ctx context.Context, args ...string) *exec.Cmd {

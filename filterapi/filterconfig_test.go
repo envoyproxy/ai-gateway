@@ -1,7 +1,6 @@
 package filterapi_test
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
-	server, err := extproc.NewServer(slog.Default(), extproc.NewProcessor)
+	server, err := extproc.NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, server)
 
@@ -23,7 +22,7 @@ func TestDefaultConfig(t *testing.T) {
 	err = yaml.Unmarshal([]byte(filterapi.DefaultConfig), &cfg)
 	require.NoError(t, err)
 
-	err = server.LoadConfig(context.Background(), &cfg)
+	err = server.LoadConfig(t.Context(), &cfg)
 	require.NoError(t, err)
 }
 

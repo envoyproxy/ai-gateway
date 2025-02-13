@@ -17,11 +17,8 @@ import (
 
 // TestExamplesBasic tests the basic example in examples/basic directory.
 func Test_Examples_Basic(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
 	const manifest = "../../examples/basic/basic.yaml"
-	require.NoError(t, kubectlApplyManifest(ctx, manifest))
+	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
 	requireWaitForPodReady(t, egNamespace, egSelector)
@@ -45,7 +42,7 @@ func Test_Examples_Basic(t *testing.T) {
 		replaced := strings.ReplaceAll(string(read), "OPENAI_API_KEY", cmp.Or(openAiApiKey, "dummy-openai-api-key"))
 		replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", cmp.Or(awsAccessKeyID, "dummy-aws-access-key-id"))
 		replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", cmp.Or(awsSecretAccessKey, "dummy-aws-secret-access-key"))
-		require.NoError(t, kubectlApplyManifestStdin(ctx, replaced))
+		require.NoError(t, kubectlApplyManifestStdin(t.Context(), replaced))
 
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 

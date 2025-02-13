@@ -3,6 +3,7 @@ package openai
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/openai/openai-go"
@@ -233,4 +234,31 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestModelListMarshal(t *testing.T) {
+	var (
+		model = Model{
+			ID:      "gpt-3.5-turbo",
+			Object:  "model",
+			OwnedBy: "tetrate",
+			Created: JSONUNIXTime(time.Date(2025, 0o1, 0o1, 0, 0, 0, 0, time.UTC)),
+		}
+		list = ModelList{Object: "list", Data: []Model{model}}
+		raw  = `{"object":"list","data":[{"id":"gpt-3.5-turbo","object":"model","owned_by":"tetrate","created":1735689600}]}`
+	)
+
+	b, err := json.Marshal(list)
+	require.NoError(t, err)
+	require.JSONEq(t, raw, string(b))
+
+	var out ModelList
+	require.NoError(t, json.Unmarshal([]byte(raw), &out))
+	require.Len(t, out.Data, 1)
+	require.Equal(t, "list", out.Object)
+	require.Equal(t, model.ID, out.Data[0].ID)
+	require.Equal(t, model.Object, out.Data[0].Object)
+	require.Equal(t, model.OwnedBy, out.Data[0].OwnedBy)
+	// Unmarshalling initializes other fields in time.Time we're not interested with. Just compare the actual time.
+	require.Equal(t, time.Time(model.Created).Unix(), time.Time(out.Data[0].Created).Unix())
 }

@@ -79,7 +79,7 @@ rules:
     value: gpt4.4444
 `
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	logger, buf := newTestLoggerWithBuffer()
 	err := StartConfigWatcher(ctx, path, rcv, logger, time.Millisecond*100)

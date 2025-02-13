@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,9 +22,9 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewAIServiceBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
 
-	err := cl.Create(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err := cl.Create(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 	item, ok := <-ch
 	require.True(t, ok)
@@ -34,9 +33,9 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.Equal(t, "default", item.(*aigv1a1.AIServiceBackend).Namespace)
 
 	// Test the case where the AIServiceBackend is being deleted.
-	err = cl.Delete(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err = cl.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
-	_, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 }
 
@@ -67,7 +66,7 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, c.Create(context.Background(), bsp, &client.CreateOptions{}))
+		require.NoError(t, c.Create(t.Context(), bsp, &client.CreateOptions{}))
 	}
 
 	// Create AI Service Backends.
@@ -100,21 +99,21 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, c.Create(context.Background(), backend, &client.CreateOptions{}))
+		require.NoError(t, c.Create(t.Context(), backend, &client.CreateOptions{}))
 	}
 
 	var aiServiceBackend aigv1a1.AIServiceBackendList
-	require.NoError(t, c.List(context.Background(), &aiServiceBackend,
+	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-1.ns"}))
 	require.Len(t, aiServiceBackend.Items, 2)
 	require.Equal(t, "one", aiServiceBackend.Items[0].Name)
 	require.Equal(t, "two", aiServiceBackend.Items[1].Name)
 
-	require.NoError(t, c.List(context.Background(), &aiServiceBackend,
+	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-2.ns"}))
 	require.Empty(t, aiServiceBackend.Items)
 
-	require.NoError(t, c.List(context.Background(), &aiServiceBackend,
+	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-3.ns"}))
 	require.Len(t, aiServiceBackend.Items, 1)
 	require.Equal(t, "three", aiServiceBackend.Items[0].Name)

@@ -30,7 +30,7 @@ import (
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(scheme)
-	err := applyIndexing(context.Background(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	err := applyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	})
@@ -46,15 +46,15 @@ func TestConfigSink_handleEvent(t *testing.T) {
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
 
-	_, err := kube.CoreV1().ConfigMaps("ns").Create(context.Background(), &corev1.ConfigMap{
+	_, err := kube.CoreV1().ConfigMaps("ns").Create(t.Context(), &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "ai-eg-route-extproc-apple", Namespace: "ns"},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	s.handleEvent(context.Background(), ConfigSinkEventSecretUpdate{Namespace: "ns", Name: "some-secret"})
-	s.handleEvent(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
-	s.handleEvent(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
-	s.handleEvent(context.Background(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(t.Context(), ConfigSinkEventSecretUpdate{Namespace: "ns", Name: "some-secret"})
+	s.handleEvent(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
+	s.handleEvent(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}})
 }
 
 func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
@@ -73,7 +73,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 	} {
-		err := fakeClient.Create(context.Background(), backend, &client.CreateOptions{})
+		err := fakeClient.Create(t.Context(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
 
@@ -89,25 +89,25 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 			},
 		}
-		err := fakeClient.Create(context.Background(), route, &client.CreateOptions{})
+		err := fakeClient.Create(t.Context(), route, &client.CreateOptions{})
 		require.NoError(t, err)
 		httpRoute := &gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1", Labels: map[string]string{managedByLabel: "envoy-ai-gateway"}},
 			Spec:       gwapiv1.HTTPRouteSpec{},
 		}
-		err = fakeClient.Create(context.Background(), httpRoute, &client.CreateOptions{})
+		err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
 		require.NoError(t, err)
 
 		// Create the initial configmap.
-		_, err = kube.CoreV1().ConfigMaps(route.Namespace).Create(context.Background(), &corev1.ConfigMap{
+		_, err = kube.CoreV1().ConfigMaps(route.Namespace).Create(t.Context(), &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: extProcName(route), Namespace: route.Namespace},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// Then sync, which should update the HTTPRoute.
-		s.syncAIGatewayRoute(context.Background(), route)
+		s.syncAIGatewayRoute(t.Context(), route)
 		var updatedHTTPRoute gwapiv1.HTTPRoute
-		err = fakeClient.Get(context.Background(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
+		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
 		require.Len(t, updatedHTTPRoute.Spec.Rules, 3) // 2 backends + 1 for the default rule.
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
@@ -129,7 +129,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 
 	// Check the namespace has the default host rewrite filter.
 	var f egv1a1.HTTPRouteFilter
-	err := s.client.Get(context.Background(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
+	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
 	require.NoError(t, err)
 	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
 }
@@ -148,10 +148,10 @@ func TestConfigSink_syncAIServiceBackend(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, fakeClient.Create(context.Background(), route, &client.CreateOptions{}))
+	require.NoError(t, fakeClient.Create(t.Context(), route, &client.CreateOptions{}))
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncAIServiceBackend(context.Background(), &aigv1a1.AIServiceBackend{
+	s.syncAIServiceBackend(t.Context(), &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
@@ -170,10 +170,10 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "apple"},
 		},
 	}
-	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
+	require.NoError(t, fakeClient.Create(t.Context(), &backend, &client.CreateOptions{}))
 
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	s.syncBackendSecurityPolicy(context.Background(), &aigv1a1.BackendSecurityPolicy{
+	s.syncBackendSecurityPolicy(t.Context(), &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 	})
 }
@@ -239,10 +239,12 @@ func Test_updateHTTPRoute(t *testing.T) {
 			},
 		},
 	} {
-		err := s.client.Create(context.Background(), backend, &client.CreateOptions{})
+		err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-	err := s.updateHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+
+  
+	err := s.updateHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expRules := []gwapiv1.HTTPRouteRule{
@@ -298,8 +300,8 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
-	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}}))
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}}))
 
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
 		{
@@ -325,7 +327,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), bsp, &client.CreateOptions{})
+		err := fakeClient.Create(t.Context(), bsp, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
 
@@ -361,7 +363,7 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 			},
 		},
 	} {
-		err := fakeClient.Create(context.Background(), b, &client.CreateOptions{})
+		err := fakeClient.Create(t.Context(), b, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
 	require.NotNil(t, s)
@@ -468,15 +470,15 @@ func Test_updateExtProcConfigMap(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Create(context.Background(), &corev1.ConfigMap{
+			_, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Create(t.Context(), &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: extProcName(tc.route), Namespace: tc.route.Namespace},
 			}, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			err = s.updateExtProcConfigMap(context.Background(), tc.route, tc.exp.UUID)
+			err = s.updateExtProcConfigMap(t.Context(), tc.route, tc.exp.UUID)
 			require.NoError(t, err)
 
-			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(context.Background(), extProcName(tc.route), metav1.GetOptions{})
+			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(t.Context(), extProcName(tc.route), metav1.GetOptions{})
 			require.NoError(t, err)
 			require.NotNil(t, cm)
 
@@ -494,7 +496,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "envoyproxy/ai-gateway-extproc:foo", "debug")
-	err := fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
+	err := fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
 	require.NoError(t, err)
 
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -508,7 +510,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, fakeClient.Create(context.Background(), bsp, &client.CreateOptions{}))
+		require.NoError(t, fakeClient.Create(t.Context(), bsp, &client.CreateOptions{}))
 	}
 
 	for _, b := range []*aigv1a1.AIServiceBackend{
@@ -536,7 +538,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, fakeClient.Create(context.Background(), b, &client.CreateOptions{}))
+		require.NoError(t, fakeClient.Create(t.Context(), b, &client.CreateOptions{}))
 	}
 	require.NotNil(t, s)
 
@@ -586,10 +588,10 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, fakeClient.Create(context.Background(), aiGatewayRoute, &client.CreateOptions{}))
+	require.NoError(t, fakeClient.Create(t.Context(), aiGatewayRoute, &client.CreateOptions{}))
 
 	t.Run("create", func(t *testing.T) {
-		err = s.syncExtProcDeployment(context.Background(), aiGatewayRoute)
+		err = s.syncExtProcDeployment(t.Context(), aiGatewayRoute)
 		require.NoError(t, err)
 
 		resourceLimits := &corev1.ResourceRequirements{
@@ -599,7 +601,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			},
 		}
 		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 			if err != nil {
 				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
 				return false
@@ -613,7 +615,7 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 			return true
 		}, 30*time.Second, 200*time.Millisecond)
 
-		service, err := s.kube.CoreV1().Services("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		service, err := s.kube.CoreV1().Services("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, extProcName(aiGatewayRoute), service.Name)
 	})
@@ -630,10 +632,10 @@ func TestConfigSink_SyncExtprocDeployment(t *testing.T) {
 		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Resources = newResourceLimits
 		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
 
-		require.NoError(t, s.syncExtProcDeployment(context.Background(), aiGatewayRoute))
+		require.NoError(t, s.syncExtProcDeployment(t.Context(), aiGatewayRoute))
 		// Check the deployment is updated.
 		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(context.Background(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 			if err != nil {
 				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
 				return false
@@ -660,18 +662,18 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	err := s.init(ctx)
 	require.NoError(t, err)
-	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
+	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 
 	for _, secret := range []*corev1.Secret{
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-1"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"}},
 	} {
-		require.NoError(t, fakeClient.Create(context.Background(), secret, &client.CreateOptions{}))
+		require.NoError(t, fakeClient.Create(t.Context(), secret, &client.CreateOptions{}))
 	}
 
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -707,7 +709,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, fakeClient.Create(context.Background(), bsp, &client.CreateOptions{}))
+		require.NoError(t, fakeClient.Create(t.Context(), bsp, &client.CreateOptions{}))
 	}
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -733,7 +735,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 			},
 		},
 	} {
-		require.NoError(t, fakeClient.Create(context.Background(), backend, &client.CreateOptions{}))
+		require.NoError(t, fakeClient.Create(t.Context(), backend, &client.CreateOptions{}))
 		require.NotNil(t, s)
 	}
 
@@ -779,9 +781,9 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, fakeClient.Create(context.Background(), &aiGateway, &client.CreateOptions{}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aiGateway, &client.CreateOptions{}))
 
-	updatedSpec, err := s.mountBackendSecurityPolicySecrets(context.Background(), &spec, &aiGateway)
+	updatedSpec, err := s.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
 	require.Len(t, updatedSpec.Volumes, 3)
@@ -797,7 +799,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Equal(t, "rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
 
-	require.NoError(t, fakeClient.Delete(context.Background(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
+	require.NoError(t, fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
 
 	// Update to new security policy.
 	backend := aigv1a1.AIServiceBackend{
@@ -811,10 +813,10 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
+	require.NoError(t, fakeClient.Create(t.Context(), &backend, &client.CreateOptions{}))
 	require.NotNil(t, s)
 
-	updatedSpec, err = s.mountBackendSecurityPolicySecrets(context.Background(), &spec, &aiGateway)
+	updatedSpec, err = s.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
 	require.Len(t, updatedSpec.Volumes, 3)
@@ -854,17 +856,17 @@ func Test_annotateExtProcPods(t *testing.T) {
 			},
 			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "someapp"}}},
 		}
-		_, err := kube.CoreV1().Pods("foons").Create(context.Background(), pod, metav1.CreateOptions{})
+		_, err := kube.CoreV1().Pods("foons").Create(t.Context(), pod, metav1.CreateOptions{})
 		require.NoError(t, err)
 	}
 
 	uuid := string(uuid2.NewUUID())
-	err := s.annotateExtProcPods(context.Background(), aiGatewayRoute, uuid)
+	err := s.annotateExtProcPods(t.Context(), aiGatewayRoute, uuid)
 	require.NoError(t, err)
 
 	// Check that all pods have been annotated.
 	for i := range 5 {
-		pod, err := kube.CoreV1().Pods("foons").Get(context.Background(), "somepod"+strconv.Itoa(i), metav1.GetOptions{})
+		pod, err := kube.CoreV1().Pods("foons").Get(t.Context(), "somepod"+strconv.Itoa(i), metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, uuid, pod.Annotations[extProcConfigAnnotationKey])
 	}
@@ -877,12 +879,12 @@ func Test_syncSecret(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 
-	_, err := kube.CoreV1().Secrets("ns").Create(context.Background(), &corev1.Secret{
+	_, err := kube.CoreV1().Secrets("ns").Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "ns"},
 		Data:       map[string][]byte{"key": []byte("value")},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
-	s.syncSecret(context.Background(), "ns", "some-secret")
+	s.syncSecret(t.Context(), "ns", "some-secret")
 }
 
 func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {

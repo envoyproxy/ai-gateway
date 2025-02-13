@@ -4,6 +4,7 @@ package extproc
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -50,6 +52,14 @@ func TestWithTestUpstream(t *testing.T) {
 		},
 	})
 
+	expectedModels := openai.ModelList{
+		Object: "list",
+		Data: []openai.Model{
+			{ID: "openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "aws-bedrock", Object: "model", OwnedBy: "Envoy AI Gateway"},
+		},
+	}
+
 	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	for _, tc := range []struct {
@@ -82,6 +92,8 @@ func TestWithTestUpstream(t *testing.T) {
 		expStatus int
 		// expResponseBody is the expected body from the gateway to the client.
 		expResponseBody string
+		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
+		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
 			name:           "unknown path",
@@ -200,6 +212,14 @@ data: [DONE]
 			responseBody:    `{"message": "aws bedrock rate limit exceeded"}`,
 			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
 		},
+		{
+			name:                "openai - /v1/models",
+			backend:             "openai",
+			path:                "/v1/models",
+			method:              http.MethodGet,
+			expStatus:           http.StatusOK,
+			expResponseBodyFunc: checkModelsIgnoringTimestamps(expectedModels),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {
@@ -229,6 +249,7 @@ data: [DONE]
 					t.Logf("unexpected status code: %d", resp.StatusCode)
 					return false
 				}
+
 				if tc.expResponseBody != "" {
 					body, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
@@ -236,9 +257,26 @@ data: [DONE]
 						fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), tc.expResponseBody))
 						return false
 					}
+				} else if tc.expResponseBodyFunc != nil {
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					tc.expResponseBodyFunc(t, body)
 				}
+
 				return true
 			}, 10*time.Second, 500*time.Millisecond)
 		})
+	}
+}
+
+func checkModelsIgnoringTimestamps(want openai.ModelList) func(t require.TestingT, body []byte) {
+	return func(t require.TestingT, body []byte) {
+		var models openai.ModelList
+		require.NoError(t, json.Unmarshal(body, &models))
+		require.Len(t, models.Data, len(want.Data))
+		for i := range models.Data {
+			models.Data[i].Created = want.Data[i].Created
+		}
+		require.Equal(t, want, models)
 	}
 }

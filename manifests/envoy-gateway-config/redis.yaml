@@ -1,3 +1,7 @@
+# This is a simple example of a Redis deployment that is used
+# by the default Envoy Gateway setting in config.yaml.
+#
+# This is only necessary if you want to use the rate limit feature.
 ---
 kind: Namespace
 apiVersion: v1

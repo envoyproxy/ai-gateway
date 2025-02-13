@@ -31,6 +31,7 @@ help:
 	@echo ""
 	@echo "All core targets needed for contributing:"
 	@echo "  precommit       	 Run all necessary steps to prepare for a commit."
+	@echo "  clean           	 Clears all cached files, built artifacts and installed binaries. Whenever you run into issues with the target like 'precommit' or 'test', try running this target."
 	@echo "  test            	 Run the unit tests for the codebase."
 	@echo "  test-coverage		 Run the unit tests for the codebase with coverage check."
 	@echo "  test-crdcel      	 Run the integration tests of CEL validation in CRD definitions with envtest."
@@ -158,7 +159,7 @@ test-controller: envtest apigen
 #
 # This requires the docker images to be built.
 .PHONY: test-e2e
-test-e2e: kind
+test-e2e: helm kind
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
@@ -170,6 +171,15 @@ test-coverage: go-test-coverage
 	@mkdir -p $(OUTPUT_DIR)
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
 	@${GO_TEST_COVERAGE} --config=.testcoverage.yml
+
+# This clears all cached files, built artifacts and installed binaries.
+#
+# Whenever you run into issues with the target like `precommit` or `test`, try running this target.
+.PHONY: clean
+clean:
+	rm -rf $(OUTPUT_DIR)
+	rm -rf $(LOCALBIN)
+	go clean -modcache
 
 # This builds a binary for the given command under the internal/cmd directory.
 #
@@ -250,26 +260,20 @@ docker-build:
 HELM_DIR := ./manifests/charts/ai-gateway-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
-#
-# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
 .PHONY: helm-lint
-helm-lint:
+helm-lint: helm
 	@echo "helm-lint => .${HELM_DIR}"
-	@helm lint ${HELM_DIR}
+	@$(HELM) lint ${HELM_DIR}
 
 # This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
 # This must pass before `helm-push` can be run as well as on any commit.
-#
-# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
 .PHONY: helm-package
 helm-package: helm-lint
 	@echo "helm-package => ${HELM_DIR}"
-	@helm package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@$(HELM) package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
-#
-# This uses the locally installed helm binary (TODO make helm installed via Makefile.tools.mk).
 .PHONY: helm-push
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
-	@helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@$(HELM) push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
