@@ -14,12 +14,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 	"testing"
 	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -238,24 +238,21 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("list-models", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 
-		require.Eventually(t, func() bool {
-			var models []string
+		var models []string
 
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			it := client.Models.ListAutoPaging(t.Context())
 			for it.Next() {
 				models = append(models, it.Current().ID)
 			}
-			if err := it.Err(); err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-
-			return slices.Equal([]string{
-				"gpt-4o-mini",
-				"us.meta.llama3-2-1b-instruct-v1:0",
-				"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-			}, models)
+			assert.NoError(c, it.Err())
 		}, 30*time.Second, 2*time.Second)
+
+		require.Equal(t, []string{
+			"gpt-4o-mini",
+			"us.meta.llama3-2-1b-instruct-v1:0",
+			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+		}, models)
 	})
 }
 
