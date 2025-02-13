@@ -284,7 +284,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 		}
 
 		awsCredentials := bsp.Spec.AWSCredentials
-		rotator, err := backendauthrotators.NewAWSOIDCRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
+		rotator, err := backendauthrotators.NewAWSOIDCRotator(ctx, c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
 		if err != nil {
 			c.logger.Error(err, "failed to create AWS OIDC rotator")
 			return

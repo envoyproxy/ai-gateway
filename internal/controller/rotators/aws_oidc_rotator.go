@@ -153,10 +153,6 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token stri
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials
 func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	if roleARN == "" {
-		return nil, fmt.Errorf("role ARN is required in metadata")
-	}
-
 	return r.stsOps.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
 		RoleArn:          aws.String(roleARN),
 		WebIdentityToken: aws.String(token),

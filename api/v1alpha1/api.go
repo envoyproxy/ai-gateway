@@ -489,6 +489,9 @@ type AWSOIDCExchangeToken struct {
 
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	AwsRoleArn string `json:"awsRoleArn"`
 }
 
