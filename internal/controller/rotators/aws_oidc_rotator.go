@@ -84,12 +84,12 @@ func (r *AWSOIDCRotator) SetSTSOperations(ops STSOperations) {
 	r.stsOps = ops
 }
 
-func (r *AWSOIDCRotator) IsExpired() (bool, error) {
+func (r *AWSOIDCRotator) IsExpired() bool {
 	preRotationExpirationTime := r.GetPreRotationTime()
 	if preRotationExpirationTime == nil {
-		return true, nil
+		return true
 	}
-	return IsExpired(0, *preRotationExpirationTime), nil
+	return IsExpired(0, *preRotationExpirationTime)
 }
 
 func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {

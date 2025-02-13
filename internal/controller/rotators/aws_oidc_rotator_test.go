@@ -150,3 +150,60 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to assume role")
 	})
 }
+
+func TestAWS_GetPreRotationTime(t *testing.T) {
+	scheme := runtime.NewScheme()
+	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
+		&corev1.Secret{},
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	awsOidcRotator := AWSOIDCRotator{
+		client:                         cl,
+		backendSecurityPolicyNamespace: "default",
+		backendSecurityPolicyName:      "test-secret",
+	}
+
+	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+
+	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
+	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+
+	secret, err := LookupSecret(context.Background(), cl, "default", "test-secret")
+	require.NoError(t, err)
+
+	expiredTime := time.Now().Add(-1 * time.Hour)
+	updateExpirationSecretAnnotation(secret, expiredTime)
+	require.NoError(t, cl.Update(context.Background(), secret))
+	require.Equal(t, expiredTime.Format(time.RFC3339), awsOidcRotator.GetPreRotationTime().Format(time.RFC3339))
+}
+
+func TestAWS_IsExpired(t *testing.T) {
+	scheme := runtime.NewScheme()
+	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
+		&corev1.Secret{},
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	awsOidcRotator := AWSOIDCRotator{
+		client:                         cl,
+		backendSecurityPolicyNamespace: "default",
+		backendSecurityPolicyName:      "test-secret",
+	}
+
+	require.True(t, awsOidcRotator.IsExpired())
+
+	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
+	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+
+	secret, err := LookupSecret(context.Background(), cl, "default", "test-secret")
+	require.NoError(t, err)
+
+	expiredTime := time.Now().Add(-1 * time.Hour)
+	updateExpirationSecretAnnotation(secret, expiredTime)
+	require.NoError(t, cl.Update(context.Background(), secret))
+	require.True(t, awsOidcRotator.IsExpired())
+
+	hourFromNowTime := time.Now().Add(1 * time.Hour)
+	updateExpirationSecretAnnotation(secret, hourFromNowTime)
+	require.NoError(t, cl.Update(context.Background(), secret))
+	require.False(t, awsOidcRotator.IsExpired())
+}
