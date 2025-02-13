@@ -38,7 +38,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 )
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
@@ -233,7 +233,7 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 			Name:      "orange",
 			Namespace: sharedNamespace,
 			Annotations: map[string]string{
-				backendauthrotators.ExpirationTimeAnnotationKey: "2024-01-01T01:01:00.000-00:00",
+				rotators.ExpirationTimeAnnotationKey: "2024-01-01T01:01:00.000-00:00",
 			},
 		},
 		Data: map[string][]byte{
@@ -297,9 +297,9 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "some-access-token", token.AccessToken)
 
-	updatedSecret, err := backendauthrotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, "orange")
+	updatedSecret, err := rotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, "orange")
 	require.NoError(t, err)
-	require.NotEqualf(t, secret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
+	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
 }
 
 func Test_newHTTPRoute(t *testing.T) {

@@ -30,7 +30,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
-	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -73,7 +73,7 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
-	StsOP                  backendauthrotators.STSOperations
+	StsOP                  rotators.STSOperations
 	oidcTokenCache         map[string]*oauth2.Token
 }
 
@@ -271,7 +271,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 
 	if oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec); oidc != nil {
 		tokenResponse, ok := c.oidcTokenCache[key]
-		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
+		if !ok || rotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
 			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(c.client), oidc)
 
 			tokenRes, err := oidcProvider.FetchToken(ctx)
@@ -284,7 +284,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 		}
 
 		awsCredentials := bsp.Spec.AWSCredentials
-		rotator, err := backendauthrotators.NewAWSOIDCRotator(ctx, c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
+		rotator, err := rotators.NewAWSOIDCRotator(ctx, c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
 		if err != nil {
 			c.logger.Error(err, "failed to create AWS OIDC rotator")
 			return

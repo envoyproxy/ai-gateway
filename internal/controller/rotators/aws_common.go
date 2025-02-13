@@ -1,5 +1,5 @@
 /*
-Package backendauthrotators provides credential rotation implementations.
+Package rotators provides credential rotation implementations.
 This file contains common AWS functionality shared between different AWS credential
 rotators. It provides:
 1. AWS Client Interfaces and Implementations:
@@ -14,7 +14,7 @@ rotators. It provides:
 - Standard timeouts and delays
 - Session name formatting
 */
-package backendauthrotators
+package rotators
 
 import (
 	"context"

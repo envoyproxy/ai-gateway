@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 )
 
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
@@ -55,7 +55,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
-		rotator, err := backendauthrotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
+		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
 		if err != nil {
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
 		} else if !rotator.IsExpired() {

@@ -1,4 +1,4 @@
-package backendauthrotators
+package rotators
 
 import (
 	"fmt"
