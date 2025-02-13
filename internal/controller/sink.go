@@ -296,7 +296,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 				rotator.SetSTSOperations(c.StsOP)
 			}
 			token := tokenResponse.AccessToken
-			err = rotator.Rotate(ctx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+			err = rotator.Rotate(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 			if err != nil {
 				c.logger.Error(err, "failed to rotate AWS OIDC exchange token")
 				return

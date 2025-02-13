@@ -114,7 +114,7 @@ func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 
 	var currentCreds *awsCredentials
 
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.Lines(data) {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

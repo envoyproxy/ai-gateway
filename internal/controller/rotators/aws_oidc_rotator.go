@@ -20,6 +20,8 @@ import (
 // It manages the lifecycle of temporary AWS credentials obtained through OIDC token
 // exchange with AWS STS.
 type AWSOIDCRotator struct {
+	// ctx provides a user specified context
+	ctx context.Context
 	// client is used for Kubernetes API operations
 	client client.Client
 	// kube provides additional Kubernetes API capabilities
@@ -96,7 +98,7 @@ func (r *AWSOIDCRotator) IsExpired() bool {
 
 // GetPreRotationTime gets the expiration time minus the preRotation interval.
 func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
-	secret, err := LookupSecret(context.Background(), r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return nil
@@ -112,18 +114,18 @@ func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
 }
 
 // Rotate implements the retrieval and storage of AWS sts credentials
-func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token string) error {
+func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 	r.logger.Info("rotating AWS sts temporary credentials",
 		"namespace", r.backendSecurityPolicyNamespace,
 		"name", r.backendSecurityPolicyName)
 
-	result, err := r.assumeRoleWithToken(ctx, roleARN, token)
+	result, err := r.assumeRoleWithToken(roleARN, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", roleARN, "ID", token)
 		return err
 	}
 
-	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
@@ -148,12 +150,12 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token stri
 	}
 
 	updateAWSCredentialsInSecret(secret, credsFile)
-	return updateSecret(ctx, r.client, secret)
+	return updateSecret(r.ctx, r.client, secret)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials
-func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	return r.stsOps.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
+func (r *AWSOIDCRotator) assumeRoleWithToken(roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+	return r.stsOps.AssumeRoleWithWebIdentity(r.ctx, &sts.AssumeRoleWithWebIdentityInput{
 		RoleArn:          aws.String(roleARN),
 		WebIdentityToken: aws.String(token),
 		RoleSessionName:  aws.String(fmt.Sprintf(awsSessionNameFormat, r.backendSecurityPolicyName)),

@@ -116,13 +116,14 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		createClientSecret(t, "test-client-secret")
 
 		awsOidcRotator := AWSOIDCRotator{
+			ctx:                            context.Background(),
 			client:                         cl,
 			stsOps:                         mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 		}
 
-		require.NoError(t, awsOidcRotator.Rotate(context.Background(), "us-east1", "test", "NEW-OIDC-TOKEN"))
+		require.NoError(t, awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN"))
 		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default")
 	})
 
@@ -140,12 +141,13 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			},
 		}
 		awsOidcRotator := AWSOIDCRotator{
+			ctx:                            context.Background(),
 			client:                         cl,
 			stsOps:                         mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 		}
-		err := awsOidcRotator.Rotate(context.Background(), "us-east1", "test", "NEW-OIDC-TOKEN")
+		err := awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to assume role")
 	})
@@ -158,6 +160,7 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	awsOidcRotator := AWSOIDCRotator{
+		ctx:                            context.Background(),
 		client:                         cl,
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
