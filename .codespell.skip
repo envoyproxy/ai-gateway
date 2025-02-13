@@ -6,3 +6,5 @@
 ./site/npm-debug.log*
 ./site/yarn-debug.log*
 ./site/yarn-error.log*
+./go.mod
+./go.sum

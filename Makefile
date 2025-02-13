@@ -47,9 +47,9 @@ help:
 
 # This runs the linter, formatter, and tidy on the codebase.
 .PHONY: lint
-lint: golangci-lint
+lint:
 	@echo "lint => ./..."
-	@$(GOLANGCI_LINT) run --build-tags==test_crdcel,test_controller,test_extproc ./...
+	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -65,12 +65,12 @@ yamllint: $(YAMLLINT)
 
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
-format: gci gofumpt
+format:
 	@echo "format => *.go"
 	@find . -type f -name '*.go' | xargs gofmt -s -w
-	@find . -type f -name '*.go' | xargs $(GO_FUMPT) -l -w
+	@find . -type f -name '*.go' | xargs go tool gofumpt -l -w
 	@echo "gci => *.go"
-	@$(GCI) write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
+	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
 
 # This runs go mod tidy on every module.
 .PHONY: tidy
@@ -82,14 +82,14 @@ tidy:
 
 # This re-generates the CRDs for the API defined in the api/v1alpha1 directory.
 .PHONY: apigen
-apigen: controller-gen
+apigen:
 	@echo "apigen => ./api/v1alpha1/..."
-	@$(CONTROLLER_GEN) object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
-apidoc: crd-ref-docs
-	@$(CRD_REF_DOCS) \
+apidoc:
+	@go tool crd-ref-docs \
 		--source-path=api/v1alpha1 \
 		--config=site/crd-ref-docs/config-core.yaml \
 		--templates-dir=site/crd-ref-docs/templates \
@@ -112,9 +112,9 @@ check: precommit
 	fi
 
 # This runs the editorconfig-checker on the codebase.
-editorconfig: editorconfig-checker
+editorconfig:
 	@echo "running editorconfig-checker"
-	@$(EDITORCONFIG_CHECKER)
+	@go tool editorconfig-checker
 
 # This runs the unit tests for the codebase.
 .PHONY: test
@@ -128,10 +128,10 @@ ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 #
 # This requires the EnvTest binary to be built.
 .PHONY: test-crdcel
-test-crdcel: envtest apigen
+test-crdcel: apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
-        KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
+        KUBEBUILDER_ASSETS="$$(go tool setup-envtest use $$k8sVersion -p path)" \
                  go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
     done
 
@@ -148,10 +148,10 @@ test-extproc: build.extproc
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
-test-controller: envtest apigen
+test-controller: apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
-        KUBEBUILDER_ASSETS="$$($(ENVTEST) use $$k8sVersion -p path)" \
+        KUBEBUILDER_ASSETS="$$(go tool setup-envtest use $$k8sVersion -p path)" \
                  go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
     done
 
@@ -159,7 +159,7 @@ test-controller: envtest apigen
 #
 # This requires the docker images to be built.
 .PHONY: test-e2e
-test-e2e: helm kind
+test-e2e:
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@echo "Run E2E tests"
@@ -167,10 +167,10 @@ test-e2e: helm kind
 
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
-test-coverage: go-test-coverage
+test-coverage:
 	@mkdir -p $(OUTPUT_DIR)
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
-	@${GO_TEST_COVERAGE} --config=.testcoverage.yml
+	@go tool go-test-coverage --config=.testcoverage.yml
 
 # This clears all cached files, built artifacts and installed binaries.
 #
@@ -261,19 +261,19 @@ HELM_DIR := ./manifests/charts/ai-gateway-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
 .PHONY: helm-lint
-helm-lint: helm
+helm-lint:
 	@echo "helm-lint => .${HELM_DIR}"
-	@$(HELM) lint ${HELM_DIR}
+	@go tool helm lint ${HELM_DIR}
 
 # This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
 # This must pass before `helm-push` can be run as well as on any commit.
 .PHONY: helm-package
 helm-package: helm-lint
 	@echo "helm-package => ${HELM_DIR}"
-	@$(HELM) package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@go tool helm package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
-	@$(HELM) push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
