@@ -53,7 +53,7 @@ func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx 
 		return nil, fmt.Errorf("fail to get oauth2 token %w", err)
 	}
 
-	// Handle expiration
+	// Handle expiration.
 	if token.ExpiresIn > 0 {
 		token.Expiry = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 	}
