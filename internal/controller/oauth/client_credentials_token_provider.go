@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow
+// ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
 	*BaseProvider
 	TokenSource oauth2.TokenSource
