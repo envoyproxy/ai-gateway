@@ -57,8 +57,12 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	require.NoError(t, err)
 
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
-	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{}
+	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
+
+	_, err = clientCredentialProvider.FetchToken(context.Background(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "oidc or oidc-client-secret is nil")
 
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
 	token, err := clientCredentialProvider.FetchToken(context.Background(), &egv1a1.OIDC{

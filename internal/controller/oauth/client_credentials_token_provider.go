@@ -14,7 +14,7 @@ import (
 
 // ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
-	TokenSource oauth2.TokenSource
+	tokenSource oauth2.TokenSource
 	client      client.Client
 }
 
@@ -27,6 +27,10 @@ func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvi
 
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
 func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
+	if oidc == nil || oidc.ClientSecret.Namespace == nil {
+		return nil, fmt.Errorf("oidc or oidc-client-secret is nil")
+	}
+
 	clientSecret, err := getClientSecret(ctx, p.client, &corev1.SecretReference{
 		Name:      string(oidc.ClientSecret.Name),
 		Namespace: string(*oidc.ClientSecret.Namespace),
@@ -39,7 +43,7 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *e
 
 // getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config.
 func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
-	if p.TokenSource == nil {
+	if p.tokenSource == nil {
 		oauth2Config := clientcredentials.Config{
 			ClientID:     oidc.ClientID,
 			ClientSecret: clientSecret,
@@ -47,9 +51,9 @@ func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx 
 			TokenURL: *oidc.Provider.TokenEndpoint,
 			Scopes:   oidc.Scopes,
 		}
-		p.TokenSource = oauth2Config.TokenSource(ctx)
+		p.tokenSource = oauth2Config.TokenSource(ctx)
 	}
-	token, err := p.TokenSource.Token()
+	token, err := p.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("fail to get oauth2 token %w", err)
 	}

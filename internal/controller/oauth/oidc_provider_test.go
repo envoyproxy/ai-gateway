@@ -166,7 +166,7 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		},
 	}
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
-	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{}
+	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
 	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
