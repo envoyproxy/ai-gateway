@@ -1,0 +1,241 @@
+syntax = "proto3";
+
+// Package for LLM routing processor functionality including semantic caching and model selection
+package routing_processor.v1alpha1;
+
+option go_package = "routing_processor/go";
+
+// Main service for processing LLM requests and responses
+service RoutingProcessor {
+  // Primary RPC for processing LLM requests/responses in a streaming fashion
+  rpc ExternalProcess(stream ProcessingRequest) returns (stream ProcessingResponse);  
+  
+  // Used by clients to discover supported features of the routing processor
+  rpc GetCapabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+}
+
+// Request message for the ExternalProcess RPC
+message ProcessingRequest {
+  oneof request {
+    // Headers from the original request, sent at the start of processing
+    RequestHeaders headers = 1;
+    // Request or response body content
+    RequestBody body = 2;
+  }
+  // Configuration for how this request should be processed
+  ProcessingMode processing_mode = 3;
+}
+
+message Metadata {
+  map<string, Value> fields = 1;
+}
+
+message Value {
+  oneof kind {
+    string string_value = 1;
+    double number_value = 2;
+    bool bool_value = 3;
+    Metadata struct_value = 4;
+    ListValue list_value = 5;
+  }
+}
+
+message ListValue {
+  repeated Value values = 1;
+}
+
+// Response message for the ExternalProcess RPC
+message ProcessingResponse {
+  oneof response {
+    // Used when processing should stop immediately and return to the client
+    ImmediateResponse immediate_response = 1;
+    // Normal processing response with mutations and routing decisions
+    MessageProcessingResponse message_processing = 2;
+  }
+  // Additional metadata about processing outcomes (e.g., cache status, selected model)
+  Metadata dynamic_metadata = 3;
+}
+
+// Response that immediately terminates processing and returns to the client
+message ImmediateResponse {
+  // HTTP status code to return
+  int32 status_code = 1;
+  // Headers to include in the response
+  repeated Header headers = 2;
+  // Response body content
+  bytes body = 3;
+}
+
+// Response for normal message processing flow
+message MessageProcessingResponse {
+  // Common response elements including mutations and routing decisions
+  CommonResponse response = 1;
+}
+
+// Core response elements that can be applied to requests/responses
+message CommonResponse {
+  // Mutations to apply to headers
+  HeaderMutation header_mutation = 1;
+  // Mutations to apply to body content
+  BodyMutation body_mutation = 2;
+  // Information about cache operations, if caching is enabled
+  optional CacheInfo cache_info = 3;
+  // Selected backend for routing, if model selection is enabled
+  optional string selected_backend = 4;
+}
+
+// Configuration for how requests should be processed
+message ProcessingMode {
+  // Enable semantic caching functionality
+  bool semantic_cache_enabled = 1;
+  // Enable model selection functionality
+  bool model_selection_enabled = 2;
+  // Maximum time allowed for processing
+  optional uint32 timeout = 3;
+  // Configuration for caching behavior, if enabled
+  optional CachingBehavior caching_behavior = 4;
+  // Whether the processor can override specified modes
+  optional bool allow_mode_override = 5;
+}
+
+// Configuration for semantic cache behavior
+message CachingBehavior {
+  // Threshold for semantic matching (0.0-1.0), defaults to 0.85
+  optional float similarity_threshold = 1;
+  // Maximum cache entries per model, defaults to 10000
+  optional int32 max_cache_size = 2;
+  // Cache entry TTL in seconds, defaults to 3600
+  optional int32 ttl_seconds = 3;
+}
+
+// Headers from the original request
+message RequestHeaders {
+  // List of HTTP headers
+  repeated Header headers = 1;
+  // Available backends for routing
+  repeated Backend available_backends = 2;
+  // Unique identifier for this request
+  string request_id = 3;
+}
+
+// Body content from requests or responses
+message RequestBody {
+  // Raw body content
+  bytes body = 1;
+  // Whether this is the last chunk of data
+  bool end_of_stream = 2;
+  // Type of message (request/response/cached)
+  MessageType message_type = 3;
+  // Additional metadata about the request/response
+  RequestMetadata metadata = 4; 
+}
+
+// Types of messages that can be processed
+enum MessageType {
+  UNKNOWN = 0;
+  // Original request from client
+  CLIENT_REQUEST = 1;
+  // Response from upstream LLM
+  UPSTREAM_RESPONSE = 2;
+  // Response from cache
+  CACHED_RESPONSE = 3;
+}
+
+// Additional metadata about requests and responses
+message RequestMetadata {
+  // Unique identifier linking requests with responses
+  string request_id = 1;
+  // LLM model being used
+  string model_name = 2;
+  // Time taken to generate response
+  float response_latency = 3;
+  // Total tokens in response
+  uint64 token_count = 4;
+  // Semantic similarity score for cache hits
+  float cache_score = 5;
+  // HTTP status code of the response
+  optional int32 status_code = 6;
+}
+
+// Single HTTP header
+message Header {
+  string key = 1;
+  string value = 2;
+}
+
+// Configuration for an LLM backend
+message Backend {
+  // Unique identifier for the backend
+  string name = 1;
+  // Routing weight for load balancing
+  int32 weight = 2;
+  // API schema used by the backend
+  APISchema schema = 3;
+  // Additional backend-specific properties
+  Metadata properties = 4;
+  // Performance metrics for the backend
+  optional BackendMetrics metrics = 5;
+}
+
+// Performance metrics for backend selection
+message BackendMetrics {
+  // Average response time in seconds
+  optional float avg_latency = 1;
+  // Cost per token/request
+  optional float cost_per_unit = 2;
+}
+
+// API schema information for a backend
+message APISchema {
+  // Name of the schema (e.g., "openai", "anthropic")
+  string name = 1;
+  // Version of the schema
+  string version = 2;
+}
+
+// Information about cache operations
+message CacheInfo {
+  // Whether the response was from cache
+  bool cache_hit = 1;
+  // Semantic similarity score for the match
+  float similarity_score = 2;
+  // ID of request that populated this cache entry
+  string cached_request_id = 3;
+  // Age of the cache entry in seconds
+  uint32 age = 4;
+}
+
+// Mutations to apply to headers
+message HeaderMutation {
+  // Headers to add or update
+  repeated HeaderValueOption set_headers = 1;
+  // Headers to remove
+  repeated string remove_headers = 2;
+}
+
+// Configuration for header modifications
+message HeaderValueOption {
+  // Header to modify
+  Header header = 1;
+  // Whether to append to existing header
+  bool append = 2;
+}
+
+// Mutations to apply to body content
+message BodyMutation {
+  // Modified body content
+  bytes body = 1;
+}
+
+// Empty request for capabilities discovery
+message CapabilitiesRequest {}
+
+// Response indicating supported features
+message CapabilitiesResponse {
+  // Whether semantic caching is supported
+  bool semantic_cache_supported = 1;
+  // Whether model selection is supported
+  bool model_selection_supported = 2;
+  // Whether immediate responses are supported
+  bool immediate_response_supported = 3;
+}
