@@ -39,6 +39,7 @@ type AWSOIDCRotator struct {
 // NewAWSOIDCRotator creates a new AWS OIDC rotator with the specified configuration.
 // It initializes the AWS STS client and sets up the rotation channels.
 func NewAWSOIDCRotator(
+	ctx context.Context,
 	client client.Client,
 	kube kubernetes.Interface,
 	logger logr.Logger,
@@ -47,7 +48,7 @@ func NewAWSOIDCRotator(
 	preRotationWindow time.Duration,
 	region string,
 ) (*AWSOIDCRotator, error) {
-	cfg, err := defaultAWSConfig(context.Background())
+	cfg, err := defaultAWSConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -84,6 +85,7 @@ func (r *AWSOIDCRotator) SetSTSOperations(ops STSOperations) {
 	r.stsOps = ops
 }
 
+// IsExpired checks if the preRotation time is before the current time.
 func (r *AWSOIDCRotator) IsExpired() bool {
 	preRotationExpirationTime := r.GetPreRotationTime()
 	if preRotationExpirationTime == nil {
@@ -92,6 +94,7 @@ func (r *AWSOIDCRotator) IsExpired() bool {
 	return IsExpired(0, *preRotationExpirationTime)
 }
 
+// GetPreRotationTime gets the expiration time minus the preRotation interval.
 func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
 	secret, err := LookupSecret(context.Background(), r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
 	if err != nil {

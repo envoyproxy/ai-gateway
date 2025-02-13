@@ -76,6 +76,7 @@ func GetExpirationSecretAnnotation(secret *corev1.Secret) (*time.Time, error) {
 	return &expirationTime, nil
 }
 
-func IsExpired(preRotationInterval time.Duration, expirationTime time.Time) bool {
-	return expirationTime.Add(-preRotationInterval).Before(time.Now())
+// IsExpired checks if the expired time minus duration buffer is before the current time.
+func IsExpired(buffer time.Duration, expirationTime time.Time) bool {
+	return expirationTime.Add(-buffer).Before(time.Now())
 }

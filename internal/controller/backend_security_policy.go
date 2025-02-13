@@ -55,7 +55,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
-		rotator, err := backendauthrotators.NewAWSOIDCRotator(b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
+		rotator, err := backendauthrotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
 		if err != nil {
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
 		} else if !rotator.IsExpired() {
@@ -71,6 +71,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	return
 }
 
+// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 		return &spec.AWSCredentials.OIDCExchangeToken.OIDC
