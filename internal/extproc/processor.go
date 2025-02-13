@@ -12,7 +12,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
 
 // processorConfig is the configuration for the processor.
@@ -22,7 +21,6 @@ type processorConfig struct {
 	bodyParser                                   router.RequestBodyParser
 	router                                       x.Router
 	modelNameHeaderKey, selectedBackendHeaderKey string
-	factories                                    map[filterapi.VersionedAPISchema]translator.Factory
 	backendAuthHandlers                          map[string]backendauth.Handler
 	metadataNamespace                            string
 	requestCosts                                 []processorConfigRequestCost

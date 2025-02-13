@@ -21,8 +21,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func newOpenAIToAWSBedrockTranslator() Translator {
+// NewOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
+func NewOpenAIToAWSBedrockTranslator() Translator {
 	return &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 }
 

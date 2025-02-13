@@ -8,7 +8,6 @@ import (
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
@@ -26,23 +25,6 @@ var (
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status#successful_responses
 func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
-}
-
-// Factory creates a [Translator] for the given API schema combination.
-type Factory func() Translator
-
-// NewFactory returns a callback function that creates a translator for the given API schema combination.
-func NewFactory(in, out filterapi.VersionedAPISchema) (Factory, error) {
-	if in.Name == filterapi.APISchemaOpenAI {
-		// TODO: currently, we ignore the LLMAPISchema."Version" field.
-		switch out.Name {
-		case filterapi.APISchemaOpenAI:
-			return newOpenAIToOpenAITranslator, nil
-		case filterapi.APISchemaAWSBedrock:
-			return newOpenAIToAWSBedrockTranslator, nil
-		}
-	}
-	return nil, fmt.Errorf("unsupported API schema combination: client=%s, backend=%s", in, out)
 }
 
 // Translator translates the request and response messages between the client and the backend API schemas for a specific path.

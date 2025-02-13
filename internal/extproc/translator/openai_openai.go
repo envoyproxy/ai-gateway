@@ -14,8 +14,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func newOpenAIToOpenAITranslator() Translator {
+// NewOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
+func NewOpenAIToOpenAITranslator() Translator {
 	return &openAIToOpenAITranslatorV1ChatCompletion{}
 }
 

@@ -86,9 +86,6 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NotNil(t, s.config.bodyParser)
 		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
-		require.Len(t, s.config.factories, 2)
-		require.NotNil(t, s.config.factories[filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}])
-		require.NotNil(t, s.config.factories[filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}])
 
 		require.Len(t, s.config.requestCosts, 2)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
