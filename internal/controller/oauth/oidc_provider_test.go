@@ -21,6 +21,84 @@ func TestNewOIDCProvider(t *testing.T) {
 	require.NotNil(t, NewOIDCProvider(nil, &egv1a1.OIDC{}))
 }
 
+func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
+	scheme := runtime.NewScheme()
+	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
+		&corev1.Secret{},
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	baseProvider := NewBaseProvider(cl, ctrl.Log)
+	require.NotNil(t, baseProvider)
+
+	oidc := &egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{},
+		ClientID: "some-client-id",
+	}
+
+	var err error
+	missingIssuerTestServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err = w.Write([]byte(`{"token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri"}`))
+		require.NoError(t, err)
+	}))
+	defer missingIssuerTestServer.Close()
+
+	missingTokenURLTestServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err = w.Write([]byte(`{"issuer": "issuer", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri"}`))
+		require.NoError(t, err)
+	}))
+	defer missingTokenURLTestServer.Close()
+
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(baseProvider), oidc)
+	cancelledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	for _, testcase := range []struct {
+		name     string
+		provider *OIDCProvider
+		url      string
+		ctx      context.Context
+		contains string
+	}{
+		{
+			name:     "context error",
+			provider: oidcProvider,
+			ctx:      cancelledContext,
+			url:      "",
+			contains: "context error before discovery",
+		},
+		{
+			name:     "failed to create go oidc",
+			provider: oidcProvider,
+			url:      "",
+			ctx:      context.Background(),
+			contains: "failed to create go-oidc provider",
+		},
+		{
+			name:     "config missing token url",
+			provider: oidcProvider,
+			url:      missingTokenURLTestServer.URL,
+			ctx:      oidcv3.InsecureIssuerURLContext(context.Background(), missingTokenURLTestServer.URL),
+			contains: "token_endpoint is required in OIDC provider config",
+		},
+		{
+			name:     "config missing issuer",
+			provider: oidcProvider,
+			url:      missingIssuerTestServer.URL,
+			ctx:      oidcv3.InsecureIssuerURLContext(context.Background(), missingIssuerTestServer.URL),
+			contains: "issuer is required in OIDC provider config",
+		},
+	} {
+		t.Run(testcase.name, func(t *testing.T) {
+			oidcProvider := testcase.provider
+			config, supportedScope, err := oidcProvider.getOIDCProviderConfig(testcase.ctx, testcase.url)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), testcase.contains)
+			require.Nil(t, config)
+			require.Nil(t, supportedScope)
+		})
+	}
+}
+
 func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
