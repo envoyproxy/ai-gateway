@@ -272,8 +272,7 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 	if oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec); oidc != nil {
 		tokenResponse, ok := c.oidcTokenCache[key]
 		if !ok || backendauthrotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
-			baseProvider := oauth.NewBaseProvider(c.client, c.logger)
-			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(baseProvider), oidc)
+			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(c.client), oidc)
 
 			tokenRes, err := oidcProvider.FetchToken(ctx)
 			if err != nil {

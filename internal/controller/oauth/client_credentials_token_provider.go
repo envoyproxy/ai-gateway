@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -13,20 +14,20 @@ import (
 
 // ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
-	*BaseProvider
 	TokenSource oauth2.TokenSource
+	client      client.Client
 }
 
 // NewClientCredentialsProvider creates a new client credentials provider
-func NewClientCredentialsProvider(base *BaseProvider) *ClientCredentialsTokenProvider {
+func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvider {
 	return &ClientCredentialsTokenProvider{
-		BaseProvider: base,
+		client: cl,
 	}
 }
 
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
 func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
-	clientSecret, err := p.getClientSecret(ctx, &corev1.SecretReference{
+	clientSecret, err := getClientSecret(ctx, p.client, &corev1.SecretReference{
 		Name:      string(oidc.ClientSecret.Name),
 		Namespace: string(*oidc.ClientSecret.Namespace),
 	})

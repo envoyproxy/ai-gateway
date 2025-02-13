@@ -13,15 +13,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // MockClientCredentialsTokenSource implements the standard OAuth2 client credentials flow
-type MockClientCredentialsTokenSource struct {
-	*BaseProvider
-}
+type MockClientCredentialsTokenSource struct{}
 
 // FetchToken gets the client secret from the secret reference and fetches the token from provider token URL.
 func (m *MockClientCredentialsTokenSource) Token() (*oauth2.Token, error) {
@@ -43,8 +40,6 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log)
-	require.NotNil(t, baseProvider)
 
 	secretName, secretNamespace := "secret", "secret-ns"
 	err := cl.Create(context.Background(), &corev1.Secret{
@@ -61,8 +56,8 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	clientCredentialProvider := NewClientCredentialsProvider(baseProvider)
-	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{BaseProvider: baseProvider}
+	clientCredentialProvider := NewClientCredentialsProvider(cl)
+	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
 
 	namespaceRef := gwapiv1.Namespace(secretNamespace)

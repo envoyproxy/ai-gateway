@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -27,8 +26,6 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log)
-	require.NotNil(t, baseProvider)
 
 	oidc := &egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{},
@@ -48,7 +45,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	}))
 	defer missingTokenURLTestServer.Close()
 
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(baseProvider), oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
 	cancelledContext, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -111,8 +108,6 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log)
-	require.NotNil(t, baseProvider)
 
 	oidc := &egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
@@ -123,7 +118,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	}
 
 	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(baseProvider), oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
 	config, supportedScope, err := oidcProvider.getOIDCProviderConfig(ctx, ts.URL)
 	require.NoError(t, err)
 	require.Equal(t, "token_endpoint", config.TokenURL)
@@ -143,8 +138,6 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	baseProvider := NewBaseProvider(cl, ctrl.Log)
-	require.NotNil(t, baseProvider)
 
 	secretName, secretNamespace := "secret", "secret-ns"
 	err := cl.Create(context.Background(), &corev1.Secret{
@@ -172,8 +165,8 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 			Namespace: &namespaceRef,
 		},
 	}
-	clientCredentialProvider := NewClientCredentialsProvider(baseProvider)
-	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{BaseProvider: baseProvider}
+	clientCredentialProvider := NewClientCredentialsProvider(cl)
+	clientCredentialProvider.TokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
 	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
