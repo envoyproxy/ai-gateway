@@ -14,12 +14,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func newOpenAIToOpenAITranslator(path string) (Translator, error) {
-	if path == "/v1/chat/completions" {
-		return &openAIToOpenAITranslatorV1ChatCompletion{}, nil
-	}
-	return nil, fmt.Errorf("unsupported path: %s", path)
+// NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
+func NewChatCompletionOpenAIToOpenAITranslator() Translator {
+	return &openAIToOpenAITranslatorV1ChatCompletion{}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.

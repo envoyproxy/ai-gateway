@@ -3,45 +3,27 @@ package translator
 import (
 	"testing"
 
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
-
-	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-func TestNewFactory(t *testing.T) {
-	t.Run("error", func(t *testing.T) {
-		_, err := NewFactory(
-			filterapi.VersionedAPISchema{Name: "Foo", Version: "v100"},
-			filterapi.VersionedAPISchema{Name: "Bar", Version: "v123"},
-		)
-		require.ErrorContains(t, err, "unsupported API schema combination: client={Foo v100}, backend={Bar v123}")
-	})
-	t.Run("openai to openai", func(t *testing.T) {
-		f, err := NewFactory(
-			filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-		)
-		require.NoError(t, err)
-		require.NotNil(t, f)
+func TestIsGoodStatusCode(t *testing.T) {
+	for _, s := range []int{200, 201, 299} {
+		require.True(t, isGoodStatusCode(s))
+	}
+	for _, s := range []int{100, 300, 400, 500} {
+		require.False(t, isGoodStatusCode(s))
+	}
+}
 
-		tl, err := f("/v1/chat/completions")
-		require.NoError(t, err)
-		require.NotNil(t, tl)
-		_, ok := tl.(*openAIToOpenAITranslatorV1ChatCompletion)
-		require.True(t, ok)
-	})
-	t.Run("openai to aws bedrock", func(t *testing.T) {
-		f, err := NewFactory(
-			filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
-		)
-		require.NoError(t, err)
-		require.NotNil(t, f)
+func TestSetContentLength(t *testing.T) {
+	hm := &extprocv3.HeaderMutation{}
+	setContentLength(hm, nil)
+	require.Len(t, hm.SetHeaders, 1)
+	require.Equal(t, "0", string(hm.SetHeaders[0].Header.RawValue))
 
-		tl, err := f("/v1/chat/completions")
-		require.NoError(t, err)
-		require.NotNil(t, tl)
-		_, ok := tl.(*openAIToAWSBedrockTranslatorV1ChatCompletion)
-		require.True(t, ok)
-	})
+	hm = &extprocv3.HeaderMutation{}
+	setContentLength(hm, []byte("body"))
+	require.Len(t, hm.SetHeaders, 1)
+	require.Equal(t, "4", string(hm.SetHeaders[0].Header.RawValue))
 }

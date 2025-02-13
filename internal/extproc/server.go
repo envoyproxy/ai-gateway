@@ -22,7 +22,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -60,19 +59,11 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	var (
-		factories           = make(map[filterapi.VersionedAPISchema]translator.Factory)
 		backendAuthHandlers = make(map[string]backendauth.Handler)
 		declaredModels      []string
 	)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
-			if _, ok := factories[b.Schema]; !ok {
-				factories[b.Schema], err = translator.NewFactory(config.Schema, b.Schema)
-				if err != nil {
-					return fmt.Errorf("cannot create translator factory: %w", err)
-				}
-			}
-
 			if b.Auth != nil {
 				backendAuthHandlers[b.Name], err = backendauth.NewHandler(ctx, b.Auth)
 				if err != nil {
@@ -112,7 +103,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		bodyParser: bodyParser, router: rt,
 		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
 		modelNameHeaderKey:       config.ModelNameHeaderKey,
-		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
 		metadataNamespace:        config.MetadataNamespace,
 		requestCosts:             costs,

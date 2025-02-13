@@ -16,6 +16,24 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
+func TestChatCompletion_SelectTranslator(t *testing.T) {
+	c := &chatCompletionProcessor{}
+	t.Run("unsupported", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: "Bar", Version: "v123"})
+		require.ErrorContains(t, err, "unsupported API schema: backend={Bar v123}")
+	})
+	t.Run("supported openai", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
+	t.Run("supported aws bedrock", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
+}
+
 func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
 	p := &chatCompletionProcessor{}
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
@@ -128,27 +146,9 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		}
 		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: make(map[filterapi.VersionedAPISchema]translator.Factory),
 		}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
-		require.ErrorContains(t, err, "failed to find factory for output schema {\"some-schema\" \"v10.0\"}")
-	})
-	t.Run("translator factory error", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", expPath: "/foo"}
-		rt := mockRouter{
-			t: t, expHeaders: headers, retBackendName: "some-backend",
-			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-		}
-		factory := mockTranslatorFactory{t: t, retErr: errors.New("test error"), expPath: "/foo"}
-		p := &chatCompletionProcessor{config: &processorConfig{
-			bodyParser: rbp.impl, router: rt,
-			factories: map[filterapi.VersionedAPISchema]translator.Factory{
-				{Name: "some-schema", Version: "v10.0"}: factory.impl,
-			},
-		}, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
-		require.ErrorContains(t, err, "failed to create translator: test error")
+		require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	})
 	t.Run("translator error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
@@ -157,13 +157,10 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
-		factory := mockTranslatorFactory{t: t, retTranslator: mockTranslator{t: t, retErr: errors.New("test error")}, expPath: "/foo"}
+		tr := mockTranslator{t: t, retErr: errors.New("test error")}
 		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[filterapi.VersionedAPISchema]translator.Factory{
-				{Name: "some-schema", Version: "v10.0"}: factory.impl,
-			},
-		}, requestHeaders: headers, logger: slog.Default()}
+		}, requestHeaders: headers, logger: slog.Default(), translator: tr}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "failed to transform request: test error")
 	})
@@ -178,15 +175,11 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		headerMut := &extprocv3.HeaderMutation{}
 		bodyMut := &extprocv3.BodyMutation{}
 		mt := mockTranslator{t: t, expRequestBody: someBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
-		factory := mockTranslatorFactory{t: t, retTranslator: mt, expPath: "/foo"}
 		p := &chatCompletionProcessor{config: &processorConfig{
 			bodyParser: rbp.impl, router: rt,
-			factories: map[filterapi.VersionedAPISchema]translator.Factory{
-				{Name: "some-schema", Version: "v10.0"}: factory.impl,
-			},
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
 			modelNameHeaderKey:       "x-ai-gateway-model-key",
-		}, requestHeaders: headers, logger: slog.Default()}
+		}, requestHeaders: headers, logger: slog.Default(), translator: mt}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 		require.NoError(t, err)
 		require.Equal(t, mt, p.translator)
