@@ -48,7 +48,7 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 	case filterapi.APISchemaOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator()
 	case filterapi.APISchemaAWSBedrock:
-		c.translator = translator.NewOpenAIToAWSBedrockTranslator()
+		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator()
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
