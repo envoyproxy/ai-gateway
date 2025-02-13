@@ -20,21 +20,21 @@ import (
 // It manages the lifecycle of temporary AWS credentials obtained through OIDC token
 // exchange with AWS STS.
 type AWSOIDCRotator struct {
-	// ctx provides a user specified context
+	// ctx provides a user specified context.
 	ctx context.Context
-	// client is used for Kubernetes API operations
+	// client is used for Kubernetes API operations.
 	client client.Client
-	// kube provides additional Kubernetes API capabilities
+	// kube provides additional Kubernetes API capabilities.
 	kube kubernetes.Interface
-	// logger is used for structured logging
+	// logger is used for structured logging.
 	logger logr.Logger
-	// stsOps provides AWS STS operations interface
+	// stsOps provides AWS STS operations interface.
 	stsOps STSOperations
-	// backendSecurityPolicyName provides name of backend security policy
+	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
-	// backendSecurityPolicyNamespace provides namespace of backend security policy
+	// backendSecurityPolicyNamespace provides namespace of backend security policy.
 	backendSecurityPolicyNamespace string
-	// preRotationWindow specifies how long before expiry to rotate
+	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
 }
 
@@ -82,7 +82,7 @@ func NewAWSOIDCRotator(
 	}, nil
 }
 
-// SetSTSOperations sets the STS operations implementation - primarily used for testing
+// SetSTSOperations sets the STS operations implementation - primarily used for testing.
 func (r *AWSOIDCRotator) SetSTSOperations(ops STSOperations) {
 	r.stsOps = ops
 }
@@ -113,7 +113,7 @@ func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
 	return &preRotationTime
 }
 
-// Rotate implements the retrieval and storage of AWS sts credentials
+// Rotate implements the retrieval and storage of AWS sts credentials.
 func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 	r.logger.Info("rotating AWS sts temporary credentials",
 		"namespace", r.backendSecurityPolicyNamespace,
@@ -135,7 +135,7 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 
 	updateExpirationSecretAnnotation(secret, *result.Credentials.Expiration)
 
-	// For now have profile as default
+	// For now have profile as default.
 	profile := "default"
 	credsFile := awsCredentialsFile{
 		profiles: map[string]*awsCredentials{
@@ -149,11 +149,11 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 		},
 	}
 
-	updateAWSCredentialsInSecret(secret, credsFile)
+	updateAWSCredentialsInSecret(secret, &credsFile)
 	return updateSecret(r.ctx, r.client, secret)
 }
 
-// assumeRoleWithToken exchanges an OIDC token for AWS credentials
+// assumeRoleWithToken exchanges an OIDC token for AWS credentials.
 func (r *AWSOIDCRotator) assumeRoleWithToken(roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return r.stsOps.AssumeRoleWithWebIdentity(r.ctx, &sts.AssumeRoleWithWebIdentityInput{
 		RoleArn:          aws.String(roleARN),

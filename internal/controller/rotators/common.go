@@ -13,7 +13,7 @@ import (
 
 const ExpirationTimeAnnotationKey = "rotators/expiration-time"
 
-// newSecret creates a new secret struct (does not persist to k8s)
+// newSecret creates a new secret struct (does not persist to k8s).
 func newSecret(namespace, name string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -25,7 +25,7 @@ func newSecret(namespace, name string) *corev1.Secret {
 	}
 }
 
-// updateSecret updates an existing secret or creates a new one
+// updateSecret updates an existing secret or creates a new one.
 func updateSecret(ctx context.Context, k8sClient client.Client, secret *corev1.Secret) error {
 	if secret.ResourceVersion == "" {
 		if err := k8sClient.Create(ctx, secret); err != nil {
@@ -39,7 +39,7 @@ func updateSecret(ctx context.Context, k8sClient client.Client, secret *corev1.S
 	return nil
 }
 
-// LookupSecret retrieves an existing secret
+// LookupSecret retrieves an existing secret.
 func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{
@@ -54,7 +54,7 @@ func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name 
 	return secret, nil
 }
 
-// updateExpirationSecretAnnotation will set the expiration time of credentials set in secret annotation
+// updateExpirationSecretAnnotation will set the expiration time of credentials set in secret annotation.
 func updateExpirationSecretAnnotation(secret *corev1.Secret, updateTime time.Time) {
 	if secret.Annotations == nil {
 		secret.Annotations = make(map[string]string)
@@ -62,7 +62,7 @@ func updateExpirationSecretAnnotation(secret *corev1.Secret, updateTime time.Tim
 	secret.Annotations[ExpirationTimeAnnotationKey] = updateTime.Format(time.RFC3339)
 }
 
-// GetExpirationSecretAnnotation will get the expiration time of credentials set in secret annotation
+// GetExpirationSecretAnnotation will get the expiration time of credentials set in secret annotation.
 func GetExpirationSecretAnnotation(secret *corev1.Secret) (*time.Time, error) {
 	expirationTimeAnnotationKey, ok := secret.Annotations[ExpirationTimeAnnotationKey]
 	if !ok {

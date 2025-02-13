@@ -28,11 +28,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// Common constants for AWS operations
+// Common constants for AWS operations.
 const (
-	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
 	awsCredentialsKey = "credentials"
-	// awsSessionNameFormat is the format string for AWS session names
+	// awsSessionNameFormat is the format string for AWS session names.
 	awsSessionNameFormat = "ai-gateway-%s"
 )
 
@@ -48,7 +48,7 @@ func defaultAWSConfig(ctx context.Context) (aws.Config, error) {
 // This interface encapsulates the STS API operations needed for OIDC token exchange
 // and role assumption.
 type STSOperations interface {
-	// AssumeRoleWithWebIdentity exchanges a web identity token for temporary AWS credentials
+	// AssumeRoleWithWebIdentity exchanges a web identity token for temporary AWS credentials.
 	AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
 
@@ -77,15 +77,15 @@ func (c *STSClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.A
 // session token and region configuration. It maps to a single profile in an
 // AWS credentials file.
 type awsCredentials struct {
-	// profile is the name of the credentials profile
+	// profile is the name of the credentials profile.
 	profile string
-	// accessKeyID is the AWS access key ID
+	// accessKeyID is the AWS access key ID.
 	accessKeyID string
-	// secretAccessKey is the AWS secret access key
+	// secretAccessKey is the AWS secret access key.
 	secretAccessKey string
-	// sessionToken is the optional AWS session token for temporary credentials
+	// sessionToken is the optional AWS session token for temporary credentials.
 	sessionToken string
-	// region is the optional AWS region for the profile
+	// region is the optional AWS region for the profile.
 	region string
 }
 
@@ -93,7 +93,7 @@ type awsCredentials struct {
 // multiple credential profiles. It provides a structured way to manage
 // multiple sets of AWS credentials.
 type awsCredentialsFile struct {
-	// profiles maps profile names to their respective credentials
+	// profiles maps profile names to their respective credentials.
 	profiles map[string]*awsCredentials
 }
 
@@ -163,7 +163,7 @@ func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	var builder strings.Builder
 
-	// Sort profiles to ensure consistent output
+	// Sort profiles to ensure consistent output.
 	profileNames := make([]string, 0, len(file.profiles))
 	for profileName := range file.profiles {
 		profileNames = append(profileNames, profileName)
@@ -188,7 +188,7 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	return builder.String()
 }
 
-// updateAWSCredentialsInSecret updates AWS credentials in a secret
+// updateAWSCredentialsInSecret updates AWS credentials in a secret.
 func updateAWSCredentialsInSecret(secret *corev1.Secret, creds *awsCredentialsFile) {
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)

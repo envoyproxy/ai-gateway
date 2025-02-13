@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// getClientSecret retrieves the client secret from a Kubernetes secret
+// getClientSecret retrieves the client secret from a Kubernetes secret.
 func getClientSecret(ctx context.Context, cl client.Client, secretRef *corev1.SecretReference) (string, error) {
 	secret := &corev1.Secret{}
 	if err := cl.Get(ctx, client.ObjectKey{

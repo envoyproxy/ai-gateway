@@ -18,7 +18,7 @@ type ClientCredentialsTokenProvider struct {
 	client      client.Client
 }
 
-// NewClientCredentialsProvider creates a new client credentials provider
+// NewClientCredentialsProvider creates a new client credentials provider.
 func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvider {
 	return &ClientCredentialsTokenProvider{
 		client: cl,

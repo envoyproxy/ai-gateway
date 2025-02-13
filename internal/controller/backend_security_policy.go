@@ -71,7 +71,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	return
 }
 
-// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil
+// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 		return &spec.AWSCredentials.OIDCExchangeToken.OIDC

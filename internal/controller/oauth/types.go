@@ -7,7 +7,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// TokenProvider defines the interface for OAuth token providers
+// TokenProvider defines the interface for OAuth token providers.
 type TokenProvider interface {
 	FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error)
 }
