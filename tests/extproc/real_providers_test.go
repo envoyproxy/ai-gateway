@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -228,6 +229,32 @@ func TestWithRealProviders(t *testing.T) {
 				}
 			}
 			return returnsToolCall
+		}, 30*time.Second, 2*time.Second)
+	})
+
+	// Models are served by the extproc filter as a direct response so this can run even if the
+	// real credentials are not present.
+	// We don't need to run it on a concrete backend, as it will not route anywhere.
+	t.Run("list-models", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+
+		require.Eventually(t, func() bool {
+			var models []string
+
+			it := client.Models.ListAutoPaging(t.Context())
+			for it.Next() {
+				models = append(models, it.Current().ID)
+			}
+			if err := it.Err(); err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+
+			return slices.Equal([]string{
+				"gpt-4o-mini",
+				"us.meta.llama3-2-1b-instruct-v1:0",
+				"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+			}, models)
 		}, 30*time.Second, 2*time.Second)
 	})
 }
