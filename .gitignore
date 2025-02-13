@@ -7,6 +7,9 @@ out/
 *for_tests.yaml
 .vscode
 
+# This is the placeholder for the access log file during extproc tests.
+ACCESS_LOG_PATH
+
 # Files and directories to ignore in the site directory
 # dependencies
 site/node_modules
