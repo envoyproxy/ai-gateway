@@ -118,6 +118,13 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the first backend.
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
+
+		// Check status is patched
+		var updatedRoute aigv1a1.AIGatewayRoute
+		err = s.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &updatedRoute)
+		require.NoError(t, err)
+		require.Len(t, updatedRoute.Status.Conditions, 1)
+		require.Equal(t, metav1.ConditionTrue, updatedRoute.Status.Conditions[0].Status)
 	})
 
 	// Check the namespace has the default host rewrite filter.
@@ -171,7 +178,7 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	})
 }
 
-func Test_newHTTPRoute(t *testing.T) {
+func Test_updateHTTPRoute(t *testing.T) {
 	eventChan := make(chan ConfigSinkEvent)
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
@@ -235,7 +242,9 @@ func Test_newHTTPRoute(t *testing.T) {
 		err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-	err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
+
+  
+	err := s.updateHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expRules := []gwapiv1.HTTPRouteRule{
@@ -876,4 +885,71 @@ func Test_syncSecret(t *testing.T) {
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 	s.syncSecret(t.Context(), "ns", "some-secret")
+}
+
+func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
+	type testCase struct {
+		route       *aigv1a1.AIGatewayRoute
+		needCreate  bool
+		expectError bool
+	}
+
+	testCases := []testCase{
+		{
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "myroute",
+					Namespace: "default",
+				},
+			},
+			needCreate:  true,
+			expectError: false,
+		},
+		{
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nonexist",
+					Namespace: "default",
+				},
+			},
+			needCreate:  false,
+			expectError: true,
+		},
+	}
+
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+
+	eventChan := make(chan ConfigSinkEvent)
+	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
+
+	condition := metav1.Condition{
+		Type:   conditionReconciled,
+		Status: metav1.ConditionFalse,
+		Reason: reasonExtensionPolicyError,
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("test patchOriginAIGatewayRouteStatus, expected success: %t", !tc.expectError), func(t *testing.T) {
+			if tc.needCreate {
+				err := s.client.Create(context.Background(), tc.route)
+				require.NoError(t, err)
+			}
+
+			err := s.patchOriginAIGatewayRouteStatus(context.Background(), tc.route, condition)
+
+			// bad case
+			if tc.expectError {
+				require.Error(t, err)
+				return
+			}
+
+			// happy case
+			var updatedRoute aigv1a1.AIGatewayRoute
+			err = s.client.Get(context.Background(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &updatedRoute)
+			require.NoError(t, err)
+			require.Len(t, updatedRoute.Status.Conditions, 1)
+			require.Equal(t, condition, updatedRoute.Status.Conditions[0])
+		})
+	}
 }

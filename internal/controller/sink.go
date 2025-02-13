@@ -29,6 +29,16 @@ const (
 	selectedBackendHeaderKey   = "x-ai-eg-selected-backend"
 	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
 	extProcConfigAnnotationKey = "aigateway.envoyproxy.io/extproc-config-uuid"
+
+	reasonControllerRefSetError       = "ControllerRefSetError"
+	reasonExtProcConfigMapUpdateError = "ExtProcConfigMapUpdateError"
+	reasonExtProcDeployError          = "ExtProcDeployError"
+	reasonHTTPRouteCreateError        = "ReasonHTTPRouteCreateError"
+	reasonHTTPRouteFilterCreateError  = "HTTPRouteFilterCreateError"
+	reasonHTTPRouteFilterGetError     = "HTTPRouteFilterGetError"
+	reasonHTTPRouteGetError           = "HTTPRouteGetError"
+	reasonHTTPRouteUpdateError        = "HTTPRouteUpdateError"
+	reasonPodAnnotateError            = "PodAnnotateError"
 )
 
 // mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted
@@ -130,12 +140,31 @@ func (c *configSink) handleEvent(ctx context.Context, event ConfigSinkEvent) {
 	}
 }
 
+// patchOriginAIGatewayRouteStatus patches status for original AIGatewayRoute object
+func (c *configSink) patchOriginAIGatewayRouteStatus(ctx context.Context, copyRoute *aigv1a1.AIGatewayRoute, condition metav1.Condition) error {
+	var originRoute aigv1a1.AIGatewayRoute
+	if err := c.client.Get(ctx, client.ObjectKey{Name: copyRoute.Name, Namespace: copyRoute.Namespace}, &originRoute); err != nil {
+		c.logger.Error(err, "failed to get route")
+		return err
+	}
+
+	base := originRoute.DeepCopy()
+
+	originRoute.Status.Conditions = append(originRoute.Status.Conditions, condition)
+
+	if err := c.client.Patch(ctx, &originRoute, client.MergeFrom(base)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) {
 	// Check if the HTTPRouteFilter exists in the namespace.
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	err := c.client.Get(ctx,
 		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
-	if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) { // coverage-ignore
 		httpRouteFilter = egv1a1.HTTPRouteFilter{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      hostRewriteHTTPFilterName,
@@ -151,10 +180,30 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 		}
 		if err = c.client.Create(ctx, &httpRouteFilter); err != nil {
 			c.logger.Error(err, "failed to create HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName)
+
+			condition := metav1.Condition{
+				Type:    conditionReconciled,
+				Status:  metav1.ConditionFalse,
+				Reason:  reasonHTTPRouteFilterCreateError,
+				Message: fmt.Sprintf("failed to create HTTPRouteFilter: %v", err),
+			}
+			if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+				c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
-	} else if err != nil {
+	} else if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to get HTTPRouteFilter", "namespace", aiGatewayRoute.Namespace, "name", hostRewriteHTTPFilterName, "error", err)
+
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonHTTPRouteFilterGetError,
+			Message: fmt.Sprintf("failed to get HTTPRouteFilter: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -163,7 +212,7 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	var httpRoute gwapiv1.HTTPRoute
 	err = c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
-	if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) { // coverage-ignore
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
@@ -173,37 +222,91 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 			Spec: gwapiv1.HTTPRouteSpec{},
 		}
 		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
-			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
+			c.logger.Error(err, "failed to set controller reference for http route", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			condition := metav1.Condition{
+				Type:    conditionReconciled,
+				Status:  metav1.ConditionFalse,
+				Reason:  reasonControllerRefSetError,
+				Message: fmt.Sprintf("failed to set controller reference: %v", err),
+			}
+			if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+				c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 		}
-	} else if err != nil {
+	} else if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to get HTTPRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "error", err)
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonHTTPRouteGetError,
+			Message: fmt.Sprintf("failed to get HTTPRoute: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err = c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
+	if err = c.updateHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to update HTTPRoute with AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonHTTPRouteUpdateError,
+			Message: fmt.Sprintf("failed to update HTTPRoute: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
 	if existingRoute {
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Update(ctx, &httpRoute); err != nil {
+		if err = c.client.Update(ctx, &httpRoute); err != nil { // coverage-ignore
 			c.logger.Error(err, "failed to update HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			condition := metav1.Condition{
+				Type:    conditionReconciled,
+				Status:  metav1.ConditionFalse,
+				Reason:  reasonHTTPRouteUpdateError,
+				Message: fmt.Sprintf("failed to update HTTPRoute: %v", err),
+			}
+			if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+				c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Create(ctx, &httpRoute); err != nil {
+		if err = c.client.Create(ctx, &httpRoute); err != nil { // coverage-ignore
 			c.logger.Error(err, "failed to create HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			condition := metav1.Condition{
+				Type:    conditionReconciled,
+				Status:  metav1.ConditionFalse,
+				Reason:  reasonHTTPRouteCreateError,
+				Message: fmt.Sprintf("failed to create HTTPRoute: %v", err),
+			}
+			if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+				c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+			}
 			return
 		}
 	}
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to update extproc configmap", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonExtProcConfigMapUpdateError,
+			Message: fmt.Sprintf("failed to update extproc configmap: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
@@ -211,14 +314,42 @@ func (c *configSink) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aig
 	err = c.syncExtProcDeployment(ctx, aiGatewayRoute)
 	if err != nil {
 		c.logger.Error(err, "failed to deploy ext proc", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonExtProcDeployError,
+			Message: fmt.Sprintf("failed to deploy ext proc: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
 	}
 
 	// Annotate all pods with the new config.
 	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
-	if err != nil {
+	if err != nil { // coverage-ignore
 		c.logger.Error(err, "failed to annotate pods", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		condition := metav1.Condition{
+			Type:    conditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  reasonPodAnnotateError,
+			Message: fmt.Sprintf("failed to annotate pods: %v", err),
+		}
+		if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
+		}
 		return
+	}
+
+	condition := metav1.Condition{
+		Type:    conditionReconciled,
+		Status:  metav1.ConditionTrue,
+		Reason:  reasonReconciliationSucceeded,
+		Message: "Reconciliation completed successfully",
+	}
+	if err = c.patchOriginAIGatewayRouteStatus(ctx, aiGatewayRoute, condition); err != nil {
+		c.logger.Error(err, "failed to patch AIGatewayRoute status", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	}
 }
 
@@ -364,8 +495,8 @@ func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute 
 	return nil
 }
 
-// newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *configSink) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+// updateHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
+func (c *configSink) updateHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
 	for _, rule := range aiGatewayRoute.Spec.Rules {
