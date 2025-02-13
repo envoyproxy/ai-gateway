@@ -46,7 +46,7 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 	// TODO: currently, we ignore the LLMAPISchema."Version" field.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		c.translator = translator.NewOpenAIToOpenAITranslator()
+		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator()
 	case filterapi.APISchemaAWSBedrock:
 		c.translator = translator.NewOpenAIToAWSBedrockTranslator()
 	default:
