@@ -16,6 +16,7 @@ header:
     - site
     - out
     - '.github'
+    - '.bin'
     - '**/go.mod'
     - '**/go.sum'
     - '**/*.md'
