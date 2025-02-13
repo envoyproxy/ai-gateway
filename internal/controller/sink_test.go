@@ -9,7 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -180,6 +184,20 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	})
 }
 
+// MockSTSOperations implements the STSOperations interface for testing
+type MockSTSOperations struct{}
+
+func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+	return &sts.AssumeRoleWithWebIdentityOutput{
+		Credentials: &types.Credentials{
+			AccessKeyId:     aws.String("NEWKEY"),
+			SecretAccessKey: aws.String("NEWSECRET"),
+			SessionToken:    aws.String("NEWTOKEN"),
+			Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+		},
+	}, nil
+}
+
 func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventChan := make(chan ConfigSinkEvent)
@@ -198,11 +216,11 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
 
 	clientSecret := "secretName"
-	secretNamespace := "ns"
+	sharedNamespace := "ns"
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clientSecret,
-			Namespace: secretNamespace,
+			Namespace: sharedNamespace,
 		},
 		Data: map[string][]byte{
 			"client-secret": []byte("client-secret"),
@@ -213,19 +231,18 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	secret = corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "orange",
-			Namespace: secretNamespace,
+			Namespace: sharedNamespace,
 			Annotations: map[string]string{
-				"rotators/expiration-time": "3025-01-01T01:01:00.000-00:00",
+				backendauthrotators.ExpirationTimeAnnotationKey: "2024-01-01T01:01:00.000-00:00",
 			},
 		},
 		Data: map[string][]byte{
 			"credentials": []byte("credentials"),
 		},
 	}
+	require.NoError(t, fakeClient.Create(context.Background(), &secret, &client.CreateOptions{}))
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		println("123")
-
 		w.Header().Add("Content-Type", "application/json")
 		type tokenJSON struct {
 			AccessToken string `json:"access_token"`
@@ -247,10 +264,12 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	defer discoveryServer.Close()
 
 	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), discoveryServer.URL)
-	namespaceRef := gwapiv1.Namespace(secretNamespace)
+	namespaceRef := gwapiv1.Namespace(sharedNamespace)
+
+	s.StsOP = &MockSTSOperations{}
 
 	s.syncBackendSecurityPolicy(ctx, &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: sharedNamespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
@@ -278,6 +297,11 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	token, ok := s.oidcTokenCache["orange.ns"]
 	require.True(t, ok)
 	require.Equal(t, "some-access-token", token.AccessToken)
+
+	updatedSecret, err := backendauthrotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, "orange")
+	require.NoError(t, err)
+	require.NotEqualf(t, secret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
+
 }
 
 func Test_newHTTPRoute(t *testing.T) {

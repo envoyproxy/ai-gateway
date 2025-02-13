@@ -73,6 +73,7 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
+	StsOP                  backendauthrotators.STSOperations
 	oidcTokenCache         map[string]*oauth2.Token
 }
 
@@ -92,6 +93,7 @@ func newConfigSink(
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
 		eventChan:              eventChan,
+		StsOP:                  nil,
 		oidcTokenCache:         make(map[string]*oauth2.Token),
 	}
 	return c
@@ -289,13 +291,11 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 			return
 		}
 
-		expired, err := rotator.IsExpired()
-		if err != nil {
-			c.logger.Error(err, "failed to check if AWS OIDC rotator is expired")
-			return
-		}
-
-		if expired {
+		if rotator.IsExpired() {
+			// This is to abstract the real STS behavior for testing purpose.
+			if c.StsOP != nil {
+				rotator.SetSTSOperations(c.StsOP)
+			}
 			token := tokenResponse.AccessToken
 			err = rotator.Rotate(ctx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 			if err != nil {

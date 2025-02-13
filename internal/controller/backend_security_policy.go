@@ -58,7 +58,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		rotator, err := backendauthrotators.NewAWSOIDCRotator(b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
 		if err != nil {
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
-		} else if expired, err := rotator.IsExpired(); err != nil && !expired {
+		} else if !rotator.IsExpired() {
 			requeue = time.Until(*rotator.GetPreRotationTime())
 			if requeue.Seconds() == 0 {
 				requeue = time.Minute
