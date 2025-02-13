@@ -30,8 +30,8 @@ import (
 
 // Common constants for AWS operations
 const (
-	// credentialsKey is the key used to store AWS credentials in Kubernetes secrets
-	credentialsKey = "credentials"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets
+	awsCredentialsKey = "credentials"
 	// awsSessionNameFormat is the format string for AWS session names
 	awsSessionNameFormat = "ai-gateway-%s"
 )
@@ -193,5 +193,5 @@ func updateAWSCredentialsInSecret(secret *corev1.Secret, creds *awsCredentialsFi
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[credentialsKey] = []byte(formatAWSCredentialsFile(creds))
+	secret.Data[awsCredentialsKey] = []byte(formatAWSCredentialsFile(creds))
 }

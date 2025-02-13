@@ -28,7 +28,7 @@ func createTestAWSSecret(t *testing.T, client client.Client, name string, access
 		profile = "default"
 	}
 	data := map[string][]byte{
-		credentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = us-west-2",
+		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = us-west-2",
 			profile, accessKey, secretKey, sessionToken)),
 	}
 	err := client.Create(context.Background(), &corev1.Secret{
@@ -48,7 +48,7 @@ func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, s
 	}
 	secret, err := LookupSecret(context.Background(), client, namespace, secretName)
 	require.NoError(t, err)
-	creds := parseAWSCredentialsFile(string(secret.Data[credentialsKey]))
+	creds := parseAWSCredentialsFile(string(secret.Data[awsCredentialsKey]))
 	require.NotNil(t, creds)
 	require.Contains(t, creds.profiles, profile)
 	assert.Equal(t, expectedKeyID, creds.profiles[profile].accessKeyID)

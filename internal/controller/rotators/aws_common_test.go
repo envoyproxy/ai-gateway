@@ -70,7 +70,7 @@ func TestUpdateAWSCredentialsInSecret(t *testing.T) {
 	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{profiles: map[string]*awsCredentials{"default": &credentials}})
 	require.Len(t, secret.Data, 1)
 
-	val, ok := secret.Data[credentialsKey]
+	val, ok := secret.Data[awsCredentialsKey]
 	require.True(t, ok)
 	require.NotEmpty(t, val)
 }

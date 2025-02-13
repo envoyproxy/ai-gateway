@@ -137,7 +137,7 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 
 	// For now have profile as default
 	profile := "default"
-	credsFile := &awsCredentialsFile{
+	credsFile := awsCredentialsFile{
 		profiles: map[string]*awsCredentials{
 			profile: {
 				profile:         profile,
