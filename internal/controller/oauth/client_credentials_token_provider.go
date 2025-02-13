@@ -36,7 +36,7 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *e
 	return p.getTokenWithClientCredentialConfig(ctx, oidc, clientSecret)
 }
 
-// getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config
+// getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config.
 func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
 	if p.TokenSource == nil {
 		oauth2Config := clientcredentials.Config{
