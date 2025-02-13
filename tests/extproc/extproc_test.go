@@ -8,14 +8,14 @@
 package extproc
 
 import (
+	"cmp"
 	_ "embed"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"runtime"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,14 +24,15 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-const listenerAddress = "http://localhost:1062"
-
-//go:embed envoy.yaml
-var envoyYamlBase string
+const (
+	listenerAddress   = "http://0.0.0.0:1062"
+	defaultEnvoyImage = "envoyproxy/envoy:v1.33-latest"
+)
 
 var (
 	openAISchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 	awsBedrockSchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	accessLogPath    = "access.log"
 )
 
 // requireExtProc starts the external processor with the provided executable and configPath
@@ -42,7 +43,7 @@ func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath strin
 	cmd := exec.CommandContext(t.Context(), executable)
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Args = append(cmd.Args, "-configPath", configPath, "-extProcAddr", "0.0.0.0:1063")
 	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 }
@@ -57,29 +58,42 @@ func requireTestUpstream(t *testing.T) {
 }
 
 // requireRunEnvoy starts the Envoy proxy with the provided configuration.
-func requireRunEnvoy(t *testing.T, accessLogPath string) {
-	tmpDir := t.TempDir()
-	envoyYaml := strings.Replace(envoyYamlBase, "ACCESS_LOG_PATH", accessLogPath, 1)
+func requireRunEnvoy(t *testing.T) {
+	// Remove the existing access log file.
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	_ = os.Remove(path.Join(cwd, accessLogPath))
 
-	// Write the envoy.yaml file.
-	envoyYamlPath := tmpDir + "/envoy.yaml"
-	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(envoyYaml), 0o600))
+	// Pulls the Envoy image and starts the container.
+	envoyImage := cmp.Or(os.Getenv("ENVOY_IMAGE"), defaultEnvoyImage)
+	pullCmd := exec.Command("docker", "pull", envoyImage)
+	pullCmd.Stderr = os.Stderr
+	pullCmd.Stdout = os.Stdout
+	require.NoError(t, pullCmd.Run())
 
-	// Starts the Envoy proxy.
-	cmd := exec.CommandContext(t.Context(), "envoy",
-		"-c", envoyYamlPath,
-		"--log-level", "warn",
-		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
+	// Then, starts the Envoy container.
+	cmd := exec.Command(
+		"docker",
+		"run",
+		"--network", "host",
+		"-v", cwd+":"+"/test",
+		"-w", "/test",
+		envoyImage,
+		"--config-path", "envoy.yaml",
 	)
-	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		require.NoError(t, cmd.Process.Signal(os.Interrupt))
+	})
+	return
 }
 
 // requireBinaries requires Envoy to be present in the PATH as well as the Extproc and testuptream binaries in the out directory.
 func requireBinaries(t *testing.T) {
-	_, err := exec.LookPath("envoy")
-	require.NoError(t, err, "envoy binary not found in PATH")
+	_, err := exec.LookPath("docker")
+	require.NoError(t, err, "docker not found in PATH")
 	_, err = os.Stat(extProcExecutablePath())
 	require.NoErrorf(t, err, "extproc binary not found in the root of the repository")
 	_, err = os.Stat(testUpstreamExecutablePath())

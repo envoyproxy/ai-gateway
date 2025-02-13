@@ -123,17 +123,11 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Install Envoy
-        run: |
-          export ENVOY_BIN_DIR=$HOME/envoy/bin
-          mkdir -p $ENVOY_BIN_DIR
-          docker run -v $ENVOY_BIN_DIR:/tmp/ci -w /tmp/ci \
-          --entrypoint /bin/cp ${{ matrix.envoy_version }} /usr/local/bin/envoy .
-          echo $ENVOY_BIN_DIR >> $GITHUB_PATH
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+          ENVOY_IMAGE: ${{ matrix.envoy_version }}
         run: make test-extproc
 
   test_e2e:
@@ -177,11 +171,42 @@ jobs:
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
         run: make test-e2e
 
+  # This is mainly for ensuring all development can be done on macOS.
+  tests_on_macos:
+    name: Tests on macOS
+    runs-on: macos-latest
+    env:
+      EG_VERSION: ${{ matrix.envoy_gateway_version }}
+      TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+      TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+      TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+    # Not all the cases in E2E require secrets, so we run for all the events.
+    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: macos-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - run: make precommit
+      - run: make test
+      - run: make test-crdcel
+      - run: make test-controller
+      - run: make test-extproc
+      - run: make test-e2e
+
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
+    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e, tests_on_macos]
     uses: ./.github/workflows/docker_builds_template.yaml
 
   helm_push:

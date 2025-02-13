@@ -26,7 +26,7 @@ import (
 // TestExtProcCustomRouter tests examples/extproc_custom_router.
 func TestExtProcCustomRouter(t *testing.T) {
 	requireBinaries(t)
-	requireRunEnvoy(t, "/dev/null")
+	requireRunEnvoy(t)
 	requireTestUpstream(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{

@@ -28,8 +28,7 @@ import (
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
 	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
+	requireRunEnvoy(t)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
 	cc := requireNewCredentialsContext(t)
