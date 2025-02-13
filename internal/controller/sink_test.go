@@ -187,7 +187,7 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 // MockSTSOperations implements the STSOperations interface for testing
 type MockSTSOperations struct{}
 
-func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+func (m *MockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return &sts.AssumeRoleWithWebIdentityOutput{
 		Credentials: &types.Credentials{
 			AccessKeyId:     aws.String("NEWKEY"),
