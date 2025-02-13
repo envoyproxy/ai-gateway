@@ -9,11 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/aws/aws-sdk-go-v2/service/sts/types"
-	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
-	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts/types"
+	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
@@ -39,6 +38,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	backendauthrotators "github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 )
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
@@ -253,7 +253,6 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 		require.NoError(t, err)
 		_, err = w.Write(b)
 		require.NoError(t, err)
-
 	}))
 	defer tokenServer.Close()
 
@@ -301,7 +300,6 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	updatedSecret, err := backendauthrotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, "orange")
 	require.NoError(t, err)
 	require.NotEqualf(t, secret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[backendauthrotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
-
 }
 
 func Test_newHTTPRoute(t *testing.T) {
