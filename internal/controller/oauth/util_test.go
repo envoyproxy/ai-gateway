@@ -23,7 +23,15 @@ func TestGetClientSecret(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	secretName, secretNamespace := "secret", "secret-ns"
-	err := cl.Create(t.Context(), &corev1.Secret{
+
+	secret, err := getClientSecret(t.Context(), cl, &corev1.SecretReference{
+		Name:      secretName,
+		Namespace: secretNamespace,
+	})
+	require.Error(t, err)
+	require.Empty(t, secret)
+
+	err = cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: secretNamespace,
@@ -37,7 +45,7 @@ func TestGetClientSecret(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	secret, err := getClientSecret(t.Context(), cl, &corev1.SecretReference{
+	secret, err = getClientSecret(t.Context(), cl, &corev1.SecretReference{
 		Name:      secretName,
 		Namespace: secretNamespace,
 	})
