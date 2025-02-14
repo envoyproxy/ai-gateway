@@ -7,35 +7,46 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 )
+
+// preRotationWindow specifies how long before expiry to rotate credentials.
+// Temporarily a fixed duration.
+const preRotationWindow = 5 * time.Minute
 
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 //
 // This handles the BackendSecurityPolicy resource and sends it to the config sink so that it can modify configuration.
 type backendSecurityPolicyController struct {
-	client    client.Client
-	kube      kubernetes.Interface
-	logger    logr.Logger
-	eventChan chan ConfigSinkEvent
+	client         client.Client
+	kube           kubernetes.Interface
+	logger         logr.Logger
+	eventChan      chan ConfigSinkEvent
+	StsOP          rotators.STSClient
+	oidcTokenCache map[string]*oauth2.Token
 }
 
 func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
-		client:    client,
-		kube:      kube,
-		logger:    logger,
-		eventChan: ch,
+		client:         client,
+		kube:           kube,
+		logger:         logger,
+		eventChan:      ch,
+		StsOP:          nil,
+		oidcTokenCache: make(map[string]*oauth2.Token),
 	}
 }
 
@@ -51,19 +62,65 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	if getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec) != nil {
+	println("zero")
+	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
+		println("oidc is not nil")
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
+
 		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
 		if err != nil {
+			println("new aws oidc rotator failed to get")
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
-		} else if !rotator.IsExpired() {
-			requeue = time.Until(rotator.GetPreRotationTime())
-			if requeue.Seconds() == 0 {
-				requeue = time.Minute
+		} else if rotator.IsExpired() {
+			bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
+
+			println("one")
+			var validToken *oauth2.Token
+			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
+				println("two")
+				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), oidc)
+				// Valid Token will be nil if fetch token errors.
+				validToken, err = oidcProvider.FetchToken(ctx)
+				if err != nil {
+					println("three")
+					b.logger.Error(err, "failed to fetch OIDC provider token")
+				} else {
+					b.oidcTokenCache[bspKey] = validToken
+				}
+			} else {
+				println("four")
+				validToken = tokenResponse
+			}
+
+			println("five")
+			if validToken != nil {
+				println("six")
+				b.oidcTokenCache[bspKey] = validToken
+				awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
+
+				println("seven")
+				// This is to abstract the real STS behavior for testing purpose.
+				if b.StsOP != nil {
+					println("eight")
+					rotator.SetSTSOperations(b.StsOP)
+				}
+				println("nine")
+				token := validToken.AccessToken
+				err = rotator.Rotate(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+				if err != nil {
+					println("ten")
+					b.logger.Error(err, "failed to rotate AWS OIDC exchange token")
+					requeue = time.Minute
+				} else {
+					println("eleven")
+					requeue = time.Until(rotator.GetPreRotationTime())
+				}
+
 			}
 		}
+		println("twelve")
 		// TODO: Investigate how to stop stale events from re-queuing.
 		res = ctrl.Result{RequeueAfter: requeue}
 	}
@@ -74,7 +131,9 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
+	println("point five")
 	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
+		println("point 8")
 		return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 	}
 	return nil

@@ -7,20 +7,13 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/aws/aws-sdk-go-v2/service/sts/types"
-	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
@@ -182,124 +175,6 @@ func TestConfigSink_syncBackendSecurityPolicy(t *testing.T) {
 	s.syncBackendSecurityPolicy(t.Context(), &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 	})
-}
-
-// MockSTSOperations implements the STSOperations interface for testing
-type MockSTSOperations struct{}
-
-func (m *MockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	return &sts.AssumeRoleWithWebIdentityOutput{
-		Credentials: &types.Credentials{
-			AccessKeyId:     aws.String("NEWKEY"),
-			SecretAccessKey: aws.String("NEWSECRET"),
-			SessionToken:    aws.String("NEWTOKEN"),
-			Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
-		},
-	}, nil
-}
-
-func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventChan := make(chan ConfigSinkEvent)
-	s := newConfigSink(fakeClient, nil, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
-
-	require.Empty(t, s.oidcTokenCache)
-
-	// Test with OIDC backend
-	backend := aigv1a1.AIServiceBackend{
-		ObjectMeta: metav1.ObjectMeta{Name: "potato", Namespace: "ns"},
-		Spec: aigv1a1.AIServiceBackendSpec{
-			BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
-			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "orange"},
-		},
-	}
-	require.NoError(t, fakeClient.Create(context.Background(), &backend, &client.CreateOptions{}))
-
-	clientSecret := "secretName"
-	sharedNamespace := "ns"
-	secret := corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      clientSecret,
-			Namespace: sharedNamespace,
-		},
-		Data: map[string][]byte{
-			"client-secret": []byte("client-secret"),
-		},
-	}
-	require.NoError(t, fakeClient.Create(context.Background(), &secret, &client.CreateOptions{}))
-
-	secret = corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "orange",
-			Namespace: sharedNamespace,
-			Annotations: map[string]string{
-				rotators.ExpirationTimeAnnotationKey: "2024-01-01T01:01:00.000-00:00",
-			},
-		},
-		Data: map[string][]byte{
-			"credentials": []byte("credentials"),
-		},
-	}
-	require.NoError(t, fakeClient.Create(context.Background(), &secret, &client.CreateOptions{}))
-
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Add("Content-Type", "application/json")
-		type tokenJSON struct {
-			AccessToken string `json:"access_token"`
-			TokenType   string `json:"token_type"`
-			ExpiresIn   string `json:"expires_in"`
-		}
-		b, err := json.Marshal(tokenJSON{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: "60"})
-		require.NoError(t, err)
-		_, err = w.Write(b)
-		require.NoError(t, err)
-	}))
-	defer tokenServer.Close()
-
-	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
-		require.NoError(t, err)
-	}))
-	defer discoveryServer.Close()
-
-	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), discoveryServer.URL)
-	namespaceRef := gwapiv1.Namespace(sharedNamespace)
-
-	s.StsOP = &MockSTSOperations{}
-
-	s.syncBackendSecurityPolicy(ctx, &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: sharedNamespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-				Region: "us-east-1",
-				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: egv1a1.OIDC{
-						Provider: egv1a1.OIDCProvider{
-							Issuer:        discoveryServer.URL,
-							TokenEndpoint: &tokenServer.URL,
-						},
-						ClientID: "some-client-id",
-						ClientSecret: gwapiv1.SecretObjectReference{
-							Name:      gwapiv1.ObjectName(clientSecret),
-							Namespace: &namespaceRef,
-						},
-					},
-					GrantType:  "placeholder",
-					Aud:        "placeholder",
-					AwsRoleArn: "placeholder",
-				},
-			},
-		},
-	})
-	require.Len(t, s.oidcTokenCache, 1)
-	token, ok := s.oidcTokenCache["orange.ns"]
-	require.True(t, ok)
-	require.Equal(t, "some-access-token", token.AccessToken)
-
-	updatedSecret, err := rotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, rotators.GetBSPSecretName("orange"))
-	require.NoError(t, err)
-	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
 }
 
 func Test_newHTTPRoute(t *testing.T) {

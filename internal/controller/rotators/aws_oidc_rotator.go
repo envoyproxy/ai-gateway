@@ -90,6 +90,7 @@ func (r *AWSOIDCRotator) SetSTSOperations(ops STSClient) {
 // IsExpired checks if the preRotation time is before the current time.
 func (r *AWSOIDCRotator) IsExpired() bool {
 	preRotationExpirationTime := r.GetPreRotationTime()
+	println(preRotationExpirationTime.String())
 	return IsExpired(0, preRotationExpirationTime)
 }
 

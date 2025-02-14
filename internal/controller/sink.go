@@ -9,11 +9,9 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
-	"golang.org/x/oauth2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,7 +27,6 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -44,10 +41,6 @@ const (
 //
 //	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 const mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
-
-// preRotationWindow specifies how long before expiry to rotate credentials
-// temporarily a fixed duration
-const preRotationWindow = 5 * time.Minute
 
 // ConfigSinkEvent is the interface for the events that the configSink can handle.
 // It can be either an AIServiceBackend, an AIGatewayRoute, or a deletion event.
@@ -73,8 +66,6 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
-	StsOP                  rotators.STSClient
-	oidcTokenCache         map[string]*oauth2.Token
 }
 
 func newConfigSink(
@@ -93,8 +84,6 @@ func newConfigSink(
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
 		eventChan:              eventChan,
-		StsOP:                  nil,
-		oidcTokenCache:         make(map[string]*oauth2.Token),
 	}
 	return c
 }
@@ -267,41 +256,6 @@ func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1
 	for i := range aiServiceBackends.Items {
 		aiBackend := &aiServiceBackends.Items[i]
 		c.syncAIServiceBackend(ctx, aiBackend)
-	}
-
-	if oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec); oidc != nil {
-		tokenResponse, ok := c.oidcTokenCache[key]
-		if !ok || rotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
-			oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(c.client), oidc)
-
-			tokenRes, err := oidcProvider.FetchToken(ctx)
-			if err != nil {
-				c.logger.Error(err, "failed to fetch OIDC provider token")
-				return
-			}
-			c.oidcTokenCache[key] = tokenRes
-			tokenResponse = tokenRes
-		}
-
-		awsCredentials := bsp.Spec.AWSCredentials
-		rotator, err := rotators.NewAWSOIDCRotator(ctx, c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, awsCredentials.Region)
-		if err != nil {
-			c.logger.Error(err, "failed to create AWS OIDC rotator")
-			return
-		}
-
-		if rotator.IsExpired() {
-			// This is to abstract the real STS behavior for testing purpose.
-			if c.StsOP != nil {
-				rotator.SetSTSOperations(c.StsOP)
-			}
-			token := tokenResponse.AccessToken
-			err = rotator.Rotate(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
-			if err != nil {
-				c.logger.Error(err, "failed to rotate AWS OIDC exchange token")
-				return
-			}
-		}
 	}
 }
 
