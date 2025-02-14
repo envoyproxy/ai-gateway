@@ -165,11 +165,13 @@ func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.
 }
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
+	// APIKey is not OIDC.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,
 		APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{},
 	}))
 
+	// AWSCredentials contains OIDC but this backendSecurityPolicy does not specify OIDC.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
