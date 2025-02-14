@@ -8,11 +8,10 @@ Package rotators provides credential rotation implementations.
 This file contains common AWS functionality shared between different AWS credential
 rotators. It provides:
 1. AWS Client Interfaces and Implementations:
-- STSOperations for AWS STS API operations
+- STSClient for AWS STS API operations
 - Concrete implementations with proper AWS SDK integration
 2. Credential File Management:
-- Parsing and formatting of AWS credentials files
-- Support for multiple credential profiles
+- Parsing and formatting of AWS credentials file
 - Handling of temporary credentials and session tokens
 3. Common Configuration:
 - Default AWS configuration with adaptive retry
@@ -95,89 +94,28 @@ type awsCredentials struct {
 	region string
 }
 
-// awsCredentialsFile represents a complete AWS credentials file containing
-// multiple credential profiles. It provides a structured way to manage
-// multiple sets of AWS credentials.
+// awsCredentialsFile represents a complete AWS credentials file containing a credential profile.
 type awsCredentialsFile struct {
-	// profiles maps profile names to their respective credentials.
-	profiles []*awsCredentials
+	// creds stores the aws credentials.
+	creds awsCredentials
 }
 
-// parseAWSCredentialsFile parses an AWS credentials file with multiple profiles.
-// The file format follows the standard AWS credentials file format:
-//
-//	[profile-name]
-//	aws_access_key_id = AKIAXXXXXXXXXXXXXXXX
-//	aws_secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//	aws_session_token = xxxxxxxx (optional)
-//	region = xx-xxxx-x (optional)
-//
-// Returns a structured representation of the credentials file.
-func parseAWSCredentialsFile(data string) *awsCredentialsFile {
-	file := &awsCredentialsFile{
-		profiles: make([]*awsCredentials, 0),
-	}
-
-	var currentCreds *awsCredentials
-
-	for line := range strings.Lines(data) {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			profileName := strings.TrimPrefix(strings.TrimSuffix(line, "]"), "[")
-			currentCreds = &awsCredentials{profile: profileName}
-			file.profiles = append(file.profiles, currentCreds)
-			continue
-		}
-
-		if currentCreds == nil {
-			continue
-		}
-
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		switch key {
-		case "aws_access_key_id":
-			currentCreds.accessKeyID = value
-		case "aws_secret_access_key":
-			currentCreds.secretAccessKey = value
-		case "aws_session_token":
-			currentCreds.sessionToken = value
-		case "region":
-			currentCreds.region = value
-		}
-	}
-
-	return file
-}
-
-// formatAWSCredentialsFile formats multiple AWS credential profiles into a credentials file.
+// formatAWSCredentialsFile formats an AWS credential profile into a credentials file.
 // The output follows the standard AWS credentials file format and ensures:
-// - Consistent ordering of profiles through sorting
 // - Proper formatting of all credential components
-// - Optional inclusion of session tokens and regions
-// - Profile isolation with proper section markers
+// - Optional inclusion of session token and region
 func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	var builder strings.Builder
-
-	for _, profile := range file.profiles {
-		builder.WriteString(fmt.Sprintf("[%s]\n", profile.profile))
-		builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", profile.accessKeyID))
-		builder.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", profile.secretAccessKey))
-		if profile.sessionToken != "" {
-			builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", profile.sessionToken))
-		}
-		builder.WriteString(fmt.Sprintf("region = %s\n", profile.region))
+	builder.WriteString(fmt.Sprintf("[%s]\n", file.creds.profile))
+	builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", file.creds.accessKeyID))
+	builder.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", file.creds.secretAccessKey))
+	if file.creds.sessionToken != "" {
+		builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", file.creds.sessionToken))
 	}
+	if file.creds.region != "" {
+		builder.WriteString(fmt.Sprintf("region = %s\n", file.creds.region))
+	}
+
 	return builder.String()
 }
 

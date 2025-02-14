@@ -19,27 +19,7 @@ func TestNewSTSClient(t *testing.T) {
 	require.NotNil(t, stsClient)
 }
 
-func TestParseAWSCredentialsFile(t *testing.T) {
-	profile := "default"
-	accessKey := "AKIAXXXXXXXXXXXXXXXX"
-	secretKey := "XXXXXXXXXXXXXXXXXXXX"
-	sessionToken := "XXXXXXXXXXXXXXXXXXXX"
-	region := "us-west-2"
-	awsCred := parseAWSCredentialsFile(fmt.Sprintf("[%s]\naws_access_key_id=%s\naws_secret_access_key=%s\naws_session_token=%s\nregion=%s", profile, accessKey,
-		secretKey, sessionToken, region))
-	require.NotNil(t, awsCred)
-	defaultProfile := awsCred.profiles[0]
-	require.NotNil(t, defaultProfile)
-	require.Equal(t, accessKey, defaultProfile.accessKeyID)
-	require.Equal(t, secretKey, defaultProfile.secretAccessKey)
-	require.Equal(t, sessionToken, defaultProfile.sessionToken)
-	require.Equal(t, region, defaultProfile.region)
-}
-
 func TestFormatAWSCredentialsFile(t *testing.T) {
-	emptyCredentialsFile := awsCredentialsFile{[]*awsCredentials{}}
-	require.Empty(t, formatAWSCredentialsFile(&emptyCredentialsFile))
-
 	profile := "default"
 	accessKey := "AKIAXXXXXXXXXXXXXXXX"
 	secretKey := "XXXXXXXXXXXXXXXXXXXX"
@@ -56,7 +36,7 @@ func TestFormatAWSCredentialsFile(t *testing.T) {
 	awsCred := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, accessKey,
 		secretKey, sessionToken, region)
 
-	require.Equal(t, awsCred, formatAWSCredentialsFile(&awsCredentialsFile{profiles: []*awsCredentials{&credentials}}))
+	require.Equal(t, awsCred, formatAWSCredentialsFile(&awsCredentialsFile{credentials}))
 }
 
 func TestUpdateAWSCredentialsInSecret(t *testing.T) {
@@ -70,7 +50,7 @@ func TestUpdateAWSCredentialsInSecret(t *testing.T) {
 		region:          "region",
 	}
 
-	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{profiles: []*awsCredentials{&credentials}})
+	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{credentials})
 	require.Len(t, secret.Data, 1)
 
 	val, ok := secret.Data[awsCredentialsKey]

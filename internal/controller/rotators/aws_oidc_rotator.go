@@ -142,17 +142,13 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	// For now have profile as default.
 	const defaultProfile = "default"
-	credsFile := awsCredentialsFile{
-		profiles: []*awsCredentials{
-			{
-				profile:         defaultProfile,
-				accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
-				secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
-				sessionToken:    aws.ToString(result.Credentials.SessionToken),
-				region:          r.region,
-			},
-		},
-	}
+	credsFile := awsCredentialsFile{awsCredentials{
+		profile:         defaultProfile,
+		accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
+		secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
+		sessionToken:    aws.ToString(result.Credentials.SessionToken),
+		region:          r.region,
+	}}
 
 	updateAWSCredentialsInSecret(secret, &credsFile)
 

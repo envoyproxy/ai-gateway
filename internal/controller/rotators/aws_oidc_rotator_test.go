@@ -47,18 +47,14 @@ func createTestAWSSecret(t *testing.T, client client.Client, bspName string, acc
 }
 
 // verifyAWSSecretCredentials verifies the credentials in a secret
-func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, secretName, expectedKeyID, expectedSecret, expectedToken string, profile string) {
+func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, secretName, expectedKeyID, expectedSecret, expectedToken, profile, region string) {
 	if profile == "" {
 		profile = "default"
 	}
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
-	creds := parseAWSCredentialsFile(string(secret.Data[awsCredentialsKey]))
-	require.NotNil(t, creds)
-	assert.Equal(t, profile, creds.profiles[0].profile)
-	assert.Equal(t, expectedKeyID, creds.profiles[0].accessKeyID)
-	assert.Equal(t, expectedSecret, creds.profiles[0].secretAccessKey)
-	assert.Equal(t, expectedToken, creds.profiles[0].sessionToken)
+	expectedSecretData := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, expectedKeyID, expectedSecret, expectedToken, region)
+	require.Equal(t, expectedSecretData, string(secret.Data[awsCredentialsKey]))
 }
 
 // createClientSecret creates the OIDC client secret
@@ -125,14 +121,12 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
-			region:                         "us-east-1",
+			region:                         "us-east1",
 			roleARN:                        "test-role",
 		}
 
-		timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
-		defer cancelFunc()
-		require.NoError(t, awsOidcRotator.Rotate(timeOutCtx, "NEW-OIDC-TOKEN"))
-		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default")
+		require.NoError(t, awsOidcRotator.Rotate(t.Context(), "NEW-OIDC-TOKEN"))
+		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default", "us-east1")
 	})
 
 	t.Run("error handling - STS assume role failure", func(t *testing.T) {
