@@ -21,18 +21,18 @@ func TestLookupSecret(t *testing.T) {
 
 	secretName := "test"
 	secretNamespace := "test-namespace"
-	secret, err := LookupSecret(context.Background(), cl, secretNamespace, secretName)
+	secret, err := LookupSecret(t.Context(), cl, secretNamespace, secretName)
 	require.Error(t, err)
 	require.Nil(t, secret)
 
-	require.NoError(t, cl.Create(context.Background(), &corev1.Secret{
+	require.NoError(t, cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: secretNamespace,
 		},
 	}))
 
-	secret, err = LookupSecret(context.Background(), cl, secretNamespace, secretName)
+	secret, err = LookupSecret(t.Context(), cl, secretNamespace, secretName)
 	require.NoError(t, err)
 	require.NotNil(t, secret)
 	require.Equal(t, secretName, secret.Name)

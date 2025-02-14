@@ -46,7 +46,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	defer missingTokenURLTestServer.Close()
 
 	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
-	cancelledContext, cancel := context.WithCancel(context.Background())
+	cancelledContext, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	for _, testcase := range []struct {
@@ -67,21 +67,21 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 			name:     "failed to create go oidc",
 			provider: oidcProvider,
 			url:      "",
-			ctx:      context.Background(),
+			ctx:      t.Context(),
 			contains: "failed to create go-oidc provider",
 		},
 		{
 			name:     "config missing token url",
 			provider: oidcProvider,
 			url:      missingTokenURLTestServer.URL,
-			ctx:      oidcv3.InsecureIssuerURLContext(context.Background(), missingTokenURLTestServer.URL),
+			ctx:      oidcv3.InsecureIssuerURLContext(t.Context(), missingTokenURLTestServer.URL),
 			contains: "token_endpoint is required in OIDC provider config",
 		},
 		{
 			name:     "config missing issuer",
 			provider: oidcProvider,
 			url:      missingIssuerTestServer.URL,
-			ctx:      oidcv3.InsecureIssuerURLContext(context.Background(), missingIssuerTestServer.URL),
+			ctx:      oidcv3.InsecureIssuerURLContext(t.Context(), missingIssuerTestServer.URL),
 			contains: "issuer is required in OIDC provider config",
 		},
 	} {
@@ -118,7 +118,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 		ClientID: "some-client-id",
 	}
 
-	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
+	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), ts.URL)
 	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
 	config, supportedScope, err := oidcProvider.getOIDCProviderConfig(ctx, ts.URL)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	secretName, secretNamespace := "secret", "secret-ns"
-	err := cl.Create(context.Background(), &corev1.Secret{
+	err := cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: secretNamespace,
@@ -170,7 +170,7 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
 	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
-	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
+	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), ts.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
 	require.Len(t, oidcProvider.oidcCredential.Scopes, 2)
 

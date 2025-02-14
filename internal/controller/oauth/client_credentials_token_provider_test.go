@@ -42,7 +42,7 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	secretName, secretNamespace := "secret", "secret-ns"
-	err := cl.Create(context.Background(), &corev1.Secret{
+	err := cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: secretNamespace,
@@ -60,12 +60,12 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
 
-	_, err = clientCredentialProvider.FetchToken(context.Background(), nil)
+	_, err = clientCredentialProvider.FetchToken(t.Context(), nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "oidc or oidc-client-secret is nil")
 
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
-	timeOutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+	timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
 	defer cancelFunc()
 	time.Sleep(time.Second)
 	_, err = clientCredentialProvider.FetchToken(timeOutCtx, &egv1a1.OIDC{
@@ -81,7 +81,7 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	token, err := clientCredentialProvider.FetchToken(context.Background(), &egv1a1.OIDC{
+	token, err := clientCredentialProvider.FetchToken(t.Context(), &egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        ts.URL,
 			TokenEndpoint: &ts.URL,

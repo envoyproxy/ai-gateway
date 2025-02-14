@@ -31,7 +31,7 @@ func createTestAWSSecret(t *testing.T, client client.Client, bspName string, acc
 		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = us-west-2",
 			profile, accessKey, secretKey, sessionToken)),
 	}
-	err := client.Create(context.Background(), &corev1.Secret{
+	err := client.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      GetBSPSecretName(bspName),
 			Namespace: "default",
@@ -46,7 +46,7 @@ func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, s
 	if profile == "" {
 		profile = "default"
 	}
-	secret, err := LookupSecret(context.Background(), client, namespace, GetBSPSecretName(secretName))
+	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	creds := parseAWSCredentialsFile(string(secret.Data[awsCredentialsKey]))
 	require.NotNil(t, creds)
@@ -66,7 +66,7 @@ func createClientSecret(t *testing.T, name string) {
 		&corev1.Secret{},
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	err := cl.Create(context.Background(), &corev1.Secret{
+	err := cl.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "default",
@@ -122,13 +122,13 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			backendSecurityPolicyName:      "test-secret",
 		}
 
-		timeOutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+		timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
 		defer cancelFunc()
 		time.Sleep(time.Second)
 		awsOidcRotator.UpdateCtx(timeOutCtx)
 		require.Error(t, awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN"))
 
-		awsOidcRotator.UpdateCtx(context.Background())
+		awsOidcRotator.UpdateCtx(t.Context())
 		require.NoError(t, awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN"))
 		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default")
 	})
@@ -147,7 +147,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			},
 		}
 		awsOidcRotator := AWSOIDCRotator{
-			ctx:                            context.Background(),
+			ctx:                            t.Context(),
 			client:                         cl,
 			stsOps:                         mockSTS,
 			backendSecurityPolicyNamespace: "default",
@@ -166,7 +166,7 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	awsOidcRotator := AWSOIDCRotator{
-		ctx:                            context.Background(),
+		ctx:                            t.Context(),
 		client:                         cl,
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
@@ -177,12 +177,12 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
 
-	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
+	secret, err := LookupSecret(t.Context(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
-	require.NoError(t, cl.Update(context.Background(), secret))
+	require.NoError(t, cl.Update(t.Context(), secret))
 	require.Equal(t, expiredTime.Format(time.RFC3339), awsOidcRotator.GetPreRotationTime().Format(time.RFC3339))
 }
 
@@ -203,16 +203,16 @@ func TestAWS_IsExpired(t *testing.T) {
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
 
-	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
+	secret, err := LookupSecret(t.Context(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
-	require.NoError(t, cl.Update(context.Background(), secret))
+	require.NoError(t, cl.Update(t.Context(), secret))
 	require.True(t, awsOidcRotator.IsExpired())
 
 	hourFromNowTime := time.Now().Add(1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, hourFromNowTime)
-	require.NoError(t, cl.Update(context.Background(), secret))
+	require.NoError(t, cl.Update(t.Context(), secret))
 	require.False(t, awsOidcRotator.IsExpired())
 }

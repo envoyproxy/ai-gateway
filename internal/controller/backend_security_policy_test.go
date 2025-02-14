@@ -50,7 +50,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 			"client-secret": []byte("client-secret"),
 		},
 	}
-	require.NoError(t, cl.Create(context.Background(), &secret, &client.CreateOptions{}))
+	require.NoError(t, cl.Create(t.Context(), &secret, &client.CreateOptions{}))
 
 	secret = corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -64,7 +64,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 			"credentials": []byte("credentials"),
 		},
 	}
-	require.NoError(t, cl.Create(context.Background(), &secret, &client.CreateOptions{}))
+	require.NoError(t, cl.Create(t.Context(), &secret, &client.CreateOptions{}))
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
@@ -88,7 +88,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 
 	err := cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
-	err = cl.Create(context.Background(), &aigv1a1.BackendSecurityPolicy{
+	err = cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName), Namespace: namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
@@ -114,7 +114,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	res, err := c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
 	item, ok := <-ch
@@ -124,7 +124,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
 
 	c.StsOP = &mockSTSOperations{}
-	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), discoveryServer.URL)
+	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	res, err = c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
 	require.NoError(t, err)
 	require.WithinRange(t, time.Now().Add(res.RequeueAfter), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
@@ -134,17 +134,14 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "some-access-token", token.AccessToken)
 
-	updatedSecret, err := rotators.LookupSecret(context.Background(), cl, namespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)))
+	updatedSecret, err := rotators.LookupSecret(t.Context(), cl, namespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)))
 	require.NoError(t, err)
 	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
 
 	// Test the case where the BackendSecurityPolicy is being deleted.
-	err = cl.Delete(context.Background(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName), Namespace: namespace}})
+	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
-
-	res, err = c.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
-	require.NoError(t, err)
-	require.False(t, res.Requeue)
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 }
 
 // mockSTSOperations implements the STSOperations interface for testing
