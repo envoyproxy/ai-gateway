@@ -102,7 +102,7 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	var validToken *oauth2.Token
 	var err error
 	if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
-		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), policy.Spec.AWSCredentials.OIDCExchangeToken.OIDC)
+		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client, policy.Spec.AWSCredentials.OIDCExchangeToken.OIDC), policy.Spec.AWSCredentials.OIDCExchangeToken.OIDC)
 		// Valid Token will be nil if fetch token errors.
 
 		timeOutCtx, cancelFunc := context.WithTimeout(ctx, outGoingTimeOut)

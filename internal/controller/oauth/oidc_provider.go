@@ -16,12 +16,12 @@ import (
 
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support.
 type OIDCProvider struct {
-	tokenProvider  *ClientCredentialsTokenProvider
+	tokenProvider  TokenProvider
 	oidcCredential egv1a1.OIDC
 }
 
 // NewOIDCProvider creates a new OIDC-aware provider.
-func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredentials egv1a1.OIDC) *OIDCProvider {
+func NewOIDCProvider(tokenProvider TokenProvider, oidcCredentials egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
 		tokenProvider:  tokenProvider,
 		oidcCredential: oidcCredentials,
@@ -92,7 +92,7 @@ func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	// Get base token response.
-	token, err := p.tokenProvider.FetchToken(ctx, p.oidcCredential)
+	token, err := p.tokenProvider.FetchToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}

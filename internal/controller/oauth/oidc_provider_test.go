@@ -49,7 +49,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	}))
 	defer missingTokenURLTestServer.Close()
 
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
 
 	for _, testcase := range []struct {
 		name     string
@@ -114,7 +114,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	}
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), ts.URL)
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
 	config, supportedScope, err := oidcProvider.getOIDCProviderConfig(ctx, ts.URL)
 	require.NoError(t, err)
 	require.Equal(t, "token_endpoint", config.TokenURL)
@@ -170,10 +170,8 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		},
 		Scopes: []string{"two", "openid"},
 	}
-	clientCredentialProvider := NewClientCredentialsProvider(cl)
-	require.NotNil(t, clientCredentialProvider)
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), oidcServer.URL)
-	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
+	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
 	require.Len(t, oidcProvider.oidcCredential.Scopes, 2)
 
 	token, err := oidcProvider.FetchToken(ctx)

@@ -475,6 +475,8 @@ type AWSCredentialsFile struct {
 // and store them in a temporary credentials file.
 type AWSOIDCExchangeToken struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
+	//
+	// +kubebuilder:validation:Required
 	OIDC egv1a1.OIDC `json:"oidc"`
 
 	// GrantType is the method application gets access token.

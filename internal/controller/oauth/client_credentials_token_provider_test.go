@@ -6,7 +6,6 @@
 package oauth
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -54,27 +53,15 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	clientCredentialProvider := NewClientCredentialsProvider(cl)
+	namespaceRef := gwapiv1.Namespace(secretNamespace)
+	clientCredentialProvider := NewClientCredentialsProvider(cl, egv1a1.OIDC{})
 	require.NotNil(t, clientCredentialProvider)
 
-	_, err = clientCredentialProvider.FetchToken(t.Context(), egv1a1.OIDC{
-		Provider: egv1a1.OIDCProvider{
-			Issuer:        tokenServer.URL,
-			TokenEndpoint: &tokenServer.URL,
-		},
-		ClientID: "some-client-id",
-		ClientSecret: gwapiv1.SecretObjectReference{
-			Name: gwapiv1.ObjectName(secretName),
-		},
-	})
+	_, err = clientCredentialProvider.FetchToken(t.Context())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "oidc-client-secret namespace is nil")
 
-	namespaceRef := gwapiv1.Namespace(secretNamespace)
-	timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
-	defer cancelFunc()
-	time.Sleep(time.Second)
-	_, err = clientCredentialProvider.FetchToken(timeOutCtx, egv1a1.OIDC{
+	clientCredentialProvider = NewClientCredentialsProvider(cl, egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        tokenServer.URL,
 			TokenEndpoint: &tokenServer.URL,
@@ -85,19 +72,9 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 			Namespace: &namespaceRef,
 		},
 	})
-	require.Error(t, err)
+	require.NotNil(t, clientCredentialProvider)
+	token, err := clientCredentialProvider.FetchToken(t.Context())
 
-	token, err := clientCredentialProvider.FetchToken(t.Context(), egv1a1.OIDC{
-		Provider: egv1a1.OIDCProvider{
-			Issuer:        tokenServer.URL,
-			TokenEndpoint: &tokenServer.URL,
-		},
-		ClientID: "some-client-id",
-		ClientSecret: gwapiv1.SecretObjectReference{
-			Name:      gwapiv1.ObjectName(secretName),
-			Namespace: &namespaceRef,
-		},
-	})
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
 	require.WithinRangef(t, token.Expiry, time.Now().Add(3590*time.Second), time.Now().Add(3600*time.Second), "token expires at")

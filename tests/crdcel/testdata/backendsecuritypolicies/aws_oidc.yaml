@@ -20,7 +20,4 @@ spec:
         clientID: placeholder
         clientSecret:
           name: placeholder
-    credentialsFile:
-      secretRef:
-        name: placeholder
-      profile: default
+      awsRoleARN: placeholder
