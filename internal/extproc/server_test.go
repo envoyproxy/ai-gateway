@@ -31,7 +31,7 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &processorConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface { return m })
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) Processor { return m })
 
 	return s, m.(*mockProcessor)
 }
@@ -266,11 +266,11 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NotNil(t, s)
 
 	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface {
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) Processor {
 		// Returning nil guarantees that the test will fail if this processor is selected
 		return nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface {
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) Processor {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},

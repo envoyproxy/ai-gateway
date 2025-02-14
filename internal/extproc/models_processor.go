@@ -21,20 +21,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// modelsProcessor implements [ProcessorIface] for the `/v1/models` endpoint.
+// modelsProcessor implements [Processor] for the `/v1/models` endpoint.
 // This processor returns an immediate response with the list of models that are declared in the filter
 // configuration.
 // Since it returns an immediate response after processing the headers, the rest of the methods of the
-// ProcessorIface are not implemented. Those should never be called.
+// Processor are not implemented. Those should never be called.
 type modelsProcessor struct {
 	logger *slog.Logger
 	models openai.ModelList
 }
 
-var _ ProcessorIface = (*modelsProcessor)(nil)
+var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) ProcessorIface {
+func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) Processor {
 	models := openai.ModelList{
 		Object: "list",
 		Data:   make([]openai.Model, 0, len(config.declaredModels)),
@@ -50,7 +50,7 @@ func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *sl
 	return &modelsProcessor{logger: logger, models: models}
 }
 
-// ProcessRequestHeaders implements [ProcessorIface.ProcessRequestHeaders].
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	m.logger.Info("Serving list of declared models")
 
@@ -77,17 +77,17 @@ func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Hea
 
 var errUnexpectedCall = errors.New("unexpected method call")
 
-// ProcessRequestBody implements [ProcessorIface.ProcessRequestBody].
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (m *modelsProcessor) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	return nil, fmt.Errorf("%w: ProcessRequestBody", errUnexpectedCall)
 }
 
-// ProcessResponseHeaders implements [ProcessorIface.ProcessResponseHeaders].
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (m *modelsProcessor) ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	return nil, fmt.Errorf("%w: ProcessResponseHeaders", errUnexpectedCall)
 }
 
-// ProcessResponseBody implements [ProcessorIface.ProcessResponseBody].
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (m *modelsProcessor) ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	return nil, fmt.Errorf("%w: ProcessResponseBody", errUnexpectedCall)
 }
