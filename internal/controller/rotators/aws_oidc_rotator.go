@@ -55,9 +55,7 @@ func NewAWSOIDCRotator(
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	if region != "" {
-		cfg.Region = region
-	}
+	cfg.Region = region
 
 	if proxyURL := os.Getenv("AI_GATEWY_STS_PROXY_URL"); proxyURL != "" {
 		cfg.HTTPClient = &http.Client{
