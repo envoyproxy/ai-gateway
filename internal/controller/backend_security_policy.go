@@ -64,7 +64,8 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				requeue = time.Minute
 			}
 		}
-		res = ctrl.Result{RequeueAfter: requeue, Requeue: true}
+		// TODO: Investigate how to stop stale events from re-queuing.
+		res = ctrl.Result{RequeueAfter: requeue}
 	}
 	// Send the backend security policy to the config sink so that it can modify the configuration together with the state of other resources.
 	b.eventChan <- backendSecurityPolicy.DeepCopy()
