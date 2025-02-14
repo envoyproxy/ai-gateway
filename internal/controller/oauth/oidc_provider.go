@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"fmt"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"golang.org/x/oauth2"

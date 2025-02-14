@@ -142,6 +142,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	require.NoError(t, err)
 }
 
 // mockSTSOperations implements the STSOperations interface for testing
