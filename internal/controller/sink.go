@@ -73,7 +73,7 @@ type configSink struct {
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
 	eventChan              chan ConfigSinkEvent
-	StsOP                  rotators.STSOperations
+	StsOP                  rotators.STSClient
 	oidcTokenCache         map[string]*oauth2.Token
 }
 

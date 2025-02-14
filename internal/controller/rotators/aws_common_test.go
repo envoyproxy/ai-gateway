@@ -12,7 +12,6 @@ import (
 func TestNewSTSClient(t *testing.T) {
 	stsClient := NewSTSClient(aws.Config{Region: "us-west-2"})
 	require.NotNil(t, stsClient)
-	require.NotNil(t, stsClient.client)
 }
 
 func TestParseAWSCredentialsFile(t *testing.T) {

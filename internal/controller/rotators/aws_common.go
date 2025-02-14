@@ -44,32 +44,34 @@ func defaultAWSConfig(ctx context.Context) (aws.Config, error) {
 	)
 }
 
-// STSOperations defines the interface for AWS STS operations required by the rotators.
+// STSClient defines the interface for AWS STS operations required by the rotators.
 // This interface encapsulates the STS API operations needed for OIDC token exchange
 // and role assumption.
-type STSOperations interface {
+type STSClient interface {
 	// AssumeRoleWithWebIdentity exchanges a web identity token for temporary AWS credentials.
 	AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
 
-// STSClient implements the STSOperations interface using the AWS SDK v2.
+// stsClient implements the STSOperations interface using the AWS SDK v2.
 // It provides a concrete implementation for STS operations using the official AWS SDK.
-type STSClient struct {
+type stsClient struct {
 	client *sts.Client
 }
 
 // NewSTSClient creates a new STSClient with the given AWS config.
 // The client is configured with the provided AWS configuration, which should
 // include appropriate credentials and region settings.
-func NewSTSClient(cfg aws.Config) *STSClient {
-	return &STSClient{
+func NewSTSClient(cfg aws.Config) STSClient {
+	return &stsClient{
 		client: sts.NewFromConfig(cfg),
 	}
 }
 
 // AssumeRoleWithWebIdentity implements the STSOperations interface by exchanging
 // a web identity token for temporary AWS credentials.
-func (c *STSClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+//
+// This implements [STSClient.AssumeRoleWithWebIdentity].
+func (c *stsClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return c.client.AssumeRoleWithWebIdentity(ctx, params, optFns...)
 }
 

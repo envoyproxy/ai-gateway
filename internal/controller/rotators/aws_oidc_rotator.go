@@ -29,7 +29,7 @@ type AWSOIDCRotator struct {
 	// logger is used for structured logging.
 	logger logr.Logger
 	// stsOps provides AWS STS operations interface.
-	stsOps STSOperations
+	stsOps STSClient
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
@@ -81,7 +81,7 @@ func NewAWSOIDCRotator(
 }
 
 // SetSTSOperations sets the STS operations implementation - primarily used for testing.
-func (r *AWSOIDCRotator) SetSTSOperations(ops STSOperations) {
+func (r *AWSOIDCRotator) SetSTSOperations(ops STSClient) {
 	r.stsOps = ops
 }
 

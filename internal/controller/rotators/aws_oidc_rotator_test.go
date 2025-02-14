@@ -94,7 +94,7 @@ func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 
 func TestAWS_OIDCRotator(t *testing.T) {
 	t.Run("basic rotation", func(t *testing.T) {
-		var mockSTS STSOperations = &MockSTSOperations{
+		var mockSTS STSClient = &MockSTSOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return &sts.AssumeRoleWithWebIdentityOutput{
 					Credentials: &types.Credentials{
@@ -135,7 +135,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 		createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 		createClientSecret(t, "test-client-secret")
-		var mockSTS STSOperations = &MockSTSOperations{
+		var mockSTS STSClient = &MockSTSOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return nil, fmt.Errorf("failed to assume role")
 			},
