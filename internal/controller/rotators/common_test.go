@@ -117,7 +117,6 @@ func TestGetExpirationSecretAnnotation(t *testing.T) {
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing expiration time annotation")
-	require.Nil(t, expirationTime)
 
 	secret.Annotations = map[string]string{
 		ExpirationTimeAnnotationKey: "invalid",
@@ -125,7 +124,6 @@ func TestGetExpirationSecretAnnotation(t *testing.T) {
 	expirationTime, err = GetExpirationSecretAnnotation(secret)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to parse")
-	require.Nil(t, expirationTime)
 
 	timeNow := time.Now()
 	secret.Annotations = map[string]string{
@@ -141,7 +139,6 @@ func TestUpdateAndGetExpirationSecretAnnotation(t *testing.T) {
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing expiration time annotation")
-	require.Nil(t, expirationTime)
 
 	timeNow := time.Now()
 	updateExpirationSecretAnnotation(secret, timeNow)

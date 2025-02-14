@@ -88,27 +88,24 @@ func (r *AWSOIDCRotator) SetSTSOperations(ops STSClient) {
 // IsExpired checks if the preRotation time is before the current time.
 func (r *AWSOIDCRotator) IsExpired() bool {
 	preRotationExpirationTime := r.GetPreRotationTime()
-	if preRotationExpirationTime == nil {
-		return true
-	}
-	return IsExpired(0, *preRotationExpirationTime)
+	return IsExpired(0, preRotationExpirationTime)
 }
 
-// GetPreRotationTime gets the expiration time minus the preRotation interval.
-func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
+// GetPreRotationTime gets the expiration time minus the preRotation interval or return zero value for time.
+func (r *AWSOIDCRotator) GetPreRotationTime() time.Time {
 	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return nil
+			return time.Time{}
 		}
-		return nil
+		return time.Time{}
 	}
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
 	if err != nil {
-		return nil
+		return time.Time{}
 	}
 	preRotationTime := expirationTime.Add(-r.preRotationWindow)
-	return &preRotationTime
+	return preRotationTime
 }
 
 // Rotate implements the retrieval and storage of AWS sts credentials.

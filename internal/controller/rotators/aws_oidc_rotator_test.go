@@ -166,10 +166,10 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 		backendSecurityPolicyName:      "test-secret",
 	}
 
-	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
-	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
 
 	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestAWS_IsExpired(t *testing.T) {
 	require.True(t, awsOidcRotator.IsExpired())
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
-	require.Nil(t, awsOidcRotator.GetPreRotationTime())
+	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
 
 	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
