@@ -195,6 +195,7 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: macos-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - run: docker --version
       - run: make precommit
       - run: make test
       - run: make test-crdcel
