@@ -45,11 +45,13 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *e
 func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
 	if p.tokenSource == nil {
 		oauth2Config := clientcredentials.Config{
-			ClientID:     oidc.ClientID,
 			ClientSecret: clientSecret,
+		}
+		if oidc != nil {
+			oauth2Config.ClientID = oidc.ClientID
+			oauth2Config.Scopes = oidc.Scopes
 			// Discovery returns the OAuth2 endpoints.
-			TokenURL: *oidc.Provider.TokenEndpoint,
-			Scopes:   oidc.Scopes,
+			oauth2Config.TokenURL = *oidc.Provider.TokenEndpoint
 		}
 		p.tokenSource = oauth2Config.TokenSource(ctx)
 	}
