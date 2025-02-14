@@ -654,7 +654,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(ctx context.Context, spec
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
-						secretName = backendSecurityPolicy.Name
+						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)

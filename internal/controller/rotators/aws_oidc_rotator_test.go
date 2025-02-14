@@ -23,7 +23,7 @@ import (
 // -----------------------------------------------------------------------------
 
 // createTestAWSSecret creates a test secret with given credentials
-func createTestAWSSecret(t *testing.T, client client.Client, name string, accessKey, secretKey, sessionToken string, profile string) {
+func createTestAWSSecret(t *testing.T, client client.Client, bspName string, accessKey, secretKey, sessionToken string, profile string) {
 	if profile == "" {
 		profile = "default"
 	}
@@ -33,7 +33,7 @@ func createTestAWSSecret(t *testing.T, client client.Client, name string, access
 	}
 	err := client.Create(context.Background(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      GetBSPSecretName(bspName),
 			Namespace: "default",
 		},
 		Data: data,
@@ -46,7 +46,7 @@ func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, s
 	if profile == "" {
 		profile = "default"
 	}
-	secret, err := LookupSecret(context.Background(), client, namespace, secretName)
+	secret, err := LookupSecret(context.Background(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	creds := parseAWSCredentialsFile(string(secret.Data[awsCredentialsKey]))
 	require.NotNil(t, creds)
@@ -171,7 +171,7 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 	require.Nil(t, awsOidcRotator.GetPreRotationTime())
 
-	secret, err := LookupSecret(context.Background(), cl, "default", "test-secret")
+	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
@@ -197,7 +197,7 @@ func TestAWS_IsExpired(t *testing.T) {
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 	require.Nil(t, awsOidcRotator.GetPreRotationTime())
 
-	secret, err := LookupSecret(context.Background(), cl, "default", "test-secret")
+	secret, err := LookupSecret(context.Background(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)

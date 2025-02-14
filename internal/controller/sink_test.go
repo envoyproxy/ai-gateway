@@ -297,7 +297,7 @@ func TestConfigSink_syncBackendSecurityPolicyOIDC(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "some-access-token", token.AccessToken)
 
-	updatedSecret, err := rotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, "orange")
+	updatedSecret, err := rotators.LookupSecret(context.Background(), fakeClient, sharedNamespace, rotators.GetBSPSecretName("orange"))
 	require.NoError(t, err)
 	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
 }
@@ -983,7 +983,7 @@ func TestConfigSink_MountBackendSecurityPolicySecrets(t *testing.T) {
 	require.Equal(t, "rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule1-backref0-some-other-backend-security-policy-aws", updatedSpec.Containers[0].VolumeMounts[2].MountPath)
 	// AWS OIDC.
-	require.Equal(t, "aws-oidc-name", updatedSpec.Volumes[3].VolumeSource.Secret.SecretName)
+	require.Equal(t, rotators.GetBSPSecretName("aws-oidc-name"), updatedSpec.Volumes[3].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Volumes[3].Name)
 	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].MountPath)

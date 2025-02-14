@@ -12,12 +12,13 @@ import (
 )
 
 const ExpirationTimeAnnotationKey = "rotators/expiration-time"
+const RotatorSecretNamePrefix = "ai-eg-bsp"
 
-// newSecret creates a new secret struct (does not persist to k8s).
-func newSecret(namespace, name string) *corev1.Secret {
+// newBSPSecret creates a new secret struct (does not persist to k8s).
+func newBSPSecret(namespace, bspName string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      GetBSPSecretName(bspName),
 			Namespace: namespace,
 		},
 		Type: corev1.SecretTypeOpaque,
@@ -79,4 +80,9 @@ func GetExpirationSecretAnnotation(secret *corev1.Secret) (*time.Time, error) {
 // IsExpired checks if the expired time minus duration buffer is before the current time.
 func IsExpired(buffer time.Duration, expirationTime time.Time) bool {
 	return expirationTime.Add(-buffer).Before(time.Now())
+}
+
+// GetBSPSecretName will return the bspName with rotator prefix.
+func GetBSPSecretName(bspName string) string {
+	return fmt.Sprintf("%s-%s", RotatorSecretNamePrefix, bspName)
 }

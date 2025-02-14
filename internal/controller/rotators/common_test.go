@@ -13,13 +13,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestNewSecret(t *testing.T) {
+func TestNewBSPSecret(t *testing.T) {
 	name := "test"
 	namespace := "test-namespace"
-	secret := newSecret(namespace, name)
+	secret := newBSPSecret(namespace, name)
 
 	require.NotNil(t, secret)
-	require.Equal(t, name, secret.Name)
+	require.Equal(t, GetBSPSecretName(name), secret.Name)
 	require.Equal(t, namespace, secret.Namespace)
 	require.NotNil(t, secret.Data)
 }

@@ -96,7 +96,7 @@ func (r *AWSOIDCRotator) IsExpired() bool {
 
 // GetPreRotationTime gets the expiration time minus the preRotation interval.
 func (r *AWSOIDCRotator) GetPreRotationTime() *time.Time {
-	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return nil
@@ -123,12 +123,12 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 		return err
 	}
 
-	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		secret = newSecret(r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+		secret = newBSPSecret(r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
 	}
 
 	updateExpirationSecretAnnotation(secret, *result.Credentials.Expiration)
