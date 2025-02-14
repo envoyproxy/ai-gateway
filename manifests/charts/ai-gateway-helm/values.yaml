@@ -44,11 +44,11 @@ controller:
   podEnv: {}
   # Example of volumes
   #  - mountPath: /placeholder/path
-  #      name: volume-name
-  #      subPath: placeholder-sub-path
-  #      configmap:
-  #        defaultMode: placeholder
-  #        name: configmap-name
+  #    name: volume-name
+  #    subPath: placeholder-sub-path
+  #    configmap:
+  #      defaultMode: placeholder
+  #      name: configmap-name
   volumes: {}
   service:
     type: ClusterIP
