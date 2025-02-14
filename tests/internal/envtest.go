@@ -34,10 +34,14 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 		crds = append(crds, filepath.Join(crdPath, file.Name()))
 	}
 
+	const (
+		egUrlBase    = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.3.0/charts/gateway-helm/crds/generated/"
+		gwApiUrlBase = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/"
+	)
 	for _, url := range []string{
-		"https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.4/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_envoyextensionpolicies.yaml",
-		"https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.2.5/charts/gateway-helm/crds/generated/gateway.envoyproxy.io_httproutefilters.yaml",
-		"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml",
+		egUrlBase + "gateway.envoyproxy.io_envoyextensionpolicies.yaml",
+		egUrlBase + "gateway.envoyproxy.io_httproutefilters.yaml",
+		gwApiUrlBase + "gateway.networking.k8s.io_httproutes.yaml",
 	} {
 		path := filepath.Base(url) + "_for_tests.yaml"
 		crds = append(crds, requireThirdPartyCRDDownloaded(t, path, url))
