@@ -98,7 +98,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 
 func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["one", "openid"]}`))
 		require.NoError(t, err)
 	}))
 	defer ts.Close()
@@ -114,6 +114,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 			Issuer:        ts.URL,
 			TokenEndpoint: &ts.URL,
 		},
+		Scopes:   []string{"two", "openid"},
 		ClientID: "some-client-id",
 	}
 
@@ -123,12 +124,12 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token_endpoint", config.TokenURL)
 	require.Equal(t, "issuer", config.IssuerURL)
-	require.Empty(t, supportedScope)
+	require.Len(t, supportedScope, 2)
 }
 
 func TestOIDCProvider_FetchToken(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["one", "openid"]}`))
 		require.NoError(t, err)
 	}))
 	defer ts.Close()
@@ -164,15 +165,19 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 			Name:      gwapiv1.ObjectName(secretName),
 			Namespace: &namespaceRef,
 		},
+		Scopes: []string{"two", "openid"},
 	}
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
 	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
 	ctx := oidcv3.InsecureIssuerURLContext(context.Background(), ts.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
+	require.Len(t, oidcProvider.oidcCredential.Scopes, 2)
+
 	token, err := oidcProvider.FetchToken(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
 	require.Equal(t, "Bearer", token.Type())
 	require.Equal(t, int64(3600), token.ExpiresIn)
+	require.Len(t, oidcProvider.oidcCredential.Scopes, 3)
 }
