@@ -39,7 +39,7 @@ controller:
   podSecurityContext: {}
   securityContext: {}
   # Example of a podEnv
-  #  - key: AI_GATEWY_STS_PROXY_URL
+  #  - key: AI_GATEWAY_STS_PROXY_URL
   #    value: some-proxy-placeholder
   podEnv: {}
   # Example of volumes

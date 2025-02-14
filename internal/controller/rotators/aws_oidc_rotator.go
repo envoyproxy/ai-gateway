@@ -11,7 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -57,7 +59,7 @@ func NewAWSOIDCRotator(
 
 	cfg.Region = region
 
-	if proxyURL := os.Getenv("AI_GATEWY_STS_PROXY_URL"); proxyURL != "" {
+	if proxyURL := os.Getenv("AI_GATEWAY_STS_PROXY_URL"); proxyURL != "" {
 		cfg.HTTPClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: func(*http.Request) (*url.URL, error) {
@@ -125,7 +127,14 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		secret = newBSPSecret(r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      GetBSPSecretName(r.backendSecurityPolicyName),
+				Namespace: r.backendSecurityPolicyNamespace,
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: make(map[string][]byte),
+		}
 	}
 
 	updateExpirationSecretAnnotation(secret, *result.Credentials.Expiration)
@@ -145,7 +154,16 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 	}
 
 	updateAWSCredentialsInSecret(secret, &credsFile)
-	return updateSecret(r.ctx, r.client, secret)
+
+	err = r.client.Create(r.ctx, secret)
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return r.client.Update(r.ctx, secret)
+		}
+		return fmt.Errorf("failed to create secret: %w", err)
+	}
+
+	return nil
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.

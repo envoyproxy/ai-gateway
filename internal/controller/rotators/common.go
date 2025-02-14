@@ -7,38 +7,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// ExpirationTimeAnnotationKey is exported for testing purposes within the controller.
 const ExpirationTimeAnnotationKey = "rotators/expiration-time"
-const RotatorSecretNamePrefix = "ai-eg-bsp"
 
-// newBSPSecret creates a new secret struct (does not persist to k8s).
-func newBSPSecret(namespace, bspName string) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      GetBSPSecretName(bspName),
-			Namespace: namespace,
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: make(map[string][]byte),
-	}
-}
-
-// updateSecret updates an existing secret or creates a new one.
-func updateSecret(ctx context.Context, k8sClient client.Client, secret *corev1.Secret) error {
-	if secret.ResourceVersion == "" {
-		if err := k8sClient.Create(ctx, secret); err != nil {
-			return fmt.Errorf("failed to create secret: %w", err)
-		}
-	} else {
-		if err := k8sClient.Update(ctx, secret); err != nil {
-			return fmt.Errorf("failed to update secret: %w", err)
-		}
-	}
-	return nil
-}
+const rotatorSecretNamePrefix = "ai-eg-bsp" // #nosec G101
 
 // LookupSecret retrieves an existing secret.
 func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name string) (*corev1.Secret, error) {
@@ -84,5 +59,5 @@ func IsExpired(buffer time.Duration, expirationTime time.Time) bool {
 
 // GetBSPSecretName will return the bspName with rotator prefix.
 func GetBSPSecretName(bspName string) string {
-	return fmt.Sprintf("%s-%s", RotatorSecretNamePrefix, bspName)
+	return fmt.Sprintf("%s-%s", rotatorSecretNamePrefix, bspName)
 }
