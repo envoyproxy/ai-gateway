@@ -27,6 +27,9 @@ import (
 // Temporarily a fixed duration.
 const preRotationWindow = 5 * time.Minute
 
+// outgoingTimeOut will be used to prevent outgoing request from blocking.
+const outGoingTimeOut = time.Minute
+
 // backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 //
 // This handles the BackendSecurityPolicy resource and sends it to the config sink so that it can modify configuration.
@@ -62,65 +65,58 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	println("zero")
 	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
-		println("oidc is not nil")
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
 
 		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
 		if err != nil {
-			println("new aws oidc rotator failed to get")
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
 		} else if rotator.IsExpired() {
 			bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
 
-			println("one")
 			var validToken *oauth2.Token
 			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
-				println("two")
 				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), oidc)
 				// Valid Token will be nil if fetch token errors.
-				validToken, err = oidcProvider.FetchToken(ctx)
+
+				timeOutCtx, cancelFunc := context.WithTimeout(ctx, outGoingTimeOut)
+				defer cancelFunc()
+				validToken, err = oidcProvider.FetchToken(timeOutCtx)
 				if err != nil {
-					println("three")
 					b.logger.Error(err, "failed to fetch OIDC provider token")
 				} else {
 					b.oidcTokenCache[bspKey] = validToken
 				}
 			} else {
-				println("four")
 				validToken = tokenResponse
 			}
 
-			println("five")
 			if validToken != nil {
-				println("six")
 				b.oidcTokenCache[bspKey] = validToken
 				awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
 
-				println("seven")
 				// This is to abstract the real STS behavior for testing purpose.
 				if b.StsOP != nil {
-					println("eight")
 					rotator.SetSTSOperations(b.StsOP)
 				}
-				println("nine")
+
+				// Set a timeout for rotate.
+				timeOutCtx, cancelFunc2 := context.WithTimeout(ctx, outGoingTimeOut)
+				defer cancelFunc2()
+				rotator.UpdateCtx(timeOutCtx)
 				token := validToken.AccessToken
 				err = rotator.Rotate(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 				if err != nil {
-					println("ten")
 					b.logger.Error(err, "failed to rotate AWS OIDC exchange token")
 					requeue = time.Minute
 				} else {
-					println("eleven")
 					requeue = time.Until(rotator.GetPreRotationTime())
 				}
 
 			}
 		}
-		println("twelve")
 		// TODO: Investigate how to stop stale events from re-queuing.
 		res = ctrl.Result{RequeueAfter: requeue}
 	}
@@ -131,9 +127,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	println("point five")
 	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
-		println("point 8")
 		return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 	}
 	return nil

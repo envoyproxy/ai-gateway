@@ -116,13 +116,19 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		createClientSecret(t, "test-client-secret")
 
 		awsOidcRotator := AWSOIDCRotator{
-			ctx:                            context.Background(),
 			client:                         cl,
 			stsOps:                         mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 		}
 
+		timeOutCtx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+		defer cancelFunc()
+		time.Sleep(time.Second)
+		awsOidcRotator.UpdateCtx(timeOutCtx)
+		require.Error(t, awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN"))
+
+		awsOidcRotator.UpdateCtx(context.Background())
 		require.NoError(t, awsOidcRotator.Rotate("us-east1", "test", "NEW-OIDC-TOKEN"))
 		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default")
 	})

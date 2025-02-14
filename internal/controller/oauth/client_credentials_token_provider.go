@@ -55,9 +55,21 @@ func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx 
 		}
 		p.tokenSource = oauth2Config.TokenSource(ctx)
 	}
-	token, err := p.tokenSource.Token()
-	if err != nil {
-		return nil, fmt.Errorf("fail to get oauth2 token %w", err)
+
+	var token *oauth2.Token
+	var err error
+	// This adds timeout via ctx from the caller.
+	for token == nil {
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+			token, err = p.tokenSource.Token()
+			if err != nil {
+				return nil, fmt.Errorf("fail to get oauth2 token %w", err)
+			}
+		}
 	}
 
 	// Handle expiration.

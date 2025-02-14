@@ -90,8 +90,13 @@ func (r *AWSOIDCRotator) SetSTSOperations(ops STSClient) {
 // IsExpired checks if the preRotation time is before the current time.
 func (r *AWSOIDCRotator) IsExpired() bool {
 	preRotationExpirationTime := r.GetPreRotationTime()
-	println(preRotationExpirationTime.String())
 	return IsExpired(0, preRotationExpirationTime)
+}
+
+// UpdateCtx is used to update the context used in AWSOIDCRotator functions.
+// This can be used to set timeouts for outgoing calls to assume role.
+func (r *AWSOIDCRotator) UpdateCtx(ctx context.Context) {
+	r.ctx = ctx
 }
 
 // GetPreRotationTime gets the expiration time minus the preRotation interval or return zero value for time.
@@ -117,10 +122,22 @@ func (r *AWSOIDCRotator) Rotate(region, roleARN, token string) error {
 		"namespace", r.backendSecurityPolicyNamespace,
 		"name", r.backendSecurityPolicyName)
 
-	result, err := r.assumeRoleWithToken(roleARN, token)
-	if err != nil {
-		r.logger.Error(err, "failed to assume role", "role", roleARN, "ID", token)
-		return err
+	var result *sts.AssumeRoleWithWebIdentityOutput
+	var err error
+
+	// This adds timeout via ctx from the caller.
+	for result == nil {
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-r.ctx.Done():
+			return r.ctx.Err()
+		case <-timer.C:
+			result, err = r.assumeRoleWithToken(roleARN, token)
+			if err != nil {
+				r.logger.Error(err, "failed to assume role", "role", roleARN, "ID", token)
+				return err
+			}
+		}
 	}
 
 	secret, err := LookupSecret(r.ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
