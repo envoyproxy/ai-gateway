@@ -1,7 +1,6 @@
 package rotators
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -95,7 +94,7 @@ func TestUpdateAndGetExpirationSecretAnnotation(t *testing.T) {
 	require.Equal(t, timeNow.Format(time.RFC3339), expirationTime.Format(time.RFC3339))
 }
 
-func TestIsExpired(t *testing.T) {
-	require.True(t, IsExpired(1*time.Minute, time.Now()))
-	require.False(t, IsExpired(1*time.Minute, time.Now().Add(10*time.Minute)))
+func TestIsBufferedTimeExpired(t *testing.T) {
+	require.True(t, IsBufferedTimeExpired(1*time.Minute, time.Now()))
+	require.False(t, IsBufferedTimeExpired(1*time.Minute, time.Now().Add(10*time.Minute)))
 }

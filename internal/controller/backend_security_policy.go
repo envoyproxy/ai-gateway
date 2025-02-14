@@ -77,7 +77,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 			bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
 
 			var validToken *oauth2.Token
-			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsExpired(preRotationWindow, tokenResponse.Expiry) {
+			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
 				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), oidc)
 				// Valid Token will be nil if fetch token errors.
 
