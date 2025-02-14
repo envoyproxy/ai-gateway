@@ -72,7 +72,7 @@ func requireRunEnvoy(t *testing.T) {
 	require.NoError(t, pullCmd.Run())
 
 	// Then, starts the Envoy container.
-	cmd := exec.Command(
+	cmd := exec.Command( // #nosec G204
 		"docker",
 		"run",
 		"--network", "host",
@@ -87,7 +87,6 @@ func requireRunEnvoy(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, cmd.Process.Signal(os.Interrupt))
 	})
-	return
 }
 
 // requireBinaries requires Envoy to be present in the PATH as well as the Extproc and testuptream binaries in the out directory.
