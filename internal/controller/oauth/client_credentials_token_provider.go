@@ -26,6 +26,8 @@ func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvi
 }
 
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
+//
+// This implements [TokenProvider.FetchToken].
 func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
 	if oidc == nil || oidc.ClientSecret.Namespace == nil {
 		return nil, fmt.Errorf("oidc or oidc-client-secret is nil")

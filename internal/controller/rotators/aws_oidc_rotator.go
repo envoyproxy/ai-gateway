@@ -74,7 +74,7 @@ func NewAWSOIDCRotator(
 	return &AWSOIDCRotator{
 		client:                         client,
 		kube:                           kube,
-		logger:                         logger,
+		logger:                         logger.WithName("aws-oidc-rotator"),
 		stsOps:                         stsClient,
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,

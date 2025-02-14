@@ -3,9 +3,6 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"golang.org/x/oauth2"
@@ -14,7 +11,6 @@ import (
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support.
 type OIDCProvider struct {
 	tokenProvider  *ClientCredentialsTokenProvider
-	httpClient     *http.Client
 	oidcCredential *egv1a1.OIDC
 }
 
@@ -22,7 +18,6 @@ type OIDCProvider struct {
 func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredentials *egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
 		tokenProvider:  tokenProvider,
-		httpClient:     &http.Client{Timeout: 30 * time.Second},
 		oidcCredential: oidcCredentials,
 	}
 }
@@ -64,6 +59,8 @@ func (p *OIDCProvider) getOIDCProviderConfig(ctx context.Context, issuerURL stri
 }
 
 // FetchToken retrieves and validates tokens using the client credentials flow with OIDC support.
+//
+// This implements [TokenProvider.FetchToken].
 func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	// If issuer URL is provided, fetch OIDC metadata.
 	if issuerURL := p.oidcCredential.Provider.Issuer; issuerURL != "" {

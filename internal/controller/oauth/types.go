@@ -9,5 +9,6 @@ import (
 
 // TokenProvider defines the interface for OAuth token providers.
 type TokenProvider interface {
+	// FetchToken will obtain oauth token using oidc credentials.
 	FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error)
 }
