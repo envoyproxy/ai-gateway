@@ -78,8 +78,8 @@ func (c *stsClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.A
 	return c.client.AssumeRoleWithWebIdentity(ctx, params, optFns...)
 }
 
-// awsCredentials represents a single set of AWS credentials, including optional
-// session token and region configuration. It maps to a single profile in an
+// awsCredentials represents an AWS credential including optional
+// session token configuration. It maps to a single profile in an
 // AWS credentials file.
 type awsCredentials struct {
 	// profile is the name of the credentials profile.
@@ -103,7 +103,7 @@ type awsCredentialsFile struct {
 // formatAWSCredentialsFile formats an AWS credential profile into a credentials file.
 // The output follows the standard AWS credentials file format and ensures:
 // - Proper formatting of all credential components
-// - Optional inclusion of session token and region
+// - Optional inclusion of session token
 func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("[%s]\n", file.creds.profile))
@@ -112,9 +112,7 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	if file.creds.sessionToken != "" {
 		builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", file.creds.sessionToken))
 	}
-	if file.creds.region != "" {
-		builder.WriteString(fmt.Sprintf("region = %s\n", file.creds.region))
-	}
+	builder.WriteString(fmt.Sprintf("region = %s\n", file.creds.region))
 
 	return builder.String()
 }
