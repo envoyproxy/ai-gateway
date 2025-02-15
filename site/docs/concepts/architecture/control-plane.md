@@ -59,7 +59,7 @@ sequenceDiagram
     participant Controller as AI Gateway Controller
     participant EG as Envoy Gateway
     participant Envoy as Envoy Proxy
-    
+
     User->>K8s: Apply AI Gateway CR
     K8s->>Controller: Notify of new/updated CR
     Controller->>K8s: Create/Update ExtProc Resources

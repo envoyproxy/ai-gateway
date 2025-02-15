@@ -48,4 +48,4 @@ We call such rate limiting "Token Rate Limiting" in our context, and the metrics
 ## What's Next
 
 After understanding the architecture:
-- Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience 
+- Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience

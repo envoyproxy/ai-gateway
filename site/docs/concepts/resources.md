@@ -51,4 +51,4 @@ graph TD
     D -->|contains| E[API Key/AWS Credentials]
 ```
 
-The AIGatewayRoute acts as the entry point, defining how client requests are processed and routed to one or more AIServiceBackends. Each AIServiceBackend can reference a BackendSecurityPolicy, which provides the necessary credentials for accessing the underlying AI service. 
+The AIGatewayRoute acts as the entry point, defining how client requests are processed and routed to one or more AIServiceBackends. Each AIServiceBackend can reference a BackendSecurityPolicy, which provides the necessary credentials for accessing the underlying AI service.

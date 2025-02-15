@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Concepts
 
-Welcome to the Concepts section of Envoy AI Gateway documentation. This section will help you understand the core components and how they work together to manage AI traffic effectively. 
+Welcome to the Concepts section of Envoy AI Gateway documentation. This section will help you understand the core components and how they work together to manage AI traffic effectively.
 
 ## Architecture
 

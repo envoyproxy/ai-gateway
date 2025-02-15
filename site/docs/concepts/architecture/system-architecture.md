@@ -32,19 +32,19 @@ graph TB
     subgraph "Control Plane"
         K8s[Kubernetes API Server] --> Controller[AI Gateway Controller]
         Controller --> EGController[Envoy Gateway Controller]
-        
+
         style Controller fill:#f9f,stroke:#333,stroke-width:2px
         style EGController fill:#ddf,stroke:#333
     end
-    
+
     subgraph "Data Plane"
         Envoy[Envoy Proxy]
         ExtProc[External Processor]
         RateLimit[Rate Limit Service]
-        
+
         Envoy --> ExtProc
         Envoy --> RateLimit
-        
+
         style Envoy fill:#f9f,stroke:#333,stroke-width:2px
         style ExtProc fill:#f9f,stroke:#333,stroke-width:2px
         style RateLimit fill:#dfd,stroke:#333

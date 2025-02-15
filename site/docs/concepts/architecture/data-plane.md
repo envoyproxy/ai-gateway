@@ -66,12 +66,12 @@ The data plane processes requests through several key steps:
    - Authentication token handling
 
 ### 2. Response Path
-1. **Response Transformation**: 
+1. **Response Transformation**:
    - Transforms provider response for client compatibility
    - Normalizes response format
    - Handles streaming responses
 
-2. **Token Usage Management**: 
+2. **Token Usage Management**:
    - Extracts token usage from responses
    - Calculates usage based on configuration
    - Stores usage in per-request dynamic metadata
@@ -108,4 +108,4 @@ This design enables:
 
 To learn more:
 - Explore the [System Architecture](./system-architecture.md)
-- Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience 
+- Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience
