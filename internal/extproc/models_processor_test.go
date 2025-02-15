@@ -6,7 +6,6 @@
 package extproc
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -23,7 +22,7 @@ import (
 func TestModels_ProcessRequestHeaders(t *testing.T) {
 	cfg := &processorConfig{declaredModels: []string{"openai", "aws-bedrock"}}
 	p := NewModelsProcessor(cfg, nil, slog.Default())
-	res, err := p.ProcessRequestHeaders(context.Background(), &corev3.HeaderMap{
+	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
 	})
 	require.NoError(t, err)
@@ -49,11 +48,11 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 
 func TestModels_UnimplementedMethods(t *testing.T) {
 	p := &modelsProcessor{}
-	_, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{})
+	_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 	require.ErrorIs(t, err, errUnexpectedCall)
-	_, err = p.ProcessResponseHeaders(context.Background(), &corev3.HeaderMap{})
+	_, err = p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{})
 	require.ErrorIs(t, err, errUnexpectedCall)
-	_, err = p.ProcessResponseBody(context.Background(), &extprocv3.HttpBody{})
+	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 	require.ErrorIs(t, err, errUnexpectedCall)
 }
 

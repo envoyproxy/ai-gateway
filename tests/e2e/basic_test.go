@@ -75,7 +75,7 @@ func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string
 			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 			defer fwd.kill()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 
 			client := openai.NewClient(option.WithBaseURL(fwd.address() + "/v1/"))

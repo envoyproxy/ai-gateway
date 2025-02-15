@@ -279,7 +279,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	})
 
 	t.Run("unknown path", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 
 		req := &extprocv3.ProcessingRequest{
@@ -298,7 +298,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	})
 
 	t.Run("known path", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 
 		req := &extprocv3.ProcessingRequest{

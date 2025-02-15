@@ -240,14 +240,14 @@ func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector st
 	// This repeats the wait subcommand in order to be able to wait for the
 	// resources not created yet.
 	require.Eventually(t, func() bool {
-		cmd := kubectl(context.Background(), "wait", "--timeout=2s", "-n", namespace,
+		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", namespace,
 			"pods", "--for=condition=Ready", "-l", labelSelector)
 		return cmd.Run() == nil
 	}, timeout, 5*time.Second)
 }
 
 func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
-	f, err := newPodPortForwarder(context.Background(), namespace, selector, port)
+	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		conn, err := http.Get(f.address())
