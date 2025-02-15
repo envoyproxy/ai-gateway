@@ -105,9 +105,8 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				// Set a timeout for rotate.
 				timeOutCtx, cancelFunc2 := context.WithTimeout(ctx, outGoingTimeOut)
 				defer cancelFunc2()
-				rotator.UpdateCtx(timeOutCtx)
 				token := validToken.AccessToken
-				err = rotator.Rotate(awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+				err = rotator.Rotate(timeOutCtx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 				if err != nil {
 					b.logger.Error(err, "failed to rotate AWS OIDC exchange token")
 					requeue = time.Minute
