@@ -115,4 +115,3 @@ The Envoy AI Gateway architecture provides a robust system for managing AI traff
 For detailed information about specific components:
 - Learn more about the [Control Plane](./control-plane.md) components
 - Understand the [Data Plane](./data-plane.md) in detail
-- Explore [Traffic Management](../traffic-management.md)
