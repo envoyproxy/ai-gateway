@@ -33,7 +33,7 @@ type AWSOIDCRotator struct {
 	kube kubernetes.Interface
 	// logger is used for structured logging.
 	logger logr.Logger
-	// stsOps provides AWS STS operations interface.
+	// stsClient provides AWS STS operations interface.
 	stsClient STSClient
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
@@ -118,7 +118,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 		"namespace", r.backendSecurityPolicyNamespace,
 		"name", r.backendSecurityPolicyName)
 
-	result, err := r.assumeRoleWithToken(ctx, r.roleARN, token)
+	result, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleARN, "access token", token)
 		return err
@@ -164,9 +164,9 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
-func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return r.stsClient.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
-		RoleArn:          aws.String(roleARN),
+		RoleArn:          aws.String(r.roleARN),
 		WebIdentityToken: aws.String(token),
 		RoleSessionName:  aws.String(fmt.Sprintf(awsSessionNameFormat, r.backendSecurityPolicyName)),
 	})
