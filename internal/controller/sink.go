@@ -638,7 +638,7 @@ func (c *configSink) syncSecret(ctx context.Context, namespace, name string) {
 	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
 	err := c.client.List(ctx, &backendSecurityPolicies,
 		client.MatchingFields{
-			k8sClientIndexSecretToReferencingBackendSecurityPolicy: fmt.Sprintf("%s.%s", name, namespace),
+			k8sClientIndexSecretToReferencingBackendSecurityPolicy: backendSecurityPolicyKey(namespace, name),
 		},
 	)
 	if err != nil {
@@ -658,8 +658,4 @@ func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string
 
 func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
-}
-
-func backendSecurityPolicyKey(namespace, name string) string {
-	return fmt.Sprintf("%s.%s", name, namespace)
 }

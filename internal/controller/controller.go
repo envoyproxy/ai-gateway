@@ -187,7 +187,7 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		if awsCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(awsCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
 		} else if awsCreds.OIDCExchangeToken != nil {
-			key = fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
+			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
 		}
 	}
 	return []string{key}

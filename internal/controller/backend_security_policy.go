@@ -127,3 +127,8 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	}
 	return nil
 }
+
+// backendSecurityPolicyKey returns the key used for indexing and caching the backendSecurityPolicy
+func backendSecurityPolicyKey(namespace, name string) string {
+	return fmt.Sprintf("%s.%s", name, namespace)
+}
