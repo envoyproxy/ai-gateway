@@ -122,7 +122,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 
 		awsOidcRotator := AWSOIDCRotator{
 			client:                         cl,
-			stsOps:                         mockSTS,
+			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 		}
@@ -148,7 +148,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		}
 		awsOidcRotator := AWSOIDCRotator{
 			client:                         cl,
-			stsOps:                         mockSTS,
+			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 		}

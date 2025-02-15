@@ -38,7 +38,7 @@ import (
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	c := newBackendSecurityPolicyController(cl, &mockSTSOperations{}, fake2.NewClientset(), ctrl.Log, ch)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -119,7 +119,6 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
 	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
 
-	c.StsOP = &mockSTSOperations{}
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	res, err = c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
 	require.NoError(t, err)

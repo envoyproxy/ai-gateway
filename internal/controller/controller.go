@@ -93,7 +93,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
-	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
+	backendSecurityPolicyC := newBackendSecurityPolicyController(c, nil, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), sinkChan)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.BackendSecurityPolicy{}).

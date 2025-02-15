@@ -34,7 +34,7 @@ type AWSOIDCRotator struct {
 	// logger is used for structured logging.
 	logger logr.Logger
 	// stsOps provides AWS STS operations interface.
-	stsOps STSClient
+	stsClient STSClient
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
@@ -48,6 +48,7 @@ type AWSOIDCRotator struct {
 func NewAWSOIDCRotator(
 	ctx context.Context,
 	client client.Client,
+	stsClient STSClient,
 	kube kubernetes.Interface,
 	logger logr.Logger,
 	backendSecurityPolicyNamespace string,
@@ -71,23 +72,18 @@ func NewAWSOIDCRotator(
 			},
 		}
 	}
-
-	stsClient := NewSTSClient(cfg)
-
+	if stsClient == nil {
+		stsClient = NewSTSClient(cfg)
+	}
 	return &AWSOIDCRotator{
 		client:                         client,
 		kube:                           kube,
 		logger:                         logger.WithName("aws-oidc-rotator"),
-		stsOps:                         stsClient,
+		stsClient:                      stsClient,
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,
 		preRotationWindow:              preRotationWindow,
 	}, nil
-}
-
-// SetSTSOperations sets the STS operations implementation - primarily used for testing.
-func (r *AWSOIDCRotator) SetSTSOperations(ops STSClient) {
-	r.stsOps = ops
 }
 
 // IsExpired checks if the preRotation time is before the current time.
@@ -170,7 +166,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token stri
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
 func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, roleARN, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	return r.stsOps.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
+	return r.stsClient.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
 		RoleArn:          aws.String(roleARN),
 		WebIdentityToken: aws.String(token),
 		RoleSessionName:  aws.String(fmt.Sprintf(awsSessionNameFormat, r.backendSecurityPolicyName)),

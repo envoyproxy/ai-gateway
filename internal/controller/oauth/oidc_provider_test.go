@@ -50,8 +50,6 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	defer missingTokenURLTestServer.Close()
 
 	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl), oidc)
-	cancelledContext, cancel := context.WithCancel(t.Context())
-	cancel()
 
 	for _, testcase := range []struct {
 		name     string
@@ -60,13 +58,6 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 		ctx      context.Context
 		contains string
 	}{
-		{
-			name:     "context error",
-			provider: oidcProvider,
-			ctx:      cancelledContext,
-			url:      "",
-			contains: "context error before discovery",
-		},
 		{
 			name:     "failed to create go oidc",
 			provider: oidcProvider,

@@ -37,17 +37,17 @@ type backendSecurityPolicyController struct {
 	kube           kubernetes.Interface
 	logger         logr.Logger
 	eventChan      chan ConfigSinkEvent
-	StsOP          rotators.STSClient
+	StsClient      rotators.STSClient
 	oidcTokenCache map[string]*oauth2.Token
 }
 
-func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
+func newBackendSecurityPolicyController(client client.Client, stsClient rotators.STSClient, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) *backendSecurityPolicyController {
 	return &backendSecurityPolicyController{
 		client:         client,
 		kube:           kube,
 		logger:         logger,
 		eventChan:      ch,
-		StsOP:          nil,
+		StsClient:      stsClient,
 		oidcTokenCache: make(map[string]*oauth2.Token),
 	}
 }
@@ -55,7 +55,7 @@ func newBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
 	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
-	if err = b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
+	if err := b.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if errors.IsNotFound(err) {
 			ctrl.Log.Info("Deleting Backend Security Policy",
 				"namespace", req.Namespace, "name", req.Name)
@@ -65,54 +65,21 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	}
 
 	if backendSecurityPolicy.Spec.AWSCredentials != nil && backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
-		var requeue time.Duration
-		requeue = time.Minute
-		region := backendSecurityPolicy.Spec.AWSCredentials.Region
-
-		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, region)
+		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.StsClient, b.kube, b.logger, backendSecurityPolicy.Namespace,
+			backendSecurityPolicy.Name, preRotationWindow, backendSecurityPolicy.Spec.AWSCredentials.Region)
 		if err != nil {
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
-		} else if rotator.IsExpired() {
-			bspKey := fmt.Sprintf("%s.%s", backendSecurityPolicy.Name, backendSecurityPolicy.Namespace)
-
-			var validToken *oauth2.Token
-			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
-				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC)
-				// Valid Token will be nil if fetch token errors.
-
-				timeOutCtx, cancelFunc := context.WithTimeout(ctx, outGoingTimeOut)
-				defer cancelFunc()
-				validToken, err = oidcProvider.FetchToken(timeOutCtx)
-				if err != nil {
-					b.logger.Error(err, "failed to fetch OIDC provider token")
-				} else {
-					b.oidcTokenCache[bspKey] = validToken
-				}
+			return ctrl.Result{}, err
+		}
+		var requeue time.Duration
+		requeue = time.Minute
+		if rotator.IsExpired() {
+			err := b.rotateCredential(ctx, rotator, backendSecurityPolicy)
+			if err != nil {
+				b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
+				requeue = time.Minute
 			} else {
-				validToken = tokenResponse
-			}
-
-			if validToken != nil {
-				b.oidcTokenCache[bspKey] = validToken
-				awsCredentials := backendSecurityPolicy.Spec.AWSCredentials
-
-				// This is to abstract the real STS behavior for testing purpose.
-				if b.StsOP != nil {
-					rotator.SetSTSOperations(b.StsOP)
-				}
-
-				// Set a timeout for rotate.
-				timeOutCtx, cancelFunc2 := context.WithTimeout(ctx, outGoingTimeOut)
-				defer cancelFunc2()
-				token := validToken.AccessToken
-				err = rotator.Rotate(timeOutCtx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
-				if err != nil {
-					b.logger.Error(err, "failed to rotate AWS OIDC exchange token, retry in one minute")
-					requeue = time.Minute
-				} else {
-					requeue = time.Until(rotator.GetPreRotationTime())
-				}
-
+				requeue = time.Until(rotator.GetPreRotationTime())
 			}
 		}
 		res = ctrl.Result{RequeueAfter: requeue}
@@ -120,4 +87,38 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	// Send the backend security policy to the config sink so that it can modify the configuration together with the state of other resources.
 	b.eventChan <- backendSecurityPolicy.DeepCopy()
 	return
+}
+
+func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, rotator *rotators.AWSOIDCRotator, policy aigv1a1.BackendSecurityPolicy) error {
+	bspKey := fmt.Sprintf("%s.%s", policy.Name, policy.Namespace)
+	var validToken *oauth2.Token
+	var err error
+	if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
+		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), policy.Spec.AWSCredentials.OIDCExchangeToken.OIDC)
+		// Valid Token will be nil if fetch token errors.
+
+		timeOutCtx, cancelFunc := context.WithTimeout(ctx, outGoingTimeOut)
+		defer cancelFunc()
+		validToken, err = oidcProvider.FetchToken(timeOutCtx)
+		if err != nil {
+			b.logger.Error(err, "failed to fetch OIDC provider token")
+			return err
+		} else {
+			b.oidcTokenCache[bspKey] = validToken
+		}
+	} else {
+		validToken = tokenResponse
+	}
+
+	if validToken != nil {
+		b.oidcTokenCache[bspKey] = validToken
+		awsCredentials := policy.Spec.AWSCredentials
+
+		// Set a timeout for rotate.
+		timeOutCtx, cancelRotateFunc := context.WithTimeout(ctx, outGoingTimeOut)
+		defer cancelRotateFunc()
+		token := validToken.AccessToken
+		return rotator.Rotate(timeOutCtx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+	}
+	return nil
 }
