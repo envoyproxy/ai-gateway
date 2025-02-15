@@ -30,11 +30,6 @@ func NewOIDCProvider(tokenProvider *ClientCredentialsTokenProvider, oidcCredenti
 
 // getOIDCProviderConfig retrieves or creates OIDC config for the given issuer URL.
 func (p *OIDCProvider) getOIDCProviderConfig(ctx context.Context, issuerURL string) (*oidc.ProviderConfig, []string, error) {
-	// Check context before proceeding in case context is cancelled because of timeout.
-	if err := ctx.Err(); err != nil {
-		return nil, nil, fmt.Errorf("context error before discovery: %w", err)
-	}
-
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create go-oidc provider %q: %w", issuerURL, err)

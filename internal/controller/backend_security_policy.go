@@ -107,7 +107,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				token := validToken.AccessToken
 				err = rotator.Rotate(timeOutCtx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
 				if err != nil {
-					b.logger.Error(err, "failed to rotate AWS OIDC exchange token")
+					b.logger.Error(err, "failed to rotate AWS OIDC exchange token, retry in one minute")
 					requeue = time.Minute
 				} else {
 					requeue = time.Until(rotator.GetPreRotationTime())
@@ -115,7 +115,6 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 			}
 		}
-		// TODO: Investigate how to stop stale events from re-queuing.
 		res = ctrl.Result{RequeueAfter: requeue}
 	}
 	// Send the backend security policy to the config sink so that it can modify the configuration together with the state of other resources.

@@ -33,6 +33,7 @@ func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvi
 //
 // This implements [TokenProvider.FetchToken].
 func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc egv1a1.OIDC) (*oauth2.Token, error) {
+	// client secret namespace is optional on egv1a1.OIDC, but it is required for AI Gateway for now.
 	if oidc.ClientSecret.Namespace == nil {
 		return nil, fmt.Errorf("oidc-client-secret namespace is nil")
 	}

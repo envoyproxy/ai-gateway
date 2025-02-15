@@ -7,6 +7,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -25,8 +26,7 @@ func getClientSecret(ctx context.Context, cl client.Client, secretRef *corev1.Se
 
 	clientSecret, ok := secret.Data["client-secret"]
 	if !ok {
-		return "", fmt.Errorf("client-secret key not found in secret")
+		return "", errors.New("client-secret key not found in secret")
 	}
-
 	return string(clientSecret), nil
 }
