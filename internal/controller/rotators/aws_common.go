@@ -177,10 +177,7 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	}
 	sort.Strings(profileNames)
 
-	for i, profileName := range profileNames {
-		if i > 0 {
-			builder.WriteString("\n")
-		}
+	for _, profileName := range profileNames {
 		creds := file.profiles[profileName]
 		builder.WriteString(fmt.Sprintf("[%s]\n", profileName))
 		builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", creds.accessKeyID))

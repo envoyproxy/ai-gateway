@@ -138,11 +138,11 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token stri
 	updateExpirationSecretAnnotation(secret, *result.Credentials.Expiration)
 
 	// For now have profile as default.
-	profile := "default"
+	const defaultProfile = "default"
 	credsFile := awsCredentialsFile{
 		profiles: map[string]*awsCredentials{
-			profile: {
-				profile:         profile,
+			defaultProfile: {
+				profile:         defaultProfile,
 				accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
 				secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
 				sessionToken:    aws.ToString(result.Credentials.SessionToken),
