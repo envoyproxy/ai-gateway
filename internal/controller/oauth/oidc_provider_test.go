@@ -24,10 +24,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-func TestNewOIDCProvider(t *testing.T) {
-	require.NotNil(t, NewOIDCProvider(nil, &egv1a1.OIDC{}))
-}
-
 func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
@@ -35,7 +31,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	oidc := &egv1a1.OIDC{
+	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{},
 		ClientID: "some-client-id",
 	}
@@ -117,7 +113,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	oidc := &egv1a1.OIDC{
+	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        ts.URL,
 			TokenEndpoint: &ts.URL,
@@ -171,7 +167,7 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
-	oidc := &egv1a1.OIDC{
+	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        oidcServer.URL,
 			TokenEndpoint: &tokenServer.URL,

@@ -32,9 +32,9 @@ func NewClientCredentialsProvider(cl client.Client) *ClientCredentialsTokenProvi
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
 //
 // This implements [TokenProvider.FetchToken].
-func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *egv1a1.OIDC) (*oauth2.Token, error) {
-	if oidc == nil || oidc.ClientSecret.Namespace == nil {
-		return nil, fmt.Errorf("oidc or oidc-client-secret is nil")
+func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc egv1a1.OIDC) (*oauth2.Token, error) {
+	if oidc.ClientSecret.Namespace == nil {
+		return nil, fmt.Errorf("oidc-client-secret namespace is nil")
 	}
 
 	clientSecret, err := getClientSecret(ctx, p.client, &corev1.SecretReference{
@@ -48,15 +48,12 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context, oidc *e
 }
 
 // getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config.
-func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc *egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
+func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, oidc egv1a1.OIDC, clientSecret string) (*oauth2.Token, error) {
 	oauth2Config := clientcredentials.Config{
 		ClientSecret: clientSecret,
-	}
-	if oidc != nil {
-		oauth2Config.ClientID = oidc.ClientID
-		oauth2Config.Scopes = oidc.Scopes
-		// Discovery returns the OAuth2 endpoints.
-		oauth2Config.TokenURL = *oidc.Provider.TokenEndpoint
+		ClientID:     oidc.ClientID,
+		Scopes:       oidc.Scopes,
+		TokenURL:     *oidc.Provider.TokenEndpoint,
 	}
 	token, err := oauth2Config.Token(ctx)
 	if err != nil {

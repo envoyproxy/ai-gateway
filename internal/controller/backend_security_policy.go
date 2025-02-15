@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -65,7 +64,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
+	if backendSecurityPolicy.Spec.AWSCredentials != nil && backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 		var requeue time.Duration
 		requeue = time.Minute
 		region := backendSecurityPolicy.Spec.AWSCredentials.Region
@@ -78,7 +77,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 			var validToken *oauth2.Token
 			if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
-				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), oidc)
+				oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client), backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.OIDC)
 				// Valid Token will be nil if fetch token errors.
 
 				timeOutCtx, cancelFunc := context.WithTimeout(ctx, outGoingTimeOut)
@@ -122,12 +121,4 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	// Send the backend security policy to the config sink so that it can modify the configuration together with the state of other resources.
 	b.eventChan <- backendSecurityPolicy.DeepCopy()
 	return
-}
-
-// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
-func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
-		return &spec.AWSCredentials.OIDCExchangeToken.OIDC
-	}
-	return nil
 }

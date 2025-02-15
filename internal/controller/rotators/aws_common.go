@@ -188,9 +188,7 @@ func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 		if creds.sessionToken != "" {
 			builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", creds.sessionToken))
 		}
-		if creds.region != "" {
-			builder.WriteString(fmt.Sprintf("region = %s\n", creds.region))
-		}
+		builder.WriteString(fmt.Sprintf("region = %s\n", creds.region))
 	}
 	return builder.String()
 }

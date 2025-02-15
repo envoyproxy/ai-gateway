@@ -57,15 +57,24 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
 	require.NotNil(t, clientCredentialProvider)
 
-	_, err = clientCredentialProvider.FetchToken(t.Context(), nil)
+	_, err = clientCredentialProvider.FetchToken(t.Context(), egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{
+			Issuer:        tokenServer.URL,
+			TokenEndpoint: &tokenServer.URL,
+		},
+		ClientID: "some-client-id",
+		ClientSecret: gwapiv1.SecretObjectReference{
+			Name: gwapiv1.ObjectName(secretName),
+		},
+	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "oidc or oidc-client-secret is nil")
+	require.Contains(t, err.Error(), "oidc-client-secret namespace is nil")
 
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
 	timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
 	defer cancelFunc()
 	time.Sleep(time.Second)
-	_, err = clientCredentialProvider.FetchToken(timeOutCtx, &egv1a1.OIDC{
+	_, err = clientCredentialProvider.FetchToken(timeOutCtx, egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        tokenServer.URL,
 			TokenEndpoint: &tokenServer.URL,
@@ -78,7 +87,7 @@ func TestClientCredentialsProvider_FetchToken(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	token, err := clientCredentialProvider.FetchToken(t.Context(), &egv1a1.OIDC{
+	token, err := clientCredentialProvider.FetchToken(t.Context(), egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        tokenServer.URL,
 			TokenEndpoint: &tokenServer.URL,
