@@ -13,6 +13,7 @@ spec:
   awsCredentials:
     region: us-east-1
     oidcExchangeToken:
+      awsRoleArn: "arn"
       oidc:
         provider:
           issuer: placeholder
