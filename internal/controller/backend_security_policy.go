@@ -103,9 +103,8 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err != nil {
 			b.logger.Error(err, "failed to fetch OIDC provider token")
 			return err
-		} else {
-			b.oidcTokenCache[bspKey] = validToken
 		}
+		b.oidcTokenCache[bspKey] = validToken
 	} else {
 		validToken = tokenResponse
 	}
