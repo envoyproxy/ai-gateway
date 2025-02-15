@@ -7,9 +7,12 @@ package oauth
 
 import (
 	"context"
+	"encoding/json"
+	"golang.org/x/oauth2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -133,11 +136,19 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 }
 
 func TestOIDCProvider_FetchToken(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["one", "openid"]}`))
 		require.NoError(t, err)
 	}))
-	defer ts.Close()
+	defer oidcServer.Close()
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		b, err := json.Marshal(oauth2.Token{AccessToken: "token", TokenType: "Bearer", ExpiresIn: int64(3600)})
+		require.NoError(t, err)
+		_, err = w.Write(b)
+		require.NoError(t, err)
+	}))
+	defer tokenServer.Close()
 
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
@@ -162,8 +173,8 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
 	oidc := &egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
-			Issuer:        ts.URL,
-			TokenEndpoint: &ts.URL,
+			Issuer:        oidcServer.URL,
+			TokenEndpoint: &tokenServer.URL,
 		},
 		ClientID: "some-client-id",
 		ClientSecret: gwapiv1.SecretObjectReference{
@@ -173,9 +184,8 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		Scopes: []string{"two", "openid"},
 	}
 	clientCredentialProvider := NewClientCredentialsProvider(cl)
-	clientCredentialProvider.tokenSource = &MockClientCredentialsTokenSource{}
 	require.NotNil(t, clientCredentialProvider)
-	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), ts.URL)
+	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), oidcServer.URL)
 	oidcProvider := NewOIDCProvider(clientCredentialProvider, oidc)
 	require.Len(t, oidcProvider.oidcCredential.Scopes, 2)
 
@@ -183,6 +193,6 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
 	require.Equal(t, "Bearer", token.Type())
-	require.Equal(t, int64(3600), token.ExpiresIn)
+	require.WithinRangef(t, token.Expiry, time.Now().Add(3590*time.Second), time.Now().Add(3600*time.Second), "token expires at")
 	require.Len(t, oidcProvider.oidcCredential.Scopes, 3)
 }

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -68,12 +69,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
-		type tokenJSON struct {
-			AccessToken string `json:"access_token"`
-			TokenType   string `json:"token_type"`
-			ExpiresIn   string `json:"expires_in"`
-		}
-		b, err := json.Marshal(tokenJSON{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: "60"})
+		b, err := json.Marshal(oauth2.Token{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: 60})
 		require.NoError(t, err)
 		_, err = w.Write(b)
 		require.NoError(t, err)
