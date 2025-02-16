@@ -10,11 +10,10 @@ type: application
 
 version: v0.0.0-latest
 appVersion: "latest"
-# TODO: fix the icon path to AI Gateway logo once it's available.
-icon: https://raw.githubusercontent.com/envoyproxy/gateway/main/site/assets/icons/logo.svg
+icon: https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/site/static/img/logo.svg
 
 maintainers:
-  - name: envoy-gateway-maintainers
+  - name: envoy-ai-gateway-maintainers
     url: https://github.com/envoyproxy/gateway/blob/main/CODEOWNERS
 
 keywords:
@@ -25,8 +24,7 @@ keywords:
   - ai-gateway
   - ai
 
-# TODO: update the home URL once the website is available.
-home: https://github.com/envoyproxy/ai-gateway
+home: https://aigateway.envoyproxy.io/
 
 sources:
   - https://github.com/envoyproxy/ai-gateway
