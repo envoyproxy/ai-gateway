@@ -23,15 +23,15 @@ const tokenTimeoutDuration = time.Minute
 
 // ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
-	client         client.Client
-	oidcCredential egv1a1.OIDC
+	client     client.Client
+	oidcConfig egv1a1.OIDC
 }
 
 // newClientCredentialsProvider creates a new client credentials provider.
-func newClientCredentialsProvider(cl client.Client, oidcCredential egv1a1.OIDC) *ClientCredentialsTokenProvider {
+func newClientCredentialsProvider(cl client.Client, oidcConfig egv1a1.OIDC) *ClientCredentialsTokenProvider {
 	return &ClientCredentialsTokenProvider{
-		client:         cl,
-		oidcCredential: oidcCredential,
+		client:     cl,
+		oidcConfig: oidcConfig,
 	}
 }
 
@@ -40,13 +40,13 @@ func newClientCredentialsProvider(cl client.Client, oidcCredential egv1a1.OIDC) 
 // This implements [TokenProvider.FetchToken].
 func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	// client secret namespace is optional on egv1a1.OIDC, but it is required for AI Gateway for now.
-	if p.oidcCredential.ClientSecret.Namespace == nil {
+	if p.oidcConfig.ClientSecret.Namespace == nil {
 		return nil, fmt.Errorf("oidc-client-secret namespace is nil")
 	}
 
 	clientSecret, err := getClientSecret(ctx, p.client, &corev1.SecretReference{
-		Name:      string(p.oidcCredential.ClientSecret.Name),
-		Namespace: string(*p.oidcCredential.ClientSecret.Namespace),
+		Name:      string(p.oidcConfig.ClientSecret.Name),
+		Namespace: string(*p.oidcConfig.ClientSecret.Namespace),
 	})
 	if err != nil {
 		return nil, err
@@ -58,12 +58,12 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context) (*oauth
 func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, clientSecret string) (*oauth2.Token, error) {
 	oauth2Config := clientcredentials.Config{
 		ClientSecret: clientSecret,
-		ClientID:     p.oidcCredential.ClientID,
-		Scopes:       p.oidcCredential.Scopes,
+		ClientID:     p.oidcConfig.ClientID,
+		Scopes:       p.oidcConfig.Scopes,
 	}
 
-	if p.oidcCredential.Provider.TokenEndpoint != nil {
-		oauth2Config.TokenURL = *p.oidcCredential.Provider.TokenEndpoint
+	if p.oidcConfig.Provider.TokenEndpoint != nil {
+		oauth2Config.TokenURL = *p.oidcConfig.Provider.TokenEndpoint
 	}
 
 	// Underlying token call will apply http client timeout.
