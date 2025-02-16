@@ -78,16 +78,16 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		}
 
 		if !skipOIDC {
-			var requeue time.Duration
-			rotationTime, err := rotator.GetPreRotationTime(ctx)
+			requeue := time.Minute
+			var rotationTime time.Time
+			rotationTime, err = rotator.GetPreRotationTime(ctx)
 			if err != nil {
-				requeue = time.Minute
 				b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 			} else {
 				if rotator.IsExpired(rotationTime) {
 					requeue, err = b.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
 					if err != nil {
-						requeue = time.Minute
+						println(err.Error())
 						b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 					}
 				} else {
@@ -106,10 +106,10 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 // renewCredentials will take the backendSecurityPolicy and rotator to renew credentials and return the requeue time.
 func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, oidcCreds egv1a1.OIDC, rotator rotators.Rotator) (time.Duration, error) {
 	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
-	var validToken *oauth2.Token
-	var err error
 
-	if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || tokenResponse == nil || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {
+	var err error
+	validToken, ok := b.oidcTokenCache[bspKey]
+	if !ok || validToken == nil || rotators.IsBufferedTimeExpired(preRotationWindow, validToken.Expiry) {
 		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client, oidcCreds), oidcCreds)
 		validToken, err = oidcProvider.FetchToken(ctx)
 		if err != nil {
@@ -117,13 +117,6 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return time.Minute, err
 		}
 		b.oidcTokenCache[bspKey] = validToken
-	} else {
-		validToken = tokenResponse
-	}
-
-	b.oidcTokenCache[bspKey] = validToken
-	if validToken == nil {
-		return time.Minute, fmt.Errorf("found a nil token for backend security policy '%s' in '%s'", policy.Name, policy.Namespace)
 	}
 
 	token := validToken.AccessToken
@@ -142,8 +135,13 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	// Currently only supports AWS.
-	if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
-		return &spec.AWSCredentials.OIDCExchangeToken.OIDC
+	switch spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
+			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
+		}
+	default:
+		return nil
 	}
 	return nil
 }

@@ -77,7 +77,34 @@ func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.
 	}, nil
 }
 
-func TestBackendSecurityController_RenewCredentials(t *testing.T) {
+func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
+	ch := make(chan ConfigSinkEvent, 100)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	backendSecurityPolicyName := "mybackendSecurityPolicy"
+	namespace := "default"
+
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName), Namespace: namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+					OIDC: egv1a1.OIDC{},
+				},
+			},
+		},
+	}
+	err := cl.Create(t.Context(), bsp)
+	require.NoError(t, err)
+
+	// Expects rotate credentials to fail due to missing OIDC details.
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
+	require.Error(t, err)
+	require.Equal(t, time.Minute, res.RequeueAfter)
+}
+
+func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
@@ -165,4 +192,31 @@ func TestBackendSecurityController_RenewCredentials(t *testing.T) {
 	updatedSecret, err := rotators.LookupSecret(t.Context(), cl, namespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)))
 	require.NoError(t, err)
 	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
+}
+
+func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
+	// API Key type does not support OIDC.
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+
+	// AWS type supports OIDC type but OIDC needs to be defined.
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
+		},
+	}))
+
+	// AWS type with OIDC defined.
+	oidc := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+				OIDC: egv1a1.OIDC{
+					ClientID: "some-client-id",
+				},
+			},
+		},
+	})
+	require.NotNil(t, oidc)
+	require.Equal(t, "some-client-id", oidc.ClientID)
 }
