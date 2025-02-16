@@ -38,7 +38,49 @@ import (
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, &mockSTSOperations{}, fake2.NewClientset(), ctrl.Log, ch)
+	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	backendSecurityPolicyName := "mybackendSecurityPolicy"
+	namespace := "default"
+
+	err := cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	require.NoError(t, err)
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	require.NoError(t, err)
+	require.False(t, res.Requeue)
+	item, ok := <-ch
+	require.True(t, ok)
+	require.IsType(t, &aigv1a1.BackendSecurityPolicy{}, item)
+	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
+	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
+
+	// Test the case where the BackendSecurityPolicy is being deleted.
+	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
+	require.NoError(t, err)
+}
+
+// mockSTSOperations implements the STSOperations interface for testing
+type mockSTSOperations struct{}
+
+// AssumeRoleWithWebIdentity will return placeholder of type aws credentials.
+//
+// This implements [STSClient.AssumeRoleWithWebIdentity].
+func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+	return &sts.AssumeRoleWithWebIdentityOutput{
+		Credentials: &stsTypes.Credentials{
+			AccessKeyId:     aws.String("NEWKEY"),
+			SecretAccessKey: aws.String("NEWSECRET"),
+			SessionToken:    aws.String("NEWTOKEN"),
+			Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+		},
+	}, nil
+}
+
+func TestBackendSecurityController_RenewCredentials(t *testing.T) {
+	ch := make(chan ConfigSinkEvent, 100)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -82,47 +124,38 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
-	err := cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
-	require.NoError(t, err)
-	err = cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+	oidc := egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{
+			Issuer:        discoveryServer.URL,
+			TokenEndpoint: &tokenServer.URL,
+		},
+		ClientID: "some-client-id",
+		ClientSecret: gwapiv1.SecretObjectReference{
+			Name:      "clientSecret",
+			Namespace: (*gwapiv1.Namespace)(&namespace),
+		},
+	}
+	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName), Namespace: namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-				Region: "us-east-1",
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: egv1a1.OIDC{
-						Provider: egv1a1.OIDCProvider{
-							Issuer:        discoveryServer.URL,
-							TokenEndpoint: &tokenServer.URL,
-						},
-						ClientID: "some-client-id",
-						ClientSecret: gwapiv1.SecretObjectReference{
-							Name:      "clientSecret",
-							Namespace: (*gwapiv1.Namespace)(&namespace),
-						},
-					},
-					GrantType:  "placeholder",
-					Aud:        "placeholder",
-					AwsRoleArn: "placeholder",
+					OIDC: oidc,
 				},
 			},
 		},
-	})
+	}
+	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
-	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
-	require.NoError(t, err)
-	require.False(t, res.Requeue)
-	item, ok := <-ch
-	require.True(t, ok)
-	require.IsType(t, &aigv1a1.BackendSecurityPolicy{}, item)
-	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
-	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	res, err = c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)}})
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSOperations{}, fake2.NewClientset(), ctrl.Log, namespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
-	require.WithinRange(t, time.Now().Add(res.RequeueAfter), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
+
+	res, err := c.rotateCredential(ctx, bsp, oidc, rotator)
+	require.NoError(t, err)
+	require.WithinRange(t, time.Now().Add(res), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
 	require.Len(t, c.oidcTokenCache, 1)
 	token, ok := c.oidcTokenCache[fmt.Sprintf("%s-OIDC.%s", backendSecurityPolicyName, namespace)]
@@ -132,27 +165,4 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	updatedSecret, err := rotators.LookupSecret(t.Context(), cl, namespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)))
 	require.NoError(t, err)
 	require.NotEqualf(t, secret.Annotations[rotators.ExpirationTimeAnnotationKey], updatedSecret.Annotations[rotators.ExpirationTimeAnnotationKey], "expected updated expiration time annotation")
-
-	// Test the case where the BackendSecurityPolicy is being deleted.
-	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
-	require.NoError(t, err)
-	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
-	require.NoError(t, err)
-}
-
-// mockSTSOperations implements the STSOperations interface for testing
-type mockSTSOperations struct{}
-
-// AssumeRoleWithWebIdentity will return placeholder of type aws credentials.
-//
-// This implements [STSClient.AssumeRoleWithWebIdentity].
-func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-	return &sts.AssumeRoleWithWebIdentityOutput{
-		Credentials: &stsTypes.Credentials{
-			AccessKeyId:     aws.String("NEWKEY"),
-			SecretAccessKey: aws.String("NEWSECRET"),
-			SessionToken:    aws.String("NEWTOKEN"),
-			Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
-		},
-	}, nil
 }

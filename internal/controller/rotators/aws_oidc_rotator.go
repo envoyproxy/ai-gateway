@@ -39,12 +39,12 @@ type AWSOIDCRotator struct {
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
 	backendSecurityPolicyNamespace string
-	// aws region
-	region string
-	// aws IAM role ARN
-	roleARN string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
+	// roleArn is the role ARN used to obtain credentials.
+	roleArn string
+	// region is the AWS region for the credentials.
+	region string
 }
 
 // NewAWSOIDCRotator creates a new AWS OIDC rotator with the specified configuration.
@@ -58,8 +58,8 @@ func NewAWSOIDCRotator(
 	backendSecurityPolicyNamespace string,
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
+	roleArn string,
 	region string,
-	roleARN string,
 ) (*AWSOIDCRotator, error) {
 	cfg, err := defaultAWSConfig(ctx)
 	if err != nil {
@@ -88,7 +88,7 @@ func NewAWSOIDCRotator(
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,
 		preRotationWindow:              preRotationWindow,
-		roleARN:                        roleARN,
+		roleArn:                        roleArn,
 		region:                         region,
 	}, nil
 }
@@ -102,6 +102,10 @@ func (r *AWSOIDCRotator) IsExpired(preRotationExpirationTime time.Time) bool {
 func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, error) {
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
+		// return zero value for time if secret has not been created.
+		if errors.IsNotFound(err) {
+			return time.Time{}, nil
+		}
 		return time.Time{}, err
 	}
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
@@ -113,6 +117,8 @@ func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, err
 }
 
 // Rotate implements the retrieval and storage of AWS sts credentials.
+//
+// This implements [Rotator.Rotate].
 func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 	r.logger.Info("rotating AWS sts temporary credentials",
 		"namespace", r.backendSecurityPolicyNamespace,
@@ -120,7 +126,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	result, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
-		r.logger.Error(err, "failed to assume role", "role", r.roleARN, "access token", token)
+		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
 		return err
 	}
 
@@ -167,7 +173,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
 func (r *AWSOIDCRotator) assumeRoleWithToken(ctx context.Context, token string) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return r.stsClient.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
-		RoleArn:          aws.String(r.roleARN),
+		RoleArn:          aws.String(r.roleArn),
 		WebIdentityToken: aws.String(token),
 		RoleSessionName:  aws.String(fmt.Sprintf(awsSessionNameFormat, r.backendSecurityPolicyName)),
 	})

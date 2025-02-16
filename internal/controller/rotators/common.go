@@ -20,6 +20,16 @@ const ExpirationTimeAnnotationKey = "rotators/expiration-time"
 
 const rotatorSecretNamePrefix = "ai-eg-bsp" // #nosec G101
 
+// Rotator defines the interface for rotating provider credential.
+type Rotator interface {
+	// IsExpired checks if the provider credentials needs to be renewed.
+	IsExpired(preRotationExpirationTime time.Time) bool
+	// GetPreRotationTime gets the time when the credentials need to be renewed.
+	GetPreRotationTime(ctx context.Context) (time.Time, error)
+	// Rotate will update the credential secret file with new credentials.
+	Rotate(ctx context.Context, token string) error
+}
+
 // LookupSecret retrieves an existing secret.
 func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}

@@ -112,7 +112,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			&corev1.Secret{},
 		)
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-		// Setup initial credentials and client secret
+		// Setup initial credentials and client secret.
 		createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 		createClientSecret(t, "test-client-secret")
 
@@ -122,7 +122,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 			region:                         "us-east1",
-			roleARN:                        "test-role",
+			roleArn:                        "test-role",
 		}
 
 		require.NoError(t, awsOidcRotator.Rotate(t.Context(), "NEW-OIDC-TOKEN"))
@@ -148,7 +148,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
 			region:                         "us-east-1",
-			roleARN:                        "test-role",
+			roleArn:                        "test-role",
 		}
 		err := awsOidcRotator.Rotate(t.Context(), "NEW-OIDC-TOKEN")
 		require.Error(t, err)
