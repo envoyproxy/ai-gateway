@@ -73,7 +73,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		}
 		var requeue time.Duration
 		requeue = time.Minute
-		preRotationExpirationTime, err := rotator.GetPreRotationTime()
+		preRotationExpirationTime, err := rotator.GetPreRotationTime(ctx)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -83,7 +83,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 				requeue = time.Minute
 			} else {
-				preRotationExpirationTime, err = rotator.GetPreRotationTime()
+				preRotationExpirationTime, err = rotator.GetPreRotationTime(ctx)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
@@ -98,7 +98,7 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 }
 
 func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, rotator *rotators.AWSOIDCRotator, policy aigv1a1.BackendSecurityPolicy) error {
-	bspKey := fmt.Sprintf("%s.%s", policy.Name, policy.Namespace)
+	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
 	var validToken *oauth2.Token
 	var err error
 	if tokenResponse, ok := b.oidcTokenCache[bspKey]; !ok || rotators.IsBufferedTimeExpired(preRotationWindow, tokenResponse.Expiry) {

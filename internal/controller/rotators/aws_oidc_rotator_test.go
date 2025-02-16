@@ -167,7 +167,8 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
 	}
-	preRotateTime, _ := awsOidcRotator.GetPreRotationTime()
+
+	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, 0, preRotateTime.Minute())
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
@@ -179,7 +180,7 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, expiredTime.Format(time.RFC3339), preRotateTime.Format(time.RFC3339))
 }
 
@@ -194,7 +195,7 @@ func TestAWS_IsExpired(t *testing.T) {
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
 	}
-	preRotateTime, _ := awsOidcRotator.GetPreRotationTime()
+	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
@@ -206,12 +207,12 @@ func TestAWS_IsExpired(t *testing.T) {
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
 	hourFromNowTime := time.Now().Add(1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, hourFromNowTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.False(t, awsOidcRotator.IsExpired(preRotateTime))
 }

@@ -99,8 +99,8 @@ func (r *AWSOIDCRotator) IsExpired(preRotationExpirationTime time.Time) bool {
 }
 
 // GetPreRotationTime gets the expiration time minus the preRotation interval or return zero value for time.
-func (r *AWSOIDCRotator) GetPreRotationTime() (time.Time, error) {
-	secret, err := LookupSecret(context.Background(), r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
+func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, error) {
+	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -123,6 +123,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 		r.logger.Error(err, "failed to assume role", "role", r.roleARN, "access token", token)
 		return err
 	}
+
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if !errors.IsNotFound(err) {
