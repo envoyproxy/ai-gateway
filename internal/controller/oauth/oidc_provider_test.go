@@ -49,7 +49,7 @@ func TestOIDCProvider_GetOIDCProviderConfigErrors(t *testing.T) {
 	}))
 	defer missingTokenURLTestServer.Close()
 
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
+	oidcProvider := NewOIDCProvider(cl, oidc)
 
 	for _, testcase := range []struct {
 		name     string
@@ -114,7 +114,7 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 	}
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), ts.URL)
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
+	oidcProvider := NewOIDCProvider(cl, oidc)
 	config, supportedScope, err := oidcProvider.getOIDCProviderConfig(ctx, ts.URL)
 	require.NoError(t, err)
 	require.Equal(t, "token_endpoint", config.TokenURL)
@@ -171,13 +171,13 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		Scopes: []string{"two", "openid"},
 	}
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), oidcServer.URL)
-	oidcProvider := NewOIDCProvider(NewClientCredentialsProvider(cl, oidc), oidc)
-	require.Len(t, oidcProvider.oidcCredential.Scopes, 2)
+	oidcProvider := NewOIDCProvider(cl, oidc)
+	require.Len(t, oidcProvider.oidcConfig.Scopes, 2)
 
 	token, err := oidcProvider.FetchToken(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token", token.AccessToken)
 	require.Equal(t, "Bearer", token.Type())
 	require.WithinRangef(t, token.Expiry, time.Now().Add(3590*time.Second), time.Now().Add(3600*time.Second), "token expires at")
-	require.Len(t, oidcProvider.oidcCredential.Scopes, 3)
+	require.Len(t, oidcProvider.oidcConfig.Scopes, 3)
 }

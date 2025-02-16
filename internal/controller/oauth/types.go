@@ -8,7 +8,6 @@ package oauth
 import (
 	"context"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"golang.org/x/oauth2"
 )
 
@@ -16,6 +15,4 @@ import (
 type TokenProvider interface {
 	// FetchToken will obtain oauth token using oidc credentials.
 	FetchToken(ctx context.Context) (*oauth2.Token, error)
-	// SetOIDC will update the locally stored OIDC credentials.
-	SetOIDC(oidc egv1a1.OIDC)
 }

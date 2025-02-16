@@ -105,7 +105,7 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	var err error
 	validToken, ok := b.oidcTokenCache[bspKey]
 	if !ok || validToken == nil || rotators.IsBufferedTimeExpired(preRotationWindow, validToken.Expiry) {
-		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client, oidcCreds), oidcCreds)
+		oidcProvider := oauth.NewOIDCProvider(b.client, oidcCreds)
 		validToken, err = oidcProvider.FetchToken(ctx)
 		if err != nil {
 			return time.Minute, err

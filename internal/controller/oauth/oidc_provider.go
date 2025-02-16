@@ -12,19 +12,20 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"golang.org/x/oauth2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support.
 type OIDCProvider struct {
-	tokenProvider  TokenProvider
-	oidcCredential egv1a1.OIDC
+	tokenProvider TokenProvider
+	oidcConfig    egv1a1.OIDC
 }
 
 // NewOIDCProvider creates a new OIDC-aware provider.
-func NewOIDCProvider(tokenProvider TokenProvider, oidcCredentials egv1a1.OIDC) *OIDCProvider {
+func NewOIDCProvider(client client.Client, oidcConfig egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
-		tokenProvider:  tokenProvider,
-		oidcCredential: oidcCredentials,
+		tokenProvider: newClientCredentialsProvider(client, oidcConfig),
+		oidcConfig:    oidcConfig,
 	}
 }
 
@@ -64,48 +65,38 @@ func (p *OIDCProvider) getOIDCProviderConfig(ctx context.Context, issuerURL stri
 // This implements [TokenProvider.FetchToken].
 func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	// If issuer URL is provided, fetch OIDC metadata.
-	if issuerURL := p.oidcCredential.Provider.Issuer; issuerURL != "" {
+	if issuerURL := p.oidcConfig.Provider.Issuer; issuerURL != "" {
 		config, supportedScopes, err := p.getOIDCProviderConfig(ctx, issuerURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get OIDC config: %w", err)
 		}
 
 		// Use discovered token endpoint if not explicitly provided.
-		if p.oidcCredential.Provider.TokenEndpoint == nil {
-			p.oidcCredential.Provider.TokenEndpoint = &config.TokenURL
+		if p.oidcConfig.Provider.TokenEndpoint == nil {
+			p.oidcConfig.Provider.TokenEndpoint = &config.TokenURL
 		}
 
 		// Add discovered scopes if available.
 		if len(supportedScopes) > 0 {
 			requestedScopes := make(map[string]bool)
-			for _, scope := range p.oidcCredential.Scopes {
+			for _, scope := range p.oidcConfig.Scopes {
 				requestedScopes[scope] = true
 			}
 
 			// Add supported scopes that aren't already requested.
 			for _, scope := range supportedScopes {
 				if !requestedScopes[scope] {
-					p.oidcCredential.Scopes = append(p.oidcCredential.Scopes, scope)
+					p.oidcConfig.Scopes = append(p.oidcConfig.Scopes, scope)
 				}
 			}
 		}
 	}
 
-	// Sync OIDC with TokenProvider.
-	p.tokenProvider.SetOIDC(p.oidcCredential)
-
-	// Get base token response.
+	// Get token response from the provider.
 	token, err := p.tokenProvider.FetchToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
 	return token, nil
-}
-
-// SetOIDC will update the OIDC field in ClientCredentialsTokenProvider.
-//
-// This implements [TokenProvider.SetOIDC].
-func (p *OIDCProvider) SetOIDC(oidc egv1a1.OIDC) {
-	p.oidcCredential = oidc
 }

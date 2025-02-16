@@ -27,8 +27,8 @@ type ClientCredentialsTokenProvider struct {
 	oidcCredential egv1a1.OIDC
 }
 
-// NewClientCredentialsProvider creates a new client credentials provider.
-func NewClientCredentialsProvider(cl client.Client, oidcCredential egv1a1.OIDC) *ClientCredentialsTokenProvider {
+// newClientCredentialsProvider creates a new client credentials provider.
+func newClientCredentialsProvider(cl client.Client, oidcCredential egv1a1.OIDC) *ClientCredentialsTokenProvider {
 	return &ClientCredentialsTokenProvider{
 		client:         cl,
 		oidcCredential: oidcCredential,
@@ -52,13 +52,6 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context) (*oauth
 		return nil, err
 	}
 	return p.getTokenWithClientCredentialConfig(ctx, clientSecret)
-}
-
-// SetOIDC will update the OIDC field in ClientCredentialsTokenProvider.
-//
-// This implements [TokenProvider.SetOIDC].
-func (p *ClientCredentialsTokenProvider) SetOIDC(oidc egv1a1.OIDC) {
-	p.oidcCredential = oidc
 }
 
 // getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config.
