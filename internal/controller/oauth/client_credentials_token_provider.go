@@ -54,14 +54,25 @@ func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context) (*oauth
 	return p.getTokenWithClientCredentialConfig(ctx, clientSecret)
 }
 
+// SetOIDC will update the OIDC field in ClientCredentialsTokenProvider.
+//
+// This implements [TokenProvider.SetOIDC].
+func (p *ClientCredentialsTokenProvider) SetOIDC(oidc egv1a1.OIDC) {
+	p.oidcCredential = oidc
+}
+
 // getTokenWithClientCredentialFlow fetches the oauth2 token with client credential config.
 func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx context.Context, clientSecret string) (*oauth2.Token, error) {
 	oauth2Config := clientcredentials.Config{
 		ClientSecret: clientSecret,
 		ClientID:     p.oidcCredential.ClientID,
 		Scopes:       p.oidcCredential.Scopes,
-		TokenURL:     *p.oidcCredential.Provider.TokenEndpoint,
 	}
+
+	if p.oidcCredential.Provider.TokenEndpoint != nil {
+		oauth2Config.TokenURL = *p.oidcCredential.Provider.TokenEndpoint
+	}
+
 	// Underlying token call will apply http client timeout.
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: tokenTimeoutDuration})
 	token, err := oauth2Config.Token(ctx)

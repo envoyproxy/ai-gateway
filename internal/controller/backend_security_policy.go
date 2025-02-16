@@ -87,7 +87,6 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				if rotator.IsExpired(rotationTime) {
 					requeue, err = b.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
 					if err != nil {
-						println(err.Error())
 						b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 					}
 				} else {

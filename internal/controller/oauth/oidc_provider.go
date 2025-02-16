@@ -91,6 +91,9 @@ func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 		}
 	}
 
+	// Sync OIDC with TokenProvider.
+	p.tokenProvider.SetOIDC(p.oidcCredential)
+
 	// Get base token response.
 	token, err := p.tokenProvider.FetchToken(ctx)
 	if err != nil {
@@ -98,4 +101,11 @@ func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	return token, nil
+}
+
+// SetOIDC will update the OIDC field in ClientCredentialsTokenProvider.
+//
+// This implements [TokenProvider.SetOIDC].
+func (p *OIDCProvider) SetOIDC(oidc egv1a1.OIDC) {
+	p.oidcCredential = oidc
 }
