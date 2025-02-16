@@ -62,47 +62,43 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
 		var rotator rotators.Rotator
-		skipOIDC := false
-
 		switch backendSecurityPolicy.Spec.Type {
 		case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 			region := backendSecurityPolicy.Spec.AWSCredentials.Region
 			roleArn := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
 			rotator, err = rotators.NewAWSOIDCRotator(ctx, b.client, nil, b.kube, b.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name, preRotationWindow, roleArn, region)
 			if err != nil {
-				return ctrl.Result{RequeueAfter: time.Minute}, err
+				return ctrl.Result{}, err
 			}
 		default:
-			ctrl.Log.Error(fmt.Errorf("unsupported OIDC type %s", backendSecurityPolicy.Spec.Type), "namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
-			skipOIDC = true
+			err = fmt.Errorf("backend security type %s does not support OIDC token exchange", backendSecurityPolicy.Spec.Type)
+			ctrl.Log.Error(err, "namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
+			return ctrl.Result{}, err
 		}
 
-		if !skipOIDC {
-			requeue := time.Minute
-			var rotationTime time.Time
-			rotationTime, err = rotator.GetPreRotationTime(ctx)
-			if err != nil {
-				b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
-			} else {
-				if rotator.IsExpired(rotationTime) {
-					requeue, err = b.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
-					if err != nil {
-						b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
-					}
-				} else {
-					requeue = time.Until(rotationTime)
+		requeue := time.Minute
+		var rotationTime time.Time
+		rotationTime, err = rotator.GetPreRotationTime(ctx)
+		if err != nil {
+			b.logger.Error(err, "failed to get rotation time, retry in one minute")
+		} else {
+			if rotator.IsExpired(rotationTime) {
+				requeue, err = b.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
+				if err != nil {
+					b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 				}
+			} else {
+				requeue = time.Until(rotationTime)
 			}
-			// TODO: Investigate how to stop stale events from re-queuing.
-			res = ctrl.Result{RequeueAfter: requeue}
 		}
+		res = ctrl.Result{RequeueAfter: requeue}
 	}
 	// Send the backend security policy to the config sink so that it can modify the configuration together with the state of other resources.
 	b.eventChan <- backendSecurityPolicy.DeepCopy()
 	return
 }
 
-// renewCredentials will take the backendSecurityPolicy and rotator to renew credentials and return the requeue time.
+// rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
 func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, oidcCreds egv1a1.OIDC, rotator rotators.Rotator) (time.Duration, error) {
 	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
 
@@ -112,7 +108,6 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		oidcProvider := oauth.NewOIDCProvider(oauth.NewClientCredentialsProvider(b.client, oidcCreds), oidcCreds)
 		validToken, err = oidcProvider.FetchToken(ctx)
 		if err != nil {
-			b.logger.Error(err, "failed to fetch OIDC provider token")
 			return time.Minute, err
 		}
 		b.oidcTokenCache[bspKey] = validToken
@@ -121,7 +116,6 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	token := validToken.AccessToken
 	err = rotator.Rotate(ctx, token)
 	if err != nil {
-		b.logger.Error(err, fmt.Sprintf("failed to rotate credentials for backend security policy '%s' in '%s'", policy.Name, policy.Namespace))
 		return time.Minute, err
 	}
 	rotationTime, err := rotator.GetPreRotationTime(ctx)
