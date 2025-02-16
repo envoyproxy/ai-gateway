@@ -66,20 +66,28 @@ func (b *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 	if backendSecurityPolicy.Spec.AWSCredentials != nil && backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken != nil {
 		rotator, err := rotators.NewAWSOIDCRotator(ctx, b.client, b.StsClient, b.kube, b.logger, backendSecurityPolicy.Namespace,
-			backendSecurityPolicy.Name, preRotationWindow, backendSecurityPolicy.Spec.AWSCredentials.Region)
+			backendSecurityPolicy.Name, preRotationWindow, backendSecurityPolicy.Spec.AWSCredentials.Region, backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn)
 		if err != nil {
 			b.logger.Error(err, "failed to create AWS OIDC rotator")
 			return ctrl.Result{}, err
 		}
 		var requeue time.Duration
 		requeue = time.Minute
-		if rotator.IsExpired() {
+		preRotationExpirationTime, err := rotator.GetPreRotationTime()
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if rotator.IsExpired(preRotationExpirationTime) {
 			err := b.rotateCredential(ctx, rotator, backendSecurityPolicy)
 			if err != nil {
 				b.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 				requeue = time.Minute
 			} else {
-				requeue = time.Until(rotator.GetPreRotationTime())
+				preRotationExpirationTime, err = rotator.GetPreRotationTime()
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				requeue = time.Until(preRotationExpirationTime)
 			}
 		}
 		res = ctrl.Result{RequeueAfter: requeue}
@@ -111,13 +119,11 @@ func (b *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 
 	if validToken != nil {
 		b.oidcTokenCache[bspKey] = validToken
-		awsCredentials := policy.Spec.AWSCredentials
-
 		// Set a timeout for rotate.
 		timeOutCtx, cancelRotateFunc := context.WithTimeout(ctx, outGoingTimeOut)
 		defer cancelRotateFunc()
 		token := validToken.AccessToken
-		return rotator.Rotate(timeOutCtx, awsCredentials.Region, awsCredentials.OIDCExchangeToken.AwsRoleArn, token)
+		return rotator.Rotate(timeOutCtx, token)
 	}
 	return nil
 }

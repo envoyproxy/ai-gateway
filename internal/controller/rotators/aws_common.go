@@ -24,7 +24,6 @@ package rotators
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -101,7 +100,7 @@ type awsCredentials struct {
 // multiple sets of AWS credentials.
 type awsCredentialsFile struct {
 	// profiles maps profile names to their respective credentials.
-	profiles map[string]*awsCredentials
+	profiles []*awsCredentials
 }
 
 // parseAWSCredentialsFile parses an AWS credentials file with multiple profiles.
@@ -116,7 +115,7 @@ type awsCredentialsFile struct {
 // Returns a structured representation of the credentials file.
 func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 	file := &awsCredentialsFile{
-		profiles: make(map[string]*awsCredentials),
+		profiles: make([]*awsCredentials, 0),
 	}
 
 	var currentCreds *awsCredentials
@@ -130,7 +129,7 @@ func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			profileName := strings.TrimPrefix(strings.TrimSuffix(line, "]"), "[")
 			currentCreds = &awsCredentials{profile: profileName}
-			file.profiles[profileName] = currentCreds
+			file.profiles = append(file.profiles, currentCreds)
 			continue
 		}
 
@@ -170,22 +169,14 @@ func parseAWSCredentialsFile(data string) *awsCredentialsFile {
 func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	var builder strings.Builder
 
-	// Sort profiles to ensure consistent output.
-	profileNames := make([]string, 0, len(file.profiles))
-	for profileName := range file.profiles {
-		profileNames = append(profileNames, profileName)
-	}
-	sort.Strings(profileNames)
-
-	for _, profileName := range profileNames {
-		creds := file.profiles[profileName]
-		builder.WriteString(fmt.Sprintf("[%s]\n", profileName))
-		builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", creds.accessKeyID))
-		builder.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", creds.secretAccessKey))
-		if creds.sessionToken != "" {
-			builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", creds.sessionToken))
+	for _, profile := range file.profiles {
+		builder.WriteString(fmt.Sprintf("[%s]\n", profile.profile))
+		builder.WriteString(fmt.Sprintf("aws_access_key_id = %s\n", profile.accessKeyID))
+		builder.WriteString(fmt.Sprintf("aws_secret_access_key = %s\n", profile.secretAccessKey))
+		if profile.sessionToken != "" {
+			builder.WriteString(fmt.Sprintf("aws_session_token = %s\n", profile.sessionToken))
 		}
-		builder.WriteString(fmt.Sprintf("region = %s\n", creds.region))
+		builder.WriteString(fmt.Sprintf("region = %s\n", profile.region))
 	}
 	return builder.String()
 }

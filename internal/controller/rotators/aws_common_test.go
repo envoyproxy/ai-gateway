@@ -28,8 +28,7 @@ func TestParseAWSCredentialsFile(t *testing.T) {
 	awsCred := parseAWSCredentialsFile(fmt.Sprintf("[%s]\naws_access_key_id=%s\naws_secret_access_key=%s\naws_session_token=%s\nregion=%s", profile, accessKey,
 		secretKey, sessionToken, region))
 	require.NotNil(t, awsCred)
-	defaultProfile, ok := awsCred.profiles[profile]
-	require.True(t, ok)
+	defaultProfile := awsCred.profiles[0]
 	require.NotNil(t, defaultProfile)
 	require.Equal(t, accessKey, defaultProfile.accessKeyID)
 	require.Equal(t, secretKey, defaultProfile.secretAccessKey)
@@ -38,7 +37,7 @@ func TestParseAWSCredentialsFile(t *testing.T) {
 }
 
 func TestFormatAWSCredentialsFile(t *testing.T) {
-	emptyCredentialsFile := awsCredentialsFile{map[string]*awsCredentials{}}
+	emptyCredentialsFile := awsCredentialsFile{[]*awsCredentials{}}
 	require.Empty(t, formatAWSCredentialsFile(&emptyCredentialsFile))
 
 	profile := "default"
@@ -57,7 +56,7 @@ func TestFormatAWSCredentialsFile(t *testing.T) {
 	awsCred := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, accessKey,
 		secretKey, sessionToken, region)
 
-	require.Equal(t, awsCred, formatAWSCredentialsFile(&awsCredentialsFile{profiles: map[string]*awsCredentials{"default": &credentials}}))
+	require.Equal(t, awsCred, formatAWSCredentialsFile(&awsCredentialsFile{profiles: []*awsCredentials{&credentials}}))
 }
 
 func TestUpdateAWSCredentialsInSecret(t *testing.T) {
@@ -71,7 +70,7 @@ func TestUpdateAWSCredentialsInSecret(t *testing.T) {
 		region:          "region",
 	}
 
-	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{profiles: map[string]*awsCredentials{"default": &credentials}})
+	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{profiles: []*awsCredentials{&credentials}})
 	require.Len(t, secret.Data, 1)
 
 	val, ok := secret.Data[awsCredentialsKey]

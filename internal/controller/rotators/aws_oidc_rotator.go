@@ -39,6 +39,10 @@ type AWSOIDCRotator struct {
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
 	backendSecurityPolicyNamespace string
+	// aws region
+	region string
+	// aws IAM role ARN
+	roleARN string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
 }
@@ -55,6 +59,7 @@ func NewAWSOIDCRotator(
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
 	region string,
+	roleARN string,
 ) (*AWSOIDCRotator, error) {
 	cfg, err := defaultAWSConfig(ctx)
 	if err != nil {
@@ -83,41 +88,39 @@ func NewAWSOIDCRotator(
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,
 		preRotationWindow:              preRotationWindow,
+		roleARN:                        roleARN,
+		region:                         region,
 	}, nil
 }
 
 // IsExpired checks if the preRotation time is before the current time.
-func (r *AWSOIDCRotator) IsExpired() bool {
-	preRotationExpirationTime := r.GetPreRotationTime()
+func (r *AWSOIDCRotator) IsExpired(preRotationExpirationTime time.Time) bool {
 	return IsBufferedTimeExpired(0, preRotationExpirationTime)
 }
 
 // GetPreRotationTime gets the expiration time minus the preRotation interval or return zero value for time.
-func (r *AWSOIDCRotator) GetPreRotationTime() time.Time {
+func (r *AWSOIDCRotator) GetPreRotationTime() (time.Time, error) {
 	secret, err := LookupSecret(context.Background(), r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			return time.Time{}
-		}
-		return time.Time{}
+		return time.Time{}, err
 	}
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
 	if err != nil {
-		return time.Time{}
+		return time.Time{}, err
 	}
 	preRotationTime := expirationTime.Add(-r.preRotationWindow)
-	return preRotationTime
+	return preRotationTime, nil
 }
 
 // Rotate implements the retrieval and storage of AWS sts credentials.
-func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token string) error {
+func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 	r.logger.Info("rotating AWS sts temporary credentials",
 		"namespace", r.backendSecurityPolicyNamespace,
 		"name", r.backendSecurityPolicyName)
 
-	result, err := r.assumeRoleWithToken(ctx, roleARN, token)
+	result, err := r.assumeRoleWithToken(ctx, r.roleARN, token)
 	if err != nil {
-		r.logger.Error(err, "failed to assume role", "role", roleARN, "access token", token)
+		r.logger.Error(err, "failed to assume role", "role", r.roleARN, "access token", token)
 		return err
 	}
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
@@ -140,13 +143,13 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, region, roleARN, token stri
 	// For now have profile as default.
 	const defaultProfile = "default"
 	credsFile := awsCredentialsFile{
-		profiles: map[string]*awsCredentials{
-			defaultProfile: {
+		profiles: []*awsCredentials{
+			{
 				profile:         defaultProfile,
 				accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
 				secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
 				sessionToken:    aws.ToString(result.Credentials.SessionToken),
-				region:          region,
+				region:          r.region,
 			},
 		},
 	}

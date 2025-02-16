@@ -55,10 +55,10 @@ func verifyAWSSecretCredentials(t *testing.T, client client.Client, namespace, s
 	require.NoError(t, err)
 	creds := parseAWSCredentialsFile(string(secret.Data[awsCredentialsKey]))
 	require.NotNil(t, creds)
-	require.Contains(t, creds.profiles, profile)
-	assert.Equal(t, expectedKeyID, creds.profiles[profile].accessKeyID)
-	assert.Equal(t, expectedSecret, creds.profiles[profile].secretAccessKey)
-	assert.Equal(t, expectedToken, creds.profiles[profile].sessionToken)
+	assert.Equal(t, profile, creds.profiles[0].profile)
+	assert.Equal(t, expectedKeyID, creds.profiles[0].accessKeyID)
+	assert.Equal(t, expectedSecret, creds.profiles[0].secretAccessKey)
+	assert.Equal(t, expectedToken, creds.profiles[0].sessionToken)
 }
 
 // createClientSecret creates the OIDC client secret
@@ -125,11 +125,13 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
+			region:                         "us-east-1",
+			roleARN:                        "test-role",
 		}
 
 		timeOutCtx, cancelFunc := context.WithTimeout(t.Context(), time.Second)
 		defer cancelFunc()
-		require.NoError(t, awsOidcRotator.Rotate(timeOutCtx, "us-east1", "test", "NEW-OIDC-TOKEN"))
+		require.NoError(t, awsOidcRotator.Rotate(timeOutCtx, "NEW-OIDC-TOKEN"))
 		verifyAWSSecretCredentials(t, cl, "default", "test-secret", "NEWKEY", "NEWSECRET", "NEWTOKEN", "default")
 	})
 
@@ -151,8 +153,10 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-secret",
+			region:                         "us-east-1",
+			roleARN:                        "test-role",
 		}
-		err := awsOidcRotator.Rotate(t.Context(), "us-east1", "test", "NEW-OIDC-TOKEN")
+		err := awsOidcRotator.Rotate(t.Context(), "NEW-OIDC-TOKEN")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to assume role")
 	})
@@ -169,11 +173,11 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
 	}
-
-	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
+	preRotateTime, _ := awsOidcRotator.GetPreRotationTime()
+	require.Equal(t, 0, preRotateTime.Minute())
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
-	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
+	require.Equal(t, 0, preRotateTime.Minute())
 
 	secret, err := LookupSecret(t.Context(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
@@ -181,7 +185,8 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	require.Equal(t, expiredTime.Format(time.RFC3339), awsOidcRotator.GetPreRotationTime().Format(time.RFC3339))
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	require.Equal(t, expiredTime.Format(time.RFC3339), preRotateTime.Format(time.RFC3339))
 }
 
 func TestAWS_IsExpired(t *testing.T) {
@@ -195,11 +200,11 @@ func TestAWS_IsExpired(t *testing.T) {
 		backendSecurityPolicyNamespace: "default",
 		backendSecurityPolicyName:      "test-secret",
 	}
-
-	require.True(t, awsOidcRotator.IsExpired())
+	preRotateTime, _ := awsOidcRotator.GetPreRotationTime()
+	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
 	createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
-	require.Equal(t, 0, awsOidcRotator.GetPreRotationTime().Minute())
+	require.Equal(t, 0, preRotateTime.Minute())
 
 	secret, err := LookupSecret(t.Context(), cl, "default", GetBSPSecretName("test-secret"))
 	require.NoError(t, err)
@@ -207,10 +212,12 @@ func TestAWS_IsExpired(t *testing.T) {
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	require.True(t, awsOidcRotator.IsExpired())
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
 	hourFromNowTime := time.Now().Add(1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, hourFromNowTime)
 	require.NoError(t, cl.Update(t.Context(), secret))
-	require.False(t, awsOidcRotator.IsExpired())
+	preRotateTime, _ = awsOidcRotator.GetPreRotationTime()
+	require.False(t, awsOidcRotator.IsExpired(preRotateTime))
 }
