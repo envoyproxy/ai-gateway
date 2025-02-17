@@ -969,9 +969,9 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 			if tc.expectError {
 				require.ErrorContains(t, err, "aigatewayroutes.aigateway.envoyproxy.io \"nonexist\" not found")
 				return
-			} else {
-				require.NoError(t, err)
 			}
+
+			require.NoError(t, err)
 
 			var patchedRoute aigv1a1.AIGatewayRoute
 			err = s.client.Get(t.Context(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &patchedRoute)

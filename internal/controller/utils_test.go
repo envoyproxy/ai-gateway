@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package controller
 
 import (
@@ -85,9 +90,8 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 			if tc.expectError {
 				require.ErrorContains(t, err, "aigatewayroutes.aigateway.envoyproxy.io \"nonexist\" not found")
 				return
-			} else {
-				require.NoError(t, err)
 			}
+			require.NoError(t, err)
 
 			require.Len(t, tc.route.Status.Conditions, tc.expectConditionLen)
 			require.Equal(t, condition, tc.route.Status.Conditions[tc.expectConditionLen-1])
