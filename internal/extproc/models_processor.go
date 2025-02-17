@@ -34,7 +34,7 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) Processor {
+func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) (Processor, error) {
 	models := openai.ModelList{
 		Object: "list",
 		Data:   make([]openai.Model, 0, len(config.declaredModels)),
@@ -47,7 +47,7 @@ func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *sl
 			Created: openai.JSONUNIXTime(time.Now()), // TODO(nacx): does this really matter here?
 		})
 	}
-	return &modelsProcessor{logger: logger, models: models}
+	return &modelsProcessor{logger: logger, models: models}, nil
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].

@@ -31,20 +31,12 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &processorConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) Processor { return m })
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) { return m, nil })
 
 	return s, m.(*mockProcessor)
 }
 
 func TestServer_LoadConfig(t *testing.T) {
-	t.Run("invalid input schema", func(t *testing.T) {
-		s, _ := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(t.Context(), &filterapi.Config{
-			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
-		})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "cannot create request body parser")
-	})
 	t.Run("ok", func(t *testing.T) {
 		config := &filterapi.Config{
 			MetadataNamespace: "ns",
@@ -88,7 +80,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NotNil(t, s.config)
 		require.Equal(t, "ns", s.config.metadataNamespace)
 		require.NotNil(t, s.config.router)
-		require.NotNil(t, s.config.bodyParser)
+		require.Equal(t, s.config.schema, config.Schema)
 		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
@@ -266,16 +258,16 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NotNil(t, s)
 
 	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) Processor {
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected
-		return nil
+		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) Processor {
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
 			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
-		}
+		}, nil
 	})
 
 	t.Run("unknown path", func(t *testing.T) {
