@@ -482,6 +482,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 	} else {
 		var buf []byte
 		buf, err = io.ReadAll(body)
+		fmt.Printf("\nprinting body from ResponseError:\n %v\n", string(buf))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 		}
@@ -549,6 +550,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			mut.Body = append(mut.Body, oaiEventBytes...)
 			mut.Body = append(mut.Body, []byte("\n\n")...)
 		}
+		fmt.Printf("\nprinting mut.Body %v", string(mut.Body))
 
 		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
@@ -560,6 +562,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	fmt.Printf("\nbedrock output message from converse: %v\n", len(bedrockResp.Output.Message.Content))
 
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
@@ -579,6 +582,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		}
 	}
 	for i, output := range bedrockResp.Output.Message.Content {
+		fmt.Printf("\nbedrock output message: i=%v, text=%v, toolResult=%v, toolUse=%v\n", i, *output.Text, output.ToolResult, output.ToolUse)
 		choice := openai.ChatCompletionResponseChoice{
 			Index: (int64)(i),
 			Message: openai.ChatCompletionResponseChoiceMessage{
@@ -590,6 +594,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
 			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
 		}
+		// TODO: merge the choice message with the
+		// update dont append
 		openAIResp.Choices = append(openAIResp.Choices, choice)
 	}
 
