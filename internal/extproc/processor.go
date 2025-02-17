@@ -39,11 +39,11 @@ type processorConfigRequestCost struct {
 }
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(*processorConfig, map[string]string, *slog.Logger) ProcessorIface
+type ProcessorFactory func(*processorConfig, map[string]string, *slog.Logger) Processor
 
-// ProcessorIface is the interface for the processor.
+// Processor is the interface for the processor.
 // This decouples the processor implementation detail from the server implementation.
-type ProcessorIface interface {
+type Processor interface {
 	// ProcessRequestHeaders processes the request headers message.
 	ProcessRequestHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
 	// ProcessRequestBody processes the request body message.

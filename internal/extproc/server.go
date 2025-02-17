@@ -124,7 +124,7 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently
-func (s *Server) processorForPath(requestHeaders map[string]string) (ProcessorIface, error) {
+func (s *Server) processorForPath(requestHeaders map[string]string) (Processor, error) {
 	path := requestHeaders[":path"]
 	newProcessor, ok := s.processors[path]
 	if !ok {
@@ -140,7 +140,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 	// The processor will be instantiated when the first message containing the request headers is received.
 	// The :path header is used to determine the processor to use, based on the registered ones.
-	var p ProcessorIface
+	var p Processor
 
 	for {
 		select {
@@ -182,7 +182,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	}
 }
 
-func (s *Server) processMsg(ctx context.Context, p ProcessorIface, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers

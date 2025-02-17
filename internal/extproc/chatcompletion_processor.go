@@ -22,8 +22,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-// NewChatCompletionProcessor implements [ProcessorIface] for the /chat/completions endpoint.
-func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) ProcessorIface {
+// NewChatCompletionProcessor implements [Processor] for the /chat/completions endpoint.
+func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) Processor {
 	return &chatCompletionProcessor{
 		config:         config,
 		requestHeaders: requestHeaders,
@@ -60,7 +60,7 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 	return nil
 }
 
-// ProcessRequestHeaders implements [ProcessorIface.ProcessRequestHeaders].
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	// The request headers have already been at the time the processor was created
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -68,7 +68,7 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 	}}, nil
 }
 
-// ProcessRequestBody implements [ProcessorIface.ProcessRequestBody].
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	path := c.requestHeaders[":path"]
 	model, body, err := c.config.bodyParser(path, rawBody)
@@ -124,7 +124,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	return resp, nil
 }
 
-// ProcessResponseHeaders implements [ProcessorIface.ProcessResponseHeaders].
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
@@ -148,7 +148,7 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 	}}, nil
 }
 
-// ProcessResponseBody implements [ProcessorIface.ProcessResponseBody].
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	var br io.Reader
 	switch c.responseEncoding {

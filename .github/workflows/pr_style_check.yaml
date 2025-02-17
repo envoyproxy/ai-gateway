@@ -78,8 +78,8 @@ jobs:
             controller
             translator
             examples
-            site
             blog
+            site
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
             The subject "{subject}" found in the pull request title "{title}"

@@ -24,12 +24,12 @@ import (
 )
 
 var (
-	_ ProcessorIface        = &mockProcessor{}
+	_ Processor             = &mockProcessor{}
 	_ translator.Translator = &mockTranslator{}
 	_ x.Router              = &mockRouter{}
 )
 
-func newMockProcessor(_ *processorConfig, _ *slog.Logger) ProcessorIface {
+func newMockProcessor(_ *processorConfig, _ *slog.Logger) Processor {
 	return &mockProcessor{}
 }
 
@@ -42,25 +42,25 @@ type mockProcessor struct {
 	retErr                error
 }
 
-// ProcessRequestHeaders implements [ProcessorIface.ProcessRequestHeaders].
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (m mockProcessor) ProcessRequestHeaders(_ context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	require.Equal(m.t, m.expHeaderMap, headerMap)
 	return m.retProcessingResponse, m.retErr
 }
 
-// ProcessRequestBody implements [ProcessorIface.ProcessRequestBody].
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (m mockProcessor) ProcessRequestBody(_ context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	require.Equal(m.t, m.expBody, body)
 	return m.retProcessingResponse, m.retErr
 }
 
-// ProcessResponseHeaders implements [ProcessorIface.ProcessResponseHeaders].
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (m mockProcessor) ProcessResponseHeaders(_ context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	require.Equal(m.t, m.expHeaderMap, headerMap)
 	return m.retProcessingResponse, m.retErr
 }
 
-// ProcessResponseBody implements [ProcessorIface.ProcessResponseBody].
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (m mockProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	require.Equal(m.t, m.expBody, body)
 	return m.retProcessingResponse, m.retErr
