@@ -119,7 +119,7 @@ func TestConfigSink_syncAIGatewayRoute(t *testing.T) {
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
 
-		// Check status is patched
+		// Check status is patched.
 		var updatedRoute aigv1a1.AIGatewayRoute
 		err = s.client.Get(context.Background(), client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, &updatedRoute)
 		require.NoError(t, err)
@@ -243,7 +243,6 @@ func Test_updateHTTPRoute(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-  
 	err := s.updateHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
@@ -889,6 +888,7 @@ func Test_syncSecret(t *testing.T) {
 
 func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 	type testCase struct {
+		name        string
 		route       *aigv1a1.AIGatewayRoute
 		needCreate  bool
 		expectError bool
@@ -896,6 +896,7 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 
 	testCases := []testCase{
 		{
+			name: "test patchOriginAIGatewayRouteStatus, expected success",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "myroute",
@@ -906,6 +907,7 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "test patchOriginAIGatewayRouteStatus, expected failure",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "nonexist",
@@ -924,13 +926,13 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 
 	condition := metav1.Condition{
-		Type:   conditionReconciled,
+		Type:   aiGatewayRouteConditionTypeReconciled,
 		Status: metav1.ConditionFalse,
-		Reason: reasonExtensionPolicyError,
+		Reason: aiGatewayRouteReasonExtensionPolicyError,
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("test patchOriginAIGatewayRouteStatus, expected success: %t", !tc.expectError), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			if tc.needCreate {
 				err := s.client.Create(context.Background(), tc.route)
 				require.NoError(t, err)
@@ -938,13 +940,11 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 
 			err := s.patchOriginAIGatewayRouteStatus(context.Background(), tc.route, condition)
 
-			// bad case
 			if tc.expectError {
-				require.Error(t, err)
+				require.ErrorContains(t, err, "")
 				return
 			}
 
-			// happy case
 			var updatedRoute aigv1a1.AIGatewayRoute
 			err = s.client.Get(context.Background(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &updatedRoute)
 			require.NoError(t, err)

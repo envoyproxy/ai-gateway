@@ -26,10 +26,10 @@ const (
 	managedByLabel        = "app.kubernetes.io/managed-by"
 	expProcConfigFileName = "extproc-config.yaml"
 
-	conditionReconciled           = "Reconciled"
-	reasonReconciliationSucceeded = "ReconciliationSucceeded"
-	reasonConfigMapError          = "ConfigMapError"
-	reasonExtensionPolicyError    = "ExtensionPolicyError"
+	aiGatewayRouteConditionTypeReconciled    = "Reconciled"
+	aiGatewayRouteReconciliationSucceeded    = "ReconciliationSucceeded"
+	aiGatewayRouteReasonConfigMapError       = "ConfigMapError"
+	aiGatewayRouteReasonExtensionPolicyError = "ExtensionPolicyError"
 )
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
@@ -77,12 +77,12 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		logger.Error(err, "failed to reconcile extProc config map")
 		condition := metav1.Condition{
-			Type:    conditionReconciled,
+			Type:    aiGatewayRouteConditionTypeReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  reasonConfigMapError,
+			Reason:  aiGatewayRouteReasonConfigMapError,
 			Message: fmt.Sprintf("failed to reconcile config map: %v", err),
 		}
-		if err = c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
+		if err = patchAIGatewayRouteStatus(ctx, c.client, &aiGatewayRoute, condition); err != nil {
 			c.logger.Error(err, "failed to patch AIGatewayRoute status")
 		}
 
@@ -93,12 +93,12 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		logger.Error(err, "failed to reconcile extension policy")
 
 		condition := metav1.Condition{
-			Type:    conditionReconciled,
+			Type:    aiGatewayRouteConditionTypeReconciled,
 			Status:  metav1.ConditionFalse,
-			Reason:  reasonExtensionPolicyError,
+			Reason:  aiGatewayRouteReasonExtensionPolicyError,
 			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
 		}
-		if err = c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, condition); err != nil {
+		if err = patchAIGatewayRouteStatus(ctx, c.client, &aiGatewayRoute, condition); err != nil {
 			c.logger.Error(err, "failed to patch AIGatewayRoute status")
 		}
 
@@ -195,17 +195,4 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	if replica := extProc.Replicas; replica != nil {
 		d.Replicas = replica
 	}
-}
-
-// patchAIGatewayRouteStatus patches status for AIGatewayRoute object.
-func (c *aiGatewayRouteController) patchAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, condition metav1.Condition) error {
-	base := route.DeepCopy()
-	route.Status.Conditions = append(route.Status.Conditions, condition)
-
-	err := c.client.Patch(ctx, route, client.MergeFrom(base))
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
