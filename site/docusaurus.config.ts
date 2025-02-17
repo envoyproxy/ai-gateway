@@ -48,6 +48,7 @@ const config: Config = {
           ],
         },
         blog: {
+          path: 'blog',
           showReadingTime: true,
           feedOptions: {
             type: ['rss', 'atom'],

@@ -6,3 +6,13 @@ missberg:
   page: true
   socials:
     github: missBerg
+    linkedin: https://www.linkedin.com/in/ericahughberg/
+alexagriffith:
+  name: Alexa Griffith
+  title: Senior Software Engineer, Bloomberg
+  url: https://github.com/alexagriffith
+  image_url: https://github.com/alexagriffith.png
+  page: true
+  socials:
+    github: alexagriffith
+    linkedin: https://www.linkedin.com/in/alexagriffith/
