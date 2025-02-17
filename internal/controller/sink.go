@@ -27,6 +27,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -245,7 +246,7 @@ func (c *configSink) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a
 }
 
 func (c *configSink) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) {
-	key := fmt.Sprintf("%s.%s", bsp.Name, bsp.Namespace)
+	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
 	var aiServiceBackends aigv1a1.AIServiceBackendList
 	err := c.client.List(ctx, &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
 	if err != nil {
@@ -309,7 +310,7 @@ func (c *configSink) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute 
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
 						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
-					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
+					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
 								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
@@ -607,8 +608,7 @@ func (c *configSink) mountBackendSecurityPolicySecrets(ctx context.Context, spec
 					if backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile != nil {
 						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
 					} else {
-						// Will introduce OIDC in a following PR
-						continue
+						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
@@ -638,7 +638,7 @@ func (c *configSink) syncSecret(ctx context.Context, namespace, name string) {
 	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
 	err := c.client.List(ctx, &backendSecurityPolicies,
 		client.MatchingFields{
-			k8sClientIndexSecretToReferencingBackendSecurityPolicy: fmt.Sprintf("%s.%s", name, namespace),
+			k8sClientIndexSecretToReferencingBackendSecurityPolicy: backendSecurityPolicyKey(namespace, name),
 		},
 	)
 	if err != nil {

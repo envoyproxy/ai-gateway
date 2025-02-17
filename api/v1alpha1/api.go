@@ -475,6 +475,8 @@ type AWSCredentialsFile struct {
 // and store them in a temporary credentials file.
 type AWSOIDCExchangeToken struct {
 	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
+	//
+	// +kubebuilder:validation:Required
 	OIDC egv1a1.OIDC `json:"oidc"`
 
 	// GrantType is the method application gets access token.
@@ -489,6 +491,9 @@ type AWSOIDCExchangeToken struct {
 
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	AwsRoleArn string `json:"awsRoleArn"`
 }
 
