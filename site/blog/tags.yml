@@ -1,4 +1,8 @@
-envoy:
+news:
   label: News
   permalink: /news
   description: Project News
+presentations:
+  label: Presentations
+  permalink: /presentations
+  description: Project Presentations
