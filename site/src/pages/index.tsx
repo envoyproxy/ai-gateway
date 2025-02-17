@@ -15,8 +15,13 @@ function HomepageHeader() {
         <div className="buttons">
           <Link
             className="button button--secondary button--lg"
-            href="https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?pli=1&tab=t.0">
-            Join the community
+            href="/docs/getting-started/">
+            Get Started
+          </Link>
+          <Link
+            className="button button--secondary button--lg"
+            href="https://github.com/envoyproxy/ai-gateway">
+            View on GitHub
           </Link>
         </div>
       </div>
