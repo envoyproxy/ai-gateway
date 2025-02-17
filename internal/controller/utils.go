@@ -14,7 +14,7 @@ import (
 const patchTemplateWithCondition = `[
 	{
 		"op": "add",
-		"path": "/conditions/-",
+		"path": "/status/conditions/-",
 		"value": %s
 	}
 ]`
@@ -22,7 +22,7 @@ const patchTemplateWithCondition = `[
 const patchTemplateWithoutCondition = `[
 	{
 		"op": "add",
-		"path": "/conditions",
+		"path": "/status/conditions",
 		"value": [%s]
 	}
 ]`
@@ -41,5 +41,5 @@ func patchAIGatewayRouteStatus(ctx context.Context, c client.Client, route *aigv
 		patchString = fmt.Sprintf(patchTemplateWithCondition, string(conditionJSON))
 	}
 
-	return c.Status().Patch(ctx, route, client.RawPatch(types.JSONPatchType, []byte(patchString)))
+	return c.Patch(ctx, route, client.RawPatch(types.JSONPatchType, []byte(patchString)))
 }

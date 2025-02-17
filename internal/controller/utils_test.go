@@ -6,16 +6,16 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestPatchAIGatewayRouteStatus(t *testing.T) {
 	type testCase struct {
-		name        string
-		route       *aigv1a1.AIGatewayRoute
-		needCreate  bool
-		expectError bool
+		name               string
+		route              *aigv1a1.AIGatewayRoute
+		needCreate         bool
+		expectConditionLen int
+		expectError        bool
 	}
 
 	testCases := []testCase{
@@ -23,18 +23,19 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 			name: "test patchAIGatewayRouteStatus without conditions expect success",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "myroute1",
+					Name:      "route1",
 					Namespace: "default",
 				},
 			},
-			needCreate:  true,
-			expectError: false,
+			needCreate:         true,
+			expectConditionLen: 1,
+			expectError:        false,
 		},
 		{
 			name: "test patchAIGatewayRouteStatus with conditions expect success",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "myroute2",
+					Name:      "route2",
 					Namespace: "default",
 				},
 				Status: aigv1a1.AIGatewayRouteStatus{
@@ -46,8 +47,9 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 					},
 				},
 			},
-			needCreate:  true,
-			expectError: false,
+			needCreate:         true,
+			expectConditionLen: 2,
+			expectError:        false,
 		},
 		{
 			name: "test patchAIGatewayRouteStatus expect failure",
@@ -66,13 +68,13 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 
 	condition := metav1.Condition{
 		Type:   aiGatewayRouteConditionTypeReconciled,
-		Status: metav1.ConditionFalse,
+		Status: metav1.ConditionTrue,
+		Reason: "testReason",
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.needCreate {
-				t.Log("create route %s", tc.route.Name)
 				err := c.Create(t.Context(), tc.route)
 				require.NoError(t, err)
 			}
@@ -86,11 +88,8 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			var updatedRoute aigv1a1.AIGatewayRoute
-			err = c.Get(t.Context(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &updatedRoute)
-			require.NoError(t, err)
-			require.Len(t, updatedRoute.Status.Conditions, 1+len(tc.route.Status.Conditions))
-			require.Equal(t, condition, updatedRoute.Status.Conditions[len(tc.route.Status.Conditions)])
+			require.Len(t, tc.route.Status.Conditions, tc.expectConditionLen)
+			require.Equal(t, condition, tc.route.Status.Conditions[tc.expectConditionLen-1])
 		})
 	}
 }

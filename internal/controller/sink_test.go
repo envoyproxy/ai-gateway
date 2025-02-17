@@ -888,26 +888,48 @@ func Test_syncSecret(t *testing.T) {
 
 func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 	type testCase struct {
-		name        string
-		route       *aigv1a1.AIGatewayRoute
-		needCreate  bool
-		expectError bool
+		name               string
+		route              *aigv1a1.AIGatewayRoute
+		needCreate         bool
+		expectConditionLen int
+		expectError        bool
 	}
 
 	testCases := []testCase{
 		{
-			name: "test patchOriginAIGatewayRouteStatus, expect success",
+			name: "test patchOriginAIGatewayRouteStatus without conditions expect success",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "myroute",
+					Name:      "route1",
 					Namespace: "default",
 				},
 			},
-			needCreate:  true,
-			expectError: false,
+			needCreate:         true,
+			expectConditionLen: 1,
+			expectError:        false,
 		},
 		{
-			name: "test patchOriginAIGatewayRouteStatus, expect failure",
+			name: "test patchOriginAIGatewayRouteStatus with conditions expect success",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "route2",
+					Namespace: "default",
+				},
+				Status: aigv1a1.AIGatewayRouteStatus{
+					Conditions: []metav1.Condition{
+						metav1.Condition{
+							Type:   aiGatewayRouteConditionTypeReconciled,
+							Status: metav1.ConditionFalse,
+						},
+					},
+				},
+			},
+			needCreate:         true,
+			expectConditionLen: 2,
+			expectError:        false,
+		},
+		{
+			name: "test patchOriginAIGatewayRouteStatus expect failure",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "nonexist",
@@ -921,35 +943,37 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-
 	eventChan := make(chan ConfigSinkEvent)
 	s := newConfigSink(fakeClient, kube, logr.Discard(), eventChan, "defaultExtProcImage", "debug")
 
 	condition := metav1.Condition{
 		Type:   aiGatewayRouteConditionTypeReconciled,
-		Status: metav1.ConditionFalse,
-		Reason: aiGatewayRouteReasonExtensionPolicyError,
+		Status: metav1.ConditionTrue,
+		Reason: "testReason",
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.needCreate {
-				err := s.client.Create(context.Background(), tc.route)
+				err := s.client.Create(t.Context(), tc.route)
 				require.NoError(t, err)
 			}
 
-			err := s.patchOriginAIGatewayRouteStatus(context.Background(), tc.route, condition)
+			err := s.patchOriginAIGatewayRouteStatus(t.Context(), tc.route, condition)
 
 			if tc.expectError {
-				require.ErrorContains(t, err, "")
+				require.ErrorContains(t, err, "aigatewayroutes.aigateway.envoyproxy.io \"nonexist\" not found")
 				return
+			} else {
+				require.NoError(t, err)
 			}
 
-			var updatedRoute aigv1a1.AIGatewayRoute
-			err = s.client.Get(context.Background(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &updatedRoute)
+			var patchedRoute aigv1a1.AIGatewayRoute
+			err = s.client.Get(t.Context(), client.ObjectKey{Name: tc.route.Name, Namespace: tc.route.Namespace}, &patchedRoute)
 			require.NoError(t, err)
-			require.Len(t, updatedRoute.Status.Conditions, 1)
-			require.Equal(t, condition, updatedRoute.Status.Conditions[0])
+
+			require.Len(t, patchedRoute.Status.Conditions, tc.expectConditionLen)
+			require.Equal(t, condition, patchedRoute.Status.Conditions[tc.expectConditionLen-1])
 		})
 	}
 }
