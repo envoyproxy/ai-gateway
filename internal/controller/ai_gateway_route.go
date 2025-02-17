@@ -30,6 +30,11 @@ import (
 const (
 	managedByLabel        = "app.kubernetes.io/managed-by"
 	expProcConfigFileName = "extproc-config.yaml"
+
+	aiGatewayRouteConditionTypeReconciled    = "Reconciled"
+	aiGatewayRouteReconciliationSucceeded    = "ReconciliationSucceeded"
+	aiGatewayRouteReasonConfigMapError       = "ConfigMapError"
+	aiGatewayRouteReasonExtensionPolicyError = "ExtensionPolicyError"
 )
 
 // aiGatewayRouteController implements [reconcile.TypedReconciler].
@@ -75,10 +80,33 @@ func (c *aiGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	}
 
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
+		logger.Error(err, "failed to reconcile extProc config map")
+		condition := metav1.Condition{
+			Type:    aiGatewayRouteConditionTypeReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  aiGatewayRouteReasonConfigMapError,
+			Message: fmt.Sprintf("failed to reconcile config map: %v", err),
+		}
+		if err = patchAIGatewayRouteStatus(ctx, c.client, &aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status")
+		}
+
 		return ctrl.Result{}, fmt.Errorf("failed to ensure extproc configmap exists: %w", err)
 	}
 
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
+		logger.Error(err, "failed to reconcile extension policy")
+
+		condition := metav1.Condition{
+			Type:    aiGatewayRouteConditionTypeReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  aiGatewayRouteReasonExtensionPolicyError,
+			Message: fmt.Sprintf("failed to reconcile extension policy: %v", err),
+		}
+		if err = patchAIGatewayRouteStatus(ctx, c.client, &aiGatewayRoute, condition); err != nil {
+			c.logger.Error(err, "failed to patch AIGatewayRoute status")
+		}
+
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile extension policy: %w", err)
 	}
 	// Send a copy to the config sink for a full reconciliation on HTTPRoute as well as the extproc config.
