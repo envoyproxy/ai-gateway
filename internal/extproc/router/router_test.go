@@ -23,7 +23,7 @@ func (c *dummyCustomRouter) Calculate(map[string]string) (*filterapi.Backend, er
 }
 
 func TestRouter_NewRouter_Custom(t *testing.T) {
-	r, err := NewRouter(&filterapi.Config{}, func(defaultRouter x.Router, _ *filterapi.Config) x.Router {
+	r, err := New(&filterapi.Config{}, func(defaultRouter x.Router, _ *filterapi.Config) x.Router {
 		require.NotNil(t, defaultRouter)
 		_, ok := defaultRouter.(*router)
 		require.True(t, ok) // Checking if the default router is correctly passed.
@@ -40,7 +40,7 @@ func TestRouter_NewRouter_Custom(t *testing.T) {
 
 func TestRouter_Calculate(t *testing.T) {
 	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
-	_r, err := NewRouter(&filterapi.Config{
+	_r, err := New(&filterapi.Config{
 		Rules: []filterapi.RouteRule{
 			{
 				Backends: []filterapi.Backend{
@@ -92,7 +92,7 @@ func TestRouter_Calculate(t *testing.T) {
 }
 
 func TestRouter_selectBackendFromRule(t *testing.T) {
-	_r, err := NewRouter(&filterapi.Config{}, nil)
+	_r, err := New(&filterapi.Config{}, nil)
 	require.NoError(t, err)
 	r, ok := _r.(*router)
 	require.True(t, ok)

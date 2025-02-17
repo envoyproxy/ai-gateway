@@ -130,7 +130,6 @@ func (m mockRouter) Calculate(headers map[string]string) (*filterapi.Backend, er
 // mockRequestBodyParser implements [router.RequestBodyParser] for testing.
 type mockRequestBodyParser struct {
 	t            *testing.T
-	expPath      string
 	expBody      []byte
 	retModelName string
 	retRb        router.RequestBody
@@ -138,8 +137,7 @@ type mockRequestBodyParser struct {
 }
 
 // impl implements [router.RequestBodyParser].
-func (m *mockRequestBodyParser) impl(path string, body *extprocv3.HttpBody) (modelName string, rb router.RequestBody, err error) {
-	require.Equal(m.t, m.expPath, path)
+func (m *mockRequestBodyParser) impl(body *extprocv3.HttpBody) (string, router.RequestBody, error) {
 	require.Equal(m.t, m.expBody, body.Body)
 	return m.retModelName, m.retRb, m.retErr
 }

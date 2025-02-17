@@ -54,11 +54,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
-	bodyParser, err := router.NewRequestBodyParser(config.Schema)
-	if err != nil {
-		return fmt.Errorf("cannot create request body parser: %w", err)
-	}
-	rt, err := router.NewRouter(config, x.NewCustomRouter)
+	rt, err := router.New(config, x.NewCustomRouter)
 	if err != nil {
 		return fmt.Errorf("cannot create router: %w", err)
 	}
@@ -104,8 +100,9 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	newConfig := &processorConfig{
-		uuid:       config.UUID,
-		bodyParser: bodyParser, router: rt,
+		uuid:                     config.UUID,
+		schema:                   config.Schema,
+		router:                   rt,
 		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
 		modelNameHeaderKey:       config.ModelNameHeaderKey,
 		backendAuthHandlers:      backendAuthHandlers,
@@ -130,7 +127,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string) (Processor, 
 	if !ok {
 		return nil, fmt.Errorf("no processor defined for path: %v", path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger), nil
+	return newProcessor(s.config, requestHeaders, s.logger)
 }
 
 // Process implements [extprocv3.ExternalProcessorServer].
