@@ -176,6 +176,12 @@ jobs:
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
         run: make test-e2e
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        if: failure()
+        with:
+          name: e2e-cluster-logs
+          path: tests/e2e/logs/
+          if-no-files-found: ignore
 
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
