@@ -896,7 +896,7 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name: "test patchOriginAIGatewayRouteStatus, expected success",
+			name: "test patchOriginAIGatewayRouteStatus, expect success",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "myroute",
@@ -907,7 +907,7 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "test patchOriginAIGatewayRouteStatus, expected failure",
+			name: "test patchOriginAIGatewayRouteStatus, expect failure",
 			route: &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "nonexist",

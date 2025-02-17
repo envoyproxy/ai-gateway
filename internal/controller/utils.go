@@ -1,0 +1,45 @@
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const patchTemplateWithCondition = `[
+	{
+		"op": "add",
+		"path": "/conditions/-",
+		"value": %s
+	}
+]`
+
+const patchTemplateWithoutCondition = `[
+	{
+		"op": "add",
+		"path": "/conditions",
+		"value": [%s]
+	}
+]`
+
+// patchAIGatewayRouteStatus patches status for AIGatewayRoute object.
+func patchAIGatewayRouteStatus(ctx context.Context, c client.Client, route *aigv1a1.AIGatewayRoute, condition metav1.Condition) error {
+	conditionJSON, err := json.Marshal(condition)
+	if err != nil {
+		return err
+	}
+
+	var patchString string
+	if len(route.Status.Conditions) == 0 {
+		patchString = fmt.Sprintf(patchTemplateWithoutCondition, string(conditionJSON))
+	} else {
+		patchString = fmt.Sprintf(patchTemplateWithCondition, string(conditionJSON))
+	}
+
+	return c.Status().Patch(ctx, route, client.RawPatch(types.JSONPatchType, []byte(patchString)))
+}
