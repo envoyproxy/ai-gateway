@@ -3,10 +3,11 @@ package controller
 import (
 	"testing"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 func TestPatchAIGatewayRouteStatus(t *testing.T) {
@@ -40,7 +41,7 @@ func TestPatchAIGatewayRouteStatus(t *testing.T) {
 				},
 				Status: aigv1a1.AIGatewayRouteStatus{
 					Conditions: []metav1.Condition{
-						metav1.Condition{
+						{
 							Type:   aiGatewayRouteConditionTypeReconciled,
 							Status: metav1.ConditionFalse,
 						},

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 const patchTemplateWithCondition = `[

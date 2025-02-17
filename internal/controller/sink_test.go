@@ -917,7 +917,7 @@ func TestConfigSink_patchOriginAIGatewayRouteStatus(t *testing.T) {
 				},
 				Status: aigv1a1.AIGatewayRouteStatus{
 					Conditions: []metav1.Condition{
-						metav1.Condition{
+						{
 							Type:   aiGatewayRouteConditionTypeReconciled,
 							Status: metav1.ConditionFalse,
 						},
