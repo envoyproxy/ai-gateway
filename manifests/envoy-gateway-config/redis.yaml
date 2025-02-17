@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 # This is a simple example of a Redis deployment that is used
 # by the default Envoy Gateway setting in config.yaml.
 #

@@ -9,9 +9,10 @@ First of all, there are only three minimal prerequisites to contribute to the pr
 * `make`
 * `docker`
 
-which we assume you already have installed on your machine.
+which we assume you already have installed on your machine. Also, on macOS, you would need to install
+`brew install ca-certificates` to run some integration tests.
 
-Assuming you have already cloned the repository on a local machine either MacOS or some Linux distribution,
+Assuming you have already cloned the repository on a local machine either macOS or some Linux distribution,
 the only make targets you would need to run are listed via
 
 ```

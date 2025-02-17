@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 // Package openai contains the following is the OpenAI API schema definitions.
 // Note that we intentionally do not use the code generation tools like OpenAPI Generator not only to keep the code simple
 // but also because the OpenAI's OpenAPI definition is not compliant with the spec and the existing tools do not work well.

@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package extproc
 
 import (
@@ -22,7 +27,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -60,19 +64,11 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	var (
-		factories           = make(map[filterapi.VersionedAPISchema]translator.Factory)
 		backendAuthHandlers = make(map[string]backendauth.Handler)
 		declaredModels      []string
 	)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
-			if _, ok := factories[b.Schema]; !ok {
-				factories[b.Schema], err = translator.NewFactory(config.Schema, b.Schema)
-				if err != nil {
-					return fmt.Errorf("cannot create translator factory: %w", err)
-				}
-			}
-
 			if b.Auth != nil {
 				backendAuthHandlers[b.Name], err = backendauth.NewHandler(ctx, b.Auth)
 				if err != nil {
@@ -112,7 +108,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		bodyParser: bodyParser, router: rt,
 		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
 		modelNameHeaderKey:       config.ModelNameHeaderKey,
-		factories:                factories,
 		backendAuthHandlers:      backendAuthHandlers,
 		metadataNamespace:        config.MetadataNamespace,
 		requestCosts:             costs,
@@ -129,7 +124,7 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently
-func (s *Server) processorForPath(requestHeaders map[string]string) (ProcessorIface, error) {
+func (s *Server) processorForPath(requestHeaders map[string]string) (Processor, error) {
 	path := requestHeaders[":path"]
 	newProcessor, ok := s.processors[path]
 	if !ok {
@@ -145,7 +140,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 	// The processor will be instantiated when the first message containing the request headers is received.
 	// The :path header is used to determine the processor to use, based on the registered ones.
-	var p ProcessorIface
+	var p Processor
 
 	for {
 		select {
@@ -187,7 +182,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	}
 }
 
-func (s *Server) processMsg(ctx context.Context, p ProcessorIface, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers

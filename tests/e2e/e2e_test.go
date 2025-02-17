@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 //go:build test_e2e
 
 package e2e
@@ -20,8 +25,6 @@ const (
 	egLatest      = "v0.0.0-latest" // This defaults to the latest dev version.
 	egNamespace   = "envoy-gateway-system"
 	egDefaultPort = 10080
-
-	helmPath = "../../.bin/helm"
 )
 
 var egVersion = func() string {
@@ -69,10 +72,7 @@ func TestMain(m *testing.M) {
 }
 
 func initKindCluster(ctx context.Context) (err error) {
-	const (
-		kindPath        = "../../.bin/kind"
-		kindClusterName = "envoy-ai-gateway"
-	)
+	const kindClusterName = "envoy-ai-gateway"
 
 	initLog("Setting up the kind cluster")
 	start := time.Now()
@@ -82,7 +82,7 @@ func initKindCluster(ctx context.Context) (err error) {
 	}()
 
 	initLog("\tCreating kind cluster named envoy-ai-gateway")
-	cmd := exec.CommandContext(ctx, kindPath, "create", "cluster", "--name", kindClusterName)
+	cmd := exec.CommandContext(ctx, "go", "tool", "kind", "create", "cluster", "--name", kindClusterName)
 	out, err := cmd.CombinedOutput()
 	if err != nil && !bytes.Contains(out, []byte("already exist")) {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
@@ -90,7 +90,7 @@ func initKindCluster(ctx context.Context) (err error) {
 	}
 
 	initLog("\tSwitching kubectl context to envoy-ai-gateway")
-	cmd = exec.CommandContext(ctx, kindPath, "export", "kubeconfig", "--name", kindClusterName)
+	cmd = exec.CommandContext(ctx, "go", "tool", "kind", "export", "kubeconfig", "--name", kindClusterName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -103,7 +103,7 @@ func initKindCluster(ctx context.Context) (err error) {
 		"ghcr.io/envoyproxy/ai-gateway/extproc:latest",
 		"ghcr.io/envoyproxy/ai-gateway/testupstream:latest",
 	} {
-		cmd := exec.CommandContext(ctx, kindPath, "load", "docker-image", image, "--name", kindClusterName)
+		cmd := exec.CommandContext(ctx, "go", "tool", "kind", "load", "docker-image", image, "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -123,7 +123,7 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "eg",
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -156,7 +156,7 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, helmPath, "upgrade", "-i", "ai-eg",
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -240,14 +240,14 @@ func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector st
 	// This repeats the wait subcommand in order to be able to wait for the
 	// resources not created yet.
 	require.Eventually(t, func() bool {
-		cmd := kubectl(context.Background(), "wait", "--timeout=2s", "-n", namespace,
+		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", namespace,
 			"pods", "--for=condition=Ready", "-l", labelSelector)
 		return cmd.Run() == nil
 	}, timeout, 5*time.Second)
 }
 
 func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
-	f, err := newPodPortForwarder(context.Background(), namespace, selector, port)
+	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		conn, err := http.Get(f.address())

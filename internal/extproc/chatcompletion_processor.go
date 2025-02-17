@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package extproc
 
 import (
@@ -17,8 +22,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-// NewChatCompletionProcessor implements [ProcessorIface] for the /chat/completions endpoint.
-func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) ProcessorIface {
+// NewChatCompletionProcessor implements [Processor] for the /chat/completions endpoint.
+func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) Processor {
 	return &chatCompletionProcessor{
 		config:         config,
 		requestHeaders: requestHeaders,
@@ -38,42 +43,52 @@ type chatCompletionProcessor struct {
 	costs translator.LLMTokenUsage
 }
 
-// ProcessRequestHeaders implements [ProcessorIface.ProcessRequestHeaders].
-func (p *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+// selectTranslator selects the translator based on the output schema.
+func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISchema) error {
+	if c.translator != nil { // Prevents re-selection and allows translator injection in tests.
+		return nil
+	}
+	// TODO: currently, we ignore the LLMAPISchema."Version" field.
+	switch out.Name {
+	case filterapi.APISchemaOpenAI:
+		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator()
+	case filterapi.APISchemaAWSBedrock:
+		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator()
+	default:
+		return fmt.Errorf("unsupported API schema: backend=%s", out)
+	}
+	return nil
+}
+
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	// The request headers have already been at the time the processor was created
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{},
 	}}, nil
 }
 
-// ProcessRequestBody implements [ProcessorIface.ProcessRequestBody].
-func (p *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	path := p.requestHeaders[":path"]
-	model, body, err := p.config.bodyParser(path, rawBody)
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	path := c.requestHeaders[":path"]
+	model, body, err := c.config.bodyParser(path, rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
-	p.logger.Info("Processing request", "path", path, "model", model)
+	c.logger.Info("Processing request", "path", path, "model", model)
 
-	p.requestHeaders[p.config.modelNameHeaderKey] = model
-	b, err := p.config.router.Calculate(p.requestHeaders)
+	c.requestHeaders[c.config.modelNameHeaderKey] = model
+	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
-	p.logger.Info("Selected backend", "backend", b.Name)
+	c.logger.Info("Selected backend", "backend", b.Name)
 
-	factory, ok := p.config.factories[b.Schema]
-	if !ok {
-		return nil, fmt.Errorf("failed to find factory for output schema %q", b.Schema)
+	if err = c.selectTranslator(b.Schema); err != nil {
+		return nil, fmt.Errorf("failed to select translator: %w", err)
 	}
 
-	t, err := factory(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create translator: %w", err)
-	}
-	p.translator = t
-
-	headerMutation, bodyMutation, override, err := p.translator.RequestBody(body)
+	headerMutation, bodyMutation, override, err := c.translator.RequestBody(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -83,13 +98,13 @@ func (p *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.modelNameHeaderKey, RawValue: []byte(model)},
+		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: p.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
+		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
 	})
 
-	if authHandler, ok := p.config.backendAuthHandlers[b.Name]; ok {
-		if err := authHandler.Do(ctx, p.requestHeaders, headerMutation, bodyMutation); err != nil {
+	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
+		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 	}
@@ -109,20 +124,20 @@ func (p *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	return resp, nil
 }
 
-// ProcessResponseHeaders implements [ProcessorIface.ProcessResponseHeaders].
-func (p *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	p.responseHeaders = headersToMap(headers)
-	if enc := p.responseHeaders["content-encoding"]; enc != "" {
-		p.responseEncoding = enc
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
+func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	c.responseHeaders = headersToMap(headers)
+	if enc := c.responseHeaders["content-encoding"]; enc != "" {
+		c.responseEncoding = enc
 	}
 	// The translator can be nil as there could be response event generated by previous ext proc without
 	// getting the request event.
-	if p.translator == nil {
+	if c.translator == nil {
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 			ResponseHeaders: &extprocv3.HeadersResponse{},
 		}}, nil
 	}
-	headerMutation, err := p.translator.ResponseHeaders(p.responseHeaders)
+	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
@@ -133,10 +148,10 @@ func (p *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 	}}, nil
 }
 
-// ProcessResponseBody implements [ProcessorIface.ProcessResponseBody].
-func (p *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
+func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	var br io.Reader
-	switch p.responseEncoding {
+	switch c.responseEncoding {
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
@@ -147,11 +162,11 @@ func (p *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	}
 	// The translator can be nil as there could be response event generated by previous ext proc without
 	// getting the request event.
-	if p.translator == nil {
+	if c.translator == nil {
 		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := p.translator.ResponseBody(p.responseHeaders, br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -168,11 +183,11 @@ func (p *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	}
 
 	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
-	p.costs.InputTokens += tokenUsage.InputTokens
-	p.costs.OutputTokens += tokenUsage.OutputTokens
-	p.costs.TotalTokens += tokenUsage.TotalTokens
-	if body.EndOfStream && len(p.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = p.maybeBuildDynamicMetadata()
+	c.costs.InputTokens += tokenUsage.InputTokens
+	c.costs.OutputTokens += tokenUsage.OutputTokens
+	c.costs.TotalTokens += tokenUsage.TotalTokens
+	if body.EndOfStream && len(c.config.requestCosts) > 0 {
+		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -180,43 +195,43 @@ func (p *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	return resp, nil
 }
 
-func (p *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(p.config.requestCosts))
-	for i := range p.config.requestCosts {
-		c := &p.config.requestCosts[i]
+func (c *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(c.config.requestCosts))
+	for i := range c.config.requestCosts {
+		rc := &c.config.requestCosts[i]
 		var cost uint32
-		switch c.Type {
+		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
-			cost = p.costs.InputTokens
+			cost = c.costs.InputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = p.costs.OutputTokens
+			cost = c.costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = p.costs.TotalTokens
+			cost = c.costs.TotalTokens
 		case filterapi.LLMRequestCostTypeCELExpression:
 			costU64, err := llmcostcel.EvaluateProgram(
-				c.celProg,
-				p.requestHeaders[p.config.modelNameHeaderKey],
-				p.requestHeaders[p.config.selectedBackendHeaderKey],
-				p.costs.InputTokens,
-				p.costs.OutputTokens,
-				p.costs.TotalTokens,
+				rc.celProg,
+				c.requestHeaders[c.config.modelNameHeaderKey],
+				c.requestHeaders[c.config.selectedBackendHeaderKey],
+				c.costs.InputTokens,
+				c.costs.OutputTokens,
+				c.costs.TotalTokens,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 			}
 			cost = uint32(costU64) //nolint:gosec
 		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", c.Type)
+			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
 		}
-		p.logger.Info("Setting request cost metadata", "type", c.Type, "cost", cost, "metadataKey", c.MetadataKey)
-		metadata[c.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+		c.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
+		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 	if len(metadata) == 0 {
 		return nil, nil
 	}
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			p.config.metadataNamespace: {
+			c.config.metadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{Fields: metadata},
 				},

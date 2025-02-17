@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package translator
 
 import (
@@ -21,12 +26,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
-// newOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func newOpenAIToAWSBedrockTranslator(path string) (Translator, error) {
-	if path == "/v1/chat/completions" {
-		return &openAIToAWSBedrockTranslatorV1ChatCompletion{}, nil
-	}
-	return nil, fmt.Errorf("unsupported path: %s", path)
+// NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
+func NewChatCompletionOpenAIToAWSBedrockTranslator() Translator {
+	return &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 }
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.

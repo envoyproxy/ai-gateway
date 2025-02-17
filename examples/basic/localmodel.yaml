@@ -1,0 +1,59 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# localmodel.yaml
+
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  # A unique name for this route
+  name: envoy-ai-gateway-deepseek-route
+  namespace: default
+spec:
+  schema:
+    # Could be 'OpenAI' if you want the same style of prompts,
+    # or you can rename if your local model uses a different schema.
+    name: OpenAI
+  targetRefs:
+    # This references the Gateway already created by 'basic.yaml'.
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: deepseek-r1:7b
+      backendRefs:
+        - name: envoy-ai-gateway-basic-deepseek
+
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-deepseek
+  namespace: default
+spec:
+  # Keep the same 'schema' name as your route. Typically 'OpenAI'.
+  schema:
+    name: OpenAI
+  backendRef:
+    name: envoy-ai-gateway-basic-deepseek
+    kind: Backend
+    group: gateway.envoyproxy.io
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-deepseek
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: host.docker.internal
+        port: 11434
