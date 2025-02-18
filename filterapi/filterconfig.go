@@ -102,9 +102,9 @@ type LLMRequestCost struct {
 	MetadataKey string `json:"metadataKey"`
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
-	// CELExpression is the CEL expression to calculate the cost of the request.
+	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
-	CELExpression string `json:"celExpression,omitempty"`
+	CEL string `json:"celExpression,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.

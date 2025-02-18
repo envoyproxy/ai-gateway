@@ -590,7 +590,7 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
 					{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
 					{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total-token"},
-					{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel-token", CELExpression: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
+					{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel-token", CEL: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
 				},
 			},
 		},

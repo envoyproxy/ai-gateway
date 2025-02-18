@@ -367,7 +367,7 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 			if err != nil {
 				return fmt.Errorf("invalid CEL expression: %w", err)
 			}
-			fc.CELExpression = expr
+			fc.CEL = expr
 		default:
 			return fmt.Errorf("unknown request cost type: %s", cost.Type)
 		}
