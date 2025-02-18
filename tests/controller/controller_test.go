@@ -668,7 +668,7 @@ func TestSecretController(t *testing.T) {
 			bsps[j].TypeMeta = metav1.TypeMeta{}
 			return bsps[i].Name < bsps[j].Name
 		})
-		require.Equal(t, originals, bspSyncFn.GetItems())
+		require.Equal(t, originals, bsps)
 	})
 
 	bspSyncFn.Reset()
