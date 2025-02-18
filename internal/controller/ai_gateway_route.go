@@ -180,10 +180,10 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 }
 
 func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
-	if filterConfig == nil || filterConfig.ExternalProcess == nil {
+	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
 		return
 	}
-	extProc := filterConfig.ExternalProcess
+	extProc := filterConfig.ExternalProcessor
 	if resource := extProc.Resources; resource != nil {
 		d.Template.Spec.Containers[0].Resources = *resource
 	}
@@ -360,8 +360,8 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 		case aigv1a1.LLMRequestCostTypeTotalToken:
 			fc.Type = filterapi.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterapi.LLMRequestCostTypeCELExpression
-			expr := *cost.CELExpression
+			fc.Type = filterapi.LLMRequestCostTypeCEL
+			expr := *cost.CEL
 			// Sanity check the CEL expression.
 			_, err = llmcostcel.NewProgram(expr)
 			if err != nil {

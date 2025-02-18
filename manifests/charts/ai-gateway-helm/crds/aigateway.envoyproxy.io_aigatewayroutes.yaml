@@ -79,9 +79,9 @@ spec:
                   Currently, the filter is only implemented as an external process filter, which might be
                   extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
                 properties:
-                  externalProcess:
+                  externalProcessor:
                     description: |-
-                      ExternalProcess is the configuration for the external process filter.
+                      ExternalProcessor is the configuration for the external process filter.
                       This is optional, and if not set, the default values of Deployment spec will be used.
                     properties:
                       replicas:
@@ -152,13 +152,13 @@ spec:
                         type: object
                     type: object
                   type:
-                    default: ExternalProcess
+                    default: ExternalProcessor
                     description: |-
                       Type specifies the type of the filter configuration.
 
-                      Currently, only ExternalProcess is supported, and default is ExternalProcess.
+                      Currently, only ExternalProcessor is supported, and default is ExternalProcessor.
                     enum:
-                    - ExternalProcess
+                    - ExternalProcessor
                     - DynamicModule
                     type: string
                 required:
@@ -213,15 +213,15 @@ spec:
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
-                    celExpression:
-                      description: "CELExpression is the CEL expression to calculate
-                        the cost of the request.\nThe CEL expression must return a
-                        signed or unsigned integer. If the\nreturn value is negative,
-                        it will be error.\n\nThe expression can use the following
-                        variables:\n\n\t* model: the model name extracted from the
-                        request content. Type: string.\n\t* backend: the backend name
-                        in the form of \"name.namespace\". Type: string.\n\t* input_tokens:
-                        the number of input tokens. Type: unsigned integer.\n\t* output_tokens:
+                    cel:
+                      description: "CEL is the CEL expression to calculate the cost
+                        of the request.\nThe CEL expression must return a signed or
+                        unsigned integer. If the\nreturn value is negative, it will
+                        be error.\n\nThe expression can use the following variables:\n\n\t*
+                        model: the model name extracted from the request content.
+                        Type: string.\n\t* backend: the backend name in the form of
+                        \"name.namespace\". Type: string.\n\t* input_tokens: the number
+                        of input tokens. Type: unsigned integer.\n\t* output_tokens:
                         the number of output tokens. Type: unsigned integer.\n\t*
                         total_tokens: the total number of tokens. Type: unsigned integer.\n\nFor
                         example, the following expressions are valid:\n\n\t* \"model

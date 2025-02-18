@@ -103,7 +103,7 @@ type LLMRequestCost struct {
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
 	// CELExpression is the CEL expression to calculate the cost of the request.
-	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
+	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CELExpression string `json:"celExpression,omitempty"`
 }
 
@@ -117,8 +117,8 @@ const (
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
-	// LLMRequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
-	LLMRequestCostTypeCELExpression LLMRequestCostType = "CEL"
+	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
+	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
 
 // VersionedAPISchema corresponds to VersionedAPISchema in api/v1alpha1/api.go.
