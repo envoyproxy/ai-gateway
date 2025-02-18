@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -36,6 +37,7 @@ type backendSecurityPolicyController struct {
 	kube                 kubernetes.Interface
 	logger               logr.Logger
 	oidcTokenCache       map[string]*oauth2.Token
+	oidcTokenCacheMutex  sync.RWMutex
 	syncAIServiceBackend syncAIServiceBackendFn
 }
 
@@ -101,14 +103,18 @@ func (c *backendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
 
 	var err error
+	c.oidcTokenCacheMutex.RLock()
 	validToken, ok := c.oidcTokenCache[bspKey]
+	c.oidcTokenCacheMutex.RUnlock()
 	if !ok || validToken == nil || rotators.IsBufferedTimeExpired(preRotationWindow, validToken.Expiry) {
 		oidcProvider := oauth.NewOIDCProvider(c.client, oidcCreds)
 		validToken, err = oidcProvider.FetchToken(ctx)
 		if err != nil {
 			return time.Minute, err
 		}
+		c.oidcTokenCacheMutex.Lock()
 		c.oidcTokenCache[bspKey] = validToken
+		c.oidcTokenCacheMutex.Unlock()
 	}
 
 	token := validToken.AccessToken
