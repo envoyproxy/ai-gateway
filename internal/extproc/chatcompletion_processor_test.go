@@ -18,7 +18,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -143,63 +142,71 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 }
 
 func TestChatCompletion_ProcessRequestBody(t *testing.T) {
+	bodyFromModel := func(t *testing.T, model string) []byte {
+		var openAIReq openai.ChatCompletionRequest
+		openAIReq.Model = model
+		bytes, err := json.Marshal(openAIReq)
+		require.NoError(t, err)
+		return bytes
+	}
 	t.Run("body parser error", func(t *testing.T) {
-		rbp := mockRequestBodyParser{t: t, retErr: errors.New("test error")}
-		p := &chatCompletionProcessor{bodyParser: rbp.impl}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
-		require.ErrorContains(t, err, "failed to parse request body: test error")
+		p := &chatCompletionProcessor{}
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
+		require.ErrorContains(t, err, "invalid character 'o' in literal null")
 	})
 	t.Run("router error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rbp := mockRequestBodyParser{t: t, retModelName: "some-model"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
-		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, bodyParser: rbp.impl, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, requestHeaders: headers, logger: slog.Default()}
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
 	})
 	t.Run("translator not found", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rbp := mockRequestBodyParser{t: t, retModelName: "some-model"}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
-		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, bodyParser: rbp.impl, requestHeaders: headers, logger: slog.Default()}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, requestHeaders: headers, logger: slog.Default()}
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	})
 	t.Run("translator error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rbp := mockRequestBodyParser{t: t, retModelName: "some-model"}
+		someBody := bodyFromModel(t, "some-model")
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
-		tr := mockTranslator{t: t, retErr: errors.New("test error")}
+		var body openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+		tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 		p := &chatCompletionProcessor{
-			config:     &processorConfig{router: rt},
-			bodyParser: rbp.impl, requestHeaders: headers, logger: slog.Default(), translator: tr,
+			config:         &processorConfig{router: rt},
+			requestHeaders: headers, logger: slog.Default(), translator: tr,
 		}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
 		require.ErrorContains(t, err, "failed to transform request: test error")
 	})
 	t.Run("ok", func(t *testing.T) {
-		someBody := router.RequestBody("foooooooooooooo")
+		someBody := bodyFromModel(t, "some-model")
 		headers := map[string]string{":path": "/foo"}
-		rbp := mockRequestBodyParser{t: t, retModelName: "some-model", retRb: someBody}
 		rt := mockRouter{
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
 		headerMut := &extprocv3.HeaderMutation{}
 		bodyMut := &extprocv3.BodyMutation{}
-		mt := mockTranslator{t: t, expRequestBody: someBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+
+		var expBody openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &expBody))
+		mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		p := &chatCompletionProcessor{config: &processorConfig{
 			router:                   rt,
 			selectedBackendHeaderKey: "x-ai-gateway-backend-key",
 			modelNameHeaderKey:       "x-ai-gateway-model-key",
-		}, bodyParser: rbp.impl, requestHeaders: headers, logger: slog.Default(), translator: mt}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+		}, requestHeaders: headers, logger: slog.Default(), translator: mt}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
 		require.NoError(t, err)
 		require.Equal(t, mt, p.translator)
 		require.NotNil(t, resp)

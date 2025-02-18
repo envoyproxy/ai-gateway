@@ -9,18 +9,10 @@ import (
 	"errors"
 	"time"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"golang.org/x/exp/rand"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
-)
-
-type (
-	// RequestBodyParser is a function that parses the body of the request.
-	RequestBodyParser func(body *extprocv3.HttpBody) (modelName string, rb RequestBody, err error)
-	// RequestBody is the union of all request body types.
-	RequestBody any
 )
 
 // router implements [x.Router].

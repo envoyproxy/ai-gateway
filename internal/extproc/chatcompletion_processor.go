@@ -20,7 +20,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -34,7 +33,6 @@ func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[stri
 		config:         config,
 		requestHeaders: requestHeaders,
 		logger:         logger,
-		bodyParser:     parseOpenAIChatCompletionBody,
 	}, nil
 }
 
@@ -45,7 +43,6 @@ type chatCompletionProcessor struct {
 	requestHeaders   map[string]string
 	responseHeaders  map[string]string
 	responseEncoding string
-	bodyParser       router.RequestBodyParser
 	translator       translator.Translator
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
@@ -78,7 +75,7 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	model, body, err := c.bodyParser(rawBody)
+	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
@@ -202,7 +199,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	return resp, nil
 }
 
-func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb router.RequestBody, err error) {
+func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb translator.RequestBody, err error) {
 	var openAIReq openai.ChatCompletionRequest
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)

@@ -20,7 +20,6 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
@@ -35,7 +34,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToOpenAITranslatorV1ChatCompletion{}
-				hm, bm, mode, err := o.RequestBody(router.RequestBody(originalReq))
+				hm, bm, mode, err := o.RequestBody(RequestBody(originalReq))
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
