@@ -41,6 +41,7 @@ controller:
   # Example of a podEnv
   #  - key: AI_GATEWAY_STS_PROXY_URL
   #    value: some-proxy-placeholder
+  # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   podEnv: {}
   # Example of volumes
   #  - mountPath: /placeholder/path
