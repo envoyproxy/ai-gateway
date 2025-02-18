@@ -100,4 +100,4 @@ If you encounter issues:
 ## Next Steps
 
 After configuring AWS Bedrock:
-- [Connect OpenAI](./openai.md) to add another provider
+- [Connect Local Model](./localmodel.md) to add another provider
