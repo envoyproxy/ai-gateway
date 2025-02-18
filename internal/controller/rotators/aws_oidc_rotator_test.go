@@ -82,7 +82,7 @@ type mockSTSOperations struct {
 	assumeRoleWithWebIdentityFunc func(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
 
-func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+func (m *mockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	if m.assumeRoleWithWebIdentityFunc != nil {
 		return m.assumeRoleWithWebIdentityFunc(ctx, params, optFns...)
 	}
@@ -91,7 +91,7 @@ func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 
 func TestAWS_OIDCRotator(t *testing.T) {
 	t.Run("basic rotation", func(t *testing.T) {
-		var mockSTS STSClient = &MockSTSOperations{
+		var mockSTS STSClient = &mockSTSOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return &sts.AssumeRoleWithWebIdentityOutput{
 					Credentials: &types.Credentials{
@@ -133,7 +133,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 		createTestAWSSecret(t, cl, "test-secret", "OLDKEY", "OLDSECRET", "OLDTOKEN", "default")
 		createClientSecret(t, "test-client-secret")
-		var mockSTS STSClient = &MockSTSOperations{
+		var mockSTS STSClient = &mockSTSOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return nil, fmt.Errorf("failed to assume role")
 			},
