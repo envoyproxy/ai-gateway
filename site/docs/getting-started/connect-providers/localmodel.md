@@ -15,7 +15,7 @@ Before you begin, you'll need:
 - [Ollama](https://ollama.com/) installed on local machine considering for self-hosted model
 - Serve DeepSeek R1 or similar model on your local machine
 
-```text
+```shell
 ollama pull deepseek-r1:7b
 OLLAMA_HOST=0.0.0.0 ollama serve
 ```
