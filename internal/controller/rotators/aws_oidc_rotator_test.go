@@ -77,7 +77,7 @@ func createClientSecret(t *testing.T, name string) {
 	require.NoError(t, err)
 }
 
-// MockSTSOperations implements the STSOperations interface for testing
+// MockSTSOperations implements the STSClient interface for testing
 type MockSTSOperations struct {
 	assumeRoleWithWebIdentityFunc func(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
