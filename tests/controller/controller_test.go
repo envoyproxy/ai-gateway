@@ -648,6 +648,7 @@ func TestSecretController(t *testing.T) {
 	for _, bsp := range originals {
 		require.NoError(t, c.Create(t.Context(), bsp))
 	}
+	sort.Slice(originals, func(i, j int) bool { return originals[i].Name < originals[j].Name })
 
 	t.Run("create secret", func(t *testing.T) {
 		err := c.Create(t.Context(), &corev1.Secret{
