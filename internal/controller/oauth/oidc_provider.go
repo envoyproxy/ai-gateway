@@ -78,7 +78,7 @@ func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 
 		// Add discovered scopes if available.
 		if len(supportedScopes) > 0 {
-			requestedScopes := make(map[string]bool)
+			requestedScopes := make(map[string]bool, len(p.oidcConfig.Scopes))
 			for _, scope := range p.oidcConfig.Scopes {
 				requestedScopes[scope] = true
 			}
