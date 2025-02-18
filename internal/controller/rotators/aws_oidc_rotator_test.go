@@ -89,10 +89,6 @@ func (m *MockSTSOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 	return nil, fmt.Errorf("mock not implemented")
 }
 
-// -----------------------------------------------------------------------------
-// Test Cases
-// -----------------------------------------------------------------------------
-
 func TestAWS_OIDCRotator(t *testing.T) {
 	t.Run("basic rotation", func(t *testing.T) {
 		var mockSTS STSClient = &MockSTSOperations{
