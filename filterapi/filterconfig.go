@@ -104,7 +104,7 @@ type LLMRequestCost struct {
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
-	CEL string `json:"celExpression,omitempty"`
+	CEL string `json:"cel,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
