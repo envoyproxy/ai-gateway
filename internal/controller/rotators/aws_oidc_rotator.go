@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,7 +103,7 @@ func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, err
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		// return zero value for time if secret has not been created.
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return time.Time{}, nil
 		}
 		return time.Time{}, err
@@ -132,7 +132,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apierrors.IsNotFound(err) {
 			return err
 		}
 		secret = &corev1.Secret{
@@ -161,7 +161,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	err = r.client.Create(ctx, secret)
 	if err != nil {
-		if !errors.IsAlreadyExists(err) {
+		if !apierrors.IsAlreadyExists(err) {
 			return r.client.Update(ctx, secret)
 		}
 		return fmt.Errorf("failed to create secret: %w", err)

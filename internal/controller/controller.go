@@ -50,6 +50,18 @@ type Options struct {
 	EnableLeaderElection bool
 }
 
+type (
+	// syncAIGatewayRouteFn is a function that syncs an AIGatewayRoute. This is used to cross the controller boundary
+	// from AIServiceBackend to AIGatewayRoute when an AIServiceBackend is referenced by an AIGatewayRoute.
+	syncAIGatewayRouteFn func(context.Context, *aigv1a1.AIGatewayRoute) error
+	// syncAIServiceBackendFn is a function that syncs an AIServiceBackend. This is used to cross the controller boundary
+	// from BackendSecurityPolicy to AIServiceBackend when a BackendSecurityPolicy is referenced by an AIServiceBackend.
+	syncAIServiceBackendFn func(context.Context, *aigv1a1.AIServiceBackend) error
+	// syncBackendSecurityPolicyFn is a function that syncs a BackendSecurityPolicy. This is used to cross the controller boundary
+	// from Secret to BackendSecurityPolicy when a Secret is referenced by a BackendSecurityPolicy.
+	syncBackendSecurityPolicyFn func(context.Context, *aigv1a1.BackendSecurityPolicy) error
+)
+
 // StartControllers starts the controllers for the AI Gateway.
 // This blocks until the manager is stopped.
 //
@@ -68,13 +80,12 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
-	if err = applyIndexing(ctx, indexer.IndexField); err != nil {
+	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
-	sinkChan := make(chan ConfigSinkEvent, 100)
-	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("ai-gateway-route"), sinkChan)
+	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
+		options.ExtProcImage, options.ExtProcLogLevel)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIGatewayRoute{}).
 		Owns(&egv1a1.EnvoyExtensionPolicy{}).
@@ -86,7 +97,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("ai-service-backend"), sinkChan)
+		WithName("ai-service-backend"), routeC.syncAIGatewayRoute)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.AIServiceBackend{}).
 		Complete(backendC); err != nil {
@@ -94,7 +105,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	backendSecurityPolicyC := newBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), sinkChan)
+		WithName("backend-security-policy"), backendC.syncAIServiceBackend)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
@@ -102,19 +113,11 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("secret"), sinkChan)
+		WithName("secret"), backendSecurityPolicyC.syncBackendSecurityPolicy)
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
 		Complete(secretC); err != nil {
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
-	}
-
-	sink := newConfigSink(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("config-sink"), sinkChan, options.ExtProcImage, options.ExtProcLogLevel)
-
-	// Before starting the manager, initialize the config sink to sync all AIServiceBackend and AIGatewayRoute objects in the cluster.
-	if err = sink.init(ctx); err != nil {
-		return fmt.Errorf("failed to initialize config sink: %w", err)
 	}
 
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
@@ -135,7 +138,8 @@ const (
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 )
 
-func applyIndexing(ctx context.Context, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
+// ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
+func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {

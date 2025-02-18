@@ -25,7 +25,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
-GO_TEST_ARGS ?= -v -race
+GO_TEST_ARGS ?= -race
 # Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
 GO_TEST_E2E_ARGS ?= -count=1
 
@@ -151,7 +151,7 @@ test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc -v
+	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller

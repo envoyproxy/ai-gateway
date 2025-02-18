@@ -11,7 +11,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -37,7 +37,7 @@ func LookupSecret(ctx context.Context, k8sClient client.Client, namespace, name 
 		Namespace: namespace,
 		Name:      name,
 	}, secret); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to get secret: %w", err)

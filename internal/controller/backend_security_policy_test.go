@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -33,40 +34,62 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
-	ch := make(chan ConfigSinkEvent, 100)
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := newBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
-	err := cl.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	// Create AIServiceBackend that references the BackendSecurityPolicy.
+	asb := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name: gwapiv1.ObjectName("mybackend"),
+				Port: ptr.To[gwapiv1.PortNumber](8080),
+			},
+			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{
+				Name: gwapiv1.ObjectName(backendSecurityPolicyName),
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), asb))
+
+	err := fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+				SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"},
+			},
+		},
+	})
 	require.NoError(t, err)
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
-	item, ok := <-ch
-	require.True(t, ok)
-	require.IsType(t, &aigv1a1.BackendSecurityPolicy{}, item)
-	require.Equal(t, backendSecurityPolicyName, item.(*aigv1a1.BackendSecurityPolicy).Name)
-	require.Equal(t, namespace, item.(*aigv1a1.BackendSecurityPolicy).Namespace)
+	items := syncFn.GetItems()
+	require.Len(t, items, 1)
+	require.Equal(t, asb, items[0])
 
 	// Test the case where the BackendSecurityPolicy is being deleted.
-	err = cl.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
+	err = fakeClient.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 }
 
-// mockSTSOperations implements the STSOperations interface for testing
-type mockSTSOperations struct{}
+// mockSTSClient implements the STSOperations interface for testing
+type mockSTSClient struct{}
 
 // AssumeRoleWithWebIdentity will return placeholder of type aws credentials.
 //
-// This implements [STSClient.AssumeRoleWithWebIdentity].
-func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+// This implements [rotators.STSClient.AssumeRoleWithWebIdentity].
+func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return &sts.AssumeRoleWithWebIdentityOutput{
 		Credentials: &stsTypes.Credentials{
 			AccessKeyId:     aws.String("NEWKEY"),
@@ -78,9 +101,9 @@ func (m *mockSTSOperations) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.
 }
 
 func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
-	ch := make(chan ConfigSinkEvent, 100)
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -105,9 +128,8 @@ func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 }
 
 func TestBackendSecurityController_RotateCredentials(t *testing.T) {
-	ch := make(chan ConfigSinkEvent, 100)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -177,7 +199,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSOperations{}, fake2.NewClientset(), ctrl.Log, namespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{}, fake2.NewClientset(), ctrl.Log, namespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	res, err := c.rotateCredential(ctx, bsp, oidc, rotator)
