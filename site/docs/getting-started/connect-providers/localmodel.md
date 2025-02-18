@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Connect Local Model
 
-This guide will help you configure Envoy AI Gateway to work with locally hosted model such as [DeepSeek R1](https://github.com/deepseek-ai/DeepSeek-R1).
+This guide will help you configure Envoy AI Gateway to work with a locally hosted model such as [DeepSeek R1](https://github.com/deepseek-ai/DeepSeek-R1).
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Before you begin, you'll need:
 - [Ollama](https://ollama.com/) installed on local machine considering for self-hosted model
 - Serve DeepSeek R1 or similar model on your local machine
 
-```
+```text
 ollama pull deepseek-r1:7b
 OLLAMA_HOST=0.0.0.0 ollama serve
 ```
@@ -32,9 +32,11 @@ Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 ### Apply Configuration
 
 Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
-then the secret credential update will be picked up automatically in a few seconds.
+the secret credential update will take effect automatically in a few seconds.
 
 ```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/localmodel.yaml
+
 kubectl apply -f localmodel.yaml
 
 kubectl wait pods --timeout=2m \
