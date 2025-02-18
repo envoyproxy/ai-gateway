@@ -136,8 +136,8 @@ For real AI model responses, see the [Connect Providers](./connect-providers) gu
 ### Understanding the Response Format
 
 The basic setup includes a mock backend that demonstrates the API structure but doesn't provide real AI responses. The response format follows the standard chat completion format with:
-- A `completions` array containing responses
-- Each response having a `role` and `content`
+- A `choices` array containing responses
+- Each message having a `role` and `content`
 
 ## Next Steps
 

@@ -356,7 +356,7 @@ var chatCompletionFakeResponses = []string{
 func getFakeResponse(path string) ([]byte, error) {
 	switch path {
 	case "/v1/chat/completions":
-		const template = `{"choices":[{"message":{"content":"%s"}}]}`
+		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
 			//nolint:gosec
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
