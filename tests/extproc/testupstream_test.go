@@ -10,7 +10,6 @@ package extproc
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -18,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -218,6 +217,18 @@ data: [DONE]
 			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
 		},
 		{
+			name:            "forbidden",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			responseBody:    `{"type": "error","error":{"type":"AccessDeniedException:http://internal.amazon.com/coral/com.amazon.bedrock/","code":"403","message":"You don't have access to the model with the specified model ID."}}`,
+			expPath:         "/model/something/converse",
+			responseStatus:  "403",
+			expStatus:       http.StatusForbidden,
+			expResponseBody: `{"type": "error","error":{"type":"AccessDeniedException:http://internal.amazon.com/coral/com.amazon.bedrock/","code":"403","message":"You don't have access to the model with the specified model ID."}}`,
+		},
+		{
 			name:                "openai - /v1/models",
 			backend:             "openai",
 			path:                "/v1/models",
@@ -258,10 +269,7 @@ data: [DONE]
 				if tc.expResponseBody != "" {
 					body, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
-					if string(body) != tc.expResponseBody {
-						fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), tc.expResponseBody))
-						return false
-					}
+					assert.Equal(t, tc.expResponseBody, string(body))
 				} else if tc.expResponseBodyFunc != nil {
 					body, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
