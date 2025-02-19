@@ -219,7 +219,7 @@ func (c *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct,
 			cost = c.costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
 			cost = c.costs.TotalTokens
-		case filterapi.LLMRequestCostTypeCELExpression:
+		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
 				c.requestHeaders[c.config.modelNameHeaderKey],

@@ -110,8 +110,8 @@ func TestStartControllers(t *testing.T) {
 						},
 					},
 					FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-						Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-						ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+						Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcessor,
+						ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 							Replicas: ptr.To[int32](5), Resources: resourceReq,
 						},
 					},
@@ -376,8 +376,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 				},
 			},
 			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcessor,
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 					Replicas: ptr.To[int32](5), Resources: resourceReq,
 				},
 			},
@@ -462,8 +462,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
 		}
-		origin.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](3)
-		origin.Spec.FilterConfig.ExternalProcess.Resources = newResource
+		origin.Spec.FilterConfig.ExternalProcessor.Replicas = ptr.To[int32](3)
+		origin.Spec.FilterConfig.ExternalProcessor.Resources = newResource
 		err := c.Update(t.Context(), origin)
 		require.NoError(t, err)
 

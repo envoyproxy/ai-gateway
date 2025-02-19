@@ -36,7 +36,7 @@ const (
 
 var sensitiveHeaderKeys = []string{"authorization"}
 
-// Server implements the external process server.
+// Server implements the external processor server.
 type Server struct {
 	logger     *slog.Logger
 	config     *processorConfig
@@ -90,8 +90,8 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]
 		var prog cel.Program
-		if c.CELExpression != "" {
-			prog, err = llmcostcel.NewProgram(c.CELExpression)
+		if c.CEL != "" {
+			prog, err = llmcostcel.NewProgram(c.CEL)
 			if err != nil {
 				return fmt.Errorf("cannot create CEL program for cost: %w", err)
 			}
