@@ -186,14 +186,14 @@ type APIKeyAuth struct {
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
-func UnmarshalConfigYaml(path string) (*Config, error) {
+func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &cfg, nil
+	return &cfg, raw, nil
 }
