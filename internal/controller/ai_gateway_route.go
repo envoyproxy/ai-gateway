@@ -181,15 +181,17 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 
 func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
 	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
+		d.Replicas = nil
+		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 		return
 	}
 	extProc := filterConfig.ExternalProcessor
 	if resource := extProc.Resources; resource != nil {
 		d.Template.Spec.Containers[0].Resources = *resource
+	} else {
+		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 	}
-	if replica := extProc.Replicas; replica != nil {
-		d.Replicas = replica
-	}
+	d.Replicas = extProc.Replicas
 }
 
 // syncAIGatewayRoute implements syncAIGatewayRouteFn.

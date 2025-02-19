@@ -193,6 +193,49 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
 	})
+	t.Run("remove partial config", func(t *testing.T) {
+		t.Run("replicas", func(t *testing.T) {
+			dep.Replicas = ptr.To[int32](123)
+			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
+			})
+			require.Nil(t, dep.Replicas)
+		})
+		t.Run("resources", func(t *testing.T) {
+			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+			}
+			dep.Replicas = ptr.To[int32](123)
+			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{Replicas: ptr.To[int32](123)},
+			})
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)
+			require.Equal(t, int32(123), *dep.Replicas)
+		})
+	})
+	t.Run("remove the whole config", func(t *testing.T) {
+		for _, c := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
+			dep.Replicas = ptr.To[int32](123)
+			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("50Mi"),
+				},
+			}
+			applyExtProcDeploymentConfigUpdate(dep, c)
+			require.Nil(t, dep.Replicas)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)
+		}
+	})
 }
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
