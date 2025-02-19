@@ -323,7 +323,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="externalProcessor"
   type="[AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)"
   required="false"
-  description="ExternalProcessor is the configuration for the external process filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
+  description="ExternalProcessor is the configuration for the external processor filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
 />
 
 
@@ -344,7 +344,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="replicas"
   type="integer"
   required="false"
-  description="Replicas is the number of desired pods of the external process deployment."
+  description="Replicas is the number of desired pods of the external processor deployment."
 /><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
