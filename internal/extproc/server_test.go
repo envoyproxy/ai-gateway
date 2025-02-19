@@ -363,11 +363,15 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")},
 	})
 	// Original one should not be modified, otherwise it will be an unexpected behavior.
-	for _, h := range resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
-		if h.Header.Key == "Authorization" {
-			require.Equal(t, "sensitive", string(h.Header.RawValue))
-		}
-	}
+	originalMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-original-path"}, originalMutation.GetRemoveHeaders())
+	require.Len(t, originalMutation.GetSetHeaders(), 2)
+	require.Contains(t, originalMutation.GetSetHeaders(), &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")},
+	})
+	require.Contains(t, originalMutation.GetSetHeaders(), &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")},
+	})
 	require.Contains(t, buf.String(), "filtering sensitive header")
 }
 
