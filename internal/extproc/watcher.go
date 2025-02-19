@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/yaml"
-
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
@@ -76,7 +74,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	if err != nil && os.IsNotExist(err) {
 		// If the file does not exist, do not fail (which could lead to the extproc process to terminate)
 		// Instead, load the default configuration and keep running unconfigured
-		cfg, raw, err = loadDefaultConfig()
+		cfg, raw = filterapi.MustLoadDefaultConfig()
 	}
 	// If reading the file fails, or loading the default config fails, abort
 	if err != nil {
@@ -130,13 +128,4 @@ func (cw *configWatcher) diff(oldConfig, newConfig string) {
 			cw.l.Debug("config line changed", slog.Int("line", i+1), slog.String("path", cw.path), slog.String("old", oldLine), slog.String("new", newLine))
 		}
 	}
-}
-
-// loadDefaultConfig loads the default configuration when the given config file path is not found.
-func loadDefaultConfig() (*filterapi.Config, []byte, error) {
-	var cfg filterapi.Config
-	if err := yaml.Unmarshal([]byte(filterapi.DefaultConfig), &cfg); err != nil {
-		return nil, nil, err
-	}
-	return &cfg, []byte(filterapi.DefaultConfig), nil
 }

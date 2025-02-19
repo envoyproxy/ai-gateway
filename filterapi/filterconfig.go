@@ -197,3 +197,13 @@ func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
 	}
 	return &cfg, raw, nil
 }
+
+// MustLoadDefaultConfig loads the default configuration.
+// This panics if the configuration fails to be loaded.
+func MustLoadDefaultConfig() (*Config, []byte) {
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
+		panic(err)
+	}
+	return &cfg, []byte(DefaultConfig)
+}

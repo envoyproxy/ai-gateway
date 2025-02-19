@@ -77,13 +77,11 @@ func TestStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
 	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(ctx, path, rcv, logger, time.Millisecond*100)
+	err := StartConfigWatcher(t.Context(), path, rcv, logger, time.Millisecond*100)
 	require.NoError(t, err)
 
-	defaultCfg, _, err := loadDefaultConfig()
+	defaultCfg, _ := filterapi.MustLoadDefaultConfig()
 	require.NoError(t, err)
 
 	// Verify the default config has been loaded.

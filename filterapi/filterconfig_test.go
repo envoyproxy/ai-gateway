@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
@@ -23,11 +22,15 @@ func TestDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, server)
 
-	var cfg filterapi.Config
-	err = yaml.Unmarshal([]byte(filterapi.DefaultConfig), &cfg)
-	require.NoError(t, err)
+	cfg, raw := filterapi.MustLoadDefaultConfig()
+	require.Equal(t, []byte(filterapi.DefaultConfig), raw)
+	require.Equal(t, &filterapi.Config{
+		Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
+		ModelNameHeaderKey:       "x-ai-eg-model",
+	}, cfg)
 
-	err = server.LoadConfig(t.Context(), &cfg)
+	err = server.LoadConfig(t.Context(), cfg)
 	require.NoError(t, err)
 }
 
