@@ -14,7 +14,7 @@ The control plane is responsible for configuring and managing the system. It con
 
 The control plane operates through a chain of components that work together to manage the configuration:
 
-1. The Envoy AI Gateway controller watches the AI Gateway CRD
+1. The Envoy AI Gateway controller watches `AIGatewayRoute` custom resources
 2. When changes are detected, it updates the Envoy Gateway configuration
 3. Envoy Gateway then updates the Envoy Proxy configuration
 4. The data plane (Envoy Proxy) processes AI traffic based on this configuration
