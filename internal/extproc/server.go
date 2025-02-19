@@ -30,11 +30,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-const (
-	redactedKey = "[REDACTED]"
+var (
+	sensitiveHeaderRedactedValue = []byte("[REDACTED]")
+	sensitiveHeaderKeys          = []string{"authorization"}
 )
-
-var sensitiveHeaderKeys = []string{"authorization"}
 
 // Server implements the external processor server.
 type Server struct {
@@ -185,7 +184,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		requestHdrs := req.GetRequestHeaders().Headers
 		// If DEBUG log level is enabled, filter sensitive headers before logging.
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			filteredHdrs := filterSensitiveHeaders(requestHdrs, s.logger, sensitiveHeaderKeys)
+			filteredHdrs := filterSensitiveHeadersForLogging(requestHdrs, sensitiveHeaderKeys)
 			s.logger.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
 		resp, err := p.ProcessRequestHeaders(ctx, requestHdrs)
@@ -199,7 +198,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If DEBUG log level is enabled, filter sensitive body before logging.
 		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			filteredBody := filterSensitiveBody(resp, s.logger, sensitiveHeaderKeys)
+			filteredBody := filterSensitiveBodyForLogging(resp, s.logger, sensitiveHeaderKeys)
 			s.logger.Debug("request body processed", slog.Any("response", filteredBody))
 		}
 		if err != nil {
@@ -239,59 +238,68 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
-// filterSensitiveHeaders filters out sensitive headers from the provided HeaderMap.
+// filterSensitiveHeadersForLogging filters out sensitive headers from the provided HeaderMap for logging.
 // Specifically, it redacts the value of the "authorization" header and logs this action.
-// The function returns a new HeaderMap with the filtered headers.
-func filterSensitiveHeaders(headers *corev3.HeaderMap, logger *slog.Logger, sensitiveKeys []string) *corev3.HeaderMap {
+// This returns a slice of [slog.Attr] of headers, where the value of sensitive headers is redacted.
+func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys []string) []slog.Attr {
 	if headers == nil {
-		logger.Debug("received nil HeaderMap, returning empty HeaderMap")
-		return &corev3.HeaderMap{}
+		return nil
 	}
-	filteredHeaders := &corev3.HeaderMap{}
-	for _, header := range headers.Headers {
+	filteredHeaders := make([]slog.Attr, len(headers.Headers))
+	for i, header := range headers.Headers {
 		// We convert the header key to lowercase to make the comparison case-insensitive but we don't modify the original header.
 		if slices.Contains(sensitiveKeys, strings.ToLower(header.GetKey())) {
-			logger.Debug("filtering sensitive header", slog.String("header_key", header.Key))
-			filteredHeaders.Headers = append(filteredHeaders.Headers, &corev3.HeaderValue{
-				Key:   header.Key,
-				Value: redactedKey,
-			})
+			filteredHeaders[i] = slog.String(header.GetKey(), string(sensitiveHeaderRedactedValue))
 		} else {
-			filteredHeaders.Headers = append(filteredHeaders.Headers, header)
+			if len(header.Value) > 0 {
+				filteredHeaders[i] = slog.String(header.GetKey(), header.Value)
+			} else if utf8.Valid(header.RawValue) {
+				filteredHeaders[i] = slog.String(header.GetKey(), string(header.RawValue))
+			}
 		}
 	}
 	return filteredHeaders
 }
 
-// filterSensitiveBody filters out sensitive information from the response body.
+// filterSensitiveBodyForLogging filters out sensitive information from the response body.
 // It creates a copy of the response body to avoid modifying the original body,
 // as the API Key is needed for the request. The function returns a new
 // ProcessingResponse with the filtered body for logging.
-func filterSensitiveBody(resp *extprocv3.ProcessingResponse, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse {
+func filterSensitiveBodyForLogging(resp *extprocv3.ProcessingResponse, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse {
 	if resp == nil {
-		logger.Debug("received nil ProcessingResponse, returning empty ProcessingResponse")
 		return &extprocv3.ProcessingResponse{}
 	}
-	filteredResp := &extprocv3.ProcessingResponse{
+	original := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	originalHeaderMutation := original.RequestBody.Response.GetHeaderMutation()
+	redactedHeaderMutation := &extprocv3.HeaderMutation{
+		RemoveHeaders: originalHeaderMutation.GetRemoveHeaders(),
+	}
+	for _, setHeader := range originalHeaderMutation.GetSetHeaders() {
+		// We convert the header key to lowercase to make the comparison case-insensitive, but we don't modify the original header.
+		if slices.Contains(sensitiveKeys, strings.ToLower(setHeader.Header.GetKey())) {
+			logger.Debug("filtering sensitive header", slog.String("header_key", setHeader.Header.Key))
+			redactedHeaderMutation.SetHeaders = append(redactedHeaderMutation.SetHeaders, &corev3.HeaderValueOption{
+				Header: &corev3.HeaderValue{
+					Key:      setHeader.Header.Key,
+					RawValue: sensitiveHeaderRedactedValue,
+				},
+			})
+		} else {
+			redactedHeaderMutation.SetHeaders = append(redactedHeaderMutation.SetHeaders, setHeader)
+		}
+	}
+	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation(),
-					BodyMutation:    resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetBodyMutation(),
-					ClearRouteCache: resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetClearRouteCache(),
+					HeaderMutation:  redactedHeaderMutation,
+					BodyMutation:    original.RequestBody.Response.GetBodyMutation(),
+					ClearRouteCache: original.RequestBody.Response.GetClearRouteCache(),
 				},
 			},
 		},
 		ModeOverride: resp.ModeOverride,
 	}
-	for _, setHeader := range filteredResp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
-		// We convert the header key to lowercase to make the comparison case-insensitive but we don't modify the original header.
-		if slices.Contains(sensitiveKeys, strings.ToLower(setHeader.Header.GetKey())) {
-			logger.Debug("filtering sensitive header", slog.String("header_key", setHeader.Header.Key))
-			setHeader.Header.RawValue = []byte(redactedKey)
-		}
-	}
-	return filteredResp
 }
 
 // headersToMap converts a [corev3.HeaderMap] to a Go map for easier processing.

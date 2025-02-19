@@ -308,22 +308,26 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	})
 }
 
-func TestFilterSensitiveHeaders(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
-	hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "authorization", Value: "sensitive"}}}
-	filtered := filterSensitiveHeaders(hm, logger, []string{"authorization"})
-	require.Len(t, filtered.Headers, 2)
-	for _, h := range filtered.Headers {
-		if h.Key == "authorization" {
-			require.Equal(t, "[REDACTED]", h.Value)
-		} else {
-			require.Equal(t, "bar", h.Value)
-		}
+func Test_filterSensitiveHeadersForLogging(t *testing.T) {
+	hm := &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{
+			{Key: "foo", Value: "bar"}, {Key: "dog", RawValue: []byte("cat")}, {Key: "authorization", Value: "sensitive"},
+		},
 	}
-	require.Contains(t, buf.String(), "filtering sensitive header")
+	filtered := filterSensitiveHeadersForLogging(hm, []string{"authorization"})
+	require.Equal(t, []slog.Attr{
+		slog.String("foo", "bar"),
+		slog.String("dog", "cat"),
+		slog.String("authorization", "[REDACTED]"),
+	}, filtered)
+	// Check original one should not be modified.
+	require.Len(t, hm.Headers, 3)
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "foo", Value: "bar"})
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "dog", RawValue: []byte("cat")})
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "authorization", Value: "sensitive"})
 }
 
-func TestFilterSensitiveBody(t *testing.T) {
+func Test_filterSensitiveBodyForLogging(t *testing.T) {
 	logger, buf := newTestLoggerWithBuffer()
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -332,25 +336,36 @@ func TestFilterSensitiveBody(t *testing.T) {
 					HeaderMutation: &extprocv3.HeaderMutation{
 						SetHeaders: []*corev3.HeaderValueOption{
 							{Header: &corev3.HeaderValue{
-								Key:   ":path",
-								Value: "/model/some-random-model/converse",
+								Key:      ":path",
+								RawValue: []byte("/model/some-random-model/converse"),
 							}},
 							{Header: &corev3.HeaderValue{
-								Key:   "Authorization",
-								Value: "sensitive",
+								Key:      "Authorization",
+								RawValue: []byte("sensitive"),
 							}},
 						},
+						RemoveHeaders: []string{"x-envoy-original-path"},
 					},
 					BodyMutation: &extprocv3.BodyMutation{},
 				},
 			},
 		},
 	}
-	filtered := filterSensitiveBody(resp, logger, []string{"authorization"})
+	filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
 	require.NotNil(t, filtered)
-	for _, h := range filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
+	filteredMutation := filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
+	require.Len(t, filteredMutation.GetSetHeaders(), 2)
+	require.Contains(t, filteredMutation.GetSetHeaders(), &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")},
+	})
+	require.Contains(t, filteredMutation.GetSetHeaders(), &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")},
+	})
+	// Original one should not be modified, otherwise it will be an unexpected behavior.
+	for _, h := range resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
 		if h.Header.Key == "Authorization" {
-			require.Equal(t, "[REDACTED]", string(h.Header.RawValue))
+			require.Equal(t, "sensitive", string(h.Header.RawValue))
 		}
 	}
 	require.Contains(t, buf.String(), "filtering sensitive header")
