@@ -212,6 +212,11 @@ type AIGatewayRouteRule struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
+
+	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// +optional
+	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRef is a reference to a AIServiceBackend with a weight.

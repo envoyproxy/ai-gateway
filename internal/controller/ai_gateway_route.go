@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -44,6 +45,9 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
+
+	defaultRequestTimeout        = "60s"
+	defaultBackendRequestTimeout = "60s"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
@@ -391,14 +395,28 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
-	dedup := make(map[string]struct{})
+	// for two usages:
+	// 1. Deduplicate BackendRefs
+	// 2. Store timeout value
+	dedup := make(map[string]*gwapiv1.HTTPRouteTimeouts)
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, br := range rule.BackendRefs {
 			key := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if _, ok := dedup[key]; ok {
+			if timeout, ok := dedup[key]; ok {
+				// use large one if two timeout value for same backend
+				if rule.Timeouts != nil {
+					t, err := combineTimeouts(timeout, rule.Timeouts)
+					if err != nil {
+						return err
+					}
+					dedup[key] = t
+				}
 				continue
 			}
-			dedup[key] = struct{}{}
+			if rule.Timeouts == nil {
+				dedup[key] = defaultTimeout()
+			}
+			dedup[key] = rule.Timeouts
 			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 			if err != nil {
 				return fmt.Errorf("AIServiceBackend %s not found", key)
@@ -427,7 +445,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
 			},
-			Filters: rewriteFilters,
+			Filters:  rewriteFilters,
+			Timeouts: dedup[key],
 		}
 		rules[i] = rule
 	}
@@ -441,7 +460,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			BackendRefs: []gwapiv1.HTTPBackendRef{
 				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 			},
-			Filters: rewriteFilters,
+			Filters:  rewriteFilters,
+			Timeouts: defaultTimeout(),
 		})
 	}
 
@@ -674,4 +694,49 @@ func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string
 
 func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
+}
+
+func defaultTimeout() *gwapiv1.HTTPRouteTimeouts {
+	var (
+		requestTimeout        = gwapiv1.Duration(defaultRequestTimeout)
+		backendRequestTimeout = gwapiv1.Duration(defaultBackendRequestTimeout)
+	)
+	return &gwapiv1.HTTPRouteTimeouts{
+		Request:        &requestTimeout,
+		BackendRequest: &backendRequestTimeout,
+	}
+}
+
+// compareDurations returns larger Request timeout and BackendRequest timeout.
+func combineTimeouts(a, b *gwapiv1.HTTPRouteTimeouts) (*gwapiv1.HTTPRouteTimeouts, error) {
+	requestTimeout, err := combineDurations(a.Request, b.Request)
+	if err != nil {
+		return nil, err
+	}
+
+	backenRequestTimeout, err := combineDurations(a.BackendRequest, b.BackendRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gwapiv1.HTTPRouteTimeouts{Request: requestTimeout, BackendRequest: backenRequestTimeout}, nil
+}
+
+// combineDurations returns larger one.
+func combineDurations(a, b *gwapiv1.Duration) (*gwapiv1.Duration, error) {
+	d1, err := time.ParseDuration(string(*a))
+	if err != nil {
+		return nil, err
+	}
+
+	d2, err := time.ParseDuration(string(*b))
+	if err != nil {
+		return nil, err
+	}
+
+	if d1 > d2 {
+		return a, nil
+	}
+
+	return b, nil
 }
