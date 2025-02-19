@@ -45,7 +45,7 @@ help:
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
 	@echo "  test-e2e       	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
-	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-crdcel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
 	@echo ""
