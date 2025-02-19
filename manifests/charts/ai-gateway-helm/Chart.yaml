@@ -14,7 +14,7 @@ icon: https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/si
 
 maintainers:
   - name: envoy-ai-gateway-maintainers
-    url: https://github.com/envoyproxy/gateway/blob/main/CODEOWNERS
+    url: https://github.com/envoyproxy/ai-gateway/blob/main/CODEOWNERS
 
 keywords:
   - gateway-api
