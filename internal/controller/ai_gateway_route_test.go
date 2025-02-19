@@ -265,6 +265,9 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the first backend.
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
+
+		require.Len(t, route.Status.Conditions, 1)
+		require.Equal(t, metav1.ConditionTrue, route.Status.Conditions[0].Status)
 	})
 
 	// Check the namespace has the default host rewrite filter.
@@ -1022,5 +1025,92 @@ func TestAIGatewayRouteController_AnnotateExtProcPods(t *testing.T) {
 		pod, err := kube.CoreV1().Pods("foons").Get(t.Context(), "somepod"+strconv.Itoa(i), metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, uuid, pod.Annotations[extProcConfigAnnotationKey])
+	}
+}
+
+func TestAIGatewayRouteController_PatchAIGatewayRouteStatus(t *testing.T) {
+	type testCase struct {
+		name               string
+		route              *aigv1a1.AIGatewayRoute
+		needCreate         bool
+		expectConditionLen int
+		expectError        bool
+	}
+
+	testCases := []testCase{
+		{
+			name: "test patchAIGatewayRouteStatus without conditions expect success",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "route1",
+					Namespace: "default",
+				},
+			},
+			needCreate:         true,
+			expectConditionLen: 1,
+			expectError:        false,
+		},
+		{
+			name: "test patchAIGatewayRouteStatus with conditions expect success",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "route2",
+					Namespace: "default",
+				},
+				Status: aigv1a1.AIGatewayRouteStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   aiGatewayRouteConditionTypeReconciled,
+							Status: metav1.ConditionFalse,
+						},
+					},
+				},
+			},
+			needCreate:         true,
+			expectConditionLen: 2,
+			expectError:        false,
+		},
+		{
+			name: "test patchAIGatewayRouteStatus expect failure",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nonexist",
+					Namespace: "default",
+				},
+			},
+			needCreate:  false,
+			expectError: true,
+		},
+	}
+
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "defaultExtProcImage", "debug")
+
+	condition := metav1.Condition{
+		Type:   aiGatewayRouteConditionTypeReconciled,
+		Status: metav1.ConditionTrue,
+		Reason: "testReason",
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.needCreate {
+				err := s.client.Create(t.Context(), tc.route)
+				require.NoError(t, err)
+			}
+
+			err := s.patchAIGatewayRouteStatus(t.Context(), tc.route, condition)
+
+			if tc.expectError {
+				require.ErrorContains(t, err, "aigatewayroutes.aigateway.envoyproxy.io \"nonexist\" not found")
+				return
+			}
+			require.NoError(t, err)
+
+			require.Len(t, tc.route.Status.Conditions, tc.expectConditionLen)
+			require.Equal(t, condition, tc.route.Status.Conditions[tc.expectConditionLen-1])
+		})
 	}
 }
