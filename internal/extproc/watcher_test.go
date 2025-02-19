@@ -126,8 +126,8 @@ rules:
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
 
 	// Initial loading should have happened.
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.NotEqual(c, defaultCfg, rcv.getConfig())
+	require.Eventually(t, func() bool {
+		return rcv.getConfig() != defaultCfg
 	}, 1*time.Second, 100*time.Millisecond)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)
