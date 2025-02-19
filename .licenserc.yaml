@@ -33,3 +33,4 @@ header:
     - '.yamllint*'
     - LICENSE
     - CODEOWNERS
+    - pre-commit.sh
