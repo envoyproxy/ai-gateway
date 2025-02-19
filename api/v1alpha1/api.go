@@ -256,7 +256,7 @@ type AIGatewayFilterConfig struct {
 	// +kubebuilder:default=ExternalProcessor
 	Type AIGatewayFilterConfigType `json:"type"`
 
-	// ExternalProcessor is the configuration for the external process filter.
+	// ExternalProcessor is the configuration for the external processor filter.
 	// This is optional, and if not set, the default values of Deployment spec will be used.
 	//
 	// +optional
@@ -274,7 +274,7 @@ const (
 )
 
 type AIGatewayFilterConfigExternalProcessor struct {
-	// Replicas is the number of desired pods of the external process deployment.
+	// Replicas is the number of desired pods of the external processor deployment.
 	//
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
