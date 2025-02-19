@@ -355,23 +355,17 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 	require.NotNil(t, filtered)
 	filteredMutation := filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
-	require.Len(t, filteredMutation.GetSetHeaders(), 2)
-	require.Contains(t, filteredMutation.GetSetHeaders(), &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")},
-	})
-	require.Contains(t, filteredMutation.GetSetHeaders(), &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")},
-	})
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
+	}, filteredMutation.GetSetHeaders())
 	// Original one should not be modified, otherwise it will be an unexpected behavior.
 	originalMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-original-path"}, originalMutation.GetRemoveHeaders())
-	require.Len(t, originalMutation.GetSetHeaders(), 2)
-	require.Contains(t, originalMutation.GetSetHeaders(), &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")},
-	})
-	require.Contains(t, originalMutation.GetSetHeaders(), &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")},
-	})
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")}},
+	}, originalMutation.GetSetHeaders())
 	require.Contains(t, buf.String(), "filtering sensitive header")
 }
 

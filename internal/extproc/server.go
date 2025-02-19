@@ -273,6 +273,7 @@ func filterSensitiveBodyForLogging(resp *extprocv3.ProcessingResponse, logger *s
 	originalHeaderMutation := original.RequestBody.Response.GetHeaderMutation()
 	redactedHeaderMutation := &extprocv3.HeaderMutation{
 		RemoveHeaders: originalHeaderMutation.GetRemoveHeaders(),
+		SetHeaders:    make([]*corev3.HeaderValueOption, 0, len(originalHeaderMutation.GetSetHeaders())),
 	}
 	for _, setHeader := range originalHeaderMutation.GetSetHeaders() {
 		// We convert the header key to lowercase to make the comparison case-insensitive, but we don't modify the original header.
