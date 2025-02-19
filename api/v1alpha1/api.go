@@ -95,7 +95,7 @@ type AIGatewayRouteSpec struct {
 	// An AI Gateway filter is responsible for the transformation of the request and response
 	// as well as the routing behavior based on the model name extracted from the request content, etc.
 	//
-	// Currently, the filter is only implemented as an external process filter, which might be
+	// Currently, the filter is only implemented as an external processor filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
@@ -278,12 +278,12 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	//
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
-	// Resources required by the external process container.
+	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// TODO: maybe adding the option not to deploy the external process filter and let the user deploy it manually?
+	// TODO: maybe adding the option not to deploy the external processor filter and let the user deploy it manually?
 	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 

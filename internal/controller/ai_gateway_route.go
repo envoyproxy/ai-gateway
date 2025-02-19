@@ -154,7 +154,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 }
 
 // ensuresExtProcConfigMapExists ensures that a configmap exists for the external process.
-// This must happen before the external process deployment is created.
+// This must happen before the external processor deployment is created.
 func (c *AIGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) (err error) {
 	name := extProcName(aiGatewayRoute)
 	// Check if a configmap exists for extproc exists, and if not, create one with the default config.
@@ -277,7 +277,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-// updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
+// updateExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(ctx, extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {

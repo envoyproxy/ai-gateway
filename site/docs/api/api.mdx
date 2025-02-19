@@ -349,7 +349,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external process container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
 />
 
 
@@ -483,7 +483,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="filterConfig"
   type="[AIGatewayFilterConfig](#aigatewayfilterconfig)"
   required="true"
-  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external process filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
+  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external processor filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
 /><ApiField
   name="llmRequestCosts"
   type="[LLMRequestCost](#llmrequestcost) array"

@@ -36,7 +36,7 @@ const (
 
 var sensitiveHeaderKeys = []string{"authorization"}
 
-// Server implements the external process server.
+// Server implements the external processor server.
 type Server struct {
 	logger     *slog.Logger
 	config     *processorConfig
