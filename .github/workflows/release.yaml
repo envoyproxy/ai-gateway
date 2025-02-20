@@ -27,7 +27,7 @@ jobs:
   release:
     needs: [docker_push, helm_push]
     name: Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Create a request candidate release
         if: ${{ contains(github.ref, '-rc') }}
