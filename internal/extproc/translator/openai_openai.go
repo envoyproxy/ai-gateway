@@ -16,7 +16,6 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
@@ -32,7 +31,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body RequestBody) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
 	req, ok := body.(*openai.ChatCompletionRequest)

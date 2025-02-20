@@ -124,7 +124,7 @@ Rules []AIGatewayRouteRule `json:"rules"`
 // An AI Gateway filter is responsible for the transformation of the request and response
 // as well as the routing behavior based on the model name extracted from the request content, etc.
 //
-// Currently, the filter is only implemented as an external process filter, which might be
+// Currently, the filter is only implemented as an external processor filter, which might be
 // extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
@@ -184,9 +184,9 @@ type LLMRequestCost struct {
 MetadataKey string `json:"metadataKey"`
 // Type is the kind of the request cost calculation.
 Type LLMRequestCostType `json:"type"`
-// CELExpression is the CEL expression to calculate the cost of the request.
-// This is not empty when the Type is LLMRequestCostTypeCELExpression.
-CELExpression string `json:"celExpression,omitempty"`
+// CEL is the CEL expression to calculate the cost of the request.
+// This is not empty when the Type is LLMRequestCostTypeCEL.
+CEL string `json:"cel,omitempty"`
 }
 ```
 

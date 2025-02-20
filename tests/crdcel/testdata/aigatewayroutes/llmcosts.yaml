@@ -35,4 +35,4 @@ spec:
       type: TotalToken
     - metadataKey: some_cel_cost
       type: CEL
-      celExpression: "llm_input_token + llm_output_token + llm_total_token"
+      cel: "llm_input_token + llm_output_token + llm_total_token"

@@ -38,6 +38,19 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # Example of a podEnv
+  # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
+  #  - key: AI_GATEWAY_STS_PROXY_URL
+  #    value: some-proxy-placeholder
+  podEnv: {}
+  # Example of volumes
+  #  - mountPath: /placeholder/path
+  #    name: volume-name
+  #    subPath: placeholder-sub-path
+  #    configmap:
+  #      defaultMode: placeholder
+  #      name: configmap-name
+  volumes: {}
   service:
     type: ClusterIP
     ports:

@@ -96,8 +96,3 @@ If you encounter issues:
    - 401/403: Invalid credentials or insufficient permissions
    - 404: Model not found or not available in region
    - 429: Rate limit exceeded
-
-## Next Steps
-
-After configuring AWS Bedrock:
-- [Connect OpenAI](./openai.md) to add another provider

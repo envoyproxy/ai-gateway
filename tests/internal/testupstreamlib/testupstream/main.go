@@ -32,7 +32,7 @@ var logger = log.New(os.Stdout, "[testupstream] ", 0)
 // This also checks if the request content matches the expected headers, path, and body specified in
 // expectedHeadersKey, expectedPathHeaderKey, and expectedRequestBodyHeaderKey.
 //
-// This is useful to test the external process request to the Envoy Gateway LLM Controller.
+// This is useful to test the external processor request to the Envoy Gateway LLM Controller.
 func main() {
 	logger.Println("Version: ", version.Version)
 	l, err := net.Listen("tcp", ":8080") // nolint: gosec
@@ -356,7 +356,7 @@ var chatCompletionFakeResponses = []string{
 func getFakeResponse(path string) ([]byte, error) {
 	switch path {
 	case "/v1/chat/completions":
-		const template = `{"choices":[{"message":{"content":"%s"}}]}`
+		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
 			//nolint:gosec
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).

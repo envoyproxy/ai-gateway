@@ -86,7 +86,7 @@ If you encounter issues:
    kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
    ```
 
-4. View External Process Logs
+4. View External Processor Logs
 
    ```shell
    kubectl logs services/ai-eg-route-extproc-envoy-ai-gateway-basic

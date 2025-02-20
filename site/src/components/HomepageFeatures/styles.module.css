@@ -6,6 +6,7 @@
 }
 
 .featureSvg {
-  max-height: 150px;
-  max-width: 150px;
+  max-height: 120px;
+  max-width: 120px;
+  margin-bottom: 1.5rem;
 }

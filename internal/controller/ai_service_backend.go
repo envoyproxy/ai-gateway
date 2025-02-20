@@ -7,6 +7,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
@@ -17,38 +19,61 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// aiBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
+// AIBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
 //
-// This handles the AIServiceBackend resource and sends it to the config sink so that it can modify the configuration together with the state of other resources.
-type aiBackendController struct {
+// Exported for testing purposes.
+type AIBackendController struct {
 	client    client.Client
 	kube      kubernetes.Interface
 	logger    logr.Logger
-	eventChan chan ConfigSinkEvent
+	syncRoute syncAIGatewayRouteFn
 }
 
 // NewAIServiceBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, ch chan ConfigSinkEvent) reconcile.TypedReconciler[reconcile.Request] {
-	return &aiBackendController{
+func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncRoute syncAIGatewayRouteFn) *AIBackendController {
+	return &AIBackendController{
 		client:    client,
 		kube:      kube,
 		logger:    logger,
-		eventChan: ch,
+		syncRoute: syncRoute,
 	}
 }
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func (l *aiBackendController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var aiBackend aigv1a1.AIServiceBackend
-	if err := l.client.Get(ctx, req.NamespacedName, &aiBackend); err != nil {
+	if err := c.client.Get(ctx, req.NamespacedName, &aiBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			l.logger.Info("Deleting AIServiceBackend",
+			c.logger.Info("Deleting AIServiceBackend",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
-	// Send the AIServiceBackend to the config sink so that it can modify the configuration together with the state of other resources.
-	l.eventChan <- aiBackend.DeepCopy()
-	return ctrl.Result{}, nil
+	c.logger.Info("Reconciling AIServiceBackend", "namespace", req.Namespace, "name", req.Name)
+	return ctrl.Result{}, c.syncAIServiceBackend(ctx, &aiBackend)
+}
+
+// syncAIServiceBackend implements syncAIServiceBackendFn.
+func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
+	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
+	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
+	err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
+	if err != nil {
+		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
+	}
+	var errs []error
+	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
+		c.logger.Info("syncing AIGatewayRoute",
+			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
+			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
+		)
+		if err := c.syncRoute(ctx, &aiGatewayRoute); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", aiGatewayRoute.Name, err))
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }

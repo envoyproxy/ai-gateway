@@ -70,6 +70,66 @@
   .heroImage{
     max-height: 30vh;
   }
+  .buttons{
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 3rem;
+    .button{
+      background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        rgba(255, 20, 147, 0.1) 100%
+      );
+      backdrop-filter: blur(10px);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 25px;
+      padding: 0.8rem 2rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 15px rgba(108, 24, 153, 0.2);
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 119, 0, 0.1) 0%,
+          rgba(255, 255, 255, 0.1) 100%
+        );
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      &:hover {
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.15) 0%,
+          rgba(255, 20, 147, 0.15) 100%
+        );
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(108, 24, 153, 0.3);
+
+        &::before {
+          opacity: 1;
+        }
+      }
+
+      &:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 10px rgba(108, 24, 153, 0.2);
+      }
+    }
+  }
 }
 
   @media screen and (max-width: 996px) {
@@ -77,7 +137,17 @@
     padding: 2rem 0rem 10rem 0rem;
     align-items: start;
     clip-path: polygon(0 0, 100% 0, 100% 87%, 0 100%);
+
+    .hero__subtitle{
+      font-size: 1.2rem;
+    }
+
+    .buttons{
+      flex-direction: column-reverse;
+
+    }
   }
+
 }
   @media screen and (max-width: 500px) {
     .heroBanner {
@@ -121,7 +191,6 @@
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
   color: var(--custom-heading-color);
   font-weight: 700;
-  margin-top: 1em;
   margin-bottom: 1em;
 }
 

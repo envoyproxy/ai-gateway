@@ -18,27 +18,66 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestAIServiceBackendController_Reconcile(t *testing.T) {
-	ch := make(chan ConfigSinkEvent, 100)
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := NewAIServiceBackendController(cl, fake2.NewClientset(), ctrl.Log, ch)
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIGatewayRoute]()
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	originals := []*aigv1a1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					{
+						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+							Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
+						},
+					},
+				},
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						Matches:     []aigv1a1.AIGatewayRouteRuleMatch{{}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "mybackend"}},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute2", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					{
+						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+							Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
+						},
+					},
+				},
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						Matches:     []aigv1a1.AIGatewayRouteRuleMatch{{}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "mybackend"}},
+					},
+				},
+			},
+		},
+	}
+	for _, route := range originals {
+		require.NoError(t, fakeClient.Create(t.Context(), route))
+	}
 
-	err := cl.Create(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
-	item, ok := <-ch
-	require.True(t, ok)
-	require.IsType(t, &aigv1a1.AIServiceBackend{}, item)
-	require.Equal(t, "mybackend", item.(*aigv1a1.AIServiceBackend).Name)
-	require.Equal(t, "default", item.(*aigv1a1.AIServiceBackend).Namespace)
+	require.Equal(t, originals, syncFn.GetItems())
 
 	// Test the case where the AIServiceBackend is being deleted.
-	err = cl.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err = fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)

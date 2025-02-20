@@ -55,7 +55,7 @@ spec:
     # otherwise it returns 0 (no token usage).
     - metadataKey: llm_cel_calculated_token
       type: CEL
-      celExpression: "input_tokens == uint(3) ? 100000000 : 0"
+      cel: "input_tokens == uint(3) ? 100000000 : 0"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

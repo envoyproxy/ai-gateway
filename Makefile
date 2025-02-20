@@ -3,6 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Read any local configuration. This is an optional, local git-ignored file that can be used
+# to set any value commonly used for development. This helps not having to set the overrides
+# in the command line every time.
+-include .makerc
+
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
@@ -25,7 +30,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
-GO_TEST_ARGS ?= -v -race
+GO_TEST_ARGS ?= -race
 # Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
 GO_TEST_E2E_ARGS ?= -count=1
 
@@ -45,7 +50,7 @@ help:
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
 	@echo "  test-e2e       	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
-	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-crdcel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
 	@echo ""
@@ -151,7 +156,7 @@ test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc -v
+	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller

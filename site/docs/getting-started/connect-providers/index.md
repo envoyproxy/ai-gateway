@@ -31,11 +31,11 @@ Before configuring any provider:
      --for=delete
    ```
 
-3.  Download configuration template
+3. Download configuration template
 
-    ```shell
-    curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-    ```
+   ```shell
+   curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
+   ```
 
 ## Security Best Practices
 

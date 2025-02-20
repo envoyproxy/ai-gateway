@@ -12,8 +12,6 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 var (
@@ -32,6 +30,9 @@ func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
 }
 
+// RequestBody is the union of all request body types. TODO: maybe we should just define Translator interface per endpoint.
+type RequestBody any
+
 // Translator translates the request and response messages between the client and the backend API schemas for a specific path.
 // The implementation can embed [defaultTranslator] to avoid implementing all methods.
 //
@@ -43,7 +44,7 @@ type Translator interface {
 	// 	- `body` is the request body already parsed by [router.RequestBodyParser]. The concrete type is specific to the schema and the path.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `override` that to change the processing mode. This is used to process streaming requests properly.
-	RequestBody(body router.RequestBody) (
+	RequestBody(body RequestBody) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		override *extprocv3http.ProcessingMode,
