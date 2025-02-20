@@ -8,6 +8,7 @@ package extproc
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -40,9 +42,30 @@ func (m *mockReceiver) getConfig() *filterapi.Config {
 	return m.cfg
 }
 
+var _ io.Writer = (*syncBuffer)(nil)
+
+// syncBuffer is a bytes.Buffer that is safe for concurrent read/write access.
+// used just in the tests to safely read the logs in assertions without data races.
+type syncBuffer struct {
+	mu sync.RWMutex
+	b  *bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.b.String()
+}
+
 // newTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
-func newTestLoggerWithBuffer() (*slog.Logger, *bytes.Buffer) {
-	buf := &bytes.Buffer{}
+func newTestLoggerWithBuffer() (*slog.Logger, *syncBuffer) {
+	buf := &syncBuffer{b: &bytes.Buffer{}}
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
@@ -54,7 +77,22 @@ func TestStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
-	require.NoError(t, os.WriteFile(path, []byte{}, 0o600))
+	logger, buf := newTestLoggerWithBuffer()
+	err := StartConfigWatcher(t.Context(), path, rcv, logger, time.Millisecond*100)
+	require.NoError(t, err)
+
+	defaultCfg, _ := filterapi.MustLoadDefaultConfig()
+	require.NoError(t, err)
+
+	// Verify the default config has been loaded.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, defaultCfg, rcv.getConfig())
+	}, 1*time.Second, 100*time.Millisecond)
+
+	// Verify the buffer contains the default config loading.
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "config file does not exist; loading default config")
+	}, 1*time.Second, 100*time.Millisecond, buf.String())
 
 	// Create the initial config file.
 	cfg := `
@@ -84,15 +122,10 @@ rules:
     value: gpt4.4444
 `
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(ctx, path, rcv, logger, time.Millisecond*100)
-	require.NoError(t, err)
 
 	// Initial loading should have happened.
 	require.Eventually(t, func() bool {
-		return rcv.getConfig() != nil
+		return rcv.getConfig() != defaultCfg
 	}, 1*time.Second, 100*time.Millisecond)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)

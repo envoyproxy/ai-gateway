@@ -201,7 +201,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 }
 
 // ensuresExtProcConfigMapExists ensures that a configmap exists for the external process.
-// This must happen before the external process deployment is created.
+// This must happen before the external processor deployment is created.
 func (c *AIGatewayRouteController) ensuresExtProcConfigMapExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) (err error) {
 	name := extProcName(aiGatewayRoute)
 	// Check if a configmap exists for extproc exists, and if not, create one with the default config.
@@ -227,16 +227,18 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 }
 
 func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
-	if filterConfig == nil || filterConfig.ExternalProcess == nil {
+	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
+		d.Replicas = nil
+		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 		return
 	}
-	extProc := filterConfig.ExternalProcess
+	extProc := filterConfig.ExternalProcessor
 	if resource := extProc.Resources; resource != nil {
 		d.Template.Spec.Containers[0].Resources = *resource
+	} else {
+		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 	}
-	if replica := extProc.Replicas; replica != nil {
-		d.Replicas = replica
-	}
+	d.Replicas = extProc.Replicas
 }
 
 // syncAIGatewayRoute implements syncAIGatewayRouteFn.
@@ -371,7 +373,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-// updateExtProcConfigMap updates the external process configmap with the new AIGatewayRoute.
+// updateExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	configMap, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Get(ctx, extProcName(aiGatewayRoute), metav1.GetOptions{})
 	if err != nil {
@@ -454,14 +456,14 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 		case aigv1a1.LLMRequestCostTypeTotalToken:
 			fc.Type = filterapi.LLMRequestCostTypeTotalToken
 		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterapi.LLMRequestCostTypeCELExpression
-			expr := *cost.CELExpression
+			fc.Type = filterapi.LLMRequestCostTypeCEL
+			expr := *cost.CEL
 			// Sanity check the CEL expression.
 			_, err = llmcostcel.NewProgram(expr)
 			if err != nil {
 				return fmt.Errorf("invalid CEL expression: %w", err)
 			}
-			fc.CELExpression = expr
+			fc.CEL = expr
 		default:
 			return fmt.Errorf("unknown request cost type: %s", cost.Type)
 		}

@@ -3,6 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Read any local configuration. This is an optional, local git-ignored file that can be used
+# to set any value commonly used for development. This helps not having to set the overrides
+# in the command line every time.
+-include .makerc
+
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
@@ -45,7 +50,7 @@ help:
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
 	@echo "  test-e2e       	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
-	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-crdcel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
 	@echo ""

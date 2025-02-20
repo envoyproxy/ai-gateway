@@ -114,11 +114,11 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 				{
 					celProg:        celProgInt,
-					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel_int"},
+					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
 				},
 				{
 					celProg:        celProgUint,
-					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel_uint"},
+					LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
 				},
 			},
 		}}

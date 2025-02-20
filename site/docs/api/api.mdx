@@ -286,7 +286,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 
 ### Available Types
 - [AIGatewayFilterConfig](#aigatewayfilterconfig)
-- [AIGatewayFilterConfigExternalProcess](#aigatewayfilterconfigexternalprocess)
+- [AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)
 - [AIGatewayFilterConfigType](#aigatewayfilterconfigtype)
 - [AIGatewayRouteRule](#aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
@@ -323,17 +323,17 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="type"
   type="[AIGatewayFilterConfigType](#aigatewayfilterconfigtype)"
   required="true"
-  defaultValue="ExternalProcess"
-  description="Type specifies the type of the filter configuration.<br />Currently, only ExternalProcess is supported, and default is ExternalProcess."
+  defaultValue="ExternalProcessor"
+  description="Type specifies the type of the filter configuration.<br />Currently, only ExternalProcessor is supported, and default is ExternalProcessor."
 /><ApiField
-  name="externalProcess"
-  type="[AIGatewayFilterConfigExternalProcess](#aigatewayfilterconfigexternalprocess)"
+  name="externalProcessor"
+  type="[AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)"
   required="false"
-  description="ExternalProcess is the configuration for the external process filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
+  description="ExternalProcessor is the configuration for the external processor filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
 />
 
 
-#### AIGatewayFilterConfigExternalProcess
+#### AIGatewayFilterConfigExternalProcessor
 
 
 
@@ -350,12 +350,12 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="replicas"
   type="integer"
   required="false"
-  description="Replicas is the number of desired pods of the external process deployment."
+  description="Replicas is the number of desired pods of the external processor deployment."
 /><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external process container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
 />
 
 
@@ -373,7 +373,7 @@ AIGatewayFilterConfigType specifies the type of the filter configuration.
 ##### Possible Values
 
 <ApiField
-  name="ExternalProcess"
+  name="ExternalProcessor"
   type="enum"
   required="false"
   description=""
@@ -489,7 +489,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="filterConfig"
   type="[AIGatewayFilterConfig](#aigatewayfilterconfig)"
   required="true"
-  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external process filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
+  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external processor filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
 /><ApiField
   name="llmRequestCosts"
   type="[LLMRequestCost](#llmrequestcost) array"
@@ -774,10 +774,10 @@ LLMRequestCost configures each request cost.
   required="true"
   description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />and `CEL`."
 /><ApiField
-  name="celExpression"
+  name="cel"
   type="string"
   required="false"
-  description="CELExpression is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
+  description="CEL is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
 />
 
 

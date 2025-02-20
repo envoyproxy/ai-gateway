@@ -88,6 +88,10 @@ func (c *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				requeue, err = c.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
 				if err != nil {
 					c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
+				} else {
+					c.logger.Info(
+						fmt.Sprintf("successfully rotated credentials for %s in namespace %s of auth type %s, renewing in %f minutes",
+							req.Name, req.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
 				}
 			} else {
 				requeue = time.Until(rotationTime)

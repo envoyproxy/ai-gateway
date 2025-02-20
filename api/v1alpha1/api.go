@@ -101,7 +101,7 @@ type AIGatewayRouteSpec struct {
 	// An AI Gateway filter is responsible for the transformation of the request and response
 	// as well as the routing behavior based on the model name extracted from the request content, etc.
 	//
-	// Currently, the filter is only implemented as an external process filter, which might be
+	// Currently, the filter is only implemented as an external processor filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
@@ -257,39 +257,39 @@ type AIGatewayRouteRuleMatch struct {
 type AIGatewayFilterConfig struct {
 	// Type specifies the type of the filter configuration.
 	//
-	// Currently, only ExternalProcess is supported, and default is ExternalProcess.
+	// Currently, only ExternalProcessor is supported, and default is ExternalProcessor.
 	//
-	// +kubebuilder:default=ExternalProcess
+	// +kubebuilder:default=ExternalProcessor
 	Type AIGatewayFilterConfigType `json:"type"`
 
-	// ExternalProcess is the configuration for the external process filter.
+	// ExternalProcessor is the configuration for the external processor filter.
 	// This is optional, and if not set, the default values of Deployment spec will be used.
 	//
 	// +optional
-	ExternalProcess *AIGatewayFilterConfigExternalProcess `json:"externalProcess,omitempty"`
+	ExternalProcessor *AIGatewayFilterConfigExternalProcessor `json:"externalProcessor,omitempty"`
 }
 
 // AIGatewayFilterConfigType specifies the type of the filter configuration.
 //
-// +kubebuilder:validation:Enum=ExternalProcess;DynamicModule
+// +kubebuilder:validation:Enum=ExternalProcessor;DynamicModule
 type AIGatewayFilterConfigType string
 
 const (
-	AIGatewayFilterConfigTypeExternalProcess AIGatewayFilterConfigType = "ExternalProcess"
-	AIGatewayFilterConfigTypeDynamicModule   AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
+	AIGatewayFilterConfigTypeExternalProcessor AIGatewayFilterConfigType = "ExternalProcessor"
+	AIGatewayFilterConfigTypeDynamicModule     AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
 )
 
-type AIGatewayFilterConfigExternalProcess struct {
-	// Replicas is the number of desired pods of the external process deployment.
+type AIGatewayFilterConfigExternalProcessor struct {
+	// Replicas is the number of desired pods of the external processor deployment.
 	//
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
-	// Resources required by the external process container.
+	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// TODO: maybe adding the option not to deploy the external process filter and let the user deploy it manually?
+	// TODO: maybe adding the option not to deploy the external processor filter and let the user deploy it manually?
 	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
@@ -515,7 +515,7 @@ type LLMRequestCost struct {
 	//
 	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken;CEL
 	Type LLMRequestCostType `json:"type"`
-	// CELExpression is the CEL expression to calculate the cost of the request.
+	// CEL is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return a signed or unsigned integer. If the
 	// return value is negative, it will be error.
 	//
@@ -535,7 +535,7 @@ type LLMRequestCost struct {
 	//	* "input_tokens * output_tokens"
 	//
 	// +optional
-	CELExpression *string `json:"celExpression,omitempty"`
+	CEL *string `json:"cel,omitempty"`
 }
 
 // LLMRequestCostType specifies the type of the LLMRequestCost.

@@ -173,7 +173,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		applyExtProcDeploymentConfigUpdate(dep, nil)
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
-			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{},
+			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 		})
 	})
 	t.Run("update", func(t *testing.T) {
@@ -184,7 +184,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			},
 		}
 		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
-			ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
 			},
@@ -192,6 +192,49 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
+	})
+	t.Run("remove partial config", func(t *testing.T) {
+		t.Run("replicas", func(t *testing.T) {
+			dep.Replicas = ptr.To[int32](123)
+			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
+			})
+			require.Nil(t, dep.Replicas)
+		})
+		t.Run("resources", func(t *testing.T) {
+			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+			}
+			dep.Replicas = ptr.To[int32](123)
+			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{Replicas: ptr.To[int32](123)},
+			})
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)
+			require.Equal(t, int32(123), *dep.Replicas)
+		})
+	})
+	t.Run("remove the whole config", func(t *testing.T) {
+		for _, c := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
+			dep.Replicas = ptr.To[int32](123)
+			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("50Mi"),
+				},
+			}
+			applyExtProcDeploymentConfigUpdate(dep, c)
+			require.Nil(t, dep.Replicas)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
+			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)
+		}
 	})
 }
 
@@ -538,9 +581,9 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 							MetadataKey: "total-token",
 						},
 						{
-							Type:          aigv1a1.LLMRequestCostTypeCEL,
-							MetadataKey:   "cel-token",
-							CELExpression: ptr.To("model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"),
+							Type:        aigv1a1.LLMRequestCostTypeCEL,
+							MetadataKey: "cel-token",
+							CEL:         ptr.To("model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"),
 						},
 					},
 				},
@@ -593,7 +636,7 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
 					{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input-token"},
 					{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total-token"},
-					{Type: filterapi.LLMRequestCostTypeCELExpression, MetadataKey: "cel-token", CELExpression: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
+					{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel-token", CEL: "model == 'cool_model' ?  input_tokens * output_tokens : total_tokens"},
 				},
 			},
 		},
@@ -678,8 +721,8 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 		},
 		Spec: aigv1a1.AIGatewayRouteSpec{
 			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcessor,
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 					Replicas: ptr.To[int32](123),
 					Resources: &corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -758,8 +801,8 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
 		}
-		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Resources = newResourceLimits
-		aiGatewayRoute.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](456)
+		aiGatewayRoute.Spec.FilterConfig.ExternalProcessor.Resources = newResourceLimits
+		aiGatewayRoute.Spec.FilterConfig.ExternalProcessor.Replicas = ptr.To[int32](456)
 
 		require.NoError(t, s.syncExtProcDeployment(t.Context(), aiGatewayRoute))
 		// Check the deployment is updated.

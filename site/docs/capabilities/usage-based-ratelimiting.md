@@ -67,7 +67,7 @@ spec:
   llmRequestCosts:
     - metadataKey: custom_cost
       type: CEL
-      celExpression: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
+      cel: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
 ```
 
 ### 2. Configure Rate Limits
