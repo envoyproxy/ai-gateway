@@ -2,7 +2,11 @@ name: Tests
 on:
   pull_request:
     branches:
-      - main
+      - 'main'
+      # Release branches are like "release/v0.1", "release/v0.2", etc. where we backport the changes to non EOL versions (See RELEASES.md).
+      # The branch will be created from the main branch after the initial release tag is cut. For example, when we cut v0.8.0 release,
+      # we will create a branch "release/v0.8" from the main branch. For rc release, we simply iterate on main branch.
+      - 'release/**'
     paths-ignore:
       - '**/*.md'
       - 'site/**'
@@ -10,7 +14,8 @@ on:
 
   push:
     branches:
-      - main
+      - 'main'
+      - 'release/**'
     paths-ignore:
       - '**/*.md'
       - 'site/**'
