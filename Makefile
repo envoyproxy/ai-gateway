@@ -284,6 +284,7 @@ helm-package: helm-lint
 	@echo "helm-package => ${HELM_DIR}"
 	@go tool helm package ${HELM_DIR} --app-version ${HELM_CHART_VERSION} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
+# This tests the helm chart, ensuring that the container images are set to have the correct version tag.
 .PHONY: helm-test
 helm-test: HELM_CHART_VERSION = v9.9.9
 helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}.tgz
