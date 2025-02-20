@@ -23,6 +23,9 @@ Ensure you have:
    - `bedrock:InvokeModel`
    - `bedrock:ListFoundationModels`
 3. Your AWS access key ID and secret access key
+4. Enabled model access to "Llama 3.2 1B Instruct" in the `us-east-1` region
+   - If you want to use a different AWS region, you must update all instances of the string
+     `us-east-1` with the desired region in `basic.yaml`.
 
 :::tip AWS Best Practices
 Consider using AWS IAM roles and limited-scope credentials for production environments.
