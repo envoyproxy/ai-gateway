@@ -1091,7 +1091,6 @@ func TestAIGatewayRouteController_PatchAIGatewayRouteStatus(t *testing.T) {
 	condition := metav1.Condition{
 		Type:   aiGatewayRouteConditionTypeReconciled,
 		Status: metav1.ConditionTrue,
-		Reason: "testReason",
 	}
 
 	for _, tc := range testCases {
@@ -1101,7 +1100,8 @@ func TestAIGatewayRouteController_PatchAIGatewayRouteStatus(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err := s.patchAIGatewayRouteStatus(t.Context(), tc.route, condition)
+			err := s.patchAIGatewayRouteStatus(t.Context(), tc.route,
+				condition.Status, condition.Type, condition.Reason, condition.Message)
 
 			if tc.expectError {
 				require.ErrorContains(t, err, "aigatewayroutes.aigateway.envoyproxy.io \"nonexist\" not found")
