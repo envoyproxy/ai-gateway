@@ -111,7 +111,7 @@ apidoc:
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-lint
+precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
@@ -282,7 +282,15 @@ helm-lint:
 .PHONY: helm-package
 helm-package: helm-lint
 	@echo "helm-package => ${HELM_DIR}"
-	@go tool helm package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@go tool helm package ${HELM_DIR} --app-version ${HELM_CHART_VERSION} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+
+.PHONY: helm-test
+helm-test:
+	$(MAKE) helm-package HELM_CHART_VERSION=v9.9.9
+	@go tool helm show chart $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "version: v9.9.9"
+	@go tool helm show chart $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "appVersion: v9.9.9"
+	@go tool helm template $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "ghcr.io/envoyproxy/ai-gateway/extproc:v9.9.9"
+	@go tool helm template $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "ghcr.io/envoyproxy/ai-gateway/controller:v9.9.9"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

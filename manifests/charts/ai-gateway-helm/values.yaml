@@ -8,7 +8,7 @@
 extProc:
   repository: ghcr.io/envoyproxy/ai-gateway/extproc
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest"
+  tag: ""
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
@@ -32,7 +32,7 @@ controller:
     repository: ghcr.io/envoyproxy/ai-gateway/controller
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "latest"
+    tag: ""
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}
