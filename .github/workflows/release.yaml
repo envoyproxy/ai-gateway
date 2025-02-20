@@ -29,7 +29,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
-      - name: Create a request candidate release
+      - name: Create a release candidate
         if: ${{ contains(github.ref, '-rc') }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
