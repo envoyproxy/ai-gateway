@@ -3,6 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Read any local configuration. This is an optional, local git-ignored file that can be used
+# to set any value commonly used for development. This helps not having to set the overrides
+# in the command line every time.
+-include .makerc
+
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
