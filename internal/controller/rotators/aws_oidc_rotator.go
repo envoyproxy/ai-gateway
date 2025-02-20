@@ -130,11 +130,14 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 		return err
 	}
 
+	secretFound := true
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
+
+		secretFound = false
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      GetBSPSecretName(r.backendSecurityPolicyName),
@@ -159,15 +162,19 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	updateAWSCredentialsInSecret(secret, &credsFile)
 
-	err = r.client.Create(ctx, secret)
-	if err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			return r.client.Update(ctx, secret)
-		}
-		return fmt.Errorf("failed to create secret: %w", err)
-	}
+	if secretFound {
+		r.logger.Info(fmt.Sprintf("updating aws secret %s for backend security policy namespace: %s, name: %s",
+			secret.Name,
+			r.backendSecurityPolicyNamespace,
+			r.backendSecurityPolicyName))
 
-	return nil
+		return r.client.Update(ctx, secret)
+	}
+	r.logger.Info(fmt.Sprintf("creating aws secret %s for backend security policy namespace: %s, name: %s",
+		secret.Name,
+		r.backendSecurityPolicyNamespace,
+		r.backendSecurityPolicyName))
+	return r.client.Create(ctx, secret)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
