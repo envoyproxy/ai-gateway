@@ -16,14 +16,13 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // processorConfig is the configuration for the processor.
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	uuid                                         string
-	bodyParser                                   router.RequestBodyParser
+	schema                                       filterapi.VersionedAPISchema
 	router                                       x.Router
 	modelNameHeaderKey, selectedBackendHeaderKey string
 	backendAuthHandlers                          map[string]backendauth.Handler
@@ -39,7 +38,7 @@ type processorConfigRequestCost struct {
 }
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(*processorConfig, map[string]string, *slog.Logger) Processor
+type ProcessorFactory func(*processorConfig, map[string]string, *slog.Logger) (Processor, error)
 
 // Processor is the interface for the processor.
 // This decouples the processor implementation detail from the server implementation.

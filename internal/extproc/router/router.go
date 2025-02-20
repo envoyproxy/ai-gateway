@@ -15,14 +15,14 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
-// router implements [filterapi.Router].
+// router implements [x.Router].
 type router struct {
 	rules []filterapi.RouteRule
 	rng   *rand.Rand
 }
 
-// NewRouter creates a new [filterapi.Router] implementation for the given config.
-func NewRouter(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Router, error) {
+// New creates a new [x.Router] implementation for the given config.
+func New(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Router, error) {
 	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))} //nolint:gosec
 	if newCustomFn != nil {
 		customRouter := newCustomFn(r, config)
@@ -31,7 +31,7 @@ func NewRouter(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Rou
 	return r, nil
 }
 
-// Calculate implements [filterapi.Router.Calculate].
+// Calculate implements [x.Router.Calculate].
 func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backend, err error) {
 	var rule *filterapi.RouteRule
 	for i := range r.rules {

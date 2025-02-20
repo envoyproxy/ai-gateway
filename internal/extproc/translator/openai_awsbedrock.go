@@ -23,7 +23,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
@@ -42,7 +41,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body router.RequestBody) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body RequestBody) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
 	openAIReq, ok := body.(*openai.ChatCompletionRequest)

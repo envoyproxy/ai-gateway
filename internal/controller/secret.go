@@ -7,6 +7,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -15,38 +17,68 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 // secretController implements reconcile.TypedReconciler for corev1.Secret.
 type secretController struct {
-	client     client.Client
-	kubeClient kubernetes.Interface
-	logger     logr.Logger
-	eventChan  chan ConfigSinkEvent
+	client                    client.Client
+	kubeClient                kubernetes.Interface
+	logger                    logr.Logger
+	syncBackendSecurityPolicy syncBackendSecurityPolicyFn
 }
 
 // NewSecretController creates a new reconcile.TypedReconciler[reconcile.Request] for corev1.Secret.
 func NewSecretController(client client.Client, kubeClient kubernetes.Interface,
-	logger logr.Logger, ch chan ConfigSinkEvent,
+	logger logr.Logger, syncBackendSecurityPolicy syncBackendSecurityPolicyFn,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &secretController{
-		client:     client,
-		kubeClient: kubeClient,
-		logger:     logger,
-		eventChan:  ch,
+		client:                    client,
+		kubeClient:                kubeClient,
+		logger:                    logger,
+		syncBackendSecurityPolicy: syncBackendSecurityPolicy,
 	}
 }
 
 // Reconcile implements the reconcile.Reconciler for corev1.Secret.
-func (r *secretController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (c *secretController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var secret corev1.Secret
-	if err := r.client.Get(ctx, req.NamespacedName, &secret); err != nil {
+	if err := c.client.Get(ctx, req.NamespacedName, &secret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
-	r.logger.Info("Reconciling Secret", "namespace", req.Namespace, "name", req.Name)
-	r.eventChan <- ConfigSinkEventSecretUpdate{Namespace: secret.Namespace, Name: secret.Name}
+	c.logger.Info("Reconciling Secret", "namespace", req.Namespace, "name", req.Name)
+	if err := c.syncSecret(ctx, req.Namespace, req.Name); err != nil {
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
+}
+
+// syncSecret syncs the state of all resource referencing the given secret.
+func (c *secretController) syncSecret(ctx context.Context, namespace, name string) error {
+	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
+	err := c.client.List(ctx, &backendSecurityPolicies,
+		client.MatchingFields{
+			k8sClientIndexSecretToReferencingBackendSecurityPolicy: backendSecurityPolicyKey(namespace, name),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to list BackendSecurityPolicyList: %w", err)
+	}
+	var errs []error
+	for i := range backendSecurityPolicies.Items {
+		backendSecurityPolicy := &backendSecurityPolicies.Items[i]
+		c.logger.Info("Syncing BackendSecurityPolicy",
+			"namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
+		if err = c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", backendSecurityPolicy.Name, err))
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }

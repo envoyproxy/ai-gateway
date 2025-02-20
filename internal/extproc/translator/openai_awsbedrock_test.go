@@ -24,7 +24,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 )
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
@@ -666,7 +665,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, mode, err := o.RequestBody(router.RequestBody(&originalReq))
+			hm, bm, mode, err := o.RequestBody(RequestBody(&originalReq))
 			var expPath string
 			if tt.input.Stream {
 				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)

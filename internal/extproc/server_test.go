@@ -31,26 +31,18 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &processorConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) Processor { return m })
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) { return m, nil })
 
 	return s, m.(*mockProcessor)
 }
 
 func TestServer_LoadConfig(t *testing.T) {
-	t.Run("invalid input schema", func(t *testing.T) {
-		s, _ := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(t.Context(), &filterapi.Config{
-			Schema: filterapi.VersionedAPISchema{Name: "some-invalid-schema"},
-		})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "cannot create request body parser")
-	})
 	t.Run("ok", func(t *testing.T) {
 		config := &filterapi.Config{
 			MetadataNamespace: "ns",
 			LLMRequestCosts: []filterapi.LLMRequestCost{
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCELExpression, CELExpression: "1 + 1"},
+				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
 			Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 			SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
@@ -88,15 +80,15 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NotNil(t, s.config)
 		require.Equal(t, "ns", s.config.metadataNamespace)
 		require.NotNil(t, s.config.router)
-		require.NotNil(t, s.config.bodyParser)
+		require.Equal(t, s.config.schema, config.Schema)
 		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterapi.LLMRequestCostTypeCELExpression, s.config.requestCosts[1].Type)
-		require.Equal(t, "1 + 1", s.config.requestCosts[1].CELExpression)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.requestCosts[1].Type)
+		require.Equal(t, "1 + 1", s.config.requestCosts[1].CEL)
 		prog := s.config.requestCosts[1].celProg
 		require.NotNil(t, prog)
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
@@ -266,16 +258,16 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NotNil(t, s)
 
 	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) Processor {
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected
-		return nil
+		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) Processor {
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
 			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
-		}
+		}, nil
 	})
 
 	t.Run("unknown path", func(t *testing.T) {
@@ -316,22 +308,26 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	})
 }
 
-func TestFilterSensitiveHeaders(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
-	hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "authorization", Value: "sensitive"}}}
-	filtered := filterSensitiveHeaders(hm, logger, []string{"authorization"})
-	require.Len(t, filtered.Headers, 2)
-	for _, h := range filtered.Headers {
-		if h.Key == "authorization" {
-			require.Equal(t, "[REDACTED]", h.Value)
-		} else {
-			require.Equal(t, "bar", h.Value)
-		}
+func Test_filterSensitiveHeadersForLogging(t *testing.T) {
+	hm := &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{
+			{Key: "foo", Value: "bar"}, {Key: "dog", RawValue: []byte("cat")}, {Key: "authorization", Value: "sensitive"},
+		},
 	}
-	require.Contains(t, buf.String(), "filtering sensitive header")
+	filtered := filterSensitiveHeadersForLogging(hm, []string{"authorization"})
+	require.Equal(t, []slog.Attr{
+		slog.String("foo", "bar"),
+		slog.String("dog", "cat"),
+		slog.String("authorization", "[REDACTED]"),
+	}, filtered)
+	// Check original one should not be modified.
+	require.Len(t, hm.Headers, 3)
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "foo", Value: "bar"})
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "dog", RawValue: []byte("cat")})
+	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "authorization", Value: "sensitive"})
 }
 
-func TestFilterSensitiveBody(t *testing.T) {
+func Test_filterSensitiveBodyForLogging(t *testing.T) {
 	logger, buf := newTestLoggerWithBuffer()
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -340,27 +336,36 @@ func TestFilterSensitiveBody(t *testing.T) {
 					HeaderMutation: &extprocv3.HeaderMutation{
 						SetHeaders: []*corev3.HeaderValueOption{
 							{Header: &corev3.HeaderValue{
-								Key:   ":path",
-								Value: "/model/some-random-model/converse",
+								Key:      ":path",
+								RawValue: []byte("/model/some-random-model/converse"),
 							}},
 							{Header: &corev3.HeaderValue{
-								Key:   "Authorization",
-								Value: "sensitive",
+								Key:      "Authorization",
+								RawValue: []byte("sensitive"),
 							}},
 						},
+						RemoveHeaders: []string{"x-envoy-original-path"},
 					},
 					BodyMutation: &extprocv3.BodyMutation{},
 				},
 			},
 		},
 	}
-	filtered := filterSensitiveBody(resp, logger, []string{"authorization"})
+	filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
 	require.NotNil(t, filtered)
-	for _, h := range filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation().GetSetHeaders() {
-		if h.Header.Key == "Authorization" {
-			require.Equal(t, "[REDACTED]", string(h.Header.RawValue))
-		}
-	}
+	filteredMutation := filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
+	}, filteredMutation.GetSetHeaders())
+	// Original one should not be modified, otherwise it will be an unexpected behavior.
+	originalMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-original-path"}, originalMutation.GetRemoveHeaders())
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")}},
+	}, originalMutation.GetSetHeaders())
 	require.Contains(t, buf.String(), "filtering sensitive header")
 }
 
