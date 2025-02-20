@@ -74,15 +74,15 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	stat, err := os.Stat(cw.path)
 	switch {
 	case err != nil && os.IsNotExist(err):
-		// If the file does not exist, do not fail (which could lead to the extproc process to terminate)
-		// Instead, load the default configuration and keep running unconfigured
+		// If the file does not exist, do not fail (which could lead to the extproc process to terminate).
+		// Instead, load the default configuration and keep running unconfigured.
 		cfg, raw = filterapi.MustLoadDefaultConfig()
 	case err != nil:
 		return err
 	}
 
 	if cfg != nil {
-		if cw.usingDefaultCfg { // Do not re-reload the same thing on every tick
+		if cw.usingDefaultCfg { // Do not re-reload the same thing on every tick.
 			return nil
 		}
 		cw.l.Info("config file does not exist; loading default config", slog.String("path", cw.path))
