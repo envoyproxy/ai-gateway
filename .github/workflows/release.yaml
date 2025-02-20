@@ -28,12 +28,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: |
-          make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
+      - name: Push Helm chart
+        run: make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
 
       - name: Create a release candidate
         if: ${{ contains(github.ref, '-rc') }}
-        run: gh release create $TAG --prerelease --title $TAG --notes "Release candidate" ./out/ai-gateway-helm-${TAG}tgz
+        run: gh release create $TAG --prerelease --title $TAG --notes "Release candidate" ./out/ai-gateway-helm-${TAG}.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
