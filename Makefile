@@ -285,10 +285,9 @@ helm-package: helm-lint
 	@go tool helm package ${HELM_DIR} --app-version ${HELM_CHART_VERSION} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 .PHONY: helm-test
-helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz
 helm-test: HELM_CHART_VERSION = v9.9.9
-helm-test:
-	$(MAKE) helm-package HELM_CHART_VERSION=v9.9.9
+helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}.tgz
+helm-test: helm-package
 	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
 	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${HELM_CHART_VERSION}"
 	@go tool helm template ${HELM_CHART_PATH} | grep -q "ghcr.io/envoyproxy/ai-gateway/extproc:${HELM_CHART_VERSION}"
