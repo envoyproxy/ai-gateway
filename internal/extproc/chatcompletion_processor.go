@@ -84,6 +84,25 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
+		// if err.Error() == "no matching rule found" {
+		// 	r := &extprocv3.ProcessingResponse{
+		// 		Response: &extprocv3.ProcessingResponse_ResponseBody{
+		// 			ResponseBody: &extprocv3.BodyResponse{
+		// 				Response: &extprocv3.CommonResponse{
+		// 					Status: http.StatusNotFound,
+		// 					BodyMutation: &extprocv3.BodyMutation{
+		// 						Mutation: &extprocv3.BodyMutation_Body{
+		// 							Body: []byte(err.Error()),
+		// 						},
+		// 					},
+		// 				},
+		// 			},
+		// 		},
+		// 	}
+		// 	c.logger.Info("No matching rule found")
+		// 	return r, nil
+		// }
+
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 	c.logger.Info("Selected backend", "backend", b.Name)

@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	v32 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/cel-go/cel"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -168,6 +170,25 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 		resp, err := s.processMsg(ctx, p, req)
 		if err != nil {
+			s.logger.Info("AAAAA")
+			s.logger.Info(err.Error())
+			// if errors.Is(err, fmt.Errorf("no matching rule found")) {
+			if checkErrorTreeForMessage(err, "no matching rule found") {
+				s.logger.Info("BBBBBB")
+				// return status.Errorf(codes.NotFound, err.Error())
+				resp := &extprocv3.ImmediateResponse{
+					Status: &v32.HttpStatus{
+						Code: http.StatusNotFound,
+					},
+				}
+
+				if err := stream.Send(resp); err != nil {
+					s.logger.Error("cannot send response", slog.String("error", err.Error()))
+					return status.Errorf(codes.Unknown, "cannot send response: %v", err)
+				}
+			}
+
+			s.logger.Info("CCCC")
 			s.logger.Error("error processing request message", slog.String("error", err.Error()))
 			return status.Errorf(codes.Unknown, "error processing request message: %v", err)
 		}
@@ -176,6 +197,22 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			return status.Errorf(codes.Unknown, "cannot send response: %v", err)
 		}
 	}
+}
+
+func checkErrorTreeForMessage(err error, message string) bool {
+	if err == nil {
+		return false
+	}
+
+	if err.Error() == message {
+		return true
+	}
+
+	if wrappedErr := errors.Unwrap(err); wrappedErr != nil {
+		return checkErrorTreeForMessage(wrappedErr, message)
+	}
+
+	return false
 }
 
 func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
