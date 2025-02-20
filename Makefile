@@ -285,12 +285,14 @@ helm-package: helm-lint
 	@go tool helm package ${HELM_DIR} --app-version ${HELM_CHART_VERSION} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 .PHONY: helm-test
+helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz
+helm-test: HELM_CHART_VERSION = v9.9.9
 helm-test:
 	$(MAKE) helm-package HELM_CHART_VERSION=v9.9.9
-	@go tool helm show chart $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "version: v9.9.9"
-	@go tool helm show chart $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "appVersion: v9.9.9"
-	@go tool helm template $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "ghcr.io/envoyproxy/ai-gateway/extproc:v9.9.9"
-	@go tool helm template $(OUTPUT_DIR)/ai-gateway-helm-v9.9.9.tgz | grep -q "ghcr.io/envoyproxy/ai-gateway/controller:v9.9.9"
+	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
+	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${HELM_CHART_VERSION}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "ghcr.io/envoyproxy/ai-gateway/extproc:${HELM_CHART_VERSION}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "ghcr.io/envoyproxy/ai-gateway/controller:${HELM_CHART_VERSION}"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
