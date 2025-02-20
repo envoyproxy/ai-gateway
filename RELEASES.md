@@ -84,7 +84,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
     git tag v0.2.0-rc1 origin/main
     git push origin v0.2.0-rc1
     ```
-   Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag. 
+   Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
    The release candidate image will be available in the GitHub Container Registry.
 
 3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
@@ -93,15 +93,15 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 
 ### Release Phase
 
-1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate. 
-    The command to cut the release is exactly the same as the release candidate:
+1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate.
+  The command to cut the release is exactly the same as the release candidate:
     ```
     git tag v0.2.0 origin/main
     git push origin v0.2.0
     ```
-    Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag. 
-    The release image will be available in the GitHub Container Registry.
+   Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag.
+   The release image will be available in the GitHub Container Registry.
 2. The draft release note will be created in the GitHub repository after the pipeline is completed.
-   Modify the release note by hand to reflect the changes in the release.
+   Edit the release note nicely by hand to reflect the changes in the release.
 3. Announce the release in the community.
 4. Create `release/v0.2` branch from the tag for the future backports, bug fixes, etc.

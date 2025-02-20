@@ -22,7 +22,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           tag="${GITHUB_REF#refs/tags/}"
-          make helm-push HELM_CHART_VERSION=$tag 
+          make helm-push HELM_CHART_VERSION=$tag
 
   release:
     needs: [docker_push, helm_push]
