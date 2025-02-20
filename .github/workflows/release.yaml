@@ -1,0 +1,44 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+**' # Ex. v0.2.0 v0.2.1-rc2
+
+jobs:
+  docker_push:
+    name: Push Docker Images
+    uses: ./.github/workflows/docker_builds_template.yaml
+
+  helm_push:
+    name: Push Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login into GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          make helm-push HELM_CHART_VERSION=$tag 
+
+  release:
+    needs: [docker_push, helm_push]
+    name: Release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Create a request candidate release
+        if: contains(github.ref, '-rc')
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create $tag --prerelease --title $tag --notes "Release candidate"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create a stable release
+        if: !contains(github.ref, '-rc')
+        run: gh release create $tag --draft --title $tag --notes "To be written by the release manager"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
