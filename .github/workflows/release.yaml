@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+**' # Ex. v0.2.0 v0.2.1-rc2
+      - 'v[0-9]+.[0-9]+.[0-9]+**'  # Ex. v0.2.0 v0.2.1-rc2
 
 jobs:
   docker_push:
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Create a request candidate release
-        if: contains(github.ref, '-rc')
+        if: ${{ contains(github.ref, '-rc') }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           gh release create $tag --prerelease --title $tag --notes "Release candidate"
@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create a stable release
-        if: !contains(github.ref, '-rc')
+        if: ${{ !contains(github.ref, '-rc') }}
         run: gh release create $tag --draft --title $tag --notes "To be written by the release manager"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
