@@ -57,9 +57,12 @@ func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filt
 	for _, b := range rule.Backends {
 		totalWeight += b.Weight
 	}
+
+	// Pick a random backend if none of them have a weight.
 	if totalWeight == 0 {
-		return &rule.Backends[0]
+		return &rule.Backends[r.rng.Intn(len(rule.Backends))]
 	}
+
 	selected := r.rng.Intn(totalWeight)
 	for i := range rule.Backends {
 		b := &rule.Backends[i]

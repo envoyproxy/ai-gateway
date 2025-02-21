@@ -53,6 +53,15 @@ func TestRouter_Calculate(t *testing.T) {
 			},
 			{
 				Backends: []filterapi.Backend{
+					{Name: "baz", Schema: outSchema},
+					{Name: "qux", Schema: outSchema},
+				},
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-model-name", Value: "o1"},
+				},
+			},
+			{
+				Backends: []filterapi.Backend{
 					{Name: "openai", Schema: outSchema},
 				},
 				Headers: []filterapi.HeaderMatch{
@@ -75,6 +84,18 @@ func TestRouter_Calculate(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "openai", b.Name)
 		require.Equal(t, outSchema, b.Schema)
+	})
+	t.Run("matching rule - multiple unweighted backend choices", func(t *testing.T) {
+		chosenNames := make(map[string]int)
+		for i := 0; i < 1000; i++ {
+			b, err := r.Calculate(map[string]string{"x-model-name": "o1"})
+			require.NoError(t, err)
+			chosenNames[b.Name]++
+			require.Contains(t, []string{"baz", "qux"}, b.Name)
+			require.Equal(t, outSchema, b.Schema)
+		}
+		require.InDelta(t, 500, chosenNames["qux"], 50)
+		require.InDelta(t, 500, chosenNames["baz"], 50)
 	})
 	t.Run("matching rule - multiple backend choices", func(t *testing.T) {
 		chosenNames := make(map[string]int)
