@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -395,28 +394,14 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	var backends []*aigv1a1.AIServiceBackend
-	// for two usages:
-	// 1. Deduplicate BackendRefs
-	// 2. Store timeout value
-	dedup := make(map[string]*gwapiv1.HTTPRouteTimeouts)
+	dedup := make(map[string]struct{})
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, br := range rule.BackendRefs {
 			key := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if timeout, ok := dedup[key]; ok {
-				// use large one if two timeout value for same backend
-				if rule.Timeouts != nil {
-					t, err := combineTimeouts(timeout, rule.Timeouts)
-					if err != nil {
-						return err
-					}
-					dedup[key] = t
-				}
+			if _, ok := dedup[key]; ok {
 				continue
 			}
-			if rule.Timeouts == nil {
-				dedup[key] = defaultTimeout()
-			}
-			dedup[key] = rule.Timeouts
+			dedup[key] = struct{}{}
 			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 			if err != nil {
 				return fmt.Errorf("AIServiceBackend %s not found", key)
@@ -446,7 +431,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
 			},
 			Filters:  rewriteFilters,
-			Timeouts: dedup[key],
+			Timeouts: b.Spec.Timeouts,
 		}
 		rules[i] = rule
 	}
@@ -705,38 +690,4 @@ func defaultTimeout() *gwapiv1.HTTPRouteTimeouts {
 		Request:        &requestTimeout,
 		BackendRequest: &backendRequestTimeout,
 	}
-}
-
-// compareDurations returns larger Request timeout and BackendRequest timeout.
-func combineTimeouts(a, b *gwapiv1.HTTPRouteTimeouts) (*gwapiv1.HTTPRouteTimeouts, error) {
-	requestTimeout, err := combineDurations(a.Request, b.Request)
-	if err != nil {
-		return nil, err
-	}
-
-	backenRequestTimeout, err := combineDurations(a.BackendRequest, b.BackendRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	return &gwapiv1.HTTPRouteTimeouts{Request: requestTimeout, BackendRequest: backenRequestTimeout}, nil
-}
-
-// combineDurations returns larger one.
-func combineDurations(a, b *gwapiv1.Duration) (*gwapiv1.Duration, error) {
-	d1, err := time.ParseDuration(string(*a))
-	if err != nil {
-		return nil, err
-	}
-
-	d2, err := time.ParseDuration(string(*b))
-	if err != nil {
-		return nil, err
-	}
-
-	if d1 > d2 {
-		return a, nil
-	}
-
-	return b, nil
 }
