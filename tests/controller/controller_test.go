@@ -510,16 +510,6 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	}()
 
 	const backendSecurityPolicyName, backendSecurityPolicyNamespace = "bsp", "default"
-	require.NoError(t, c.Create(t.Context(), &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "secret",
-			Namespace: backendSecurityPolicyNamespace,
-		},
-		Immutable: nil,
-		Data: map[string][]byte{
-			"apiKey": []byte("apiKey"),
-		},
-	}))
 
 	originals := []*aigv1a1.AIServiceBackend{
 		{
