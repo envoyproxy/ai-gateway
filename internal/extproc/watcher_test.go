@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 type mockReceiver struct {
 	cfg       *filterapi.Config
 	mux       sync.Mutex
-	loadCount int
+	loadCount atomic.Int32
 }
 
 // LoadConfig implements ConfigReceiver.
@@ -34,7 +35,7 @@ func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) erro
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg
-	m.loadCount++
+	m.loadCount.Add(1)
 	return nil
 }
 
@@ -99,7 +100,7 @@ func TestStartConfigWatcher(t *testing.T) {
 
 	// Wait for a couple ticks to verify default config is not reloaded.
 	time.Sleep(2 * tickInterval)
-	require.Equal(t, 1, rcv.loadCount)
+	require.Equal(t, int32(1), rcv.loadCount.Load())
 
 	// Create the initial config file.
 	cfg := `
@@ -173,7 +174,7 @@ rules:
 
 	// Wait for a couple ticks to verify config is not reloaded if file does not change.
 	time.Sleep(2 * tickInterval)
-	require.Equal(t, 3, rcv.loadCount)
+	require.Equal(t, int32(3), rcv.loadCount.Load())
 }
 
 func TestDiff(t *testing.T) {
