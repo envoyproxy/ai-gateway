@@ -24,8 +24,9 @@ import (
 
 // mockReceiver is a mock implementation of Receiver.
 type mockReceiver struct {
-	cfg *filterapi.Config
-	mux sync.Mutex
+	cfg       *filterapi.Config
+	mux       sync.Mutex
+	loadCount int
 }
 
 // LoadConfig implements ConfigReceiver.
@@ -33,6 +34,7 @@ func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) erro
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg
+	m.loadCount++
 	return nil
 }
 
@@ -77,8 +79,9 @@ func TestStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
+	const tickInterval = time.Millisecond * 100
 	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(t.Context(), path, rcv, logger, time.Millisecond*100)
+	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
 
 	defaultCfg, _ := filterapi.MustLoadDefaultConfig()
@@ -87,12 +90,16 @@ func TestStartConfigWatcher(t *testing.T) {
 	// Verify the default config has been loaded.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, defaultCfg, rcv.getConfig())
-	}, 1*time.Second, 100*time.Millisecond)
+	}, 1*time.Second, tickInterval)
 
 	// Verify the buffer contains the default config loading.
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "config file does not exist; loading default config")
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
+	}, 1*time.Second, tickInterval, buf.String())
+
+	// Wait for a couple ticks to verify default config is not reloaded.
+	time.Sleep(2 * tickInterval)
+	require.Equal(t, 1, rcv.loadCount)
 
 	// Create the initial config file.
 	cfg := `
@@ -126,7 +133,7 @@ rules:
 	// Initial loading should have happened.
 	require.Eventually(t, func() bool {
 		return rcv.getConfig() != defaultCfg
-	}, 1*time.Second, 100*time.Millisecond)
+	}, 1*time.Second, tickInterval)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)
 
@@ -151,18 +158,22 @@ rules:
 	// Verify the config has been updated.
 	require.Eventually(t, func() bool {
 		return rcv.getConfig() != firstCfg
-	}, 1*time.Second, 100*time.Millisecond)
+	}, 1*time.Second, tickInterval)
 	require.NotEqual(t, firstCfg, rcv.getConfig())
 
 	// Verify the buffer contains the updated loading.
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "loading a new config")
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
+	}, 1*time.Second, tickInterval, buf.String())
 
-	// Verify the buffer contains the config line changed
+	// Verify the buffer contains the config line changed.
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "config line changed")
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
+	}, 1*time.Second, tickInterval, buf.String())
+
+	// Wait for a couple ticks to verify config is not reloaded if file does not change.
+	time.Sleep(2 * tickInterval)
+	require.Equal(t, 3, rcv.loadCount)
 }
 
 func TestDiff(t *testing.T) {

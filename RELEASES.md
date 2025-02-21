@@ -65,3 +65,43 @@ Since Envoy AI Gateway is built on top of Envoy Gateway, the compatibility betwe
 We use the latest released version of Envoy Gateway as the base of the Envoy AI Gateway when we release a new version.
 Since Envoy Gateway is a stable project and supposed to work across versions, we do not expect any compatibility issue
 as long as the Envoy Gateway version is also up-to-date prior to the upgrade of the Envoy AI Gateway.
+
+## Release Process
+
+This section is for maintainers of the project. Let's say we are going to release the version v0.2.0.
+
+### Release Candidate (RC) Phase
+
+Each non-patch release should start with Release Candidate (RC) phase as follows:
+
+1. First, notify the community that we are going to cut the release candidate and therefore the main branch is frozen.
+  The main branch should only accept the bug fixes, the security fixes, and documentation changes.
+  The release candidate should always be cut from the main branch.
+
+2. Cut the request candidate tag from the main branch. The tag should be v0.2.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
+  the command to cut the tag is:
+    ```
+    git tag v0.2.0-rc1 origin/main
+    git push origin v0.2.0-rc1
+    ```
+   Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
+   The release candidate image will be available in the GitHub Container Registry.
+
+3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
+  and the new rc tag should be created. For example, if there is an issue in the release candidate v0.2.0-rc1, replace `v0.2.0-rc1` with `v0.2.0-rc2`
+  in the above command and repeat the process.
+
+### Release Phase
+
+1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate.
+  The command to cut the release is exactly the same as the release candidate:
+    ```
+    git tag v0.2.0 origin/main
+    git push origin v0.2.0
+    ```
+   Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag.
+   The release image will be available in the GitHub Container Registry.
+2. The draft release note will be created in the GitHub repository after the pipeline is completed.
+   Edit the release note nicely by hand to reflect the changes in the release.
+3. Announce the release in the community.
+4. Create `release/v0.2` branch from the tag for the future backports, bug fixes, etc.

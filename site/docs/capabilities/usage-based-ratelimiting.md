@@ -154,8 +154,7 @@ For proper cost control and rate limiting, requests must include:
 
 Example request:
 ```shell
-curl --fail \
-    -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
     -H "x-user-id: user123" \
     -d '{
         "model": "gpt-4",
