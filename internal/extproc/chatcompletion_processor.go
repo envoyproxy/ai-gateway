@@ -21,8 +21,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -87,7 +87,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
-		if errors.Is(err, router.ErrNoMatchingRule) {
+		if errors.Is(err, x.ErrNoMatchingRule) {
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{

@@ -6,7 +6,6 @@
 package router
 
 import (
-	"errors"
 	"time"
 
 	"golang.org/x/exp/rand"
@@ -14,9 +13,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
-
-// ErrNoMatchingRule is the error when no matching rule is found.
-var ErrNoMatchingRule = errors.New("no matching rule found")
 
 // router implements [x.Router].
 type router struct {
@@ -49,7 +45,7 @@ func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backen
 		}
 	}
 	if rule == nil {
-		return nil, ErrNoMatchingRule
+		return nil, x.ErrNoMatchingRule
 	}
 	return r.selectBackendFromRule(rule), nil
 }

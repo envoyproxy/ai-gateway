@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -165,7 +165,7 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 	})
 	t.Run("router error 404", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retErr: router.ErrNoMatchingRule}
+		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
 		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, requestHeaders: headers, logger: slog.Default()}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.NoError(t, err)
@@ -173,7 +173,7 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		ir := resp.GetImmediateResponse()
 		require.NotNil(t, ir)
 		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
-		require.Equal(t, router.ErrNoMatchingRule.Error(), string(ir.GetBody()))
+		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
 	})
 	t.Run("translator not found", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
