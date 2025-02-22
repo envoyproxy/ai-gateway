@@ -116,65 +116,53 @@ func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, err
 	return preRotationTime, nil
 }
 
+func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.AssumeRoleWithWebIdentityOutput, region string) {
+	updateExpirationSecretAnnotation(secret, *awsIdentity.Credentials.Expiration)
+	// For now have profile as default.
+	const defaultProfile = "default"
+	credsFile := awsCredentialsFile{awsCredentials{
+		profile:         defaultProfile,
+		accessKeyID:     aws.ToString(awsIdentity.Credentials.AccessKeyId),
+		secretAccessKey: aws.ToString(awsIdentity.Credentials.SecretAccessKey),
+		sessionToken:    aws.ToString(awsIdentity.Credentials.SessionToken),
+		region:          region,
+	}}
+	updateAWSCredentialsInSecret(secret, &credsFile)
+}
+
 // Rotate implements the retrieval and storage of AWS sts credentials.
 //
 // This implements [Rotator.Rotate].
 func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
-	r.logger.Info("rotating AWS sts temporary credentials",
-		"namespace", r.backendSecurityPolicyNamespace,
-		"name", r.backendSecurityPolicyName)
+	bspNamespace := r.backendSecurityPolicyNamespace
+	bspName := r.backendSecurityPolicyName
+	secretName := GetBSPSecretName(bspName)
 
-	result, err := r.assumeRoleWithToken(ctx, token)
+	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
+	awsIdentity, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
 		return err
 	}
 
-	secretFound := true
-	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
+	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
 
-		secretFound = false
+	if err != nil && apierrors.IsNotFound(err) {
+		r.logger.Info("creating a new aws credentials secret", "namespace", bspNamespace, "name", bspName)
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      GetBSPSecretName(r.backendSecurityPolicyName),
-				Namespace: r.backendSecurityPolicyNamespace,
+				Name:      secretName,
+				Namespace: bspNamespace,
 			},
 			Type: corev1.SecretTypeOpaque,
 			Data: make(map[string][]byte),
 		}
+		populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
+		return r.client.Create(ctx, secret)
 	}
-
-	updateExpirationSecretAnnotation(secret, *result.Credentials.Expiration)
-
-	// For now have profile as default.
-	const defaultProfile = "default"
-	credsFile := awsCredentialsFile{awsCredentials{
-		profile:         defaultProfile,
-		accessKeyID:     aws.ToString(result.Credentials.AccessKeyId),
-		secretAccessKey: aws.ToString(result.Credentials.SecretAccessKey),
-		sessionToken:    aws.ToString(result.Credentials.SessionToken),
-		region:          r.region,
-	}}
-
-	updateAWSCredentialsInSecret(secret, &credsFile)
-
-	if secretFound {
-		r.logger.Info(fmt.Sprintf("updating aws secret %s for backend security policy namespace: %s, name: %s",
-			secret.Name,
-			r.backendSecurityPolicyNamespace,
-			r.backendSecurityPolicyName))
-
-		return r.client.Update(ctx, secret)
-	}
-	r.logger.Info(fmt.Sprintf("creating aws secret %s for backend security policy namespace: %s, name: %s",
-		secret.Name,
-		r.backendSecurityPolicyNamespace,
-		r.backendSecurityPolicyName))
-	return r.client.Create(ctx, secret)
+	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
+	populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
+	return r.client.Update(ctx, secret)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
