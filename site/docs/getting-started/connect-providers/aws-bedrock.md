@@ -98,3 +98,34 @@ If you encounter issues:
    - 401/403: Invalid credentials or insufficient permissions
    - 404: Model not found or not available in region
    - 429: Rate limit exceeded
+
+## Configuring More Models
+
+To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-3-sonnet-20240229-v1:0
+      backendRefs:
+        - name: envoy-ai-gateway-basic-aws
+```
+
+[AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
+[model ID]: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+[Claude 3 Sonnet]: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table
