@@ -116,6 +116,7 @@ func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, err
 	return preRotationTime, nil
 }
 
+// populateSecretWithAwsIdentity populates secret with aws identity credential info e.g. expiration time, access key, secret key and session token.
 func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.AssumeRoleWithWebIdentityOutput, region string) {
 	updateExpirationSecretAnnotation(secret, *awsIdentity.Credentials.Expiration)
 	// For now have profile as default.
@@ -130,7 +131,7 @@ func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.Assum
 	updateAWSCredentialsInSecret(secret, &credsFile)
 }
 
-// Rotate implements the retrieval and storage of AWS sts credentials.
+// Rotate implements aws credential secret upsert operation to k8s secret store.
 //
 // This implements [Rotator.Rotate].
 func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
@@ -147,18 +148,21 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 
 	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
 
-	if err != nil && apierrors.IsNotFound(err) {
-		r.logger.Info("creating a new aws credentials secret", "namespace", bspNamespace, "name", bspName)
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      secretName,
-				Namespace: bspNamespace,
-			},
-			Type: corev1.SecretTypeOpaque,
-			Data: make(map[string][]byte),
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.logger.Info("creating a new aws credentials secret", "namespace", bspNamespace, "name", bspName)
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: bspNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: make(map[string][]byte),
+			}
+			populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
+			return r.client.Create(ctx, secret)
 		}
-		populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
-		return r.client.Create(ctx, secret)
+		return err
 	}
 	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
 	populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
