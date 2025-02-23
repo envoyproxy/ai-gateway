@@ -124,7 +124,7 @@ spec:
               name: x-ai-eg-model
               value: anthropic.claude-3-sonnet-20240229-v1:0
       backendRefs:
-        - name: envoy-ai-gateway-basic-openai
+        - name: envoy-ai-gateway-basic-aws
 ```
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
