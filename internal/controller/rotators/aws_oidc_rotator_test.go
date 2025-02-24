@@ -45,13 +45,13 @@ const (
 )
 
 // createTestAwsSecret creates a test secret with given credentials
-func createTestAwsSecret(t *testing.T, client client.Client, bspName string, accessKey, secretKey, sessionToken string, profile string) {
+func createTestAwsSecret(t *testing.T, client client.Client, bspName string, accessKey, secretKey, sessionToken string, profile string, awsRegion string) {
 	if profile == "" {
 		profile = awsProfileName
 	}
 	data := map[string][]byte{
-		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = us-west-2",
-			profile, accessKey, secretKey, sessionToken)),
+		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+			profile, accessKey, secretKey, sessionToken, awsRegion)),
 	}
 	err := client.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -123,7 +123,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
 		// Setup initial credentials and client secret.
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName)
+		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 		createOidcClientSecret(t, testClientSecret)
 
 		awsOidcRotator := AWSOIDCRotator{
@@ -145,7 +145,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			&corev1.Secret{},
 		)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName)
+		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 		createOidcClientSecret(t, testClientSecret)
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
@@ -203,8 +203,10 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			&corev1.Secret{},
 		)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName)
 		createOidcClientSecret(t, testClientSecret)
+
+		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
@@ -247,7 +249,7 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName)
+	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
 
 	secret, err := LookupSecret(t.Context(), client, policyNameSpace, GetBSPSecretName(policyName))
@@ -274,7 +276,7 @@ func TestAWS_IsExpired(t *testing.T) {
 	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
-	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName)
+	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
 
 	secret, err := LookupSecret(t.Context(), client, policyNameSpace, GetBSPSecretName(policyName))
