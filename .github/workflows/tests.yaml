@@ -37,10 +37,6 @@ concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
 #  unittest:
 #    if: github.event_name == 'pull_request' || github.event_name == 'push'
