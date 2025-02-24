@@ -23,7 +23,8 @@ GO_LDFLAGS += -X $(VERSION_PACKAGE).Version=$(GIT_COMMIT)
 OUTPUT_DIR ?= out
 
 # Arguments for docker builds.
-OCI_REGISTRY ?= ghcr.io/envoyproxy/ai-gateway
+OCI_REGISTRY ?= docker.io/envoyproxy
+OCI_REPOSITORY_PREFIX ?= ${OCI_REGISTRY}/ai-gateway
 TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
@@ -257,7 +258,7 @@ endif
 docker-build.%:
 	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
 	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
-	docker buildx build . -t $(OCI_REGISTRY)/$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
+	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
 # This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
 #
@@ -291,8 +292,8 @@ helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}
 helm-test: helm-package
 	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
 	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${HELM_CHART_VERSION}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "ghcr.io/envoyproxy/ai-gateway/extproc:${HELM_CHART_VERSION}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "ghcr.io/envoyproxy/ai-gateway/controller:${HELM_CHART_VERSION}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${HELM_CHART_VERSION}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${HELM_CHART_VERSION}"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
