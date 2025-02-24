@@ -18,14 +18,15 @@ import (
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support.
 type OIDCProvider struct {
 	tokenProvider TokenProvider
-	oidcConfig    egv1a1.OIDC
+	// oidcConfig will be in sync with clientCredentialsProvider OIDC.
+	oidcConfig *egv1a1.OIDC
 }
 
 // NewOIDCProvider creates a new OIDC-aware provider.
 func NewOIDCProvider(client client.Client, oidcConfig egv1a1.OIDC) *OIDCProvider {
 	return &OIDCProvider{
-		tokenProvider: newClientCredentialsProvider(client, oidcConfig),
-		oidcConfig:    oidcConfig,
+		tokenProvider: newClientCredentialsProvider(client, &oidcConfig),
+		oidcConfig:    &oidcConfig,
 	}
 }
 
