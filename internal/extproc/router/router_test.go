@@ -6,6 +6,7 @@
 package router
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,6 +110,19 @@ func TestRouter_Calculate(t *testing.T) {
 		require.Greater(t, chosenNames["bar"], chosenNames["foo"])
 		require.Greater(t, chosenNames["bar"], 700)
 		require.Greater(t, chosenNames["foo"], 200)
+	})
+
+	t.Run("concurrent access", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(100)
+		for range 100 {
+			go func() {
+				defer wg.Done()
+				b, err := r.Calculate(map[string]string{"x-model-name": "llama3.3333"})
+				require.NoError(t, err)
+				require.NotNil(t, b)
+			}()
+		}
 	})
 }
 

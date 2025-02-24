@@ -17,12 +17,11 @@ import (
 // router implements [x.Router].
 type router struct {
 	rules []filterapi.RouteRule
-	rng   *rand.Rand
 }
 
 // New creates a new [x.Router] implementation for the given config.
 func New(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Router, error) {
-	r := &router{rules: config.Rules, rng: rand.New(rand.NewSource(uint64(time.Now().UnixNano())))} //nolint:gosec
+	r := &router{rules: config.Rules}
 	if newCustomFn != nil {
 		customRouter := newCustomFn(r, config)
 		return customRouter, nil
@@ -44,13 +43,18 @@ func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backen
 			}
 		}
 	}
-	if rule == nil {
+	if rule == nil || len(rule.Backends) == 0 {
 		return nil, x.ErrNoMatchingRule
 	}
 	return r.selectBackendFromRule(rule), nil
 }
 
+// selectBackendFromRule selects a backend from the given rule. Precondition: len(rule.Backends) > 0.
 func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filterapi.Backend) {
+	if len(rule.Backends) == 1 {
+		return &rule.Backends[0]
+	}
+
 	// Each backend has a weight, so we randomly select depending on the weight.
 	// This is a pretty naive implementation and can be buggy, so fix it later.
 	totalWeight := 0
@@ -58,12 +62,13 @@ func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filt
 		totalWeight += b.Weight
 	}
 
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano()))) // nolint:gosec
 	// Pick a random backend if none of them have a weight.
 	if totalWeight == 0 {
-		return &rule.Backends[r.rng.Intn(len(rule.Backends))]
+		return &rule.Backends[rng.Intn(len(rule.Backends))]
 	}
 
-	selected := r.rng.Intn(totalWeight)
+	selected := rng.Intn(totalWeight)
 	for i := range rule.Backends {
 		b := &rule.Backends[i]
 		if selected < b.Weight {
