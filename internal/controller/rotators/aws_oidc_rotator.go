@@ -161,6 +161,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 			populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
 			return r.client.Create(ctx, secret)
 		}
+		r.logger.Error(err, "failed to lookup aws credentials secret", "namespace", bspNamespace, "name", bspName)
 		return err
 	}
 	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
