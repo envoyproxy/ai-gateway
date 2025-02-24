@@ -12,8 +12,8 @@ type: application
 # version must be a semver version number like 0.0.1-rc1, 1.0.0, etc., vs appVersion can be anything.
 #
 # Since we release both the chart and the application together from the same repo, we don't need to differentiate
-# between the two versions. version here cannot be "latest" or "main" or "master", so we use appVersion for
-# the container image tags.
+# between the two versions and use the release tag for both. However, on main branch, we use "latest" as the appVersion
+# to follow the convention of container images vs v0.0.0-latest for the chart version.
 version: v0.0.0-latest
 appVersion: "latest"
 icon: https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/site/static/img/logo.svg
