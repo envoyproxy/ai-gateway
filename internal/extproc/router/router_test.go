@@ -134,6 +134,7 @@ func TestRouter_Calculate(t *testing.T) {
 			}()
 		}
 		wg.Wait()
+		require.Equal(t, int32(1000), bar.Load()+foo.Load())
 		require.Greater(t, bar.Load(), foo.Load())
 		require.Greater(t, bar.Load(), int32(700))
 		require.Greater(t, foo.Load(), int32(200))
