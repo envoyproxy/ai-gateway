@@ -123,6 +123,7 @@ func TestRouter_Calculate(t *testing.T) {
 				require.NotNil(t, b)
 			}()
 		}
+		wg.Wait()
 	})
 }
 
