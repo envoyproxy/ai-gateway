@@ -147,7 +147,6 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 	}
 
 	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
-
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			r.logger.Info("creating a new aws credentials secret", "namespace", bspNamespace, "name", bspName)
