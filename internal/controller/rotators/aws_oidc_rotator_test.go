@@ -65,9 +65,6 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 
 // verifyAwsCredentialsSecret verifies the credentials in a secret
 func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, secretName, expectedKeyID, expectedSecret, expectedToken, profile, region string) {
-	if profile == "" {
-		profile = awsProfileName
-	}
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	expectedSecretData := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, expectedKeyID, expectedSecret, expectedToken, region)
