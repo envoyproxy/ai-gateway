@@ -192,6 +192,7 @@ jobs:
     # TODO: revert.
     # needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
+    secrets: inherit
 
   helm_push:
     name: Push Helm chart
