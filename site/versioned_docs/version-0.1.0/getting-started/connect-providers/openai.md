@@ -1,25 +1,18 @@
 ---
-id: localmodel
-title: Connect Local Model
-sidebar_position: 3
+id: openai
+title: Connect OpenAI
+sidebar_position: 2
 ---
 
-# Connect Local Model
+# Connect OpenAI
 
-This guide will help you configure Envoy AI Gateway to work with locally hosted model such as [DeepSeek R1](https://github.com/deepseek-ai/DeepSeek-R1).
+This guide will help you configure Envoy AI Gateway to work with OpenAI's models.
 
 ## Prerequisites
 
 Before you begin, you'll need:
 
-- [Ollama](https://ollama.com/) installed on local machine considering for self-hosted model
-- Serve DeepSeek R1 or similar model on your local machine
-
-```
-ollama pull deepseek-r1:7b
-OLLAMA_HOST=0.0.0.0 ollama serve
-```
-
+- An OpenAI API key from [OpenAI's platform](https://platform.openai.com)
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
 
@@ -29,13 +22,25 @@ OLLAMA_HOST=0.0.0.0 ollama serve
 Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 :::
 
-### Apply Configuration
+### 1. Configure OpenAI Credentials
+
+Edit the `basic.yaml` file to replace the OpenAI placeholder value:
+
+- Find the section containing `OPENAI_API_KEY`
+- Replace it with your actual OpenAI API key
+
+:::caution Security Note
+Make sure to keep your API key secure and never commit it to version control.
+The key will be stored in a Kubernetes secret.
+:::
+
+### 2. Apply Configuration
 
 Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
 then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
-kubectl apply -f localmodel.yaml
+kubectl apply -f basic.yaml
 
 kubectl wait pods --timeout=2m \
   -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
@@ -43,16 +48,15 @@ kubectl wait pods --timeout=2m \
   --for=condition=Ready
 ```
 
-### Test the Configuration
+### 3. Test the Configuration
 
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
 ```shell
-curl --fail \
-  -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
   -d '{
-    "model": "deepseek-r1:7b",
+    "model": "gpt-4o-mini",
     "messages": [
       {
         "role": "user",
@@ -67,7 +71,7 @@ curl --fail \
 
 If you encounter issues:
 
-1. Verify that Ollama has loaded the model and you have memory and computer available on your local machine to run LLM
+1. Verify your API key is correct and active
 
 2. Check pod status:
 
@@ -81,26 +85,19 @@ If you encounter issues:
    kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
    ```
 
-4. View External Process Logs
+4. View External Processor Logs
 
    ```shell
    kubectl logs services/ai-eg-route-extproc-envoy-ai-gateway-basic
    ```
-5. If you are running Kubernetes locally, ensure that Envoy Service URL is correct and port 8080 is available on your local
 
-```
-export ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system \
-    --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
-    -o jsonpath='{.items[0].metadata.name}')
-kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
-```
-
-6. Common errors:
-   - 500: Incorrect Model Id in the HTTP request. Check localmodel.yaml for host name in backend configuration
-   - 503: Model is unavailable or request time out because of latency by model
+5. Common errors:
+   - 401: Invalid API key
+   - 429: Rate limit exceeded
+   - 503: OpenAI service unavailable
 
 ## Next Steps
 
-After configuring DeepSeek:
+After configuring OpenAI:
 
 - [Connect AWS Bedrock](./aws-bedrock.md) to add another provider

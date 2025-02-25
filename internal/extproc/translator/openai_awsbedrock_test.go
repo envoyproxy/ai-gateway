@@ -934,22 +934,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
-					{
-						Index: 1,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("from"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-					{
-						Index: 2,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("assistant"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
 				},
 			},
 		},
@@ -997,9 +981,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
+						// Text and ToolUse are sent in two different content blocks for AWS Bedrock, OpenAI merges them in one message.
 						Content: []*awsbedrock.ContentBlock{
 							{
 								Text: ptr.To("response"),
+							},
+							{
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
@@ -1376,51 +1363,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_HandleContent
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-				},
-			},
-		},
-		{
-			name: "content as array",
-			bedrockResp: awsbedrock.ConverseResponse{
-				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
-				},
-				Output: &awsbedrock.ConverseOutput{
-					Message: awsbedrock.Message{
-						Role: "assistant",
-						Content: []*awsbedrock.ContentBlock{
-							{Text: ptr.To("response part 1")},
-							{Text: ptr.To("response part 2")},
-						},
-					},
-				},
-			},
-			expectedOutput: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
-					TotalTokens:      30,
-					PromptTokens:     10,
-					CompletionTokens: 20,
-				},
-				Choices: []openai.ChatCompletionResponseChoice{
-					{
-						Index: 0,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response part 1"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-					{
-						Index: 1,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response part 2"),
 							Role:    "assistant",
 						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,

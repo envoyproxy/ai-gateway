@@ -40,12 +40,11 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db  # v3.6.1
 
-      - name: Login into GitHub Container Registry
+      - name: Login into DockerHub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       # Push images for the push events, e.g. when a new tag is pushed as well as PR merges.
       # * Only use the tag if the event is a tag event, otherwise use "latest".

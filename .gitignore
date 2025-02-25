@@ -6,9 +6,12 @@ out/
 .idea
 *for_tests.yaml
 .vscode
+.makerc
 
 # This is the placeholder for the access log file during extproc tests.
 ACCESS_LOG_PATH
+
+tests/e2e/logs
 
 # Files and directories to ignore in the site directory
 # dependencies

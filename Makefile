@@ -3,6 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Read any local configuration. This is an optional, local git-ignored file that can be used
+# to set any value commonly used for development. This helps not having to set the overrides
+# in the command line every time.
+-include .makerc
+
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
@@ -18,14 +23,15 @@ GO_LDFLAGS += -X $(VERSION_PACKAGE).Version=$(GIT_COMMIT)
 OUTPUT_DIR ?= out
 
 # Arguments for docker builds.
-OCI_REGISTRY ?= ghcr.io/envoyproxy/ai-gateway
+OCI_REGISTRY ?= docker.io/envoyproxy
+OCI_REPOSITORY_PREFIX ?= ${OCI_REGISTRY}/ai-gateway
 TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
 HELM_CHART_VERSION ?= v0.0.0-latest
 
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
-GO_TEST_ARGS ?= -v -race
+GO_TEST_ARGS ?= -race
 # Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
 GO_TEST_E2E_ARGS ?= -count=1
 
@@ -45,7 +51,7 @@ help:
 	@echo "  test-controller	 Run the integration tests for the controller with envtest."
 	@echo "  test-e2e       	 Run the end-to-end tests with a local kind cluster."
 	@echo ""
-	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-cel' etc. for the normal development cycle."
+	@echo "For example, 'make precommit test' should be enough for initial iterations, and later 'make test-crdcel' etc. for the normal development cycle."
 	@echo "Note that some cases run by test-e2e or test-extproc use credentials and these will be skipped when not available."
 	@echo ""
 	@echo ""
@@ -106,7 +112,7 @@ apidoc:
 
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-lint
+precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
 
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
@@ -151,7 +157,7 @@ test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc -v
+	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
@@ -252,7 +258,7 @@ endif
 docker-build.%:
 	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
 	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
-	docker buildx build . -t $(OCI_REGISTRY)/$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
+	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
 # This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
 #
@@ -274,10 +280,24 @@ helm-lint:
 
 # This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
 # This must pass before `helm-push` can be run as well as on any commit.
+#
+# TAG and HELM_CHART_VERSION are set to the same value when cutting a release. On main branch,
+# TAG is set to latest and HELM_CHART_VERSION is set to v0.0.0-latest.
 .PHONY: helm-package
 helm-package: helm-lint
 	@echo "helm-package => ${HELM_DIR}"
-	@go tool helm package ${HELM_DIR} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@go tool helm package ${HELM_DIR} --app-version ${TAG} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+
+# This tests the helm chart, ensuring that the container images are set to have the correct version tag.
+.PHONY: helm-test
+helm-test: HELM_CHART_VERSION = v9.9.9-latest
+helm-test: TAG = v9.9.9
+helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}.tgz
+helm-test: helm-package
+	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
+	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
+	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

@@ -54,8 +54,7 @@ You should have set `$GATEWAY_URL` as part of the basic setup before connecting 
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
 ```shell
-curl --fail \
-  -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [
@@ -86,7 +85,7 @@ If you encounter issues:
    kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
    ```
 
-4. View External Process Logs
+4. View External Processor Logs
 
    ```shell
    kubectl logs services/ai-eg-route-extproc-envoy-ai-gateway-basic
