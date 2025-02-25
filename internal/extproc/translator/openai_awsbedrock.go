@@ -26,7 +26,7 @@ import (
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func NewChatCompletionOpenAIToAWSBedrockTranslator() Translator {
+func NewChatCompletionOpenAIToAWSBedrockTranslator() OpenAIChatCompletionTranslator {
 	return &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 }
 
@@ -41,14 +41,9 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(body RequestBody) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *openai.ChatCompletionRequest) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
-	openAIReq, ok := body.(*openai.ChatCompletionRequest)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("unexpected body type: %T", body)
-	}
-
 	var pathTemplate string
 	if openAIReq.Stream {
 		o.stream = true
