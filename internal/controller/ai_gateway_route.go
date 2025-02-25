@@ -429,7 +429,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
 			},
-			Filters: rewriteFilters,
+			Filters:  rewriteFilters,
+			Timeouts: b.Spec.Timeouts,
 		}
 		rules[i] = rule
 	}

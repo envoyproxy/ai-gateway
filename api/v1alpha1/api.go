@@ -339,6 +339,11 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
+	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// +optional
+	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
+
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
 }
