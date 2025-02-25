@@ -6,6 +6,8 @@
 package router
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,6 +111,33 @@ func TestRouter_Calculate(t *testing.T) {
 		require.Greater(t, chosenNames["bar"], chosenNames["foo"])
 		require.Greater(t, chosenNames["bar"], 700)
 		require.Greater(t, chosenNames["foo"], 200)
+	})
+
+	t.Run("concurrent access", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(1000)
+
+		var foo atomic.Int32
+		var bar atomic.Int32
+		for range 1000 {
+			go func() {
+				defer wg.Done()
+				b, err := r.Calculate(map[string]string{"x-model-name": "llama3.3333"})
+				require.NoError(t, err)
+				require.NotNil(t, b)
+
+				if b.Name == "foo" {
+					foo.Add(1)
+				} else {
+					bar.Add(1)
+				}
+			}()
+		}
+		wg.Wait()
+		require.Equal(t, int32(1000), bar.Load()+foo.Load())
+		require.Greater(t, bar.Load(), foo.Load())
+		require.Greater(t, bar.Load(), int32(700))
+		require.Greater(t, foo.Load(), int32(200))
 	})
 }
 
