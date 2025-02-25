@@ -27,8 +27,7 @@ First of all, there are four areas of compatibility that we are concerned with:
 
 ### Public Go package
 
-Since we do not envision this repository ends up as a transitive dependency, i.e. only used as a direct dependency such as in a custom control plane, etc., we assume that any consumer of the project should have the full control over the source code depending on the project. This allows us to declare deprecation and introduce the breaking changes in the version after the next one since they can migrate the code at their discretion. For example, any public API that is marked as deprecated in the version N will be removed in the version N+2. We document how users should migrate to the new API will be documented in the release notes if applicable, but we do not guarantee that the migration
-path will be provided.
+Since we do not envision this repository ends up as a transitive dependency, i.e. only used as a direct dependency such as in a custom control plane, etc., we assume that any consumer of the project should have the full control over the source code depending on the project. This allows us to declare deprecation and introduce the breaking changes in the version after the next one since they can migrate the code at their discretion. For example, any public API that is marked as deprecated in the version N will be removed in the version N+2. We document how users should migrate to the new API will be documented in the release notes if applicable, but we do not guarantee that the migration path will be provided.
 
 ### Custom Resource Definitions
 
