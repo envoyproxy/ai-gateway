@@ -29,10 +29,10 @@ import (
 // Temporarily a fixed duration.
 const preRotationWindow = 5 * time.Minute
 
-// backendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
+// BackendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 //
 // Exported for testing purposes.
-type backendSecurityPolicyController struct {
+type BackendSecurityPolicyController struct {
 	client               client.Client
 	kube                 kubernetes.Interface
 	logger               logr.Logger
@@ -41,8 +41,8 @@ type backendSecurityPolicyController struct {
 	syncAIServiceBackend syncAIServiceBackendFn
 }
 
-func newBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn) *backendSecurityPolicyController {
-	return &backendSecurityPolicyController{
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn) *BackendSecurityPolicyController {
+	return &BackendSecurityPolicyController{
 		client:               client,
 		kube:                 kube,
 		logger:               logger,
@@ -52,7 +52,7 @@ func newBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 }
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
-func (c *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
 	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
 	if err = c.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -88,6 +88,10 @@ func (c *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 				requeue, err = c.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
 				if err != nil {
 					c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
+				} else {
+					c.logger.Info(
+						fmt.Sprintf("successfully rotated credentials for %s in namespace %s of auth type %s, renewing in %f minutes",
+							req.Name, req.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
 				}
 			} else {
 				requeue = time.Until(rotationTime)
@@ -99,7 +103,7 @@ func (c *backendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
-func (c *backendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, oidcCreds egv1a1.OIDC, rotator rotators.Rotator) (time.Duration, error) {
+func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, oidcCreds egv1a1.OIDC, rotator rotators.Rotator) (time.Duration, error) {
 	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
 
 	var err error
@@ -148,7 +152,7 @@ func backendSecurityPolicyKey(namespace, name string) string {
 	return fmt.Sprintf("%s.%s", name, namespace)
 }
 
-func (c *backendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
+func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
 	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
 	var aiServiceBackends aigv1a1.AIServiceBackendList
 	err := c.client.List(ctx, &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})

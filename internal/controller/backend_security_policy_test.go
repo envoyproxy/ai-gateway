@@ -40,7 +40,7 @@ import (
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := newBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -103,7 +103,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -129,7 +129,7 @@ func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 
 func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	c := newBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 

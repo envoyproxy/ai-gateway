@@ -23,12 +23,13 @@ const tokenTimeoutDuration = time.Minute
 
 // ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
-	client     client.Client
-	oidcConfig egv1a1.OIDC
+	client client.Client
+	// oidcConfig will be in sync with the caller of newClientCredentialsTokenProvider.
+	oidcConfig *egv1a1.OIDC
 }
 
 // newClientCredentialsProvider creates a new client credentials provider.
-func newClientCredentialsProvider(cl client.Client, oidcConfig egv1a1.OIDC) *ClientCredentialsTokenProvider {
+func newClientCredentialsProvider(cl client.Client, oidcConfig *egv1a1.OIDC) *ClientCredentialsTokenProvider {
 	return &ClientCredentialsTokenProvider{
 		client:     cl,
 		oidcConfig: oidcConfig,

@@ -6,11 +6,18 @@
 // Package x is an experimental package that provides the customizability of the AI Gateway filter.
 package x
 
-import "github.com/envoyproxy/ai-gateway/filterapi"
+import (
+	"errors"
+
+	"github.com/envoyproxy/ai-gateway/filterapi"
+)
 
 // NewCustomRouter is the function to create a custom router over the default router.
 // This is nil by default and can be set by the custom build of external processor.
 var NewCustomRouter NewCustomRouterFn
+
+// ErrNoMatchingRule is the error the router function must return if there is no matching rule.
+var ErrNoMatchingRule = errors.New("no matching rule found")
 
 // NewCustomRouterFn is the function signature for [NewCustomRouter].
 //

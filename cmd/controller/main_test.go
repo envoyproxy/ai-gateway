@@ -15,7 +15,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {
 		extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags([]string{})
 		require.Equal(t, "info", extProcLogLevel)
-		require.Equal(t, "ghcr.io/envoyproxy/ai-gateway/extproc:latest", extProcImage)
+		require.Equal(t, "docker.io/envoyproxy/ai-gateway-extproc:latest", extProcImage)
 		require.True(t, enableLeaderElection)
 		require.Equal(t, "info", logLevel.String())
 		require.Equal(t, ":1063", extensionServerPort)

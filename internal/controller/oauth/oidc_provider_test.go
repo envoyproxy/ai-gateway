@@ -8,6 +8,7 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -123,11 +124,6 @@ func TestOIDCProvider_GetOIDCProviderConfig(t *testing.T) {
 }
 
 func TestOIDCProvider_FetchToken(t *testing.T) {
-	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["one", "openid"]}`))
-		require.NoError(t, err)
-	}))
-	defer oidcServer.Close()
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		b, err := json.Marshal(oauth2.Token{AccessToken: "token", TokenType: "Bearer", ExpiresIn: int64(3600)})
@@ -136,6 +132,13 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 		require.NoError(t, err)
 	}))
 	defer tokenServer.Close()
+
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		res := fmt.Sprintf(`{"issuer": "issuer", "token_endpoint": "%s", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["one", "openid"]}`, tokenServer.URL)
+		_, err := w.Write([]byte(res))
+		require.NoError(t, err)
+	}))
+	defer oidcServer.Close()
 
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
@@ -160,8 +163,7 @@ func TestOIDCProvider_FetchToken(t *testing.T) {
 	namespaceRef := gwapiv1.Namespace(secretNamespace)
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
-			Issuer:        oidcServer.URL,
-			TokenEndpoint: &tokenServer.URL,
+			Issuer: oidcServer.URL,
 		},
 		ClientID: "some-client-id",
 		ClientSecret: gwapiv1.SecretObjectReference{

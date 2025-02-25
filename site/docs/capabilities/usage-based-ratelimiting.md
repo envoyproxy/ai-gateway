@@ -67,7 +67,7 @@ spec:
   llmRequestCosts:
     - metadataKey: custom_cost
       type: CEL
-      celExpression: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
+      cel: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
 ```
 
 ### 2. Configure Rate Limits
@@ -154,8 +154,7 @@ For proper cost control and rate limiting, requests must include:
 
 Example request:
 ```shell
-curl --fail \
-    -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
     -H "x-user-id: user123" \
     -d '{
         "model": "gpt-4",

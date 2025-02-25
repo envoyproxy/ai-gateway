@@ -110,8 +110,8 @@ func TestStartControllers(t *testing.T) {
 						},
 					},
 					FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-						Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-						ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+						Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcessor,
+						ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 							Replicas: ptr.To[int32](5), Resources: resourceReq,
 						},
 					},
@@ -376,8 +376,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 				},
 			},
 			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
-				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcess,
-				ExternalProcess: &aigv1a1.AIGatewayFilterConfigExternalProcess{
+				Type: aigv1a1.AIGatewayFilterConfigTypeExternalProcessor,
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 					Replicas: ptr.To[int32](5), Resources: resourceReq,
 				},
 			},
@@ -462,8 +462,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
 		}
-		origin.Spec.FilterConfig.ExternalProcess.Replicas = ptr.To[int32](3)
-		origin.Spec.FilterConfig.ExternalProcess.Resources = newResource
+		origin.Spec.FilterConfig.ExternalProcessor.Replicas = ptr.To[int32](3)
+		origin.Spec.FilterConfig.ExternalProcessor.Resources = newResource
 		err := c.Update(t.Context(), origin)
 		require.NoError(t, err)
 
@@ -490,7 +490,125 @@ func TestAIGatewayRouteController(t *testing.T) {
 	})
 }
 
-func TestBackendSecurityPolicyController(t *testing.T) { t.Skip("TODO") }
+func TestBackendSecurityPolicyController(t *testing.T) {
+	c, cfg, k := testsinternal.NewEnvTest(t)
+
+	syncAIServiceBackend := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+
+	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
+	mgr, err := ctrl.NewManager(cfg, opt)
+	require.NoError(t, err)
+	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
+
+	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), syncAIServiceBackend.Sync)
+	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.BackendSecurityPolicy{}).Complete(pc)
+	require.NoError(t, err)
+
+	go func() {
+		err := mgr.Start(t.Context())
+		require.NoError(t, err)
+	}()
+
+	const backendSecurityPolicyName, backendSecurityPolicyNamespace = "bsp", "default"
+
+	originals := []*aigv1a1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "backend1", Namespace: backendSecurityPolicyNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: defaultSchema,
+				BackendRef: gwapiv1.BackendObjectReference{
+					Name: gwapiv1.ObjectName("mybackend"),
+					Port: ptr.To[gwapiv1.PortNumber](8080),
+				},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{
+					Kind:  "BackendSecurityPolicy",
+					Group: "aigateway.envoyproxy.io",
+					Name:  gwapiv1.ObjectName(backendSecurityPolicyName),
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "backend2", Namespace: backendSecurityPolicyNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: defaultSchema,
+				BackendRef: gwapiv1.BackendObjectReference{
+					Name: gwapiv1.ObjectName("mybackend"),
+					Port: ptr.To[gwapiv1.PortNumber](8080),
+				},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{
+					Kind:  "BackendSecurityPolicy",
+					Group: "aigateway.envoyproxy.io",
+					Name:  gwapiv1.ObjectName(backendSecurityPolicyName),
+				},
+			},
+		},
+	}
+	for _, backend := range originals {
+		require.NoError(t, c.Create(t.Context(), backend))
+	}
+
+	t.Run("create security policy", func(t *testing.T) {
+		origin := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      backendSecurityPolicyName,
+				Namespace: backendSecurityPolicyNamespace,
+			},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "secret",
+					},
+				},
+			},
+		}
+		require.NoError(t, c.Create(t.Context(), origin))
+		require.Eventually(t, func() bool {
+			println("Eeee")
+			return len(syncAIServiceBackend.GetItems()) == 2
+		}, 5*time.Second, 200*time.Millisecond)
+
+		// Verify that they are the same.
+		backends := syncAIServiceBackend.GetItems()
+		sort.Slice(backends, func(i, j int) bool {
+			backends[i].TypeMeta = metav1.TypeMeta{}
+			backends[j].TypeMeta = metav1.TypeMeta{}
+			return backends[i].Name < backends[j].Name
+		})
+		require.Equal(t, originals, backends)
+	})
+
+	syncAIServiceBackend.Reset()
+	t.Run("update security policy", func(t *testing.T) {
+		origin := &aigv1a1.BackendSecurityPolicy{}
+		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, origin))
+		origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAWSCredentials
+		origin.Spec.APIKey = nil
+		origin.Spec.AWSCredentials = &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Region: "us-east-1",
+			CredentialsFile: &aigv1a1.AWSCredentialsFile{
+				SecretRef: &gwapiv1.SecretObjectReference{
+					Name:      "secret",
+					Namespace: ptr.To[gwapiv1.Namespace](backendSecurityPolicyNamespace),
+				},
+			},
+		}
+		require.NoError(t, c.Update(t.Context(), origin))
+
+		require.Eventually(t, func() bool {
+			return len(syncAIServiceBackend.GetItems()) == 2
+		}, 5*time.Second, 200*time.Millisecond)
+
+		// Verify that they are the same.
+		backends := syncAIServiceBackend.GetItems()
+		sort.Slice(backends, func(i, j int) bool {
+			backends[i].TypeMeta = metav1.TypeMeta{}
+			backends[j].TypeMeta = metav1.TypeMeta{}
+			return backends[i].Name < backends[j].Name
+		})
+		require.Equal(t, originals, backends)
+	})
+}
 
 func TestAIServiceBackendController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)

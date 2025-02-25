@@ -23,6 +23,9 @@ Ensure you have:
    - `bedrock:InvokeModel`
    - `bedrock:ListFoundationModels`
 3. Your AWS access key ID and secret access key
+4. Enabled model access to "Llama 3.2 1B Instruct" in the `us-east-1` region
+   - If you want to use a different AWS region, you must update all instances of the string
+     `us-east-1` with the desired region in `basic.yaml`.
 
 :::tip AWS Best Practices
 Consider using AWS IAM roles and limited-scope credentials for production environments.
@@ -65,8 +68,7 @@ You should have set `$GATEWAY_URL` as part of the basic setup before connecting 
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
 ```shell
-curl --fail \
-  -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
   -d '{
     "model": "us.meta.llama3-2-1b-instruct-v1:0",
     "messages": [

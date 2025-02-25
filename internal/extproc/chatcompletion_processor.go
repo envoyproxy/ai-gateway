@@ -10,15 +10,18 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -84,6 +87,17 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
+		if errors.Is(err, x.ErrNoMatchingRule) {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+						Body:   []byte(err.Error()),
+					},
+				},
+			}, nil
+		}
+
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 	c.logger.Info("Selected backend", "backend", b.Name)
@@ -219,7 +233,7 @@ func (c *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct,
 			cost = c.costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
 			cost = c.costs.TotalTokens
-		case filterapi.LLMRequestCostTypeCELExpression:
+		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
 				c.requestHeaders[c.config.modelNameHeaderKey],

@@ -102,9 +102,9 @@ type LLMRequestCost struct {
 	MetadataKey string `json:"metadataKey"`
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
-	// CELExpression is the CEL expression to calculate the cost of the request.
-	// This is not empty when the Type is LLMRequestCostTypeCELExpression.
-	CELExpression string `json:"celExpression,omitempty"`
+	// CEL is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Type is LLMRequestCostTypeCEL.
+	CEL string `json:"cel,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
@@ -117,8 +117,8 @@ const (
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
-	// LLMRequestCostTypeCELExpression specifies that the request cost is calculated from the CEL expression.
-	LLMRequestCostTypeCELExpression LLMRequestCostType = "CEL"
+	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
+	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
 
 // VersionedAPISchema corresponds to VersionedAPISchema in api/v1alpha1/api.go.
@@ -186,14 +186,24 @@ type APIKeyAuth struct {
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
-func UnmarshalConfigYaml(path string) (*Config, error) {
+func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &cfg, nil
+	return &cfg, raw, nil
+}
+
+// MustLoadDefaultConfig loads the default configuration.
+// This panics if the configuration fails to be loaded.
+func MustLoadDefaultConfig() (*Config, []byte) {
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
+		panic(err)
+	}
+	return &cfg, []byte(DefaultConfig)
 }

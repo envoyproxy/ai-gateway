@@ -562,7 +562,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
-		Choices: make([]openai.ChatCompletionResponseChoice, 0, len(bedrockResp.Output.Message.Content)),
+		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
@@ -577,20 +577,25 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 	}
-	for i, output := range bedrockResp.Output.Message.Content {
-		choice := openai.ChatCompletionResponseChoice{
-			Index: (int64)(i),
-			Message: openai.ChatCompletionResponseChoiceMessage{
-				Content: output.Text,
-				Role:    bedrockResp.Output.Message.Role,
-			},
-			FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
-		}
+	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
+	choice := openai.ChatCompletionResponseChoice{
+		Index: (int64)(0),
+		Message: openai.ChatCompletionResponseChoiceMessage{
+			Role: bedrockResp.Output.Message.Role,
+		},
+		FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
+	}
+	for _, output := range bedrockResp.Output.Message.Content {
 		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
 			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
+		} else if output.Text != nil {
+			// For the converse response the assumption is that there is only one text content block, we take the first one.
+			if choice.Message.Content == nil {
+				choice.Message.Content = output.Text
+			}
 		}
-		openAIResp.Choices = append(openAIResp.Choices, choice)
 	}
+	openAIResp.Choices = append(openAIResp.Choices, choice)
 
 	mut.Body, err = json.Marshal(openAIResp)
 	if err != nil {
