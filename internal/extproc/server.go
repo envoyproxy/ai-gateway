@@ -141,7 +141,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	// an earlier filter has already processed the request headers/bodies and decided to terminate
 	// the request by sending an immediate response. In this case, we will use the passThroughProcessor
 	// to pass the request through without any processing as there would be nothing to process from AI Gateway's perspective.
-	var p Processor = &passThroughProcessor{}
+	var p Processor = passThroughProcessor{}
 
 	for {
 		select {
@@ -170,6 +170,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				return status.Error(codes.NotFound, err.Error())
 			}
 		}
+
+		// At this point, p is guaranteed to be a valid processor either from the concrete processor or the passThroughProcessor.
 
 		resp, err := s.processMsg(ctx, p, req)
 		if err != nil {

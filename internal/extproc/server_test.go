@@ -250,6 +250,19 @@ func TestServer_Process(t *testing.T) {
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "context deadline exceeded")
 	})
+	t.Run("without going through request headers phase", func(t *testing.T) {
+		// This is a regression test as in #419.
+		s, _ := requireNewServerWithMockProcessor(t)
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
+		req := &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseHeaders{
+			ResponseHeaders: &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", Value: "403"}}}},
+		}}
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
+		err := s.Process(ms)
+		require.ErrorContains(t, err, "context deadline exceeded")
+	})
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {
