@@ -18,9 +18,10 @@ The **Envoy AI Gateway** is now available on GitHub and ready for developers to 
 
 <!-- truncate -->
 
-✅ **Unified API** for seamless integration with multiple LLM providers (starting with **AWS Bedrock** and **OpenAI**).
-✅ **Upstream Authorization** to simplify authentication across AI providers.
-✅ **Usage Rate Limiting** based on word tokens to control costs and ensure operational efficiency.
+- ✅ **Unified API** for seamless integration with multiple LLM providers (starting with **AWS Bedrock** and **OpenAI**).
+- ✅ **Upstream Authorization** to simplify authentication across AI providers.
+- ✅ **Usage Rate Limiting** based on word tokens to control costs and ensure operational efficiency.
+
 
 With this release, we're making AI adoption in cloud-native environments more straightforward and accessible to organizations of all sizes.
 
@@ -37,21 +38,21 @@ The momentum behind **Envoy AI Gateway** speaks to the need for an open, **colla
 ## Where We're Headed
 
 We're just getting started\! Here's a sneak peek at what's next:
-🔹 **Google Gemini 2.0 integration** out-of-the-box.
-🔹 **Provider and Model Fallback Logic** to ensure continued service availability.
-🔹 **Prompt Templating** for consistent AI interactions.
-🔹 **Semantic Caching** to optimize response efficiency and reduce costs.
+- **Google Gemini 2.0 integration** out-of-the-box.
+- **Provider and Model Fallback Logic** to ensure continued service availability.
+- **Prompt Templating** for consistent AI interactions.
+- **Semantic Caching** to optimize response efficiency and reduce costs.
 
 The **roadmap is community-driven**, and we'd love for **more contributors** to help shape the future of AI infrastructure\!
 
 ## Join the Movement
 
 Want to be part of the journey? Here's how you can get involved:
-📌 **Download & Try Envoy AI Gateway** → [GitHub Repo](https://github.com/envoyproxy/ai-gateway)
-📌 **Join the Conversation** → [Attend our community meetings](https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0#heading=h.6nxfjwmrm5g6) (Mellow might show up too\!)
-📌 **Join us on Slack** → [Register for Envoy Slack](https://communityinviter.com/apps/envoyproxy/envoy?email=test) and join \#envoy-ai-gateway
-📌 **Contribute** → Raise issues, suggest improvements, and submit PRs on GitHub
-📌 **Meet Us In Person** → [Register for the Envoy AI Gateway Workshop in London on March 31st](https://www.eventbrite.com/e/hands-on-workshop-deploy-configure-and-useenvoy-ai-gateway-tickets-1255461000649?aff=oddtdtcreator)
+- **Download & Try Envoy AI Gateway** → [GitHub Repo](https://github.com/envoyproxy/ai-gateway)
+- **Join the Conversation** → [Attend our community meetings](https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0#heading=h.6nxfjwmrm5g6) (Mellow might show up too\!)
+- **Join us on Slack** → [Register for Envoy Slack](https://communityinviter.com/apps/envoyproxy/envoy?email=test) and join \#envoy-ai-gateway
+- **Contribute** → Raise issues, suggest improvements, and submit PRs on GitHub
+- **Meet Us In Person** → [Register for the Envoy AI Gateway Workshop in London on March 31st](https://www.eventbrite.com/e/hands-on-workshop-deploy-configure-and-useenvoy-ai-gateway-tickets-1255461000649?aff=oddtdtcreator)
 
 The future of GenAI infrastructure **is open and collaborative,** and we're excited to work with you to build it\!
 
