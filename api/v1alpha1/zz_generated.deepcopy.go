@@ -319,7 +319,7 @@ func (in *AIServiceBackendSpec) DeepCopyInto(out *AIServiceBackendSpec) {
 	}
 	if in.Timeouts != nil {
 		in, out := &in.Timeouts, &out.Timeouts
-		*out = new(v1.HTTPRouteTimeouts)
+		*out = new(apisv1.HTTPRouteTimeouts)
 		(*in).DeepCopyInto(*out)
 	}
 }
