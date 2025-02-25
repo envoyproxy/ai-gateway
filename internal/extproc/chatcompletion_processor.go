@@ -46,7 +46,7 @@ type chatCompletionProcessor struct {
 	requestHeaders   map[string]string
 	responseHeaders  map[string]string
 	responseEncoding string
-	translator       translator.Translator
+	translator       translator.OpenAIChatCompletionTranslator
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 }
@@ -213,7 +213,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	return resp, nil
 }
 
-func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb translator.RequestBody, err error) {
+func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, err error) {
 	var openAIReq openai.ChatCompletionRequest
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
