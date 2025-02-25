@@ -92,7 +92,6 @@
       text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
       box-shadow: 0 4px 15px rgba(108, 24, 153, 0.2);
       position: relative;
-      overflow: hidden;
 
       &::before {
         content: '';
@@ -108,6 +107,7 @@
         );
         opacity: 0;
         transition: opacity 0.3s ease;
+        border-radius: inherit;
       }
 
       &:hover {
@@ -122,6 +122,7 @@
 
         &::before {
           opacity: 1;
+          border-radius: inherit;
         }
       }
 
@@ -138,7 +139,17 @@
     padding: 2rem 0rem 10rem 0rem;
     align-items: start;
     clip-path: polygon(0 0, 100% 0, 100% 87%, 0 100%);
+
+    .hero__subtitle{
+      font-size: 1.2rem;
+    }
+
+    .buttons{
+      flex-direction: column-reverse;
+
+    }
   }
+
 }
   @media screen and (max-width: 500px) {
     .heroBanner {

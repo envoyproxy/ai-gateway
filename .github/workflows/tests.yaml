@@ -2,7 +2,13 @@ name: Tests
 on:
   pull_request:
     branches:
-      - main
+      - 'main'
+      # Release branches are like "release/v0.1", "release/v0.2", etc. where we backport the changes to non EOL versions.
+      # The branch will be created from the main branch after the initial release tag is cut. For example, when we cut v0.8.0 release,
+      # we will create a branch "release/v0.8" from the main branch. For rc release, we simply iterate on main branch.
+      #
+      # See RELEASES.md for more details.
+      - 'release/**'
     paths-ignore:
       - '**/*.md'
       - 'site/**'
@@ -10,7 +16,8 @@ on:
 
   push:
     branches:
-      - main
+      - 'main'
+      - 'release/**'
     paths-ignore:
       - '**/*.md'
       - 'site/**'
@@ -183,6 +190,7 @@ jobs:
     name: Push Docker Images
     needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
     uses: ./.github/workflows/docker_builds_template.yaml
+    secrets: inherit
 
   helm_push:
     name: Push Helm chart
@@ -192,10 +200,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Login into GitHub Container Registry
+      - name: Login into DockerHub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - run: make helm-push

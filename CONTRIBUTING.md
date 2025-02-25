@@ -29,6 +29,12 @@ For example, `make precommit test` will run the precommit checks and the unit te
 These are the must-run commands before you submit or pushing commits to a PR.
 If anything goes wrong, please try to run `make clean` and then run the command again.
 
+You can make `make precommit` a git pre-commit hook by moving this file.
+
+```shell
+cp pre-commit.sh .git/hooks/pre-commit
+```
+
 All test targets are prefixed with `test-*` and can be run via `make test-<target>`.
 
 Some test commands might require additional dependencies to be installed on your machine.

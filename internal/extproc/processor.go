@@ -52,3 +52,26 @@ type Processor interface {
 	// ProcessResponseBody processes the response body message.
 	ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
 }
+
+// passThroughProcessor implements the Processor interface.
+type passThroughProcessor struct{}
+
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (p passThroughProcessor) ProcessRequestHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+}
+
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (p passThroughProcessor) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
+}
+
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
+func (p passThroughProcessor) ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+}
+
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
+func (p passThroughProcessor) ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
+}

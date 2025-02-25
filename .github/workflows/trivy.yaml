@@ -33,7 +33,7 @@ jobs:
       - name: Run Trivy vulnerability scanner for ${{ matrix.target.command_name }}
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/envoyproxy/ai-gateway/${{ matrix.target.command_name }}:${{ github.sha }}
+          image-ref: docker.io/envoyproxy/ai-gateway-${{ matrix.target.command_name }}:${{ github.sha }}
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           vuln-type: 'os,library'

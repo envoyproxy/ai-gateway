@@ -607,43 +607,25 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 		}
 	}
 
-	// Merge bedrock response content into openai response choices
-	for i := 0; i < len(bedrockResp.Output.Message.Content); i++ {
-		output := bedrockResp.Output.Message.Content[i]
-		choice := openai.ChatCompletionResponseChoice{
-			Index: (int64)(i),
-			Message: openai.ChatCompletionResponseChoiceMessage{
-				Role: bedrockResp.Output.Message.Role,
-			},
-			FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
-		}
-		if output.Text != nil {
-			choice.Message.Content = output.Text
-		}
-
-		if output.ToolUse != nil {
-			if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
-				choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
-			}
-		}
-
-		// Check if the next element should be merged -
-		// A model may return the tool config in a separate message,
-		// the message text + tool config should be merged for the openai response
-		if i+1 < len(bedrockResp.Output.Message.Content) {
-			nextOutput := bedrockResp.Output.Message.Content[i+1]
-			if nextOutput.Text == nil && nextOutput.ToolUse != nil {
-				if toolCall := o.bedrockToolUseToOpenAICalls(nextOutput.ToolUse); toolCall != nil {
-					// TODO: decide: we can either set it as the tool call, or append it.
-					// choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
-					choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
-				}
-				i++ // Skip the next element as it has been merged
-			}
-		}
-
-		openAIResp.Choices = append(openAIResp.Choices, choice)
+	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
+	choice := openai.ChatCompletionResponseChoice{
+		Index: (int64)(0),
+		Message: openai.ChatCompletionResponseChoiceMessage{
+			Role: bedrockResp.Output.Message.Role,
+		},
+		FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
 	}
+	for _, output := range bedrockResp.Output.Message.Content {
+		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
+			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
+		} else if output.Text != nil {
+			// For the converse response the assumption is that there is only one text content block, we take the first one.
+			if choice.Message.Content == nil {
+				choice.Message.Content = output.Text
+			}
+		}
+	}
+	openAIResp.Choices = append(openAIResp.Choices, choice)
 
 	mut.Body, err = json.Marshal(openAIResp)
 	if err != nil {

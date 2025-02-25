@@ -90,8 +90,7 @@ kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 Open a new terminal and send a test request to the AI Gateway using the `GATEWAY_URL` we set up:
 
 ```shell
-curl --fail \
-    -H "Content-Type: application/json" \
+curl -H "Content-Type: application/json" \
     -d '{
         "model": "some-cool-self-hosted-model",
         "messages": [
