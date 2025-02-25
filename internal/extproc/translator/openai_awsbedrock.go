@@ -635,8 +635,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			if nextOutput.Text == nil && nextOutput.ToolUse != nil {
 				if toolCall := o.bedrockToolUseToOpenAICalls(nextOutput.ToolUse); toolCall != nil {
 					// TODO: decide: we can either set it as the tool call, or append it.
-					// choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
-					choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
+					choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
+					// choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
 				}
 				i++ // Skip the next element as it has been merged
 			}
