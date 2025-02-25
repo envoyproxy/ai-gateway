@@ -1,6 +1,6 @@
 missberg:
   name: Erica Hughberg
-  title: Envoy AI Gateway Maintainer
+  title: Envoy AI Gateway Maintainer - Tetrate
   url: https://github.com/missBerg
   image_url: https://github.com/missBerg.png
   page: true
@@ -16,3 +16,39 @@ alexagriffith:
   socials:
     github: alexagriffith
     linkedin: https://www.linkedin.com/in/alexa-griffith/
+dansun:
+  name: Dan Sun
+  title: Envoy AI Gateway Maintainer - Bloomberg
+  url: https://github.com/yuzisun
+  image_url: https://github.com/yuzisun.png
+  page: true
+  socials:
+    github: yuzisun
+    linkedin: https://www.linkedin.com/in/dan-sun-44a21b5/
+aaronchoo:
+  name: Aaron Choo
+  title: Envoy AI Gateway Maintainer - Bloomberg
+  url: https://github.com/aabchoo
+  image_url: https://github.com/aabchoo.png
+  page: true
+  socials:
+    github: https://github.com/aabchoo
+    linkedin: https://www.linkedin.com/in/aaron-choo/
+yaoweng:
+  name: Yao Weng
+  title: Envoy AI Gateway Maintainer - Bloomberg
+  url: https://github.com/wengyao04
+  image_url: https://github.com/wengyao04.png
+  page: true
+  socials:
+    github: https://github.com/wengyao04
+    linkedin: https://www.linkedin.com/in/yao-weng-ab091442/
+mathetake:
+  name: Takeshi Yoneda
+  title: Envoy AI Gateway Maintainer - Tetrate
+  url: https://github.com/mathetake
+  image_url: https://github.com/mathetake.png
+  page: true
+  socials:
+    github: https://github.com/mathetake
+    linkedin: https://www.linkedin.com/in/mathetake/
