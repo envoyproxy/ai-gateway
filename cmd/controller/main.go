@@ -42,7 +42,7 @@ func parseAndValidateFlags(args []string) (
 	)
 	extProcImagePtr := fs.String(
 		"extProcImage",
-		"ghcr.io/envoyproxy/ai-gateway/extproc:latest",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"The image for the external processor",
 	)
 	enableLeaderElectionPtr := fs.Bool(

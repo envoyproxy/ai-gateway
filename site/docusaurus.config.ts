@@ -46,6 +46,17 @@ const config: Config = {
           remarkPlugins: [
             [require('@docusaurus/theme-mermaid'), {}],
           ],
+          lastVersion: 'current',
+          versions: {
+            current: {
+              label: 'latest',
+            },
+            '0.1.0': {
+              label: '0.1.0',
+              path: '0.1.0',
+              banner: 'none',
+            },
+          },
         },
         blog: {
           path: 'blog',
@@ -81,12 +92,11 @@ const config: Config = {
         src: 'img/logo-white.svg',
       },
       items: [
-        // {
-        //   type: 'docSidebar',
-        //   sidebarId: 'tutorialSidebar',
-        //   position: 'left',
-        //   label: 'Tutorial',
-        // },
+        {
+          label: 'Release Notes',
+          to: '/release-notes/',
+          position: 'right',
+        },
         {
           label: 'Community',
           position: 'right',
@@ -115,6 +125,9 @@ const config: Config = {
            to: '/docs', // Path to your Overview page
            position: 'left',
          },
+         {
+          type: 'docsVersionDropdown',
+        },
         {
           href: 'https://github.com/envoyproxy/ai-gateway',
           label: 'GitHub',

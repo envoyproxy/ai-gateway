@@ -14,9 +14,11 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -160,6 +162,18 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, requestHeaders: headers, logger: slog.Default()}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
+	})
+	t.Run("router error 404", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
+		p := &chatCompletionProcessor{config: &processorConfig{router: rt}, requestHeaders: headers, logger: slog.Default()}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		ir := resp.GetImmediateResponse()
+		require.NotNil(t, ir)
+		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
+		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
 	})
 	t.Run("translator not found", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
