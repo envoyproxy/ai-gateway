@@ -44,9 +44,6 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
-
-	defaultRequestTimeout        = "60s"
-	defaultBackendRequestTimeout = "60s"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
@@ -447,8 +444,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			BackendRefs: []gwapiv1.HTTPBackendRef{
 				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 			},
-			Filters:  rewriteFilters,
-			Timeouts: defaultTimeout(),
+			Filters: rewriteFilters,
 		})
 	}
 
@@ -681,15 +677,4 @@ func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string
 
 func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
-}
-
-func defaultTimeout() *gwapiv1.HTTPRouteTimeouts {
-	var (
-		requestTimeout        = gwapiv1.Duration(defaultRequestTimeout)
-		backendRequestTimeout = gwapiv1.Duration(defaultBackendRequestTimeout)
-	)
-	return &gwapiv1.HTTPRouteTimeouts{
-		Request:        &requestTimeout,
-		BackendRequest: &backendRequestTimeout,
-	}
 }
