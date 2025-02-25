@@ -40,12 +40,12 @@ If you're familiar with Kubernetes and want to get started quickly, run these co
 
 ```shell
 helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.0.0-latest \
+  --version v1.3.0 \
   --namespace envoy-gateway-system \
   --create-namespace
 
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
+  --version v0.1.0 \
   --namespace envoy-ai-gateway-system \
   --create-namespace
 
