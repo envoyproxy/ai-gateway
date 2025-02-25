@@ -448,15 +448,15 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure
+// BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 type BackendSecurityPolicyAzureCredentials struct {
-	// ClientID is a unique identifier for an application in Azure
+	// ClientID is a unique identifier for an application in Azure.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	ClientID string `json:"clientID"`
 
-	// TenantId is a unique identifier for an Azure Active Directory instance
+	// TenantId is a unique identifier for an Azure Active Directory instance.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -468,7 +468,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
 }
 
-// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
 	//

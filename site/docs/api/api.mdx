@@ -647,7 +647,7 @@ BackendSecurityPolicyAPIKey specifies the API key.
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
 
 ##### Fields
 
@@ -678,7 +678,7 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure
+BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 
 ##### Fields
 
@@ -688,12 +688,12 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
   name="clientID"
   type="string"
   required="true"
-  description="ClientID is a unique identifier for an application in Azure"
+  description="ClientID is a unique identifier for an application in Azure."
 /><ApiField
   name="tenantID"
   type="string"
   required="true"
-  description="TenantId is a unique identifier for an Azure Active Directory instance"
+  description="TenantId is a unique identifier for an Azure Active Directory instance."
 /><ApiField
   name="clientSecretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
