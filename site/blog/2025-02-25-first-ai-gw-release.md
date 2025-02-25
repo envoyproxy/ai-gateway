@@ -6,9 +6,9 @@ tags: [news, releases]
 ---
 # Announcing the first Envoy AI Gateway Release – A Community Milestone!
 
-Today, we're excited to announce the **0.1 release** of the **Envoy AI Gateway,** the first AI gateway built on **CNCF's [Envoy Gateway](https://gateway.envoyproxy.io/)** and backed by a thriving, growing community.
-
 ![Announcing the first Envoy AI Gateway Release](/img/blog/0.1-release-image.png)
+
+Today, we're excited to announce the **0.1 release** of the **Envoy AI Gateway,** the first AI gateway built on **CNCF's [Envoy Gateway](https://gateway.envoyproxy.io/)** and backed by a thriving, growing community.
 
 The journey to the **Envoy AI Gateway** started with a simple but powerful vision: make it easier for enterprises to integrate and scale AI in their applications.
 
