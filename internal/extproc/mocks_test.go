@@ -7,7 +7,6 @@ package extproc
 
 import (
 	"context"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"io"
 	"log/slog"
 	"testing"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
 
