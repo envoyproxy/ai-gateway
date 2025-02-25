@@ -93,6 +93,11 @@ const config: Config = {
       },
       items: [
         {
+          label: 'Release Notes',
+          to: '/release-notes/',
+          position: 'right',
+        },
+        {
           label: 'Community',
           position: 'right',
            items: [
