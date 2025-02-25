@@ -42,7 +42,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	}
 	t.Logf("Using Kubernetes version %s", k8sVersion)
 	setupEnvTestCmd := exec.Command("go", "tool", "setup-envtest", "use", k8sVersion, "-p", "path")
-	output, err := setupEnvTestCmd.CombinedOutput()
+	output, err := setupEnvTestCmd.Output()
 	require.NoError(t, err, "Failed to setup envtest: %s", output)
 	t.Logf("Using envtest assets from %s", string(output))
 	t.Setenv("KUBEBUILDER_ASSETS", string(output))
