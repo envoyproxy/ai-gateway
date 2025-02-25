@@ -293,6 +293,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
 - [LLMRequestCost](#llmrequestcost)
@@ -670,6 +671,37 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 />
 
 
+#### BackendSecurityPolicyAzureCredentials
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure
+
+##### Fields
+
+
+
+<ApiField
+  name="clientID"
+  type="string"
+  required="true"
+  description="ClientID is a unique identifier for an application in Azure"
+/><ApiField
+  name="tenantID"
+  type="string"
+  required="true"
+  description="TenantId is a unique identifier for an Azure Active Directory instance"
+/><ApiField
+  name="clientSecretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `azure_access_token`"
+/>
+
+
 #### BackendSecurityPolicySpec
 
 
@@ -690,7 +722,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="type"
   type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
   required="true"
-  description="Type specifies the auth mechanism used to access the provider. Currently, only `APIKey`, AND `AWSCredentials` are supported."
+  description="Type specifies the auth mechanism used to access the provider. Currently, only `APIKey`, `AWSCredentials`, and `AzureCredentials` are supported."
 /><ApiField
   name="apiKey"
   type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
@@ -701,6 +733,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)"
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
+/><ApiField
+  name="azureCredentials"
+  type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
+  required="false"
+  description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
 />
 
 
@@ -724,6 +761,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="AWSCredentials"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="AzureCredentials"
   type="enum"
   required="false"
   description=""

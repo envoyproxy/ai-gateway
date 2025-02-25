@@ -1249,12 +1249,77 @@ spec:
                 required:
                 - region
                 type: object
+              azureCredentials:
+                description: AzureCredentials is a mechanism to access a backend(s).
+                  Azure OpenAI specific logic will be applied.
+                properties:
+                  clientID:
+                    description: ClientID is a unique identifier for an application
+                      in Azure
+                    minLength: 1
+                    type: string
+                  clientSecretRef:
+                    description: |-
+                      ClientSecretRef is the reference to the secret containing the Azure client secret.
+                      ai-gateway must be given the permission to read this secret.
+                      The key of secret should be "azure_access_token"
+                    properties:
+                      group:
+                        default: ""
+                        description: |-
+                          Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                          When unspecified or empty string, core API group is inferred.
+                        maxLength: 253
+                        pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                      kind:
+                        default: Secret
+                        description: Kind is kind of the referent. For example "Secret".
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                        type: string
+                      name:
+                        description: Name is the name of the referent.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the referenced object. When unspecified, the local
+                          namespace is inferred.
+
+                          Note that when a namespace different than the local namespace is specified,
+                          a ReferenceGrant object is required in the referent namespace to allow that
+                          namespace's owner to accept the reference. See the ReferenceGrant
+                          documentation for details.
+
+                          Support: Core
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  tenantID:
+                    description: TenantId is a unique identifier for an Azure Active
+                      Directory instance
+                    minLength: 1
+                    type: string
+                required:
+                - clientID
+                - clientSecretRef
+                - tenantID
+                type: object
               type:
                 description: Type specifies the auth mechanism used to access the
-                  provider. Currently, only "APIKey", AND "AWSCredentials" are supported.
+                  provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials"
+                  are supported.
                 enum:
                 - APIKey
                 - AWSCredentials
+                - AzureCredentials
                 type: string
             required:
             - type
