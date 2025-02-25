@@ -62,7 +62,7 @@ Comprehensive documentation is available at [aigateway.envoyproxy.io](https://ai
 - [Getting Started Guide](https://aigateway.envoyproxy.io/docs/getting-started)
 - [Architecture Overview](https://aigateway.envoyproxy.io/docs/concepts/architecture)
 - [API Reference](https://aigateway.envoyproxy.io/docs/api/)
-- [Confiugration Examples](https://github.com/envoyproxy/ai-gateway/tree/main/examples)
+- [Configuration Examples](https://github.com/envoyproxy/ai-gateway/tree/main/examples)
 
 
 ### Community
