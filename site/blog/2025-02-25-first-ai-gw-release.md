@@ -28,7 +28,7 @@ With this release, we're making AI adoption in cloud-native environments more st
 
 This milestone wouldn't be possible without the incredible contributions and participation from across the industry.
 
-**A shout out to our community members from** Tetrate, Bloomberg, WSO2, RedHat, Spotify, Google, and our independent contributors who have joined discussions, provided feedback, and helped shape the roadmap.
+**A shout out to our community members from** Tetrate, Bloomberg, WSO2, RedHat, Google, and our independent contributors who have joined discussions, provided feedback, and helped shape the roadmap.
 
 🐱 Even **the cat Mellow** has attended community meetings, proving that AI isn't just for humans\!
 
