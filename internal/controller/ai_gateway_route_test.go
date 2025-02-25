@@ -239,7 +239,10 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 }
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
-	builder := fake.NewClientBuilder().WithScheme(scheme)
+	builder := fake.NewClientBuilder().WithScheme(scheme).
+		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
 	err := ApplyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
@@ -308,9 +311,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the first backend.
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
-
-		require.Len(t, route.Status.Conditions, 1)
-		require.Equal(t, metav1.ConditionTrue, route.Status.Conditions[0].Status)
 	})
 
 	// Check the namespace has the default host rewrite filter.
@@ -1085,7 +1085,7 @@ func TestAIGatewayRouteController_AnnotateExtProcPods(t *testing.T) {
 	}
 }
 
-func TestAIGatewayRouteController_PatchAIGatewayRouteStatus(t *testing.T) {
+func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "foo", "debug")
@@ -1095,23 +1095,43 @@ func TestAIGatewayRouteController_PatchAIGatewayRouteStatus(t *testing.T) {
 			Name:      "route1",
 			Namespace: "default",
 		},
+		Status: aigv1a1.AIGatewayRouteStatus{
+			Conditions: []metav1.Condition{},
+		},
 	}
-	err := s.client.Create(t.Context(), r)
+	err := s.client.Create(t.Context(), r, &client.CreateOptions{})
 	require.NoError(t, err)
 
-	s.patchAIGatewayRouteStatus(t.Context(), r, false, "aaaaaaa")
+	s.updateAIGatewayRouteStatus(t.Context(), r, false, "err1")
 
 	var updatedRoute aigv1a1.AIGatewayRoute
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, "aaaaaaa", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
 	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 
-	s.patchAIGatewayRouteStatus(t.Context(), r, true, "bbbbbbb")
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok1")
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 2)
-	require.Equal(t, "bbbbbbb", updatedRoute.Status.Conditions[1].Message)
+	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, "ok1", updatedRoute.Status.Conditions[1].Message)
+	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
+
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, false, "err2")
+	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 2)
+
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok2")
+	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 2)
+
+	require.Equal(t, "err2", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, "ok2", updatedRoute.Status.Conditions[1].Message)
 	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
 }

@@ -456,6 +456,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 	})
 
 	t.Run("update", func(t *testing.T) {
+		err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, origin)
+		require.NoError(t, err)
 		newResource := &corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("300m"),
@@ -464,7 +466,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 		}
 		origin.Spec.FilterConfig.ExternalProcessor.Replicas = ptr.To[int32](3)
 		origin.Spec.FilterConfig.ExternalProcessor.Resources = newResource
-		err := c.Update(t.Context(), origin)
+		err = c.Update(t.Context(), origin)
 		require.NoError(t, err)
 
 		var r aigv1a1.AIGatewayRoute
@@ -486,6 +488,16 @@ func TestAIGatewayRouteController(t *testing.T) {
 			require.Equal(t, int32(3), *deployment.Spec.Replicas)
 			require.Equal(t, newResource, &deployment.Spec.Template.Spec.Containers[0].Resources)
 			return true
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("check statuses", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIGatewayRoute
+			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
+			require.NoError(t, err)
+			fmt.Println(r.Status.Conditions)
+			return len(r.Status.Conditions) == 1
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }

@@ -7,10 +7,10 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
+	"sort"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -47,22 +47,6 @@ const (
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
 )
-
-const patchTemplateWithCondition = `[
-	{
-		"op": "add",
-		"path": "/status/conditions/-",
-		"value": %s
-	}
-]`
-
-const patchTemplateWithoutCondition = `[
-	{
-		"op": "add",
-		"path": "/status/conditions",
-		"value": [%s]
-	}
-]`
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
 //
@@ -114,7 +98,7 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to reconcile extProc config map")
 		message := fmt.Sprintf("failed to ensure extproc configmap exists: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
 		return ctrl.Result{}, errors.New(message)
 	}
 	// TODO: merge this into syncAIGatewayRoute. This is a left over from the previous sink based implementation.
@@ -122,10 +106,17 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to reconcile extension policy")
 		message := fmt.Sprintf("failed to reconcile extension policy: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
 		return ctrl.Result{}, errors.New(message)
 	}
-	return reconcile.Result{}, c.syncAIGatewayRoute(ctx, &aiGatewayRoute)
+
+	if err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute); err != nil {
+		c.logger.Error(err, "failed to sync AIGatewayRoute")
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, err.Error())
+		return ctrl.Result{}, err
+	}
+	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, true, "AI Gateway Route reconciled successfully")
+	return reconcile.Result{}, nil
 }
 
 // reconcileExtProcExtensionPolicy creates or updates the extension policy for the external process.
@@ -238,15 +229,11 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 				},
 			},
 		}
-		if err = c.client.Create(ctx, &httpRouteFilter); err != nil { // coverage-ignore
-			message := fmt.Sprintf("failed to create HTTPRouteFilter: %v", err)
-			c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-			return errors.New(message)
+		if err = c.client.Create(ctx, &httpRouteFilter); err != nil {
+			return fmt.Errorf("failed to create HTTPRouteFilter: %w", err)
 		}
-	} else if err != nil { // coverage-ignore
-		message := fmt.Sprintf("failed to get HTTPRouteFilter: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-		return errors.New(message)
+	} else if err != nil {
+		return fmt.Errorf("failed to get HTTPRouteFilter: %w", err)
 	}
 
 	// Check if the HTTPRoute exists.
@@ -266,10 +253,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
 			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
 		}
-	} else if err != nil { // coverage-ignore
-		message := fmt.Sprintf("failed to get HTTPRoute: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-		return errors.New(message)
+	} else if err != nil {
+		return fmt.Errorf("failed to get HTTPRoute: %w", err)
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
@@ -279,44 +264,33 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 
 	if existingRoute {
 		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Update(ctx, &httpRoute); err != nil { // coverage-ignore
-			message := fmt.Sprintf("failed to update HTTPRoute: %v", err)
-			c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-			return errors.New(message)
+		if err = c.client.Update(ctx, &httpRoute); err != nil {
+			return fmt.Errorf("failed to update HTTPRoute: %w", err)
 		}
 	} else {
 		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Create(ctx, &httpRoute); err != nil { // coverage-ignore
-			message := fmt.Sprintf("failed to create HTTPRoute: %v", err)
-			c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-			return errors.New(message)
+		if err = c.client.Create(ctx, &httpRoute); err != nil {
+			return fmt.Errorf("failed to create HTTPRoute: %w", err)
 		}
 	}
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil { // coverage-ignore
-		message := fmt.Sprintf("failed to update extproc configmap: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-		return errors.New(message)
+	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+		return fmt.Errorf("failed to update extproc configmap: %w", err)
 	}
 
 	// Deploy extproc deployment with potential updates.
 	err = c.syncExtProcDeployment(ctx, aiGatewayRoute)
-	if err != nil { // coverage-ignore
-		message := fmt.Sprintf("failed to sync extproc deployment: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-		return errors.New(message)
+	if err != nil {
+		return fmt.Errorf("failed to sync extproc deployment: %w", err)
 	}
 
 	// Annotate all pods with the new config.
 	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
 	if err != nil {
-		message := fmt.Sprintf("failed to annotate extproc pods: %v", err)
-		c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, false, message)
-		return errors.New(message)
+		return fmt.Errorf("failed to annotate extproc pods: %w", err)
 	}
-	c.patchAIGatewayRouteStatus(ctx, aiGatewayRoute, true, "AI Gateway Route reconciled successfully")
 	return nil
 }
 
@@ -725,9 +699,10 @@ const (
 	aiGatewayRouteConditionTypeNotAccepted = "NotAccepted"
 )
 
-// patchAIGatewayRouteStatus patches status for AIGatewayRoute object.
-func (c *AIGatewayRouteController) patchAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, accepted bool, message string) {
-	condition := metav1.Condition{Message: message}
+// updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
+func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, accepted bool, message string) {
+	route = route.DeepCopy()
+	condition := metav1.Condition{Message: message, LastTransitionTime: metav1.Now()}
 	if accepted {
 		condition.Type = aiGatewayRouteConditionTypeAccepted
 		condition.Reason = "ReconciliationSucceeded"
@@ -738,18 +713,25 @@ func (c *AIGatewayRouteController) patchAIGatewayRouteStatus(ctx context.Context
 		condition.Status = metav1.ConditionFalse
 	}
 
-	conditionJSON, err := json.Marshal(condition)
-	if err != nil {
-		panic(fmt.Errorf("BUG: failed to marshal condition: %w", err))
+	// Search for the same Status condition and replace it, append if not found.
+	found := false
+	for i, cond := range route.Status.Conditions {
+		if cond.Type == condition.Type {
+			found = true
+			route.Status.Conditions[i] = condition
+			break
+		}
 	}
 
-	var patchString string
-	if len(route.Status.Conditions) == 0 {
-		patchString = fmt.Sprintf(patchTemplateWithoutCondition, string(conditionJSON))
-	} else {
-		patchString = fmt.Sprintf(patchTemplateWithCondition, string(conditionJSON))
+	if !found {
+		route.Status.Conditions = append(route.Status.Conditions, condition)
 	}
-	if err := c.client.Patch(ctx, route, client.RawPatch(types.JSONPatchType, []byte(patchString))); err != nil {
-		c.logger.Error(err, "failed to patch AIGatewayRoute status")
+	// And sort the conditions by LastTransitionTime.
+	sort.Slice(route.Status.Conditions, func(i, j int) bool {
+		return route.Status.Conditions[i].LastTransitionTime.Before(&route.Status.Conditions[j].LastTransitionTime)
+	})
+
+	if err := c.client.Status().Update(ctx, route); err != nil {
+		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}
 }

@@ -466,6 +466,8 @@ spec:
             description: Status defines the status details of the AIGatewayRoute.
             properties:
               conditions:
+                description: Conditions is the list of conditions by the reconciliation
+                  result.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
