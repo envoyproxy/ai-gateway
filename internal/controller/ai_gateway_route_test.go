@@ -1095,9 +1095,6 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 			Name:      "route1",
 			Namespace: "default",
 		},
-		Status: aigv1a1.AIGatewayRouteStatus{
-			Conditions: []metav1.Condition{},
-		},
 	}
 	err := s.client.Create(t.Context(), r, &client.CreateOptions{})
 	require.NoError(t, err)
