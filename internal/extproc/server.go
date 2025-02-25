@@ -136,7 +136,12 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 
 	// The processor will be instantiated when the first message containing the request headers is received.
 	// The :path header is used to determine the processor to use, based on the registered ones.
-	var p Processor
+	//
+	// If this extproc filter is invoked without going through a RequestHeaders phase, that means
+	// an earlier filter has already processed the request headers/bodies and decided to terminate
+	// the request by sending an immediate response. In this case, we will use the passThroughProcessor
+	// to pass the request through without any processing as there would be nothing to process from AI Gateway's perspective.
+	var p Processor = &passThroughProcessor{}
 
 	for {
 		select {
