@@ -642,7 +642,6 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 }
 
 func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
-	t.Skip()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
