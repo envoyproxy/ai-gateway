@@ -55,6 +55,8 @@ want to run these tests locally, please prepare the necessary credentials by you
 
 ## Opening a Pull Request
 
+We employ almost the same guidelines as the [envoyproxy/envoy](https://github.com/envoyproxy/envoy/blob/main/CONTRIBUTING.md#submitting-a-pr).
+
 ### Ensure `make precommit` passes
 
 As described above, please run `make precommit` locally before opening a PR and ensure that it passes.
