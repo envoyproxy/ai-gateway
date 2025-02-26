@@ -411,8 +411,9 @@ const (
 type BackendSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              BackendSecurityPolicySpec   `json:"spec,omitempty"`
-	Status            BackendSecurityPolicyStatus `json:"status,omitempty"`
+	Spec              BackendSecurityPolicySpec `json:"spec,omitempty"`
+	// Status defines the status details of the BackendSecurityPolicy.
+	Status BackendSecurityPolicyStatus `json:"status,omitempty"`
 }
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
