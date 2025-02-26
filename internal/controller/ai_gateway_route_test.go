@@ -80,30 +80,6 @@ func Test_extProcName(t *testing.T) {
 	require.Equal(t, "ai-eg-route-extproc-myroute", actual)
 }
 
-func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
-	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
-	c.kube = fake2.NewClientset()
-	name := "myroute"
-	ownerRef := []metav1.OwnerReference{
-		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
-	}
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
-
-	err := c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
-	require.NoError(t, err)
-
-	configMap, err := c.kube.CoreV1().ConfigMaps("default").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, extProcName(aiGatewayRoute), configMap.Name)
-	require.Equal(t, "default", configMap.Namespace)
-	require.Equal(t, ownerRef, configMap.OwnerReferences)
-	require.Equal(t, filterapi.DefaultConfig, configMap.Data[expProcConfigFileName])
-
-	// Doing it again should not fail.
-	err = c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
-	require.NoError(t, err)
-}
-
 func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
 	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	name := "myroute"
@@ -289,12 +265,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 			Spec:       gwapiv1.HTTPRouteSpec{},
 		}
 		err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
-		require.NoError(t, err)
-
-		// Create the initial configmap.
-		_, err = kube.CoreV1().ConfigMaps(route.Namespace).Create(t.Context(), &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: extProcName(route), Namespace: route.Namespace},
-		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// Then sync, which should update the HTTPRoute.
