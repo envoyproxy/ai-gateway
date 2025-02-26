@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -86,8 +88,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
 		options.ExtProcImage, options.ExtProcLogLevel)
-	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.AIGatewayRoute{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
 		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&appsv1.Deployment{}).
@@ -98,22 +99,21 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("ai-service-backend"), routeC.syncAIGatewayRoute)
-	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.AIServiceBackend{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).
 		Complete(backendC); err != nil {
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), backendC.syncAIServiceBackend)
-	if err = ctrl.NewControllerManagedBy(mgr).
-		For(&aigv1a1.BackendSecurityPolicy{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("secret"), backendSecurityPolicyC.syncBackendSecurityPolicy)
+	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
 		Complete(secretC); err != nil {
@@ -124,6 +124,18 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to start controller manager: %w", err)
 	}
 	return nil
+}
+
+// TypedControllerBuilderForCRD returns a new controller builder for the given CRD object type.
+//
+// This is to share the common logic for setting up a controller for a given object type.
+//
+// Exported for testing purposes in tests/controller_test.go.
+func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Builder {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(obj).
+		// We do not need to watch for changes in the status subresource.
+		WithEventFilter(predicate.GenerationChangedPredicate{})
 }
 
 const (
@@ -202,4 +214,25 @@ func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespa
 		return fmt.Sprintf("%s.%s", secretRef.Name, *secretRef.Namespace)
 	}
 	return fmt.Sprintf("%s.%s", secretRef.Name, namespace)
+}
+
+// newConditions creates a new condition with the given type and message.
+//
+// Currently, we only set one condition at a time either "Accepted" or "NotAccepted".
+// In the future, if we can have multiple conditions like multiple errors, we can make changes here.
+func newConditions(conditionType, message string) []metav1.Condition {
+	condition := metav1.Condition{Message: message, LastTransitionTime: metav1.Now()}
+	// Note: we use the fixed reason for now since the message is enough to describe the error and
+	// reason doesn't fit the entire message.
+	switch conditionType {
+	case aigv1a1.ConditionTypeAccepted:
+		condition.Type = aigv1a1.ConditionTypeAccepted
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "ReconciliationSucceeded"
+	case aigv1a1.ConditionTypeNotAccepted:
+		condition.Type = aigv1a1.ConditionTypeNotAccepted
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "ReconciliationFailed"
+	}
+	return []metav1.Condition{condition}
 }

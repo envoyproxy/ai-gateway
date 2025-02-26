@@ -19,7 +19,11 @@ spec:
     singular: aigatewayroute
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[-1:].type
+      name: Status
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -466,8 +470,11 @@ spec:
             description: Status defines the status details of the AIGatewayRoute.
             properties:
               conditions:
-                description: Conditions is the list of conditions by the reconciliation
-                  result.
+                description: |-
+                  Conditions is the list of conditions by the reconciliation result.
+                  Currently, at most one condition is set.
+
+                  Known .status.conditions.type are: "Accepted", "NotAccepted".
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

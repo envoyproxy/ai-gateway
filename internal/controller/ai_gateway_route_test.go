@@ -1049,36 +1049,19 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	err := s.client.Create(t.Context(), r, &client.CreateOptions{})
 	require.NoError(t, err)
 
-	s.updateAIGatewayRouteStatus(t.Context(), r, false, "err1")
+	s.updateAIGatewayRouteStatus(t.Context(), r, aigv1a1.ConditionTypeNotAccepted, "err")
 
 	var updatedRoute aigv1a1.AIGatewayRoute
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, "err", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok1")
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, aigv1a1.ConditionTypeAccepted, "ok")
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
-	require.Equal(t, "ok1", updatedRoute.Status.Conditions[1].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
-
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, false, "err2")
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
-	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok2")
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
-	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-
-	require.Equal(t, "err2", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
-	require.Equal(t, "ok2", updatedRoute.Status.Conditions[1].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, "ok", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
