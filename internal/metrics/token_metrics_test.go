@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
+// Copyright Envoy AI Gateway Authors.
+// SPDX-License-Identifier: Apache-2.0.
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -103,13 +103,13 @@ func TestRecordRequestCompletion(t *testing.T) {
 	pm.StartRequest()
 
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordRequestCompletion("test-backend", "test-model", "success")
+	pm.RecordRequestCompletion("test-backend", "test-model", true)
 
 	// Test requests counter
 	requests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  "success",
+		"status":  StatusSuccess,
 	})
 	assert.Equal(t, float64(1), requests)
 
@@ -117,21 +117,21 @@ func TestRecordRequestCompletion(t *testing.T) {
 	totalLatency := getHistogramValue(t, pm.metrics.TotalLatency, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  "success",
+		"status":  StatusSuccess,
 	})
 	assert.Greater(t, totalLatency, 0.0)
 
 	// Test failed request
-	pm.RecordRequestCompletion("test-backend", "test-model", "error")
+	pm.RecordRequestCompletion("test-backend", "test-model", false)
 	failedRequests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  "error",
+		"status":  StatusError,
 	})
 	assert.Equal(t, float64(1), failedRequests)
 }
 
-// Helper function to get the current value of a counter metric
+// Helper function to get the current value of a counter metric.
 func getCounterValue(t *testing.T, metric *prometheus.CounterVec, labels map[string]string) float64 {
 	t.Helper()
 	m, err := metric.GetMetricWith(labels)
@@ -142,7 +142,7 @@ func getCounterValue(t *testing.T, metric *prometheus.CounterVec, labels map[str
 	return metric_pb.Counter.GetValue()
 }
 
-// Helper function to get the current sum of a histogram metric
+// Helper function to get the current sum of a histogram metric.
 func getHistogramValue(t *testing.T, metric *prometheus.HistogramVec, labels map[string]string) float64 {
 	t.Helper()
 	m, err := metric.GetMetricWith(labels)

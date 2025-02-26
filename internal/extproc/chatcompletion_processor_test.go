@@ -57,7 +57,9 @@ func TestChatCompletion_SelectTranslator(t *testing.T) {
 }
 
 func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
-	p := &chatCompletionProcessor{}
+	p := &chatCompletionProcessor{
+		metrics: metrics.NewProcessorMetrics(),
+	}
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
 	})
@@ -66,15 +68,94 @@ func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
 	require.True(t, ok)
 }
 
-// Create a mock ProcessorMetrics for testing
-type mockProcessorMetrics struct{}
+// TestMetricsAreRecorded tests that metrics are properly recorded
+func TestMetricsAreRecorded(t *testing.T) {
+	// Test verifies that the processor correctly calls the metrics methods.
+	// Create a custom mock translator that doesn't validate the body.
+	customMockTranslator := &struct {
+		translator.OpenAIChatCompletionTranslator
+	}{
+		OpenAIChatCompletionTranslator: &mockTranslator{
+			t:                 t,
+			retBodyMutation:   &extprocv3.BodyMutation{},
+			retHeaderMutation: &extprocv3.HeaderMutation{},
+			retUsedToken:      translator.LLMTokenUsage{OutputTokens: 100, InputTokens: 50, TotalTokens: 150},
+		},
+	}
 
-// Implement the methods required by the metrics.ProcessorMetrics interface
-func (m *mockProcessorMetrics) StartRequest() {}
-func (m *mockProcessorMetrics) UpdateTokenMetrics(backend, model string, output, input, total uint32) {
+	// Override the ResponseBody method to not validate the body
+	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
+		t:                 t,
+		retBodyMutation:   &extprocv3.BodyMutation{},
+		retHeaderMutation: &extprocv3.HeaderMutation{},
+		retUsedToken:      translator.LLMTokenUsage{OutputTokens: 100, InputTokens: 50, TotalTokens: 150},
+	}
+
+	// Create a processor with our mock translator
+	p := &chatCompletionProcessor{
+		translator:  customMockTranslator.OpenAIChatCompletionTranslator,
+		metrics:     metrics.NewProcessorMetrics(),
+		backendName: "test-backend",
+		modelName:   "test-model",
+		logger:      slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config: &processorConfig{
+			metadataNamespace: "test-namespace",
+		},
+	}
+
+	// Process a response body - this should call metrics methods
+	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("test-body"), EndOfStream: true})
+	require.NoError(t, err)
+
+	// Verify token metrics were recorded correctly
+	metricsRegistry := metrics.GetRegistry()
+	metricFamilies, err := metricsRegistry.Gather()
+	require.NoError(t, err)
+
+	// Find and verify token metrics
+	var foundCompletionTokens, foundPromptTokens, foundTotalTokens bool
+	for _, metricFamily := range metricFamilies {
+		if metricFamily.GetName() == "aigateway_model_tokens_total" {
+			for _, metric := range metricFamily.GetMetric() {
+				labels := make(map[string]string)
+				for _, label := range metric.GetLabel() {
+					labels[label.GetName()] = label.GetValue()
+				}
+
+				// Check if this is one of our metrics
+				if labels["backend"] == "test-backend" && labels["model"] == "test-model" {
+					switch labels["type"] {
+					case "completion":
+						require.Equal(t, float64(100), metric.GetCounter().GetValue(), "Completion tokens should be 100")
+						foundCompletionTokens = true
+					case "prompt":
+						require.Equal(t, float64(50), metric.GetCounter().GetValue(), "Prompt tokens should be 50")
+						foundPromptTokens = true
+					case "total":
+						require.Equal(t, float64(150), metric.GetCounter().GetValue(), "Total tokens should be 150")
+						foundTotalTokens = true
+					}
+				}
+			}
+		}
+	}
+
+	// Ensure we found all the metrics we expected
+	require.True(t, foundCompletionTokens, "Completion tokens metric not found")
+	require.True(t, foundPromptTokens, "Prompt tokens metric not found")
+	require.True(t, foundTotalTokens, "Total tokens metric not found")
+
+	// Test error case
+	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
+		t:      t,
+		retErr: errors.New("test error"),
+	}
+	p.translator = customMockTranslator.OpenAIChatCompletionTranslator
+	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test error")
+
 }
-func (m *mockProcessorMetrics) UpdateLatencyMetrics(backend, model string, tokens uint32) {}
-func (m *mockProcessorMetrics) RecordRequestCompletion(backend, model, status string)     {}
 
 func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {

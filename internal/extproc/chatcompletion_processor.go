@@ -59,6 +59,13 @@ type chatCompletionProcessor struct {
 	backendName string
 }
 
+// recordErrorAndReturn records a failed request in metrics and returns an error.
+// This helper method consolidates the common pattern of recording metrics before returning an error.
+func (c *chatCompletionProcessor) recordErrorAndReturn(format string, args ...interface{}) error {
+	c.metrics.RecordRequestCompletion(c.backendName, c.modelName, false)
+	return fmt.Errorf(format, args...)
+}
+
 // selectTranslator selects the translator based on the output schema.
 func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISchema) error {
 	if c.translator != nil { // Prevents re-selection and allows translator injection in tests.
@@ -78,6 +85,9 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	// Start tracking metrics for this request
+	c.metrics.StartRequest()
+
 	// The request headers have already been at the time the processor was created
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{},
@@ -86,13 +96,9 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	// Start tracking metrics for this request
-	c.metrics.StartRequest()
-
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-		return nil, fmt.Errorf("failed to parse request body: %w", err)
+		return nil, c.recordErrorAndReturn("failed to parse request body: %w", err)
 	}
 	c.logger.Info("Processing request", "path", c.requestHeaders[":path"], "model", model)
 
@@ -100,8 +106,8 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
 		if errors.Is(err, x.ErrNoMatchingRule) {
+			c.metrics.RecordRequestCompletion(c.backendName, c.modelName, false)
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -112,20 +118,18 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 			}, nil
 		}
 
-		return nil, fmt.Errorf("failed to calculate route: %w", err)
+		return nil, c.recordErrorAndReturn("failed to calculate route: %w", err)
 	}
 	c.backendName = b.Name
 	c.logger.Info("Selected backend", "backend", c.backendName)
 
 	if err = c.selectTranslator(b.Schema); err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-		return nil, fmt.Errorf("failed to select translator: %w", err)
+		return nil, c.recordErrorAndReturn("failed to select translator: %w", err)
 	}
 
 	headerMutation, bodyMutation, override, err := c.translator.RequestBody(body)
 	if err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-		return nil, fmt.Errorf("failed to transform request: %w", err)
+		return nil, c.recordErrorAndReturn("failed to transform request: %w", err)
 	}
 
 	if headerMutation == nil {
@@ -140,8 +144,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
-			c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-			return nil, fmt.Errorf("failed to do auth request: %w", err)
+			return nil, c.recordErrorAndReturn("failed to do auth request: %w", err)
 		}
 	}
 
@@ -175,8 +178,7 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 	}
 	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-		return nil, fmt.Errorf("failed to transform response headers: %w", err)
+		return nil, c.recordErrorAndReturn("failed to transform response headers: %w", err)
 	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
@@ -192,8 +194,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
-			c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
+			return nil, c.recordErrorAndReturn("failed to decode gzip: %w", err)
 		}
 	default:
 		br = bytes.NewReader(body.Body)
@@ -206,8 +207,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-		return nil, fmt.Errorf("failed to transform response: %w", err)
+		return nil, c.recordErrorAndReturn("failed to transform response: %w", err)
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -233,12 +233,11 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
 		if err != nil {
-			c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "error")
-			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
+			return nil, c.recordErrorAndReturn("failed to build dynamic metadata: %w", err)
 		}
-		// Record successful completion of the request
-		c.metrics.RecordRequestCompletion(c.backendName, c.modelName, "success")
 	}
+	// Record successful completion of the request
+	c.metrics.RecordRequestCompletion(c.backendName, c.modelName, true)
 	return resp, nil
 }
 
