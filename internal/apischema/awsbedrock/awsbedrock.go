@@ -277,10 +277,10 @@ type ToolResultContentBlock struct {
 	Image *ImageBlock `json:"image,omitempty"`
 
 	// A tool result that is text.
-	Text *string `json:"text" type:"string,omitempty"`
+	Text *string `json:"text,omitempty"`
 
 	// A tool result that is JSON format data.
-	JSON *string `json:"json" type:"string,omitempty"`
+	JSON *string `json:"json,omitempty"`
 }
 
 // ToolResultBlock A tool result block that contains the results for a tool request that the
