@@ -496,7 +496,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 			var r aigv1a1.AIGatewayRoute
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
 			require.NoError(t, err)
-			fmt.Println(r.Status.Conditions)
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
@@ -628,7 +627,6 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			var r aigv1a1.BackendSecurityPolicy
 			err := c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
 			require.NoError(t, err)
-			fmt.Println(r.Status.Conditions)
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
@@ -757,7 +755,6 @@ func TestAIServiceBackendController(t *testing.T) {
 			var r aigv1a1.AIServiceBackend
 			err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
 			require.NoError(t, err)
-			fmt.Println(r.Status.Conditions)
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
@@ -838,9 +835,6 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
-			for _, bsp := range bspSyncFn.GetItems() {
-				fmt.Println(bsp.Name, bsp.Namespace)
-			}
 			return len(bspSyncFn.GetItems()) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
