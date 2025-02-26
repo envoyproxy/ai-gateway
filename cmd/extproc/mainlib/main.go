@@ -13,6 +13,7 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,8 +21,10 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -32,6 +35,7 @@ type extProcFlags struct {
 	configPath  string     // path to the configuration file.
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
+	promAddr    string     // Prometheus address
 }
 
 // parseAndValidateFlags parses and validates the flas passed to the external processor.
@@ -57,6 +61,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"logLevel",
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	fs.StringVar(&flags.promAddr,
+		"promAddr",
+		":9190",
+		"address for Prometheus metrics",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -87,6 +96,7 @@ func Main() {
 		slog.String("version", version.Version),
 		slog.String("address", flags.extProcAddr),
 		slog.String("configPath", flags.configPath),
+		slog.String("promAddr", flags.promAddr),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -102,16 +112,36 @@ func Main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	metricsProvider := extproc.NewTokenMetrics()
+
 	server, err := extproc.NewServer(l)
 	if err != nil {
 		log.Fatalf("failed to create external processor server: %v", err)
 	}
-	server.Register("/v1/chat/completions", extproc.NewChatCompletionProcessor)
+	server.Register("/v1/chat/completions", extproc.InstrumentChatCompletion(extproc.NewChatCompletionProcessor, metricsProvider))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		log.Fatalf("failed to start config watcher: %v", err)
 	}
+
+	handlers := http.NewServeMux()
+	handlers.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
+
+	metricsServer := &http.Server{
+		Handler:           handlers,
+		Addr:              flags.promAddr,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       15 * time.Second,
+	}
+	go func() {
+		l.Info("starting metrics server", slog.String("address", flags.promAddr))
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("start metrics server failed: %v", err)
+		}
+	}()
 
 	s := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(s, server)
@@ -119,6 +149,7 @@ func Main() {
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
+		_ = metricsServer.Shutdown(context.Background())
 	}()
 	_ = s.Serve(lis)
 }
