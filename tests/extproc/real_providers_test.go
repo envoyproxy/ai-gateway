@@ -198,7 +198,6 @@ func TestWithRealProviders(t *testing.T) {
 			{testCaseName: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
-				fmt.Println("inside run")
 				require.Eventually(t, func() bool {
 					// Step 1: Initial tool call request
 					question := "What is the weather in New York City?"
@@ -247,7 +246,7 @@ func TestWithRealProviders(t *testing.T) {
 							// Extract the location from the function call arguments
 							var args map[string]interface{}
 							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
-								panic(argErr)
+								t.Logf("Error unmarshalling the function arguments: %v", argErr)
 							}
 							location := args["location"].(string)
 							if location != "New York City" {

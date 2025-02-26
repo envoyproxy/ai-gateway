@@ -308,20 +308,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	return nil
 }
 
-// validateToolCallID checks if the ToolCallID exists and returns an error if it does not.
-func validateToolCallID(toolCallID string) error {
-	if toolCallID == "" {
-		return fmt.Errorf("ToolCallID is missing")
-	}
-	return nil
-}
-
 // openAIMessageToBedrockMessageRoleTool converts openai tool role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	// Validate and cast the openai content value into bedrock content block
-	var content []*awsbedrock.ToolResultContentBlock
+	content := make([]*awsbedrock.ToolResultContentBlock, 0)
 
 	switch v := openAiMessage.Content.Value.(type) {
 	case string:
@@ -341,9 +333,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		return nil, fmt.Errorf("unexpected content type for tool message: %T", openAiMessage.Content.Value)
 	}
 
-	if err := validateToolCallID(openAiMessage.ToolCallID); err != nil {
-		return nil, err
-	}
 	return &awsbedrock.Message{
 		Role: role,
 		Content: []*awsbedrock.ContentBlock{
