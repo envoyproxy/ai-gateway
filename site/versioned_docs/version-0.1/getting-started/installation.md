@@ -27,9 +27,9 @@ kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-contr
 After installing Envoy AI Gateway, apply the AI Gateway-specific configuration to Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/redis.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.0/manifests/envoy-gateway-config/redis.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.0/manifests/envoy-gateway-config/config.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.0/manifests/envoy-gateway-config/rbac.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 

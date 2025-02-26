@@ -27,11 +27,6 @@ import (
 )
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
-	t.Run("invalid body", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
-		require.Error(t, err)
-	})
 	tests := []struct {
 		name   string
 		output awsbedrock.ConverseInput
@@ -665,7 +660,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, mode, err := o.RequestBody(RequestBody(&originalReq))
+			hm, bm, mode, err := o.RequestBody(&originalReq)
 			var expPath string
 			if tt.input.Stream {
 				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)

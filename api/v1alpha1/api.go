@@ -14,6 +14,7 @@ import (
 )
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 //
@@ -45,6 +46,14 @@ type AIGatewayRoute struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the details of the AIGatewayRoute.
 	Spec AIGatewayRouteSpec `json:"spec,omitempty"`
+	// Status defines the status details of the AIGatewayRoute.
+	Status AIGatewayRouteStatus `json:"status,omitempty"`
+}
+
+// AIGatewayRouteStatus contains the conditions by the reconciliation result.
+type AIGatewayRouteStatus struct {
+	// Conditions is the list of conditions by the reconciliation result.
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true
