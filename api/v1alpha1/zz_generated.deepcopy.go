@@ -446,7 +446,7 @@ func (in *BackendSecurityPolicyAzureCredentials) DeepCopyInto(out *BackendSecuri
 	*out = *in
 	if in.ClientSecretRef != nil {
 		in, out := &in.ClientSecretRef, &out.ClientSecretRef
-		*out = new(v1.SecretObjectReference)
+		*out = new(apisv1.SecretObjectReference)
 		(*in).DeepCopyInto(*out)
 	}
 }
