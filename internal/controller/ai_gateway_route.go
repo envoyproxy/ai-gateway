@@ -672,7 +672,7 @@ func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
 func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, conditionType string, message string) {
-	route.Status.Conditions = setNewCondition(route.Status.Conditions, conditionType, message)
+	route.Status.Conditions = newConditions(conditionType, message)
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}

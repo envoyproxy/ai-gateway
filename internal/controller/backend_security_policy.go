@@ -190,7 +190,7 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 
 // updateBackendSecurityPolicyStatus updates the status of the BackendSecurityPolicy.
 func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, route *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
-	route.Status.Conditions = setNewCondition(route.Status.Conditions, conditionType, message)
+	route.Status.Conditions = newConditions(conditionType, message)
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update BackendSecurityPolicy status")
 	}

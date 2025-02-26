@@ -86,7 +86,7 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 
 // updateAIServiceBackendStatus updates the status of the AIServiceBackend.
 func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, route *aigv1a1.AIServiceBackend, conditionType string, message string) {
-	route.Status.Conditions = setNewCondition(route.Status.Conditions, conditionType, message)
+	route.Status.Conditions = newConditions(conditionType, message)
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIServiceBackend status")
 	}
