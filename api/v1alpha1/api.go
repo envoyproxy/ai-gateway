@@ -473,7 +473,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
-	// The key of secret should be "azure_access_token"
+	// The key of secret should be "azure_access_token".
 	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
 }
 
