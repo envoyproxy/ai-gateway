@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
+// Copyright Envoy AI Gateway Authors.
+// SPDX-License-Identifier: Apache-2.0.
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -68,7 +68,7 @@ func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
 	require.True(t, ok)
 }
 
-// TestMetricsAreRecorded tests that metrics are properly recorded
+// TestMetricsAreRecorded tests that metrics are properly recorded.
 func TestMetricsAreRecorded(t *testing.T) {
 	// Test verifies that the processor correctly calls the metrics methods.
 	// Create a custom mock translator that doesn't validate the body.
@@ -83,7 +83,7 @@ func TestMetricsAreRecorded(t *testing.T) {
 		},
 	}
 
-	// Override the ResponseBody method to not validate the body
+	// Override the ResponseBody method to not validate the body.
 	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
 		t:                 t,
 		retBodyMutation:   &extprocv3.BodyMutation{},
@@ -91,7 +91,7 @@ func TestMetricsAreRecorded(t *testing.T) {
 		retUsedToken:      translator.LLMTokenUsage{OutputTokens: 100, InputTokens: 50, TotalTokens: 150},
 	}
 
-	// Create a processor with our mock translator
+	// Create a processor with our mock translator.
 	p := &chatCompletionProcessor{
 		translator:  customMockTranslator.OpenAIChatCompletionTranslator,
 		metrics:     metrics.NewProcessorMetrics(),
@@ -103,16 +103,16 @@ func TestMetricsAreRecorded(t *testing.T) {
 		},
 	}
 
-	// Process a response body - this should call metrics methods
+	// Process a response body - this should call metrics methods.
 	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("test-body"), EndOfStream: true})
 	require.NoError(t, err)
 
-	// Verify token metrics were recorded correctly
+	// Verify token metrics were recorded correctly.
 	metricsRegistry := metrics.GetRegistry()
 	metricFamilies, err := metricsRegistry.Gather()
 	require.NoError(t, err)
 
-	// Find and verify token metrics
+	// Find and verify token metrics.
 	var foundCompletionTokens, foundPromptTokens, foundTotalTokens bool
 	for _, metricFamily := range metricFamilies {
 		if metricFamily.GetName() == "aigateway_model_tokens_total" {
@@ -122,7 +122,7 @@ func TestMetricsAreRecorded(t *testing.T) {
 					labels[label.GetName()] = label.GetValue()
 				}
 
-				// Check if this is one of our metrics
+				// Check if this is one of our metrics.
 				if labels["backend"] == "test-backend" && labels["model"] == "test-model" {
 					switch labels["type"] {
 					case "completion":
@@ -140,12 +140,12 @@ func TestMetricsAreRecorded(t *testing.T) {
 		}
 	}
 
-	// Ensure we found all the metrics we expected
+	// Ensure we found all the metrics we expected.
 	require.True(t, foundCompletionTokens, "Completion tokens metric not found")
 	require.True(t, foundPromptTokens, "Prompt tokens metric not found")
 	require.True(t, foundTotalTokens, "Total tokens metric not found")
 
-	// Test error case
+	// Test error case.
 	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
 		t:      t,
 		retErr: errors.New("test error"),
@@ -154,7 +154,6 @@ func TestMetricsAreRecorded(t *testing.T) {
 	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "test error")
-
 }
 
 func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {

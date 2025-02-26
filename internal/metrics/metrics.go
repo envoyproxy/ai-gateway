@@ -15,7 +15,7 @@ import (
 type Metrics struct {
 	// TotalLatency is the total latency of the request, by backend, model.
 	// Measured from the start of the received request headers in extproc to the end of the processed response body in extproc.
-	// Implmeneted as a histogram of the latency of the request to support query like p99, p95, etc.
+	// Implemented as a histogram of the latency of the request to support query like p99, p95, etc.
 	TotalLatency *prometheus.HistogramVec
 	// TokensTotal is the total number of tokens processed, by backend, model, and type (prompt, completion, total).
 	TokensTotal *prometheus.CounterVec
@@ -23,10 +23,10 @@ type Metrics struct {
 	RequestsTotal *prometheus.CounterVec
 	// FirstTokenLatency is the latency to receive the first token, by backend, model.
 	// Measured from the start of the received request headers in extproc to the receiving of the first token in the response body in extproc.
-	// Implmeneted as a histogram of the latency to receive the first token to support query like p99, p95, etc.
+	// Implemented as a histogram of the latency to receive the first token to support query like p99, p95, etc.
 	FirstTokenLatency *prometheus.HistogramVec
 	// InterTokenLatency is the latency between consecutive tokens, if supported, or by chunks/tokens otherwise, by backend, model.
-	// Implmeneted as a histogram of the latency between consecutive tokens to support query like p99, p95, etc.
+	// Implemented as a histogram of the latency between consecutive tokens to support query like p99, p95, etc.
 	InterTokenLatency *prometheus.HistogramVec
 	// Registry is the prometheus registry.
 	Registry *prometheus.Registry

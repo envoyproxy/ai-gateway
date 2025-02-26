@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
+// Copyright Envoy AI Gateway Authors.
+// SPDX-License-Identifier: Apache-2.0.
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -53,7 +53,7 @@ type chatCompletionProcessor struct {
 	translator       translator.OpenAIChatCompletionTranslator
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
-	// metrics tracking
+	// metrics tracking.
 	metrics     *metrics.ProcessorMetrics
 	modelName   string
 	backendName string
@@ -85,10 +85,10 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	// Start tracking metrics for this request
+	// Start tracking metrics for this request.
 	c.metrics.StartRequest()
 
-	// The request headers have already been at the time the processor was created
+	// The request headers have already been at the time the processor was created.
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{},
 	}}, nil
@@ -226,7 +226,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
-	// Update metrics with token usage
+	// Update metrics with token usage.
 	c.metrics.UpdateTokenMetrics(c.backendName, c.modelName, tokenUsage.OutputTokens, tokenUsage.InputTokens, tokenUsage.TotalTokens)
 	c.metrics.UpdateLatencyMetrics(c.backendName, c.modelName, tokenUsage.OutputTokens)
 
@@ -236,7 +236,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 			return nil, c.recordErrorAndReturn("failed to build dynamic metadata: %w", err)
 		}
 	}
-	// Record successful completion of the request
+	// Record successful completion of the request.
 	c.metrics.RecordRequestCompletion(c.backendName, c.modelName, true)
 	return resp, nil
 }

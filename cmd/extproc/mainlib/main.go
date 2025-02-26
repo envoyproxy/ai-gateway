@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
+// Copyright Envoy AI Gateway Authors.
+// SPDX-License-Identifier: Apache-2.0.
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -55,14 +55,14 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.extProcAddr,
 		"extProcAddr",
 		":1063",
-		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock",
+		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock.",
 	)
 	logLevelPtr := fs.String(
 		"logLevel",
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	fs.StringVar(&flags.metricsAddr, "metricsAddr", ":9190", "HTTP address for the metrics server")
+	fs.StringVar(&flags.metricsAddr, "metricsAddr", ":9190", "HTTP address for the metrics server.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -122,7 +122,7 @@ func Main() {
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
 
-	// Start metrics server
+	// Start metrics server.
 	metricsServer := startMetricsServer(flags.metricsAddr, l)
 
 	go func() {
@@ -147,12 +147,12 @@ func listenAddress(addrFlag string) (string, string) {
 	return "tcp", addrFlag
 }
 
-// startMetricsServer starts the HTTP server for Prometheus metrics
+// startMetricsServer starts the HTTP server for Prometheus metrics.
 func startMetricsServer(addr string, logger *slog.Logger) *http.Server {
-	// Create a new HTTP server for metrics
+	// Create a new HTTP server for metrics.
 	mux := http.NewServeMux()
 
-	// Register the metrics handler
+	// Register the metrics handler.
 	mux.Handle("/metrics", promhttp.HandlerFor(
 		metrics.GetRegistry(),
 		promhttp.HandlerOpts{
@@ -160,7 +160,7 @@ func startMetricsServer(addr string, logger *slog.Logger) *http.Server {
 		},
 	))
 
-	// Add a simple health check endpoint
+	// Add a simple health check endpoint.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))

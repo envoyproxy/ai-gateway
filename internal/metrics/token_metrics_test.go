@@ -33,13 +33,13 @@ func TestStartRequest(t *testing.T) {
 }
 
 func TestUpdateTokenMetrics(t *testing.T) {
-	// Reset the default registry to avoid conflicts with other tests
+	// Reset the default registry to avoid conflicts with other tests.
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	pm := NewProcessorMetrics()
 	pm.UpdateTokenMetrics("test-backend", "test-model", 10, 5, 15)
 
-	// Get the current value of the metrics
+	// Get the current value of the metrics.
 	completion := getCounterValue(t, pm.metrics.TokensTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
@@ -62,13 +62,13 @@ func TestUpdateTokenMetrics(t *testing.T) {
 }
 
 func TestUpdateLatencyMetrics(t *testing.T) {
-	// Reset the default registry to avoid conflicts with other tests
+	// Reset the default registry to avoid conflicts with other tests.
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	pm := NewProcessorMetrics()
 	pm.StartRequest()
 
-	// Test first token
+	// Test first token.
 	time.Sleep(10 * time.Millisecond)
 	pm.UpdateLatencyMetrics("test-backend", "test-model", 1)
 	assert.True(t, pm.firstTokenSent)
@@ -79,7 +79,7 @@ func TestUpdateLatencyMetrics(t *testing.T) {
 	})
 	assert.Greater(t, firstTokenLatency, 0.0)
 
-	// Test subsequent tokens
+	// Test subsequent tokens.
 	time.Sleep(10 * time.Millisecond)
 	pm.UpdateLatencyMetrics("test-backend", "test-model", 2)
 
@@ -89,14 +89,14 @@ func TestUpdateLatencyMetrics(t *testing.T) {
 	})
 	assert.Greater(t, interTokenLatency, 0.0)
 
-	// Test zero tokens case
+	// Test zero tokens case.
 	time.Sleep(10 * time.Millisecond)
 	pm.UpdateLatencyMetrics("test-backend", "test-model", 0)
 	assert.True(t, pm.firstTokenSent)
 }
 
 func TestRecordRequestCompletion(t *testing.T) {
-	// Reset the default registry to avoid conflicts with other tests
+	// Reset the default registry to avoid conflicts with other tests.
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	pm := NewProcessorMetrics()
@@ -105,7 +105,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordRequestCompletion("test-backend", "test-model", true)
 
-	// Test requests counter
+	// Test requests counter.
 	requests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
@@ -113,7 +113,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	})
 	assert.Equal(t, float64(1), requests)
 
-	// Test total latency histogram
+	// Test total latency histogram.
 	totalLatency := getHistogramValue(t, pm.metrics.TotalLatency, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
@@ -121,7 +121,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	})
 	assert.Greater(t, totalLatency, 0.0)
 
-	// Test failed request
+	// Test failed request.
 	pm.RecordRequestCompletion("test-backend", "test-model", false)
 	failedRequests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
