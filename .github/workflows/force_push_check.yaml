@@ -1,0 +1,49 @@
+name: PR Force Push Check
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - ready_for_review
+
+permissions:
+  pull-requests: write
+
+
+jobs:
+  detect-force-push:
+    name: Detect Force push
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' &&!github.event.pull_request.draft &&!contains(github.event.pull_request.title, 'WIP')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for force push
+        id: check_force_push
+        run: |
+          BEFORE_SHA=${{ github.event.before }}
+          AFTER_SHA=${{ github.event.after }}
+          if ! git merge-base --is-ancestor $BEFORE_SHA $AFTER_SHA 2>/dev/null; then
+            echo "force_push=true" >> $GITHUB_ENV
+          else
+            echo "force_push=false" >> $GITHUB_ENV
+          fi
+
+      - name: Comment on PR if force push detected
+        if: env.force_push == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const comment = "Force push detected. Please read CONTRIBUTION.md and do not force push unless DCO issue.";
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
