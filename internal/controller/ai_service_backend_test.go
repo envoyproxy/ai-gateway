@@ -85,7 +85,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {
 	c := fake.NewClientBuilder().
-		WithScheme(scheme).
+		WithScheme(Scheme).
 		WithIndex(&aigv1a1.AIServiceBackend{}, k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc).
 		Build()
 

@@ -27,26 +27,28 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-func init() { MustInitializeScheme(scheme) }
-
-// scheme contains the necessary schemas for the AI Gateway.
-var scheme = runtime.NewScheme()
-
-// MustInitializeScheme initializes the scheme with the necessary schemas for the AI Gateway.
-// This is exported for the testing purposes.
-func MustInitializeScheme(scheme *runtime.Scheme) {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(aigv1a1.AddToScheme(scheme))
-	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
-	utilruntime.Must(egv1a1.AddToScheme(scheme))
-	utilruntime.Must(gwapiv1.Install(scheme))
-	utilruntime.Must(gwapiv1b1.Install(scheme))
+func init() {
+	utilruntime.Must(clientgoscheme.AddToScheme(Scheme))
+	utilruntime.Must(aigv1a1.AddToScheme(Scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(Scheme))
+	utilruntime.Must(egv1a1.AddToScheme(Scheme))
+	utilruntime.Must(gwapiv1.Install(Scheme))
+	utilruntime.Must(gwapiv1b1.Install(Scheme))
 }
+
+// Scheme contains the necessary schemes for the AI Gateway.
+//
+// This is exported for testing purposes.
+var Scheme = runtime.NewScheme()
 
 // Options defines the program configurable options that may be passed on the command line.
 type Options struct {
-	ExtProcLogLevel      string
-	ExtProcImage         string
+	// ExtProcLogLevel is the log level for the external processor, e.g., debug, info, warn, or error.
+	ExtProcLogLevel string
+	// ExtProcImage is the image for the external processor set on Deployment.
+	ExtProcImage string
+	// EnableLeaderElection enables leader election for the controller manager.
+	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
 }
 
@@ -68,7 +70,7 @@ type (
 // Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
 func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, options Options) error {
 	opt := ctrl.Options{
-		Scheme:           scheme,
+		Scheme:           Scheme,
 		LeaderElection:   options.EnableLeaderElection,
 		LeaderElectionID: "envoy-ai-gateway-controller",
 	}

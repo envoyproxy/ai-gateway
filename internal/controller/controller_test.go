@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 
 func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 	c := fake.NewClientBuilder().
-		WithScheme(scheme).
+		WithScheme(Scheme).
 		WithIndex(&aigv1a1.AIGatewayRoute{}, k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc).
 		Build()
 
@@ -138,7 +138,7 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().
-				WithScheme(scheme).
+				WithScheme(Scheme).
 				WithIndex(&aigv1a1.BackendSecurityPolicy{}, k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc).
 				Build()
 

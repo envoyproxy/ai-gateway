@@ -80,7 +80,7 @@ func Test_extProcName(t *testing.T) {
 }
 
 func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
-	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build()}
 	name := "myroute"
 	ownerRef := []metav1.OwnerReference{
 		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
@@ -214,7 +214,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 }
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
-	builder := fake.NewClientBuilder().WithScheme(scheme).
+	builder := fake.NewClientBuilder().WithScheme(Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})

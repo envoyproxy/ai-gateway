@@ -102,7 +102,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 
 func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
@@ -143,7 +143,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
