@@ -366,8 +366,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			if err = ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
 				panic(fmt.Errorf("BUG: failed to set controller reference for extproc configmap: %w", err))
 			}
-			_, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
-			if err != nil {
+			if _, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("failed to create configmap %s: %w", name, err)
 			}
 			return nil
