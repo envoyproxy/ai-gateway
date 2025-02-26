@@ -397,8 +397,9 @@ const (
 type BackendSecurityPolicyType string
 
 const (
-	BackendSecurityPolicyTypeAPIKey         BackendSecurityPolicyType = "APIKey"
-	BackendSecurityPolicyTypeAWSCredentials BackendSecurityPolicyType = "AWSCredentials"
+	BackendSecurityPolicyTypeAPIKey           BackendSecurityPolicyType = "APIKey"
+	BackendSecurityPolicyTypeAWSCredentials   BackendSecurityPolicyType = "AWSCredentials"
+	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
 )
 
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
@@ -420,9 +421,9 @@ type BackendSecurityPolicy struct {
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWSCredentials" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSCredentials
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -434,6 +435,11 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AWSCredentials *BackendSecurityPolicyAWSCredentials `json:"awsCredentials,omitempty"`
+
+	// AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied.
+	//
+	// +optional
+	AzureCredentials *BackendSecurityPolicyAzureCredentials `json:"azureCredentials,omitempty"`
 }
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
@@ -453,7 +459,27 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+// BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+type BackendSecurityPolicyAzureCredentials struct {
+	// ClientID is a unique identifier for an application in Azure.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ClientID string `json:"clientID"`
+
+	// TenantId is a unique identifier for an Azure Active Directory instance.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	TenantID string `json:"tenantID"`
+
+	// ClientSecretRef is the reference to the secret containing the Azure client secret.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of secret should be "azure_access_token".
+	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+}
+
+// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
 	//
