@@ -240,7 +240,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 
 	// Update the extproc configmap.
 	uuid := string(uuid2.NewUUID())
-	if err = c.updateExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
 		return fmt.Errorf("failed to update extproc configmap: %w", err)
 	}
 
@@ -258,8 +258,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-// updateExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
-func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
+// reconcileExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
+func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	ec := &filterapi.Config{UUID: uuid}
 	spec := &aiGatewayRoute.Spec
 
@@ -360,11 +360,8 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			configMap = &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: aiGatewayRoute.Namespace,
-				},
-				Data: map[string]string{expProcConfigFileName: string(marshaled)},
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: aiGatewayRoute.Namespace},
+				Data:       map[string]string{expProcConfigFileName: string(marshaled)},
 			}
 			if err = ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
 				panic(fmt.Errorf("BUG: failed to set controller reference for extproc configmap: %w", err))
@@ -378,9 +375,6 @@ func (c *AIGatewayRouteController) updateExtProcConfigMap(ctx context.Context, a
 		return fmt.Errorf("failed to get configmap %s: %w", name, err)
 	}
 
-	if configMap.Data == nil {
-		configMap.Data = make(map[string]string)
-	}
 	configMap.Data[expProcConfigFileName] = string(marshaled)
 	if _, err := c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Update(ctx, configMap, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update configmap %s: %w", configMap.Name, err)

@@ -417,7 +417,7 @@ func Test_newHTTPRoute(t *testing.T) {
 	}
 }
 
-func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
+func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
@@ -626,12 +626,7 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Create(t.Context(), &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: extProcName(tc.route), Namespace: tc.route.Namespace},
-			}, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			err = s.updateExtProcConfigMap(t.Context(), tc.route, tc.exp.UUID)
+			err := s.reconcileExtProcConfigMap(t.Context(), tc.route, tc.exp.UUID)
 			require.NoError(t, err)
 
 			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(t.Context(), extProcName(tc.route), metav1.GetOptions{})
