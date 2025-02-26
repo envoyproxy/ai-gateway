@@ -5,7 +5,7 @@ import styles from './styles.module.css';
 type FeatureItem = {
   title: string;
   image: string;
-  description: JSX.Element;
+  description: React.ReactElement;
 };
 
 const FeatureList: FeatureItem[] = [
@@ -19,20 +19,20 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
+    title: 'v0.1 Release now available',
+    image: require('@site/static/img/3.png').default,
+    description: (
+      <>
+        The v0.1 Release of Envoy AI Gateway is now available. See the [blog post](/blog/v0-1-release) and the [release notes](/release-notes) for more information.
+      </>
+    ),
+  },
+  {
     title: 'Get involved in the community',
     image: require('@site/static/img/2.png').default,
     description: (
       <>
         Join our community on Slack, join the conversation on GitHub, and attend our Thursday community meetings. See links in footer.
-      </>
-    ),
-  },
-  {
-    title: 'Coming February 2025',
-    image: require('@site/static/img/3.png').default,
-    description: (
-      <>
-        The v0.1 Release of Envoy AI Gateway coming in February 2025. Including features such as Unified LLM API and LLM token usage limiting.
       </>
     ),
   },
@@ -52,7 +52,7 @@ function Feature({title, image, description}: FeatureItem) {
   );
 }
 
-export default function HomepageFeatures(): JSX.Element {
+export default function HomepageFeatures(): React.ReactElement {
   return (
     <section className={styles.features}>
       <div className="container">

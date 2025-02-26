@@ -144,8 +144,7 @@ ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 test-crdcel: apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
-        KUBEBUILDER_ASSETS="$$(go tool setup-envtest use $$k8sVersion -p path)" \
-                 go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
@@ -164,8 +163,7 @@ test-extproc: build.extproc
 test-controller: apigen
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
-        KUBEBUILDER_ASSETS="$$(go tool setup-envtest use $$k8sVersion -p path)" \
-                 go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.

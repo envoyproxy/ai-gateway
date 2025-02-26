@@ -19,13 +19,14 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
 
 var (
-	_ Processor             = &mockProcessor{}
-	_ translator.Translator = &mockTranslator{}
-	_ x.Router              = &mockRouter{}
+	_ Processor                                 = &mockProcessor{}
+	_ translator.OpenAIChatCompletionTranslator = &mockTranslator{}
+	_ x.Router                                  = &mockRouter{}
 )
 
 func newMockProcessor(_ *processorConfig, _ *slog.Logger) Processor {
@@ -69,7 +70,7 @@ func (m mockProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.Ht
 type mockTranslator struct {
 	t                 *testing.T
 	expHeaders        map[string]string
-	expRequestBody    translator.RequestBody
+	expRequestBody    *openai.ChatCompletionRequest
 	expResponseBody   *extprocv3.HttpBody
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
@@ -78,19 +79,19 @@ type mockTranslator struct {
 	retErr            error
 }
 
-// RequestBody implements [translator.Translator.RequestBody].
-func (m mockTranslator) RequestBody(body translator.RequestBody) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error) {
+// RequestBody implements [translator.OpenAIChatCompletionTranslator].
+func (m mockTranslator) RequestBody(body *openai.ChatCompletionRequest) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	return m.retHeaderMutation, m.retBodyMutation, m.retOverride, m.retErr
 }
 
-// ResponseHeaders implements [translator.Translator.ResponseHeaders].
+// ResponseHeaders implements [translator.OpenAIChatCompletionTranslator].
 func (m mockTranslator) ResponseHeaders(headers map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
 	require.Equal(m.t, m.expHeaders, headers)
 	return m.retHeaderMutation, m.retErr
 }
 
-// ResponseError implements [translator.Translator.ResponseError].
+// ResponseError implements [translator.OpenAIChatCompletionTranslator].
 func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
@@ -100,7 +101,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (head
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
-// ResponseBody implements [translator.Translator.ResponseBody].
+// ResponseBody implements [translator.OpenAIChatCompletionTranslator].
 func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)

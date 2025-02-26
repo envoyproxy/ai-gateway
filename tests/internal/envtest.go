@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -23,6 +24,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
+const defaultK8sVersion = "1.31.0"
+
 // NewEnvTest creates a new environment for testing the controller package.
 func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.Interface) {
 	log.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
@@ -33,6 +36,16 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	for _, file := range files {
 		crds = append(crds, filepath.Join(crdPath, file.Name()))
 	}
+	k8sVersion := os.Getenv("ENVTEST_K8S_VERSION")
+	if k8sVersion == "" {
+		k8sVersion = defaultK8sVersion
+	}
+	t.Logf("Using Kubernetes version %s", k8sVersion)
+	setupEnvTestCmd := exec.Command("go", "tool", "setup-envtest", "use", k8sVersion, "-p", "path")
+	output, err := setupEnvTestCmd.Output()
+	require.NoError(t, err, "Failed to setup envtest: %s", output)
+	t.Logf("Using envtest assets from %s", string(output))
+	t.Setenv("KUBEBUILDER_ASSETS", string(output))
 
 	const (
 		egURLBase    = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.3.0/charts/gateway-helm/crds/generated/"

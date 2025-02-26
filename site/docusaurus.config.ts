@@ -51,9 +51,9 @@ const config: Config = {
             current: {
               label: 'latest',
             },
-            '0.1.0': {
-              label: '0.1.0',
-              path: '0.1.0',
+            '0.1': {
+              label: '0.1',
+              path: '0.1',
               banner: 'none',
             },
           },

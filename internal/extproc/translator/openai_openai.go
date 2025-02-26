@@ -19,7 +19,7 @@ import (
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func NewChatCompletionOpenAIToOpenAITranslator() Translator {
+func NewChatCompletionOpenAIToOpenAITranslator() OpenAIChatCompletionTranslator {
 	return &openAIToOpenAITranslatorV1ChatCompletion{}
 }
 
@@ -31,13 +31,9 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body RequestBody) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
 ) {
-	req, ok := body.(*openai.ChatCompletionRequest)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("unexpected body type: %T", body)
-	}
 	if req.Stream {
 		o.stream = true
 		override = &extprocv3http.ProcessingMode{

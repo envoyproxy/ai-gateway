@@ -7,8 +7,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
+	"sort"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -94,14 +96,27 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	// TODO: merge this into syncAIGatewayRoute. This is a left over from the previous sink based implementation.
 	c.logger.Info("Ensuring extproc configmap exists", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	if err := c.ensuresExtProcConfigMapExists(ctx, &aiGatewayRoute); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to ensure extproc configmap exists: %w", err)
+		c.logger.Error(err, "failed to reconcile extProc config map")
+		message := fmt.Sprintf("failed to ensure extproc configmap exists: %v", err)
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
+		return ctrl.Result{}, errors.New(message)
 	}
 	// TODO: merge this into syncAIGatewayRoute. This is a left over from the previous sink based implementation.
 	c.logger.Info("Reconciling extension policy", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	if err := c.reconcileExtProcExtensionPolicy(ctx, &aiGatewayRoute); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile extension policy: %w", err)
+		c.logger.Error(err, "failed to reconcile extension policy")
+		message := fmt.Sprintf("failed to reconcile extension policy: %v", err)
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, message)
+		return ctrl.Result{}, errors.New(message)
 	}
-	return reconcile.Result{}, c.syncAIGatewayRoute(ctx, &aiGatewayRoute)
+
+	if err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute); err != nil {
+		c.logger.Error(err, "failed to sync AIGatewayRoute")
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, err.Error())
+		return ctrl.Result{}, err
+	}
+	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, true, "AI Gateway Route reconciled successfully")
+	return reconcile.Result{}, nil
 }
 
 // reconcileExtProcExtensionPolicy creates or updates the extension policy for the external process.
@@ -677,4 +692,46 @@ func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string
 
 func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
+}
+
+const (
+	aiGatewayRouteConditionTypeAccepted    = "Accepted"
+	aiGatewayRouteConditionTypeNotAccepted = "NotAccepted"
+)
+
+// updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
+func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, accepted bool, message string) {
+	route = route.DeepCopy()
+	condition := metav1.Condition{Message: message, LastTransitionTime: metav1.Now()}
+	if accepted {
+		condition.Type = aiGatewayRouteConditionTypeAccepted
+		condition.Reason = "ReconciliationSucceeded"
+		condition.Status = metav1.ConditionTrue
+	} else {
+		condition.Type = aiGatewayRouteConditionTypeNotAccepted
+		condition.Reason = "ReconciliationFailed"
+		condition.Status = metav1.ConditionFalse
+	}
+
+	// Search for the same Status condition and replace it, append if not found.
+	found := false
+	for i, cond := range route.Status.Conditions {
+		if cond.Type == condition.Type {
+			found = true
+			route.Status.Conditions[i] = condition
+			break
+		}
+	}
+
+	if !found {
+		route.Status.Conditions = append(route.Status.Conditions, condition)
+	}
+	// And sort the conditions by LastTransitionTime.
+	sort.Slice(route.Status.Conditions, func(i, j int) bool {
+		return route.Status.Conditions[i].LastTransitionTime.Before(&route.Status.Conditions[j].LastTransitionTime)
+	})
+
+	if err := c.client.Status().Update(ctx, route); err != nil {
+		c.logger.Error(err, "failed to update AIGatewayRoute status")
+	}
 }

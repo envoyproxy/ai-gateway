@@ -53,7 +53,20 @@ You will find which credentials are required in the output of the test command. 
 credentials are skipped by default when the credentials are not provided. If you
 want to run these tests locally, please prepare the necessary credentials by yourself.
 
-## DCO
+## Opening a Pull Request
+
+We employ almost the same guidelines as the [envoyproxy/envoy](https://github.com/envoyproxy/envoy/blob/main/CONTRIBUTING.md#submitting-a-pr).
+
+### Ensure `make precommit` passes
+
+As described above, please run `make precommit` locally before opening a PR and ensure that it passes.
+If anything goes wrong, please do not open a PR or at least mark it as a draft PR. This is helpful to save time for the reviewers.
+
+### Write Tests
+
+We require tests for all new main code paths including any bug fixes.
+
+### DCO
 
 We require DCO signoff line in every commit to this repo.
 
@@ -67,22 +80,23 @@ then you just add a line to every git commit message:
 
 using your real name (sorry, no pseudonyms or anonymous contributions.)
 
-You can add the sign off when creating the git commit via `git commit -s`.
+You can add the signoff when creating the git commit via `git commit -s`.
 
-## Code Reviews
+### Title and Description
 
-* The pull request title should describe what the change does and not embed issue numbers.
-The pull request should only be blank when the change is minor. Any feature should include
-a description of the change and what motivated it. If the change or design changes through
-review, please keep the title and description updated accordingly.
-* **A single approval is sufficient to merge**. If a reviewer asks for
-changes in a PR they should be addressed before the PR is merged,
-even if another reviewer has already approved the PR.
+The title and description of the pull request is really important as they become a part of the commit message.
+There's an automated GitHub action that checks for the various aspects of the PR title and description. Please
+make sure that these automated checks pass after you open a PR by following the error messages.
+
+### Code Reviews
+
 * During the review, address the comments and commit the changes
 **without squashing the commits, force pushing, or rebasing the branch**.
 This facilitates incremental reviews since the reviewer does not go through all the code again to find out
 what has changed since the last review. When a change goes out of sync with main,
 please rebase and force push, keeping the original commits where practical.
+  * The only exception to this rule is when you mistakenly pushed a non-signoff commit.
+    In this case, you can amend the commit with the signoff line and force push.
 * Commits are squashed prior to merging a pull request, using the title and PR description
 as commit message by default. Maintainers may request contributors to
 edit the pull request title and description to ensure that it remains descriptive as a
