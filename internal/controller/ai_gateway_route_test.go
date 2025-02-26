@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -750,20 +749,14 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			},
 		}
-		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, extProcDeployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
-			require.Equal(t, resourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
+		extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+		require.Len(t, extProcDeployment.OwnerReferences, 1)
+		require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+		require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+		require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
+		require.Equal(t, resourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
 
 		service, err := s.kube.CoreV1().Services("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 		require.NoError(t, err)
@@ -784,24 +777,17 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 
 		require.NoError(t, s.syncExtProcDeployment(t.Context(), aiGatewayRoute))
 		// Check the deployment is updated.
-		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, extProcDeployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
-			require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
-
-			for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
-				require.True(t, v.ReadOnly)
-			}
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
+		extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+		require.Len(t, extProcDeployment.OwnerReferences, 1)
+		require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+		require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+		require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
+		require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+		for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
+			require.True(t, v.ReadOnly)
+		}
 	})
 }
 
