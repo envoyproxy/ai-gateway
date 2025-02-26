@@ -80,7 +80,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *op
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
 	// Convert ToolConfiguration.
 	if len(openAIReq.Tools) > 0 {
 		err = o.openAIToolsToBedrockToolConfiguration(openAIReq, &bedrockReq)
@@ -222,6 +221,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					return nil, fmt.Errorf("unsupported image type: %s please use one of [png, jpeg, gif, webp]",
 						contentType)
 				}
+
 				chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
 					Image: &awsbedrock.ImageBlock{
 						Format: format,
