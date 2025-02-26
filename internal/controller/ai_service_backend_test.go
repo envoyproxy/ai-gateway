@@ -76,6 +76,13 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, originals, syncFn.GetItems())
 
+	// Check that the status was updated.
+	var backend aigv1a1.AIServiceBackend
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "mybackend"}, &backend))
+	require.Len(t, backend.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, backend.Status.Conditions[0].Type)
+	require.Equal(t, "AIServiceBackend reconciled successfully", backend.Status.Conditions[0].Message)
+
 	// Test the case where the AIServiceBackend is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)

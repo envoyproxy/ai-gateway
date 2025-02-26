@@ -56,7 +56,7 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeNotAccepted, err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeAccepted, "AI Service Backend reconciled successfully")
+	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
 	return ctrl.Result{}, nil
 }
 

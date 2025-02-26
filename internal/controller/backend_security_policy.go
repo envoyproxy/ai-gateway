@@ -69,12 +69,12 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		c.logger.Error(err, "failed to reconcile Backend Security Policy")
 		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeNotAccepted, err.Error())
 	} else {
-		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeAccepted, "Backend Security Policy reconciled successfully")
+		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
 	}
 	return
 }
 
-// reconcile reconciles [reconcile.TypedReconciler] but to centralize the status update.
+// reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
 		var rotator rotators.Rotator
