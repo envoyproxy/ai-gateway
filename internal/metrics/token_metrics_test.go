@@ -109,7 +109,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	requests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  StatusSuccess,
+		"status":  requestStatusSuccess,
 	})
 	assert.Equal(t, float64(1), requests)
 
@@ -117,7 +117,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	totalLatency := getHistogramValue(t, pm.metrics.TotalLatency, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  StatusSuccess,
+		"status":  requestStatusSuccess,
 	})
 	assert.Greater(t, totalLatency, 0.0)
 
@@ -126,7 +126,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	failedRequests := getCounterValue(t, pm.metrics.RequestsTotal, map[string]string{
 		"backend": "test-backend",
 		"model":   "test-model",
-		"status":  StatusError,
+		"status":  requestStatusError,
 	})
 	assert.Equal(t, float64(1), failedRequests)
 }

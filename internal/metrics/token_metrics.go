@@ -9,8 +9,8 @@ import "time"
 
 // Status constants for request completion.
 const (
-	StatusSuccess = "success"
-	StatusError   = "error"
+	requestStatusSuccess = "success"
+	requestStatusError   = "error"
 )
 
 // ProcessorMetrics tracks metrics for request processing.
@@ -59,9 +59,9 @@ func (p *ProcessorMetrics) UpdateLatencyMetrics(backendName, modelName string, o
 
 // RecordRequestCompletion records metrics for a completed request.
 func (p *ProcessorMetrics) RecordRequestCompletion(backendName, modelName string, success bool) {
-	status := StatusError
+	status := requestStatusError
 	if success {
-		status = StatusSuccess
+		status = requestStatusSuccess
 		p.metrics.TotalLatency.WithLabelValues(backendName, modelName, status).
 			Observe(time.Since(p.requestStart).Seconds())
 	}
