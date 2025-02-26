@@ -37,6 +37,8 @@ func init() {
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
+//
+// This is exported for testing purposes.
 var Scheme = runtime.NewScheme()
 
 // Options defines the program configurable options that may be passed on the command line.
