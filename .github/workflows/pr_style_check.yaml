@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  detect-force-push:
+    name: Detect Force push
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Check for force push
+        run: |
+          BEFORE_SHA=${{ github.event.before }}
+          AFTER_SHA=${{ github.event.after }}
+          if ! git merge-base --is-ancestor $BEFORE_SHA $AFTER_SHA 2&>/dev/null; then
+            echo "Force push detected. Please read CONTRIBUTION.md and do not force push unless DCO issue."
+            exit 1
+          fi
+
   description:
     name: Description
     runs-on: ubuntu-latest
