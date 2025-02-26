@@ -13,6 +13,7 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,10 +21,12 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -32,6 +35,7 @@ type extProcFlags struct {
 	configPath  string     // path to the configuration file.
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
+	metricsAddr string     // HTTP address for the metrics server.
 }
 
 // parseAndValidateFlags parses and validates the flas passed to the external processor.
@@ -58,6 +62,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
+	fs.StringVar(&flags.metricsAddr, "metricsAddr", ":9190", "HTTP address for the metrics server")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -116,10 +121,21 @@ func Main() {
 	s := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
+
+	// Start metrics server
+	metricsServer := startMetricsServer(flags.metricsAddr, l)
+
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown metrics server gracefully", "error", err)
+		}
 	}()
+
 	_ = s.Serve(lis)
 }
 
@@ -129,4 +145,38 @@ func listenAddress(addrFlag string) (string, string) {
 		return "unix", strings.TrimPrefix(addrFlag, "unix://")
 	}
 	return "tcp", addrFlag
+}
+
+// startMetricsServer starts the HTTP server for Prometheus metrics
+func startMetricsServer(addr string, logger *slog.Logger) *http.Server {
+	// Create a new HTTP server for metrics
+	mux := http.NewServeMux()
+
+	// Register the metrics handler
+	mux.Handle("/metrics", promhttp.HandlerFor(
+		metrics.GetRegistry(),
+		promhttp.HandlerOpts{
+			EnableOpenMetrics: true,
+		},
+	))
+
+	// Add a simple health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		logger.Info("Starting metrics server", "address", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("Metrics server failed", "error", err)
+		}
+	}()
+
+	return server
 }
