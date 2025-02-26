@@ -23,18 +23,13 @@ import (
 )
 
 func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
-	t.Run("invalid body", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{}
-		_, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
-		require.Error(t, err)
-	})
 	t.Run("valid body", func(t *testing.T) {
 		for _, stream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToOpenAITranslatorV1ChatCompletion{}
-				hm, bm, mode, err := o.RequestBody(RequestBody(originalReq))
+				hm, bm, mode, err := o.RequestBody(originalReq)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)

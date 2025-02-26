@@ -12,6 +12,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 var (
@@ -30,21 +32,16 @@ func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
 }
 
-// RequestBody is the union of all request body types. TODO: maybe we should just define Translator interface per endpoint.
-type RequestBody any
-
-// Translator translates the request and response messages between the client and the backend API schemas for a specific path.
-// The implementation can embed [defaultTranslator] to avoid implementing all methods.
-//
-// The instance of [Translator] is created by a [Factory].
+// OpenAIChatCompletionTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/chat/completion endpoint of OpenAI.
 //
 // This is created per request and is not thread-safe.
-type Translator interface {
+type OpenAIChatCompletionTranslator interface {
 	// RequestBody translates the request body.
-	// 	- `body` is the request body already parsed by [router.RequestBodyParser]. The concrete type is specific to the schema and the path.
+	// 	- `body` is the request body parsed into the [openai.ChatCompletionRequest].
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `override` that to change the processing mode. This is used to process streaming requests properly.
-	RequestBody(body RequestBody) (
+	RequestBody(body *openai.ChatCompletionRequest) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		override *extprocv3http.ProcessingMode,
