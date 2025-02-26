@@ -191,13 +191,11 @@ func TestWithRealProviders(t *testing.T) {
 
 	t.Run("Bedrock uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
-		for _, tc := range []struct {
-			testCaseName,
-			modelName string
-		}{
-			{testCaseName: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"}, // This will go to "aws-bedrock" using credentials file.
+		for _, tc := range []realProvidersTestCase{
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: requiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
+				cc.maybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					// Step 1: Initial tool call request
 					question := "What is the weather in New York City?"
