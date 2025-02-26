@@ -49,6 +49,11 @@ func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backen
 	return r.selectBackendFromRule(rule), nil
 }
 
+// CalculateWithBody implements [x.Router.CalculateWithBody].
+func (r *router) CalculateWithBody(headers map[string]string, body []byte) (backend *filterapi.Backend, cacheInfo *filterapi.CacheInfo, err error) {
+	return nil, nil, x.ErrNotImplemented
+}
+
 // selectBackendFromRule selects a backend from the given rule. Precondition: len(rule.Backends) > 0.
 func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filterapi.Backend) {
 	if len(rule.Backends) == 1 {

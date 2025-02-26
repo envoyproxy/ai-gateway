@@ -185,6 +185,18 @@ type APIKeyAuth struct {
 	Filename string `json:"filename"`
 }
 
+// CacheInfo contains information about a cache hit.
+type CacheInfo struct {
+	// CacheHit indicates whether there was a cache hit.
+	CacheHit bool `json:"cacheHit"`
+	// SimilarityScore is the similarity score of the cache hit.
+	SimilarityScore float32 `json:"similarityScore,omitempty"`
+	// CachedRequestID is the ID of the cached request.
+	CachedRequestID string `json:"cachedRequestId,omitempty"`
+	// Age is the age of the cached response in seconds.
+	Age uint32 `json:"age,omitempty"`
+}
+
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
 	raw, err := os.ReadFile(path)

@@ -24,6 +24,11 @@ func (c *dummyCustomRouter) Calculate(map[string]string) (*filterapi.Backend, er
 	return nil, nil
 }
 
+func (c *dummyCustomRouter) CalculateWithBody(map[string]string, []byte) (*filterapi.Backend, *filterapi.CacheInfo, error) {
+	c.called = true
+	return nil, nil, nil
+}
+
 func TestRouter_NewRouter_Custom(t *testing.T) {
 	r, err := New(&filterapi.Config{}, func(defaultRouter x.Router, _ *filterapi.Config) x.Router {
 		require.NotNil(t, defaultRouter)
