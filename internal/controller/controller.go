@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -202,4 +203,27 @@ func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespa
 		return fmt.Sprintf("%s.%s", secretRef.Name, *secretRef.Namespace)
 	}
 	return fmt.Sprintf("%s.%s", secretRef.Name, namespace)
+}
+
+// setNewCondition sets a new condition on the given conditions slice. If the condition already exists, it is replaced.
+func setNewCondition(conditions []metav1.Condition, conditionType, message string) []metav1.Condition {
+	condition := metav1.Condition{Message: message, LastTransitionTime: metav1.Now()}
+	switch conditionType {
+	case aigv1a1.ConditionTypeAccepted:
+		condition.Type = aigv1a1.ConditionTypeAccepted
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "ReconciliationSucceeded"
+	case aigv1a1.ConditionTypeNotAccepted:
+		condition.Type = aigv1a1.ConditionTypeNotAccepted
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "ReconciliationFailed"
+	}
+	// Append the new condition at the end.
+	var result []metav1.Condition
+	for _, cond := range conditions {
+		if cond.Type != condition.Type {
+			result = append(result, cond)
+		}
+	}
+	return append(result, condition)
 }

@@ -168,6 +168,11 @@ the backend specific logic in the final HTTPRoute.
   type="[AIServiceBackendSpec](#aiservicebackendspec)"
   required="true"
   description="Spec defines the details of AIServiceBackend."
+/><ApiField
+  name="status"
+  type="[AIServiceBackendStatus](#aiservicebackendstatus)"
+  required="true"
+  description="Status defines the status details of the AIServiceBackend."
 />
 
 
@@ -243,6 +248,11 @@ exiting the gateway to the backend.
   type="[BackendSecurityPolicySpec](#backendsecuritypolicyspec)"
   required="true"
   description=""
+/><ApiField
+  name="status"
+  type="[BackendSecurityPolicyStatus](#backendsecuritypolicystatus)"
+  required="true"
+  description=""
 />
 
 
@@ -294,12 +304,14 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AIGatewayRouteSpec](#aigatewayroutespec)
 - [AIGatewayRouteStatus](#aigatewayroutestatus)
 - [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIServiceBackendStatus](#aiservicebackendstatus)
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
@@ -515,7 +527,7 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
   name="conditions"
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
-  description="Conditions is the list of conditions by the reconciliation result."
+  description="Conditions is the list of conditions by the reconciliation result.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
@@ -552,6 +564,27 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPRouteTimeouts](#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
+/>
+
+
+#### AIServiceBackendStatus
+
+
+
+**Appears in:**
+- [AIServiceBackend](#aiservicebackend)
+
+AIServiceBackendStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
@@ -728,6 +761,27 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)"
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
+/>
+
+
+#### BackendSecurityPolicyStatus
+
+
+
+**Appears in:**
+- [BackendSecurityPolicy](#backendsecuritypolicy)
+
+BackendSecurityPolicyStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
