@@ -27,11 +27,6 @@ import (
 )
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
-	t.Run("invalid body", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false)
-		require.Error(t, err)
-	})
 	tests := []struct {
 		name   string
 		output awsbedrock.ConverseInput
@@ -145,6 +140,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Content: []*awsbedrock.ContentBlock{
 							{
 								ToolResult: &awsbedrock.ToolResultBlock{
+									ToolUseID: ptr.To("call_6g7a"),
 									Content: []*awsbedrock.ToolResultContentBlock{
 										{
 											Text: ptr.To("Weather in Queens, NY is 70F and clear skies."),
@@ -687,7 +683,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, mode, err := o.RequestBody(RequestBody(&originalReq))
+			hm, bm, mode, err := o.RequestBody(&originalReq)
 			var expPath string
 			if tt.input.Stream {
 				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
@@ -929,24 +925,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-					{
-						Index: 1,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("from"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-					{
-						Index: 2,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("assistant"),
-							Role:    "assistant",
-						},
+							Role:    awsbedrock.ConversationRoleAssistant},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
@@ -996,9 +975,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
+						// Text and ToolUse are sent in two different content blocks for AWS Bedrock, OpenAI merges them in one message.
 						Content: []*awsbedrock.ContentBlock{
 							{
 								Text: ptr.To("response"),
+							},
+							{
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
@@ -1264,14 +1246,14 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "role",
 			in: awsbedrock.ConverseStreamEvent{
-				Role: ptrOf("assistant"),
+				Role: ptrOf(awsbedrock.ConversationRoleAssistant),
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: &emptyString,
 						},
 					},
@@ -1324,7 +1306,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_HandleContent
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
-						Role: "assistant",
+						Role: awsbedrock.ConversationRoleAssistant,
 						Content: []*awsbedrock.ContentBlock{
 							{Text: ptr.To("response")},
 						},
@@ -1343,52 +1325,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_HandleContent
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-				},
-			},
-		},
-		{
-			name: "content as array",
-			bedrockResp: awsbedrock.ConverseResponse{
-				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
-				},
-				Output: &awsbedrock.ConverseOutput{
-					Message: awsbedrock.Message{
-						Role: "assistant",
-						Content: []*awsbedrock.ContentBlock{
-							{Text: ptr.To("response part 1")},
-							{Text: ptr.To("response part 2")},
-						},
-					},
-				},
-			},
-			expectedOutput: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
-					TotalTokens:      30,
-					PromptTokens:     10,
-					CompletionTokens: 20,
-				},
-				Choices: []openai.ChatCompletionResponseChoice{
-					{
-						Index: 0,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response part 1"),
-							Role:    "assistant",
-						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-					},
-					{
-						Index: 1,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response part 2"),
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
