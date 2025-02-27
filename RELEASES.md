@@ -68,6 +68,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 2. Cut the request candidate tag from the main branch. The tag should be v0.2.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
   the command to cut the tag is:
     ```
+    git fetch origin # make sure you have the latest main branch locally.
     git tag v0.2.0-rc1 origin/main
     git push origin v0.2.0-rc1
     ```
@@ -83,6 +84,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate.
   The command to cut the release is exactly the same as the release candidate:
     ```
+    git fetch origin # make sure you have the latest main branch locally.
     git tag v0.2.0 origin/main
     git push origin v0.2.0
     ```
@@ -92,3 +94,19 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    Edit the release note nicely by hand to reflect the changes in the release.
 3. Announce the release in the community.
 4. Create `release/v0.2` branch from the tag for the future backports, bug fixes, etc.
+
+### Backport Phase
+
+1. If there is a bug fix or a security fix that needs to be backported to the previous release, maintainers should cherry-pick the commit and raise the PR to the `release/v0.2` branch.
+   Which commit should be backported is up to the maintainers and on a case-by-case basis.
+2. Once the PR is merged, the maintainers will decide when to cut the patch release. There's no need to wait for multiple backports to cut the patch release, etc.
+3. The patch release should be cut from the `release/v0.2` branch. The command to cut the patch release is exactly the same as the release candidate:
+    ```
+    git fetch origin # make sure you have the latest main branch locally.
+    git tag v0.2.1 origin/release/v0.2
+    git push origin v0.2.1
+    ```
+   Pushing a tag will trigger the pipeline to build the patch release image and the helm chart tagged with the patch release tag.
+   The patch release image will be available in the GitHub Container Registry.
+4. The draft release note will be created in the GitHub repository after the pipeline is completed.
+   Edit the release note nicely by hand to reflect the changes in the release.
