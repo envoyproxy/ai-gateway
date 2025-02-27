@@ -34,3 +34,4 @@ header:
     - LICENSE
     - CODEOWNERS
     - pre-commit.sh
+    - cmd/aigw/testdata/*.yaml

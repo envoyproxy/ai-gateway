@@ -8,27 +8,29 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/internal/controller"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"github.com/go-logr/logr"
 	"io"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	fake2 "k8s.io/client-go/kubernetes/fake"
 	"log"
 	"os"
+	"strings"
+
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	fake2 "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	"strings"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/yaml"
+	kyaml "sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
 type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
@@ -74,9 +76,9 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	fakeClientSet := fake2.NewClientset()
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.Discard(),
-		func(ctx context.Context, bsp *aigv1a1.AIServiceBackend) error { return nil })
+		func(context.Context, *aigv1a1.AIServiceBackend) error { return nil })
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.Discard(),
-		func(ctx context.Context, route *aigv1a1.AIGatewayRoute) error { return nil })
+		func(context.Context, *aigv1a1.AIGatewayRoute) error { return nil })
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(),
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"info",
@@ -124,30 +126,80 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	if err != nil {
 		return fmt.Errorf("error listing HTTPRoutes: %w", err)
 	}
-	for _, httpRoute := range httpRoutes.Items {
-		_, _ = stdout.Write([]byte(fmt.Sprintf("%s\n", httpRoute.Name)))
-	}
 	var extensionPolicies egv1a1.EnvoyExtensionPolicyList
 	err = fakeClient.List(ctx, &extensionPolicies)
 	if err != nil {
 		return fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
 	}
-	for _, extensionPolicy := range extensionPolicies.Items {
-		_, _ = stdout.Write([]byte(fmt.Sprintf("%s\n", extensionPolicy.Name)))
-	}
 	configMaps, err := fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("error listing ConfigMaps: %w", err)
-	}
-	for _, configMap := range configMaps.Items {
-		_, _ = stdout.Write([]byte(fmt.Sprintf("%s\n", configMap.Name)))
 	}
 	secrets, err := fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("error listing Secrets: %w", err)
 	}
+	deployments, err := fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing Deployments: %w", err)
+	}
+	services, err := fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing Services: %w", err)
+	}
+
+	// Emit the translated objects.
+	for _, httpRoute := range httpRoutes.Items {
+		_, _ = stdout.Write([]byte("---\n"))
+		marshaled, err := kyaml.Marshal(httpRoute)
+		if err != nil {
+			return fmt.Errorf("error marshaling HTTPRoute: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
+	}
+	for _, extensionPolicy := range extensionPolicies.Items {
+		_, _ = stdout.Write([]byte("---\n"))
+		marshaled, err := kyaml.Marshal(extensionPolicy)
+		if err != nil {
+			return fmt.Errorf("error marshaling EnvoyExtensionPolicy: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
+	}
+	for _, configMap := range configMaps.Items {
+		_, _ = stdout.Write([]byte("---\n"))
+		configMap.ManagedFields = nil
+		marshaled, err := kyaml.Marshal(configMap)
+		if err != nil {
+			return fmt.Errorf("error marshaling ConfigMap: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
+	}
 	for _, secret := range secrets.Items {
-		_, _ = stdout.Write([]byte(fmt.Sprintf("%s\n", secret.Name)))
+		_, _ = stdout.Write([]byte("---\n"))
+		secret.ManagedFields = nil
+		marshaled, err := kyaml.Marshal(secret)
+		if err != nil {
+			return fmt.Errorf("error marshaling Secret: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
+	}
+	for _, deployment := range deployments.Items {
+		_, _ = stdout.Write([]byte("---\n"))
+		deployment.ManagedFields = nil
+		marshaled, err := kyaml.Marshal(deployment)
+		if err != nil {
+			return fmt.Errorf("error marshaling Deployment: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
+	}
+	for _, service := range services.Items {
+		_, _ = stdout.Write([]byte("---\n"))
+		service.ManagedFields = nil
+		marshaled, err := kyaml.Marshal(service)
+		if err != nil {
+			return fmt.Errorf("error marshaling Service: %w", err)
+		}
+		_, _ = stdout.Write(marshaled)
 	}
 	return nil
 }
@@ -162,7 +214,7 @@ func collectCustomResourceObjects(yamlInput string, stderr io.Writer) (
 	for {
 		var rawObj runtime.RawExtension
 		err = decoder.Decode(&rawObj)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			err = nil
 			return
 		} else if err != nil {
@@ -212,5 +264,4 @@ func collectCustomResourceObjects(yamlInput string, stderr io.Writer) (
 				obj.GetAPIVersion(), obj.GetKind(), obj.GetName())))
 		}
 	}
-	return
 }

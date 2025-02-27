@@ -1,11 +1,17 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package main
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
 	"io"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_doMain(t *testing.T) {
@@ -23,7 +29,7 @@ func Test_doMain(t *testing.T) {
 		{
 			name: "translate",
 			args: []string{"translate", "path1", "path2"},
-			tf: func(c cmdTranslate, stdout, stderr io.Writer) error {
+			tf: func(c cmdTranslate, _, _ io.Writer) error {
 				cwd, err := os.Getwd()
 				require.NoError(t, err)
 				require.Equal(t, []string{cwd + "/path1", cwd + "/path2"}, c.Paths)

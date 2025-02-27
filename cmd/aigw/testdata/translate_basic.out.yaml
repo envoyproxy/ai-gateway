@@ -1,0 +1,256 @@
+---
+metadata:
+  creationTimestamp: null
+  name: envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+  resourceVersion: "1"
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      namespace: default
+  rules:
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: envoy-ai-gateway-basic-openai
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-selected-backend
+              value: envoy-ai-gateway-basic-openai.default
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: envoy-ai-gateway-basic-aws
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-selected-backend
+              value: envoy-ai-gateway-basic-aws.default
+    - backendRefs:
+        - kind: Service
+          name: envoy-ai-gateway-basic-testupstream
+          port: 80
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-selected-backend
+              value: envoy-ai-gateway-basic-testupstream.default
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: envoy-ai-gateway-basic-openai
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
+      matches:
+        - path:
+            value: /
+status:
+  parents: null
+---
+metadata:
+  creationTimestamp: null
+  name: ai-eg-route-extproc-envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+  resourceVersion: "1"
+spec:
+  extProc:
+    - backendRefs:
+        - name: ai-eg-route-extproc-envoy-ai-gateway-basic
+          namespace: default
+          port: 1063
+      metadata:
+        writableNamespaces:
+          - io.envoy.ai_gateway
+      processingMode:
+        allowModeOverride: true
+        request:
+          body: Buffered
+        response:
+          body: Buffered
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-basic
+status:
+  ancestors: null
+---
+apiVersion: v1
+data:
+  extproc-config.yaml: |
+    metadataNamespace: io.envoy.ai_gateway
+    modelNameHeaderKey: x-ai-eg-model
+    rules:
+    - backends:
+      - auth:
+          apiKey:
+            filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
+        name: envoy-ai-gateway-basic-openai.default
+        schema:
+          name: OpenAI
+        weight: 0
+      headers:
+      - name: x-ai-eg-model
+        value: gpt-4o-mini
+    - backends:
+      - auth:
+          aws:
+            credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
+            region: us-east-1
+        name: envoy-ai-gateway-basic-aws.default
+        schema:
+          name: AWSBedrock
+        weight: 0
+      headers:
+      - name: x-ai-eg-model
+        value: us.meta.llama3-2-1b-instruct-v1:0
+    - backends:
+      - name: envoy-ai-gateway-basic-testupstream.default
+        schema:
+          name: OpenAI
+        weight: 0
+      headers:
+      - name: x-ai-eg-model
+        value: some-cool-self-hosted-model
+    schema:
+      name: OpenAI
+    selectedBackendHeaderKey: x-ai-eg-selected-backend
+    uuid: 0cf4959e-f738-4488-a56c-dfdce63d1ad5
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: ai-eg-route-extproc-envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: ai-eg-route-extproc-envoy-ai-gateway-basic
+    app.kubernetes.io/managed-by: envoy-ai-gateway
+  name: ai-eg-route-extproc-envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+spec:
+  selector:
+    matchLabels:
+      app: ai-eg-route-extproc-envoy-ai-gateway-basic
+      app.kubernetes.io/managed-by: envoy-ai-gateway
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: ai-eg-route-extproc-envoy-ai-gateway-basic
+        app.kubernetes.io/managed-by: envoy-ai-gateway
+    spec:
+      containers:
+        - args:
+            - -configPath
+            - /etc/ai-gateway/extproc/extproc-config.yaml
+            - -logLevel
+            - info
+          image: docker.io/envoyproxy/ai-gateway-extproc:latest
+          imagePullPolicy: IfNotPresent
+          name: ai-eg-route-extproc-envoy-ai-gateway-basic
+          ports:
+            - containerPort: 1063
+              name: grpc
+          resources: {}
+          volumeMounts:
+            - mountPath: /etc/ai-gateway/extproc
+              name: config
+              readOnly: true
+            - mountPath: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey
+              name: rule0-backref0-envoy-ai-gateway-basic-openai-apikey
+              readOnly: true
+            - mountPath: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials
+              name: rule1-backref0-envoy-ai-gateway-basic-aws-credentials
+              readOnly: true
+      volumes:
+        - configMap:
+            name: ai-eg-route-extproc-envoy-ai-gateway-basic
+          name: config
+        - name: rule0-backref0-envoy-ai-gateway-basic-openai-apikey
+          secret:
+            secretName: envoy-ai-gateway-basic-openai-apikey
+        - name: rule1-backref0-envoy-ai-gateway-basic-aws-credentials
+          secret:
+            secretName: envoy-ai-gateway-basic-aws-credentials
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: ai-eg-route-extproc-envoy-ai-gateway-basic
+    app.kubernetes.io/managed-by: envoy-ai-gateway
+  name: ai-eg-route-extproc-envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+spec:
+  ports:
+    - appProtocol: grpc
+      name: grpc
+      port: 1063
+      protocol: TCP
+      targetPort: 0
+  selector:
+    app: ai-eg-route-extproc-envoy-ai-gateway-basic
+    app.kubernetes.io/managed-by: envoy-ai-gateway
+status:
+  loadBalancer: {}
