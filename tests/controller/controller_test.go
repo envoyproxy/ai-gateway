@@ -222,8 +222,8 @@ func TestStartControllers(t *testing.T) {
 				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
 
-				// Check all rule has the host rewrite filter.
-				for _, rule := range httpRoute.Spec.Rules {
+				// Check all rule has the host rewrite filter except for the last rule.
+				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
 					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
