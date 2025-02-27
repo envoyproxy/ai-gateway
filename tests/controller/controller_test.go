@@ -337,7 +337,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 
-	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.AIGatewayRoute{}).Complete(rc)
+	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).Complete(rc)
 	require.NoError(t, err)
 
 	go func() {
@@ -496,8 +496,10 @@ func TestAIGatewayRouteController(t *testing.T) {
 			var r aigv1a1.AIGatewayRoute
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
 			require.NoError(t, err)
-			fmt.Println(r.Status.Conditions)
-			return len(r.Status.Conditions) == 1
+			if len(r.Status.Conditions) != 1 {
+				return false
+			}
+			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
@@ -513,7 +515,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
 	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), syncAIServiceBackend.Sync)
-	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.BackendSecurityPolicy{}).Complete(pc)
+	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
 	require.NoError(t, err)
 
 	go func() {
@@ -576,7 +578,6 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		}
 		require.NoError(t, c.Create(t.Context(), origin))
 		require.Eventually(t, func() bool {
-			println("Eeee")
 			return len(syncAIServiceBackend.GetItems()) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
@@ -620,6 +621,18 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		})
 		require.Equal(t, originals, backends)
 	})
+
+	t.Run("check statuses", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var r aigv1a1.BackendSecurityPolicy
+			err := c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
+			require.NoError(t, err)
+			if len(r.Status.Conditions) != 1 {
+				return false
+			}
+			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
 }
 
 func TestAIServiceBackendController(t *testing.T) {
@@ -633,7 +646,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
 	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), syncAIGatewayRoute.Sync)
-	err = ctrl.NewControllerManagedBy(mgr).For(&aigv1a1.AIServiceBackend{}).Complete(bc)
+	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
 	require.NoError(t, err)
 
 	go func() {
@@ -735,6 +748,18 @@ func TestAIServiceBackendController(t *testing.T) {
 			return routes[i].Name < routes[j].Name
 		})
 		require.Equal(t, originals, routes)
+	})
+
+	t.Run("check statuses", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIServiceBackend
+			err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
+			require.NoError(t, err)
+			if len(r.Status.Conditions) != 1 {
+				return false
+			}
+			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
 

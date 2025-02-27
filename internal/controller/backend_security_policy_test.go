@@ -76,6 +76,13 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Len(t, items, 1)
 	require.Equal(t, asb, items[0])
 
+	// Check that the status was updated.
+	var bsp aigv1a1.BackendSecurityPolicy
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}, &bsp))
+	require.Len(t, bsp.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, bsp.Status.Conditions[0].Type)
+	require.Equal(t, "BackendSecurityPolicy reconciled successfully", bsp.Status.Conditions[0].Message)
+
 	// Test the case where the BackendSecurityPolicy is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
 	require.NoError(t, err)
@@ -102,7 +109,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 
 func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
@@ -143,7 +150,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
-	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"

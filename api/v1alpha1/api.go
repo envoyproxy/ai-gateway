@@ -13,9 +13,6 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-
 // AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 //
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
@@ -41,6 +38,10 @@ import (
 // detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
 // resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
 // Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
 type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -50,15 +51,9 @@ type AIGatewayRoute struct {
 	Status AIGatewayRouteStatus `json:"status,omitempty"`
 }
 
-// AIGatewayRouteStatus contains the conditions by the reconciliation result.
-type AIGatewayRouteStatus struct {
-	// Conditions is the list of conditions by the reconciliation result.
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-}
-
-// +kubebuilder:object:root=true
-
 // AIGatewayRouteList contains a list of AIGatewayRoute.
+//
+// +kubebuilder:object:root=true
 type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -296,8 +291,6 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
-// +kubebuilder:object:root=true
-
 // AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
 // A backend is a service that handles traffic with a concrete API specification.
 //
@@ -306,16 +299,22 @@ type AIGatewayFilterConfigExternalProcessor struct {
 // When a backend with an attached AIServiceBackend is used as a routing target in the AIGatewayRoute (more precisely, the
 // HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
 type AIServiceBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the details of AIServiceBackend.
 	Spec AIServiceBackendSpec `json:"spec,omitempty"`
+	// Status defines the status details of the AIServiceBackend.
+	Status AIServiceBackendStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-
 // AIServiceBackendList contains a list of AIServiceBackends.
+//
+// +kubebuilder:object:root=true
 type AIServiceBackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -398,18 +397,23 @@ const (
 type BackendSecurityPolicyType string
 
 const (
-	BackendSecurityPolicyTypeAPIKey         BackendSecurityPolicyType = "APIKey"
-	BackendSecurityPolicyTypeAWSCredentials BackendSecurityPolicyType = "AWSCredentials"
+	BackendSecurityPolicyTypeAPIKey           BackendSecurityPolicyType = "APIKey"
+	BackendSecurityPolicyTypeAWSCredentials   BackendSecurityPolicyType = "AWSCredentials"
+	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
 )
-
-// +kubebuilder:object:root=true
 
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 // exiting the gateway to the backend.
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
 type BackendSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              BackendSecurityPolicySpec `json:"spec,omitempty"`
+	// Status defines the status details of the BackendSecurityPolicy.
+	Status BackendSecurityPolicyStatus `json:"status,omitempty"`
 }
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
@@ -418,9 +422,9 @@ type BackendSecurityPolicy struct {
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", AND "AWSCredentials" are supported.
+	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSCredentials
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -432,11 +436,16 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AWSCredentials *BackendSecurityPolicyAWSCredentials `json:"awsCredentials,omitempty"`
+
+	// AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied.
+	//
+	// +optional
+	AzureCredentials *BackendSecurityPolicyAzureCredentials `json:"azureCredentials,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
+//
+// +kubebuilder:object:root=true
 type BackendSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -451,7 +460,27 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
-// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+// BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+type BackendSecurityPolicyAzureCredentials struct {
+	// ClientID is a unique identifier for an application in Azure.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ClientID string `json:"clientID"`
+
+	// TenantId is a unique identifier for an Azure Active Directory instance.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	TenantID string `json:"tenantID"`
+
+	// ClientSecretRef is the reference to the secret containing the Azure client secret.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of secret should be "azure_access_token".
+	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+}
+
+// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
 	//

@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"sort"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -94,10 +93,10 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 
 	if err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to sync AIGatewayRoute")
-		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, false, err.Error())
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1a1.ConditionTypeNotAccepted, err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, true, "AI Gateway Route reconciled successfully")
+	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1a1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
 }
 
@@ -366,8 +365,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			if err = ctrlutil.SetControllerReference(aiGatewayRoute, configMap, c.client.Scheme()); err != nil {
 				panic(fmt.Errorf("BUG: failed to set controller reference for extproc configmap: %w", err))
 			}
-			_, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
-			if err != nil {
+			if _, err = c.kube.CoreV1().ConfigMaps(aiGatewayRoute.Namespace).Create(ctx, configMap, metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("failed to create configmap %s: %w", name, err)
 			}
 			return nil
@@ -671,43 +669,9 @@ func backendSecurityMountPath(backendSecurityPolicyKey string) string {
 	return fmt.Sprintf("%s/%s", mountedExtProcSecretPath, backendSecurityPolicyKey)
 }
 
-const (
-	aiGatewayRouteConditionTypeAccepted    = "Accepted"
-	aiGatewayRouteConditionTypeNotAccepted = "NotAccepted"
-)
-
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
-func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, accepted bool, message string) {
-	route = route.DeepCopy()
-	condition := metav1.Condition{Message: message, LastTransitionTime: metav1.Now()}
-	if accepted {
-		condition.Type = aiGatewayRouteConditionTypeAccepted
-		condition.Reason = "ReconciliationSucceeded"
-		condition.Status = metav1.ConditionTrue
-	} else {
-		condition.Type = aiGatewayRouteConditionTypeNotAccepted
-		condition.Reason = "ReconciliationFailed"
-		condition.Status = metav1.ConditionFalse
-	}
-
-	// Search for the same Status condition and replace it, append if not found.
-	found := false
-	for i, cond := range route.Status.Conditions {
-		if cond.Type == condition.Type {
-			found = true
-			route.Status.Conditions[i] = condition
-			break
-		}
-	}
-
-	if !found {
-		route.Status.Conditions = append(route.Status.Conditions, condition)
-	}
-	// And sort the conditions by LastTransitionTime.
-	sort.Slice(route.Status.Conditions, func(i, j int) bool {
-		return route.Status.Conditions[i].LastTransitionTime.Before(&route.Status.Conditions[j].LastTransitionTime)
-	})
-
+func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, conditionType string, message string) {
+	route.Status.Conditions = newConditions(conditionType, message)
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}

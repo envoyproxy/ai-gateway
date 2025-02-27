@@ -168,6 +168,11 @@ the backend specific logic in the final HTTPRoute.
   type="[AIServiceBackendSpec](#aiservicebackendspec)"
   required="true"
   description="Spec defines the details of AIServiceBackend."
+/><ApiField
+  name="status"
+  type="[AIServiceBackendStatus](#aiservicebackendstatus)"
+  required="true"
+  description="Status defines the status details of the AIServiceBackend."
 />
 
 
@@ -243,6 +248,11 @@ exiting the gateway to the backend.
   type="[BackendSecurityPolicySpec](#backendsecuritypolicyspec)"
   required="true"
   description=""
+/><ApiField
+  name="status"
+  type="[BackendSecurityPolicyStatus](#backendsecuritypolicystatus)"
+  required="true"
+  description="Status defines the status details of the BackendSecurityPolicy."
 />
 
 
@@ -294,12 +304,15 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AIGatewayRouteSpec](#aigatewayroutespec)
 - [AIGatewayRouteStatus](#aigatewayroutestatus)
 - [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIServiceBackendStatus](#aiservicebackendstatus)
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
@@ -515,7 +528,7 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
   name="conditions"
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
-  description="Conditions is the list of conditions by the reconciliation result."
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
@@ -552,6 +565,27 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPRouteTimeouts](#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
+/>
+
+
+#### AIServiceBackendStatus
+
+
+
+**Appears in:**
+- [AIServiceBackend](#aiservicebackend)
+
+AIServiceBackendStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
@@ -673,7 +707,7 @@ BackendSecurityPolicyAPIKey specifies the API key.
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws
+BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
 
 ##### Fields
 
@@ -697,6 +731,37 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 />
 
 
+#### BackendSecurityPolicyAzureCredentials
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+
+##### Fields
+
+
+
+<ApiField
+  name="clientID"
+  type="string"
+  required="true"
+  description="ClientID is a unique identifier for an application in Azure."
+/><ApiField
+  name="tenantID"
+  type="string"
+  required="true"
+  description="TenantId is a unique identifier for an Azure Active Directory instance."
+/><ApiField
+  name="clientSecretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `azure_access_token`."
+/>
+
+
 #### BackendSecurityPolicySpec
 
 
@@ -717,7 +782,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="type"
   type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
   required="true"
-  description="Type specifies the auth mechanism used to access the provider. Currently, only `APIKey`, AND `AWSCredentials` are supported."
+  description="Type specifies the auth mechanism used to access the provider. Currently, only `APIKey`, `AWSCredentials`, and `AzureCredentials` are supported."
 /><ApiField
   name="apiKey"
   type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
@@ -728,6 +793,32 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)"
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
+/><ApiField
+  name="azureCredentials"
+  type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
+  required="false"
+  description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
+/>
+
+
+#### BackendSecurityPolicyStatus
+
+
+
+**Appears in:**
+- [BackendSecurityPolicy](#backendsecuritypolicy)
+
+BackendSecurityPolicyStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 
@@ -751,6 +842,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="AWSCredentials"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="AzureCredentials"
   type="enum"
   required="false"
   description=""

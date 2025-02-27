@@ -51,7 +51,13 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 		return ctrl.Result{}, err
 	}
 	c.logger.Info("Reconciling AIServiceBackend", "namespace", req.Namespace, "name", req.Name)
-	return ctrl.Result{}, c.syncAIServiceBackend(ctx, &aiBackend)
+	if err := c.syncAIServiceBackend(ctx, &aiBackend); err != nil {
+		c.logger.Error(err, "failed to sync AIServiceBackend")
+		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeNotAccepted, err.Error())
+		return ctrl.Result{}, err
+	}
+	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
+	return ctrl.Result{}, nil
 }
 
 // syncAIServiceBackend implements syncAIServiceBackendFn.
@@ -76,4 +82,12 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// updateAIServiceBackendStatus updates the status of the AIServiceBackend.
+func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, route *aigv1a1.AIServiceBackend, conditionType string, message string) {
+	route.Status.Conditions = newConditions(conditionType, message)
+	if err := c.client.Status().Update(ctx, route); err != nil {
+		c.logger.Error(err, "failed to update AIServiceBackend status")
+	}
 }
