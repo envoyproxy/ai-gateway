@@ -925,7 +925,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    awsbedrock.ConversationRoleAssistant},
+							Role:    awsbedrock.ConversationRoleAssistant,
+						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
