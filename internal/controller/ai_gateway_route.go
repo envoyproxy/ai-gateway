@@ -425,16 +425,21 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		rules[i] = rule
 	}
 
-	// Adds the default route rule with "/" path.
+	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend
+	// before entering the filters. So, all requests would result in a 404 if there is no default route. In practice,
+	// this default route is not used because our AI Gateway filters is the one who actually calculates the route based
+	// on the given Rules. If it doesn't match any backend, 404 will be returned from the AI Gateway filter as an immediate
+	// response.
+	//
+	// In other words, this default route is an implementation detail to make the Envoy router happy and does not affect
+	// the actual routing at all.
 	if len(rules) > 0 {
 		rules = append(rules, gwapiv1.HTTPRouteRule{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
-			},
+			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
 			BackendRefs: []gwapiv1.HTTPBackendRef{
+				// It can be any valid backend reference because it will not be used.
 				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 			},
-			Filters: rewriteFilters,
 		})
 	}
 
