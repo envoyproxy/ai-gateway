@@ -91,7 +91,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	)
 	for _, bsp := range backendSecurityPolicies {
 		logger.Info("Fake creating BackendSecurityPolicy", "name", bsp.Name)
-		err = fakeClient.Create(ctx, bsp.DeepCopy())
+		err = fakeClient.Create(ctx, bsp)
 		if err != nil {
 			return fmt.Errorf("error creating BackendSecurityPolicy %s: %w", bsp.Name, err)
 		}
@@ -103,7 +103,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, backend := range aigwBackends {
 		logger.Info("Fake creating AIServiceBackend", "name", backend.Name)
-		err = fakeClient.Create(ctx, backend.DeepCopy())
+		err = fakeClient.Create(ctx, backend)
 		if err != nil {
 			return fmt.Errorf("error creating AIServiceBackend %s: %w", backend.Name, err)
 		}
@@ -115,7 +115,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, route := range aigwRoutes {
 		logger.Info("Fake creating AIGatewayRoute", "name", route.Name)
-		err = fakeClient.Create(ctx, route.DeepCopy())
+		err = fakeClient.Create(ctx, route)
 		if err != nil {
 			return fmt.Errorf("error creating AIGatewayRoute %s: %w", route.Name, err)
 		}
