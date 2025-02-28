@@ -28,15 +28,23 @@ type (
 )
 
 func main() {
-	doMain(os.Stdout, os.Stderr, os.Args[1:], translate)
+	doMain(os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
 }
 
-func doMain(stdout, stderr io.Writer, args []string, tf translateFn) {
+// doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
+//
+//   - stdout is the writer to use for standard output. Mainly for testing.
+//   - stderr is the writer to use for standard error. Mainly for testing.
+//   - `args` are the command line arguments without the program name.
+//   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
+//   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes API Gateway resources. Mainly for testing.
+func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf translateFn) {
 	var c cmd
 	parser, err := kong.New(&c,
 		kong.Name("aigw"),
 		kong.Description("Envoy AI Gateway CLI"),
 		kong.Writers(stdout, stderr),
+		kong.Exit(exitFn),
 	)
 	if err != nil {
 		log.Fatalf("Error creating parser: %v", err)

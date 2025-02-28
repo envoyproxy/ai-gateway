@@ -36,6 +36,8 @@ import (
 
 type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
 
+// translate implements the translateFn command. This function reads the input files, collects the AI Gateway custom resources,
+// translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
 func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 	if !cmd.Debug {
@@ -62,10 +64,6 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 		return fmt.Errorf("error emitting: %w", err)
 	}
 	return nil
-}
-
-func fakeUID() types.UID {
-	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }
 
 // collectCustomResourceObjects reads the YAML input and collects the AI Gateway custom resources.
@@ -204,6 +202,7 @@ func translateCustomResourceObjects(
 	return nil
 }
 
+// mustExtractAndAppend extracts the object from the unstructured object and appends it to the slice.
 func mustExtractAndAppend[T any](obj *unstructured.Unstructured, slice *[]T) {
 	var item T
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &item)
@@ -253,4 +252,9 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 		panic(err)
 	}
 	_, _ = w.Write(marshaled)
+}
+
+// fakeUID returns a fake UID for the AI Gateway Route controller.
+func fakeUID() types.UID {
+	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }

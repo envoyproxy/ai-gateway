@@ -81,35 +81,17 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 		require.NoError(t, err, cmp.Diff(string(a), ""))
 		switch obj.GetKind() {
 		case "HTTPRoute":
-			httpRoute := &gwapiv1.HTTPRoute{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, httpRoute)
-			require.NoError(t, err)
-			outHTTPRoutes = append(outHTTPRoutes, *httpRoute)
+			mustExtractAndAppend(obj, &outHTTPRoutes)
 		case "EnvoyExtensionPolicy":
-			extensionPolicy := &egv1a1.EnvoyExtensionPolicy{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, extensionPolicy)
-			require.NoError(t, err)
-			outEnvoyExtensionPolicy = append(outEnvoyExtensionPolicy, *extensionPolicy)
+			mustExtractAndAppend(obj, &outEnvoyExtensionPolicy)
 		case "ConfigMap":
-			configMap := &corev1.ConfigMap{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, configMap)
-			require.NoError(t, err)
-			outConfigMaps = append(outConfigMaps, *configMap)
+			mustExtractAndAppend(obj, &outConfigMaps)
 		case "Secret":
-			secret := &corev1.Secret{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, secret)
-			require.NoError(t, err)
-			outSecrets = append(outSecrets, *secret)
+			mustExtractAndAppend(obj, &outSecrets)
 		case "Deployment":
-			deployment := &appsv1.Deployment{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, deployment)
-			require.NoError(t, err)
-			outDeployments = append(outDeployments, *deployment)
+			mustExtractAndAppend(obj, &outDeployments)
 		case "Service":
-			service := &corev1.Service{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, service)
-			require.NoError(t, err)
-			outServices = append(outServices, *service)
+			mustExtractAndAppend(obj, &outServices)
 		default:
 			t.Fatalf("unexpected kind: %s", obj.GetKind())
 		}
