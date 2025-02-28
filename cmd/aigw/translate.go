@@ -68,164 +68,7 @@ func fakeUID() types.UID {
 	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }
 
-func translateCustomResourceObjects(
-	aigwRoutes []*aigv1a1.AIGatewayRoute,
-	aigwBackends []*aigv1a1.AIServiceBackend,
-	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	output io.Writer,
-	logger *slog.Logger,
-) error {
-	ctx := context.Background() // It's ok to use the raw Background context as this is synchronous code in a CLI.
-	builder := fake.NewClientBuilder().
-		WithScheme(controller.Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
-		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
-	err := controller.ApplyIndexing(ctx, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
-		builder = builder.WithIndex(obj, field, extractValue)
-		return nil
-	})
-	if err != nil {
-		panic(err) // Should never happen.
-	}
-	fakeClient := builder.Build()
-	fakeClientSet := fake2.NewClientset()
-
-	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.Discard(),
-		func(context.Context, *aigv1a1.AIServiceBackend) error { return nil })
-	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.Discard(),
-		func(context.Context, *aigv1a1.AIGatewayRoute) error { return nil })
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(), fakeUID,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest",
-		"info",
-	)
-	for _, bsp := range backendSecurityPolicies {
-		logger.Info("Fake creating BackendSecurityPolicy", "name", bsp.Name)
-		err = fakeClient.Create(ctx, bsp)
-		if err != nil {
-			return fmt.Errorf("error creating BackendSecurityPolicy %s: %w", bsp.Name, err)
-		}
-		logger.Info("Fake reconciling BackendSecurityPolicy", "name", bsp.Name)
-		_, err = bspC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bsp.Namespace, Name: bsp.Name}})
-		if err != nil {
-			return fmt.Errorf("error reconciling BackendSecurityPolicy %s: %w", bsp.Name, err)
-		}
-	}
-	for _, backend := range aigwBackends {
-		logger.Info("Fake creating AIServiceBackend", "name", backend.Name)
-		err = fakeClient.Create(ctx, backend)
-		if err != nil {
-			return fmt.Errorf("error creating AIServiceBackend %s: %w", backend.Name, err)
-		}
-		logger.Info("Fake reconciling AIServiceBackend", "name", backend.Name)
-		_, err = aisbC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: backend.Namespace, Name: backend.Name}})
-		if err != nil {
-			return fmt.Errorf("error reconciling AIServiceBackend %s: %w", backend.Name, err)
-		}
-	}
-	for _, route := range aigwRoutes {
-		logger.Info("Fake creating AIGatewayRoute", "name", route.Name)
-		err = fakeClient.Create(ctx, route)
-		if err != nil {
-			return fmt.Errorf("error creating AIGatewayRoute %s: %w", route.Name, err)
-		}
-		logger.Info("Fake reconciling AIGatewayRoute", "name", route.Name)
-		_, err = airC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: route.Namespace, Name: route.Name}})
-		if err != nil {
-			return fmt.Errorf("error reconciling AIGatewayRoute %s: %w", route.Name, err)
-		}
-	}
-
-	// Now you can retrieve the translated objects from the fake client.
-	var httpRoutes gwapiv1.HTTPRouteList
-	err = fakeClient.List(ctx, &httpRoutes)
-	if err != nil {
-		return fmt.Errorf("error listing HTTPRoutes: %w", err)
-	}
-	var extensionPolicies egv1a1.EnvoyExtensionPolicyList
-	err = fakeClient.List(ctx, &extensionPolicies)
-	if err != nil {
-		return fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
-	}
-	configMaps, err := fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("error listing ConfigMaps: %w", err)
-	}
-	secrets, err := fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("error listing Secrets: %w", err)
-	}
-	deployments, err := fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("error listing Deployments: %w", err)
-	}
-	services, err := fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("error listing Services: %w", err)
-	}
-
-	// Emit the translated objects.
-	for _, httpRoute := range httpRoutes.Items {
-		_, _ = output.Write([]byte("---\n"))
-		httpRoute.TypeMeta = metav1.TypeMeta{APIVersion: "gateway.networking.k8s.io/v1alpha1", Kind: "HTTPRoute"}
-		marshaled, err := kyaml.Marshal(httpRoute)
-		if err != nil {
-			return fmt.Errorf("error marshaling HTTPRoute: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	for _, extensionPolicy := range extensionPolicies.Items {
-		_, _ = output.Write([]byte("---\n"))
-		extensionPolicy.TypeMeta = metav1.TypeMeta{APIVersion: "gateway.networking.k8s.io/v1alpha1", Kind: "EnvoyExtensionPolicy"}
-		marshaled, err := kyaml.Marshal(extensionPolicy)
-		if err != nil {
-			return fmt.Errorf("error marshaling EnvoyExtensionPolicy: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	for _, configMap := range configMaps.Items {
-		_, _ = output.Write([]byte("---\n"))
-		configMap.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"}
-		configMap.ManagedFields = nil
-		marshaled, err := kyaml.Marshal(configMap)
-		if err != nil {
-			return fmt.Errorf("error marshaling ConfigMap: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	for _, secret := range secrets.Items {
-		_, _ = output.Write([]byte("---\n"))
-		secret.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"}
-		secret.ManagedFields = nil
-		marshaled, err := kyaml.Marshal(secret)
-		if err != nil {
-			return fmt.Errorf("error marshaling Secret: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	for _, deployment := range deployments.Items {
-		_, _ = output.Write([]byte("---\n"))
-		deployment.TypeMeta = metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}
-		deployment.ManagedFields = nil
-		marshaled, err := kyaml.Marshal(deployment)
-		if err != nil {
-			return fmt.Errorf("error marshaling Deployment: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	for _, service := range services.Items {
-		_, _ = output.Write([]byte("---\n"))
-		service.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Service"}
-		service.ManagedFields = nil
-		marshaled, err := kyaml.Marshal(service)
-		if err != nil {
-			return fmt.Errorf("error marshaling Service: %w", err)
-		}
-		_, _ = output.Write(marshaled)
-	}
-	return nil
-}
-
+// collectCustomResourceObjects reads the YAML input and collects the AI Gateway custom resources.
 func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
@@ -255,32 +98,159 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 		}
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
-			var route *aigv1a1.AIGatewayRoute
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &route)
-			if err != nil {
-				err = fmt.Errorf("error converting to AIGatewayRoute: %w", err)
-				return
-			}
-			aigwRoutes = append(aigwRoutes, route)
+			mustExtractAndAppend(obj, &aigwRoutes)
 		case "AIServiceBackend":
-			var backend *aigv1a1.AIServiceBackend
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &backend)
-			if err != nil {
-				err = fmt.Errorf("error converting to AIServiceBackend: %w", err)
-				return
-			}
-			aigwBackends = append(aigwBackends, backend)
+			mustExtractAndAppend(obj, &aigwBackends)
 		case "BackendSecurityPolicy":
-			var bsp *aigv1a1.BackendSecurityPolicy
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &bsp)
-			if err != nil {
-				err = fmt.Errorf("error converting to BackendSecurityPolicy: %w", err)
-				return
-			}
-			backendSecurityPolicies = append(backendSecurityPolicies, bsp)
+			mustExtractAndAppend(obj, &backendSecurityPolicies)
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Skipping non-AIGateway object", "kind", obj.GetKind(), "name", obj.GetName())
 		}
 	}
+}
+
+// translateCustomResourceObjects translates the AI Gateway custom resources to Envoy Gateway and Kubernetes objects.
+//
+// The resulting objects are written to the output writer.
+func translateCustomResourceObjects(
+	aigwRoutes []*aigv1a1.AIGatewayRoute,
+	aigwBackends []*aigv1a1.AIServiceBackend,
+	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	output io.Writer,
+	logger *slog.Logger,
+) error {
+	ctx := context.Background() // It's ok to use the raw Background context as this is synchronous code in a CLI.
+	builder := fake.NewClientBuilder().
+		WithScheme(controller.Scheme).
+		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
+	_ = controller.ApplyIndexing(ctx, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+		builder = builder.WithIndex(obj, field, extractValue)
+		return nil
+	}) // Error should never happen.
+	fakeClient := builder.Build()
+	fakeClientSet := fake2.NewClientset()
+
+	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.Discard(),
+		func(context.Context, *aigv1a1.AIServiceBackend) error { return nil })
+	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.Discard(),
+		func(context.Context, *aigv1a1.AIGatewayRoute) error { return nil })
+	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(), fakeUID,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest",
+		"info",
+	)
+
+	// Create and reconcile the custom resources to store the translated objects.
+	// Note that the order of creation is important as some objects depend on others.
+	for _, bsp := range backendSecurityPolicies {
+		mustCreateAndReconcile(ctx, fakeClient, bsp, bspC, logger)
+	}
+	for _, backend := range aigwBackends {
+		mustCreateAndReconcile(ctx, fakeClient, backend, aisbC, logger)
+	}
+	for _, route := range aigwRoutes {
+		mustCreateAndReconcile(ctx, fakeClient, route, airC, logger)
+	}
+
+	// Now you can retrieve the translated objects from the fake client.
+	var httpRoutes gwapiv1.HTTPRouteList
+	err := fakeClient.List(ctx, &httpRoutes)
+	if err != nil {
+		return fmt.Errorf("error listing HTTPRoutes: %w", err)
+	}
+	var extensionPolicies egv1a1.EnvoyExtensionPolicyList
+	err = fakeClient.List(ctx, &extensionPolicies)
+	if err != nil {
+		return fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
+	}
+	configMaps, err := fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing ConfigMaps: %w", err)
+	}
+	secrets, err := fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing Secrets: %w", err)
+	}
+	deployments, err := fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing Deployments: %w", err)
+	}
+	services, err := fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error listing Services: %w", err)
+	}
+
+	// Emit the translated objects.
+	for _, httpRoute := range httpRoutes.Items {
+		mustWriteObj(&httpRoute.TypeMeta, &httpRoute, output)
+	}
+	for _, extensionPolicy := range extensionPolicies.Items {
+		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
+	}
+	for _, configMap := range configMaps.Items {
+		mustWriteObj(&configMap.TypeMeta, &configMap, output)
+	}
+	for _, secret := range secrets.Items {
+		mustWriteObj(&secret.TypeMeta, &secret, output)
+	}
+	for _, deployment := range deployments.Items {
+		mustWriteObj(&deployment.TypeMeta, &deployment, output)
+	}
+	for _, service := range services.Items {
+		mustWriteObj(&service.TypeMeta, &service, output)
+	}
+	return nil
+}
+
+func mustExtractAndAppend[T any](obj *unstructured.Unstructured, slice *[]T) {
+	var item T
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &item)
+	if err != nil {
+		panic(err)
+	}
+	*slice = append(*slice, item)
+}
+
+// mustCreateAndReconcile creates the object in the fake client and reconciles it.
+func mustCreateAndReconcile(
+	ctx context.Context,
+	fakeClient client.Client, obj client.Object,
+	c reconcile.TypedReconciler[reconcile.Request],
+	logger *slog.Logger,
+) {
+	logger.Info("Fake creating", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+	err := fakeClient.Create(ctx, obj)
+	if err != nil {
+		panic(err)
+	}
+	logger.Info("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+	_, err = c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+	if err != nil {
+		panic(err)
+	}
+}
+
+// mustWriteObj writes the object to the writer, panicking on error.
+//
+// This sets the kind and API version of the object to the values in the TypeMeta as it is not set from the fake client.
+func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
+	_, _ = w.Write([]byte("---\n"))
+	// https://github.com/kubernetes-sigs/controller-runtime/issues/1517#issuecomment-844703142
+	gvks, unversioned, err := controller.Scheme.ObjectKinds(obj)
+	if err != nil {
+		panic(err)
+	}
+	if !unversioned && len(gvks) != 1 {
+		panic(fmt.Errorf("expected exactly one GVK, got %d", len(gvks)))
+	}
+	typedMeta.SetGroupVersionKind(gvks[0])
+	// Ignore ManagedFields as they are not relevant to the user.
+	obj.SetManagedFields(nil)
+	marshaled, err := kyaml.Marshal(obj)
+	if err != nil {
+		panic(err)
+	}
+	_, _ = w.Write(marshaled)
 }

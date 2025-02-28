@@ -58,7 +58,9 @@ type AIGatewayRouteController struct {
 	extProcImage           string
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
-	uidFn                  func() types.UID
+	// uidFn is a function that returns a unique identifier for the external process.
+	// Configured as a field to allow the deterministic generation of the UID for testing.
+	uidFn func() types.UID
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
