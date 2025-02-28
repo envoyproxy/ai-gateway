@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"os"
 	"strings"
@@ -90,7 +89,8 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 			err = nil
 			return
 		} else if err != nil {
-			log.Fatalf("Error decoding YAML: %v", err)
+			err = fmt.Errorf("error decoding YAML: %w", err)
+			return
 		}
 
 		if len(rawObj.Raw) == 0 {
