@@ -44,18 +44,12 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 	if !cmd.Debug {
 		stderrLogger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	}
-	var buf strings.Builder
-	for _, path := range cmd.Paths {
-		stderrLogger.Info("Reading file", "path", path)
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("error reading file %s: %w", path, err)
-		}
-		buf.Write(content)
-		buf.WriteRune('\n')
-	}
 
-	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(buf.String(), stderrLogger)
+	yaml, err := readYamlsAsString(cmd.Paths)
+	if err != nil {
+		return err
+	}
+	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(yaml, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
@@ -65,6 +59,20 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 		return fmt.Errorf("error emitting: %w", err)
 	}
 	return nil
+}
+
+// readYamlsAsString reads the files at the given paths and combines them into a single string.
+func readYamlsAsString(paths []string) (string, error) {
+	var buf strings.Builder
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("error reading file %s: %w", path, err)
+		}
+		buf.Write(content)
+		buf.WriteString("\n---\n")
+	}
+	return buf.String(), nil
 }
 
 // collectCustomResourceObjects reads the YAML input and collects the AI Gateway custom resources.

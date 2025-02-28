@@ -95,3 +95,21 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 		}
 	}
 }
+
+func Test_readYamlsAsString(t *testing.T) {
+	tmpDir := t.TempDir()
+	p1 := tmpDir + "/file1.yaml"
+	err := os.WriteFile(p1, []byte("foo"), 0o600)
+	require.NoError(t, err)
+	p2 := tmpDir + "/file2.yaml"
+	err = os.WriteFile(p2, []byte("bar"), 0o600)
+	require.NoError(t, err)
+
+	got, err := readYamlsAsString([]string{p1, p2})
+	require.NoError(t, err)
+	assert.Equal(t, `foo
+---
+bar
+---
+`, got)
+}
