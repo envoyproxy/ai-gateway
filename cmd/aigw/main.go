@@ -22,6 +22,7 @@ type (
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes API Gateway resources. The translated resources are written to stdout."`
 	}
 	cmdTranslate struct {
+		Debug bool     `help:"Enable debug logging emitted to stderr."`
 		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
 	}
 )

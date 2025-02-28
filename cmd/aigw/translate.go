@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -35,9 +36,14 @@ import (
 
 type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
 
-func translate(cmd cmdTranslate, stdout, stderr io.Writer) error {
+func translate(cmd cmdTranslate, output, stderr io.Writer) error {
+	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+	if !cmd.Debug {
+		stderrLogger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	}
 	var buf strings.Builder
 	for _, path := range cmd.Paths {
+		stderrLogger.Info("Reading file", "path", path)
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("error reading file %s: %w", path, err)
@@ -46,19 +52,19 @@ func translate(cmd cmdTranslate, stdout, stderr io.Writer) error {
 		buf.WriteRune('\n')
 	}
 
-	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(buf.String(), stderr)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(buf.String(), stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	err = translateCustomResourceObjects(aigwRoutes, aigwBackends, backendSecurityPolicies, stdout, stderr)
+	err = translateCustomResourceObjects(aigwRoutes, aigwBackends, backendSecurityPolicies, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
 	return nil
 }
 
-func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBackends []*aigv1a1.AIServiceBackend, backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy, stdout, stderr io.Writer) error {
+func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBackends []*aigv1a1.AIServiceBackend, backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy, output io.Writer, logger *slog.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
@@ -84,36 +90,36 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 		"info",
 	)
 	for _, bsp := range backendSecurityPolicies {
-		fmt.Fprintf(stderr, "Fake creating BackendSecurityPolicy %s\n", bsp.Name)
+		logger.Info("Fake creating BackendSecurityPolicy", "name", bsp.Name)
 		err = fakeClient.Create(ctx, bsp.DeepCopy())
 		if err != nil {
 			return fmt.Errorf("error creating BackendSecurityPolicy %s: %w", bsp.Name, err)
 		}
-		fmt.Fprintf(stderr, "Fake reconciling BackendSecurityPolicy %s\n", bsp.Name)
+		logger.Info("Fake reconciling BackendSecurityPolicy", "name", bsp.Name)
 		_, err = bspC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bsp.Namespace, Name: bsp.Name}})
 		if err != nil {
 			return fmt.Errorf("error reconciling BackendSecurityPolicy %s: %w", bsp.Name, err)
 		}
 	}
 	for _, backend := range aigwBackends {
-		fmt.Fprintf(stderr, "Fake creating AIServiceBackend %s\n", backend.Name)
+		logger.Info("Fake creating AIServiceBackend", "name", backend.Name)
 		err = fakeClient.Create(ctx, backend.DeepCopy())
 		if err != nil {
 			return fmt.Errorf("error creating AIServiceBackend %s: %w", backend.Name, err)
 		}
-		fmt.Fprintf(stderr, "Fake reconciling AIServiceBackend %s\n", backend.Name)
+		logger.Info("Fake reconciling AIServiceBackend", "name", backend.Name)
 		_, err = aisbC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: backend.Namespace, Name: backend.Name}})
 		if err != nil {
 			return fmt.Errorf("error reconciling AIServiceBackend %s: %w", backend.Name, err)
 		}
 	}
 	for _, route := range aigwRoutes {
-		fmt.Fprintf(stderr, "Fake creating AIGatewayRoute %s\n", route.Name)
+		logger.Info("Fake creating AIGatewayRoute", "name", route.Name)
 		err = fakeClient.Create(ctx, route.DeepCopy())
 		if err != nil {
 			return fmt.Errorf("error creating AIGatewayRoute %s: %w", route.Name, err)
 		}
-		fmt.Fprintf(stderr, "Fake reconciling AIGatewayRoute %s\n", route.Name)
+		logger.Info("Fake reconciling AIGatewayRoute", "name", route.Name)
 		_, err = airC.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: route.Namespace, Name: route.Name}})
 		if err != nil {
 			return fmt.Errorf("error reconciling AIGatewayRoute %s: %w", route.Name, err)
@@ -150,61 +156,61 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 
 	// Emit the translated objects.
 	for _, httpRoute := range httpRoutes.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		marshaled, err := kyaml.Marshal(httpRoute)
 		if err != nil {
 			return fmt.Errorf("error marshaling HTTPRoute: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	for _, extensionPolicy := range extensionPolicies.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		marshaled, err := kyaml.Marshal(extensionPolicy)
 		if err != nil {
 			return fmt.Errorf("error marshaling EnvoyExtensionPolicy: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	for _, configMap := range configMaps.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		configMap.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(configMap)
 		if err != nil {
 			return fmt.Errorf("error marshaling ConfigMap: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	for _, secret := range secrets.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		secret.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(secret)
 		if err != nil {
 			return fmt.Errorf("error marshaling Secret: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	for _, deployment := range deployments.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		deployment.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(deployment)
 		if err != nil {
 			return fmt.Errorf("error marshaling Deployment: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	for _, service := range services.Items {
-		_, _ = stdout.Write([]byte("---\n"))
+		_, _ = output.Write([]byte("---\n"))
 		service.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(service)
 		if err != nil {
 			return fmt.Errorf("error marshaling Service: %w", err)
 		}
-		_, _ = stdout.Write(marshaled)
+		_, _ = output.Write(marshaled)
 	}
 	return nil
 }
 
-func collectCustomResourceObjects(yamlInput string, stderr io.Writer) (
+func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
@@ -260,8 +266,7 @@ func collectCustomResourceObjects(yamlInput string, stderr io.Writer) (
 			backendSecurityPolicies = append(backendSecurityPolicies, bsp)
 		default:
 			// Now you can inspect or manipulate the CRD.
-			_, _ = stderr.Write([]byte(fmt.Sprintf("Skipping non-AIGateway object: %s.%s: %s\n",
-				obj.GetAPIVersion(), obj.GetKind(), obj.GetName())))
+			logger.Info("Skipping non-AIGateway object", "kind", obj.GetKind(), "name", obj.GetName())
 		}
 	}
 }

@@ -28,7 +28,7 @@ func Test_doMain(t *testing.T) {
 		},
 		{
 			name: "translate",
-			args: []string{"translate", "path1", "path2"},
+			args: []string{"translate", "--debug", "path1", "path2"},
 			tf: func(c cmdTranslate, _, _ io.Writer) error {
 				cwd, err := os.Getwd()
 				require.NoError(t, err)
