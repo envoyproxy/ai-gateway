@@ -102,7 +102,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 2. Once the PR is merged, the maintainers will decide when to cut the patch release. There's no need to wait for multiple backports to cut the patch release, etc.
 3. The patch release should be cut from the `release/v0.2` branch. The command to cut the patch release is exactly the same as normal release:
     ```
-    git fetch origin # make sure you have the latest main branch locally.
+    git fetch origin # make sure you have the latest release/v0.2 branch locally.
     git tag v0.2.1 origin/release/v0.2
     git push origin v0.2.1
     ```
@@ -110,3 +110,4 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    The patch release image will be available in the GitHub Container Registry.
 4. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
+5. Update the versioned documentation in site/versioned_docs/version-0.2 by changing `v0.2.0` to `v0.2.1` in the files.
