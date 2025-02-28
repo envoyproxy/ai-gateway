@@ -100,6 +100,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 1. If there is a bug fix or a security fix that needs to be backported to the previous release, maintainers should cherry-pick the commit and raise the PR to the `release/v0.2` branch.
    Which commit should be backported is up to the maintainers and on a case-by-case basis.
 2. Once the PR is merged, the maintainers will decide when to cut the patch release. There's no need to wait for multiple backports to cut the patch release, etc.
+   Do not cut the tag until all CI passes on the release/v0.2 branch.
 3. The patch release should be cut from the `release/v0.2` branch. The command to cut the patch release is exactly the same as normal release:
     ```
     git fetch origin # make sure you have the latest release/v0.2 branch locally.
