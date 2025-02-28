@@ -80,6 +80,7 @@ jobs:
             examples
             blog
             site
+            backport
             cli
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
