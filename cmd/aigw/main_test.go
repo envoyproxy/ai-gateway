@@ -39,8 +39,7 @@ Commands:
 
   translate <path> ... [flags]
     Translate yaml files containing AI Gateway resources to Envoy Gateway and
-    Kubernetes API Gateway resources. The translated resources are written to
-    stdout.
+    Kubernetes resources. The translated resources are written to stdout.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -50,6 +49,18 @@ Run "aigw <command> --help" for more information on a command.
 			name:   "version",
 			args:   []string{"version"},
 			expOut: "Envoy AI Gateway CLI: dev\n",
+		},
+		{
+			name:         "version help",
+			args:         []string{"version", "--help"},
+			expPanicCode: ptr.To(0),
+			expOut: `Usage: aigw version [flags]
+
+Show version.
+
+Flags:
+  -h, --help    Show context-sensitive help.
+`,
 		},
 		{
 			name: "translate",
@@ -73,8 +84,7 @@ Run "aigw <command> --help" for more information on a command.
 			expOut: `Usage: aigw translate <path> ... [flags]
 
 Translate yaml files containing AI Gateway resources to Envoy Gateway and
-Kubernetes API Gateway resources. The translated resources are written to
-stdout.
+Kubernetes resources. The translated resources are written to stdout.
 
 Arguments:
   <path> ...    Paths to yaml files to translate.

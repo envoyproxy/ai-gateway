@@ -22,7 +22,7 @@ type (
 		// Version is the sub-command to show the version.
 		Version struct{} `cmd:"" help:"Show version."`
 		// Translate is the sub-command parsed by the `cmdTranslate` struct.
-		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes API Gateway resources. The translated resources are written to stdout."`
+		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
 	}
 	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
@@ -41,7 +41,7 @@ func main() {
 //   - stderr is the writer to use for standard error. Mainly for testing.
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
-//   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes API Gateway resources. Mainly for testing.
+//   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf translateFn) {
 	var c cmd
 	parser, err := kong.New(&c,
