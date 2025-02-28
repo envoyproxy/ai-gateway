@@ -405,13 +405,12 @@ func Test_newHTTPRoute(t *testing.T) {
 				require.Equal(t, expRules[i].Matches, r.Matches)
 				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
 				require.Equal(t, expRules[i].Timeouts, r.Timeouts)
+				// Each rule should have a host rewrite filter by default.
+				require.Len(t, r.Filters, 1)
+				require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+				require.NotNil(t, r.Filters[0].ExtensionRef)
+				require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 			}
-
-			// Each rule should have a host rewrite filter by default.
-			require.Len(t, r.Filters, 1)
-			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-			require.NotNil(t, r.Filters[0].ExtensionRef)
-			require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 		})
 	}
 }
