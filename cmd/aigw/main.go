@@ -17,10 +17,14 @@ import (
 )
 
 type (
+	// cmd corresponds to the top-level `aigw` command.
 	cmd struct {
-		Version   struct{}     `cmd:"" help:"Show version."`
+		// Version is the sub-command to show the version.
+		Version struct{} `cmd:"" help:"Show version."`
+		// Translate is the sub-command parsed by the `cmdTranslate` struct.
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes API Gateway resources. The translated resources are written to stdout."`
 	}
+	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
 		Debug bool     `help:"Enable debug logging emitted to stderr."`
 		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
