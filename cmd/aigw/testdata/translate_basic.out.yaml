@@ -67,12 +67,6 @@ spec:
         - group: gateway.envoyproxy.io
           kind: Backend
           name: envoy-ai-gateway-basic-openai
-      filters:
-        - extensionRef:
-            group: gateway.envoyproxy.io
-            kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
-          type: ExtensionRef
       matches:
         - path:
             value: /

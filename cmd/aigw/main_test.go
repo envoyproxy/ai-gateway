@@ -26,7 +26,6 @@ func Test_doMain(t *testing.T) {
 		{
 			name: "help",
 			args: []string{"--help"},
-			tf:   func(_ cmdTranslate, _, _ io.Writer) error { return nil },
 			expOut: `Usage: aigw <command> [flags]
 
 Envoy AI Gateway CLI
@@ -71,7 +70,6 @@ Run "aigw <command> --help" for more information on a command.
 		{
 			name: "translate with help",
 			args: []string{"translate", "--help"},
-			tf:   func(_ cmdTranslate, _, _ io.Writer) error { return nil },
 			expOut: `Usage: aigw translate <path> ... [flags]
 
 Translate yaml files containing AI Gateway resources to Envoy Gateway and

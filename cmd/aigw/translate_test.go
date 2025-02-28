@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -77,8 +76,7 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 
 		obj := &unstructured.Unstructured{}
 		_, _, err = unstructured.UnstructuredJSONScheme.Decode(rawObj.Raw, nil, obj)
-		a, _ := obj.MarshalJSON()
-		require.NoError(t, err, cmp.Diff(string(a), ""))
+		require.NoError(t, err)
 		switch obj.GetKind() {
 		case "HTTPRoute":
 			mustExtractAndAppend(obj, &outHTTPRoutes)
