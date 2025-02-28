@@ -111,4 +111,6 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    The patch release image will be available in the GitHub Container Registry.
 4. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
-5. Update the versioned documentation in site/versioned_docs/version-0.50 by changing `v0.50.0` to `v0.50.1` in the files. The PR must target the main branch.
+5. Update the documentation on the main branch to reflect the new version. This has the following items:
+   * Change `v0.50.0` to `v0.50.1` in site/versioned_docs/version-0.50 directory.
+   * Update the site/src/pages/release-notes.md to add the new release note.
