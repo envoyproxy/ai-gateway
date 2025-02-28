@@ -111,16 +111,25 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "unknown_provider.yaml",
-			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSCredentials\"",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureCredentials\"",
 		},
 		{
 			name:   "missing_type.yaml",
-			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWSCredentials\"",
+			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureCredentials\"",
 		},
 		{
 			name:   "multiple_security_policies.yaml",
 			expErr: "Too many: 3: must have at most 2 items",
 		},
+		{
+			name:   "azure_credentials_missing_client_id.yaml",
+			expErr: "spec.azureCredentials.clientID in body should be at least 1 chars long",
+		},
+		{
+			name:   "azure_credentials_missing_tenant_id.yaml",
+			expErr: "spec.azureCredentials.tenantID in body should be at least 1 chars long",
+		},
+		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 	} {

@@ -62,6 +62,20 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		}
 		return ctrl.Result{}, err
 	}
+
+	c.logger.Info("Reconciling Backend Security Policy", "namespace", req.Namespace, "name", req.Name)
+	res, err = c.reconcile(ctx, &backendSecurityPolicy)
+	if err != nil {
+		c.logger.Error(err, "failed to reconcile Backend Security Policy")
+		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeNotAccepted, err.Error())
+	} else {
+		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
+	}
+	return
+}
+
+// reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
+func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
 		var rotator rotators.Rotator
 		switch backendSecurityPolicy.Spec.Type {
@@ -85,13 +99,13 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 			c.logger.Error(err, "failed to get rotation time, retry in one minute")
 		} else {
 			if rotator.IsExpired(rotationTime) {
-				requeue, err = c.rotateCredential(ctx, &backendSecurityPolicy, *oidc, rotator)
+				requeue, err = c.rotateCredential(ctx, backendSecurityPolicy, *oidc, rotator)
 				if err != nil {
 					c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 				} else {
 					c.logger.Info(
 						fmt.Sprintf("successfully rotated credentials for %s in namespace %s of auth type %s, renewing in %f minutes",
-							req.Name, req.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
+							backendSecurityPolicy.Name, backendSecurityPolicy.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
 				}
 			} else {
 				requeue = time.Until(rotationTime)
@@ -99,7 +113,7 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 		}
 		res = ctrl.Result{RequeueAfter: requeue}
 	}
-	return res, c.syncBackendSecurityPolicy(ctx, &backendSecurityPolicy)
+	return res, c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy)
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
@@ -172,4 +186,12 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// updateBackendSecurityPolicyStatus updates the status of the BackendSecurityPolicy.
+func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, route *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
+	route.Status.Conditions = newConditions(conditionType, message)
+	if err := c.client.Status().Update(ctx, route); err != nil {
+		c.logger.Error(err, "failed to update BackendSecurityPolicy status")
+	}
 }

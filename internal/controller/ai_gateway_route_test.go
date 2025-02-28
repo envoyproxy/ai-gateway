@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -80,32 +79,8 @@ func Test_extProcName(t *testing.T) {
 	require.Equal(t, "ai-eg-route-extproc-myroute", actual)
 }
 
-func TestAIGatewayRouteController_ensuresExtProcConfigMapExists(t *testing.T) {
-	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
-	c.kube = fake2.NewClientset()
-	name := "myroute"
-	ownerRef := []metav1.OwnerReference{
-		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
-	}
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
-
-	err := c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
-	require.NoError(t, err)
-
-	configMap, err := c.kube.CoreV1().ConfigMaps("default").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, extProcName(aiGatewayRoute), configMap.Name)
-	require.Equal(t, "default", configMap.Namespace)
-	require.Equal(t, ownerRef, configMap.OwnerReferences)
-	require.Equal(t, filterapi.DefaultConfig, configMap.Data[expProcConfigFileName])
-
-	// Doing it again should not fail.
-	err = c.ensuresExtProcConfigMapExists(t.Context(), aiGatewayRoute)
-	require.NoError(t, err)
-}
-
 func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) {
-	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build()}
 	name := "myroute"
 	ownerRef := []metav1.OwnerReference{
 		{APIVersion: "aigateway.envoyproxy.io/v1alpha1", Kind: "AIGatewayRoute", Name: name, Controller: ptr.To(true), BlockOwnerDeletion: ptr.To(true)},
@@ -239,7 +214,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 }
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
-	builder := fake.NewClientBuilder().WithScheme(scheme).
+	builder := fake.NewClientBuilder().WithScheme(Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
@@ -289,12 +264,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 			Spec:       gwapiv1.HTTPRouteSpec{},
 		}
 		err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
-		require.NoError(t, err)
-
-		// Create the initial configmap.
-		_, err = kube.CoreV1().ConfigMaps(route.Namespace).Create(t.Context(), &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: extProcName(route), Namespace: route.Namespace},
-		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// Then sync, which should update the HTTPRoute.
@@ -447,7 +416,7 @@ func Test_newHTTPRoute(t *testing.T) {
 	}
 }
 
-func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
+func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
@@ -656,12 +625,7 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Create(t.Context(), &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: extProcName(tc.route), Namespace: tc.route.Namespace},
-			}, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			err = s.updateExtProcConfigMap(t.Context(), tc.route, tc.exp.UUID)
+			err := s.reconcileExtProcConfigMap(t.Context(), tc.route, tc.exp.UUID)
 			require.NoError(t, err)
 
 			cm, err := s.kube.CoreV1().ConfigMaps(tc.route.Namespace).Get(t.Context(), extProcName(tc.route), metav1.GetOptions{})
@@ -677,7 +641,6 @@ func TestAIGatewayRouteController_updateExtProcConfigMap(t *testing.T) {
 }
 
 func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
-	t.Skip()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
@@ -786,20 +749,14 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			},
 		}
-		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, extProcDeployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
-			require.Equal(t, resourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
+		extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+		require.Len(t, extProcDeployment.OwnerReferences, 1)
+		require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+		require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+		require.Equal(t, int32(123), *extProcDeployment.Spec.Replicas)
+		require.Equal(t, resourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
 
 		service, err := s.kube.CoreV1().Services("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
 		require.NoError(t, err)
@@ -820,24 +777,17 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 
 		require.NoError(t, s.syncExtProcDeployment(t.Context(), aiGatewayRoute))
 		// Check the deployment is updated.
-		require.Eventually(t, func() bool {
-			extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
-			if err != nil {
-				t.Logf("failed to get deployment %s: %v", extProcName(aiGatewayRoute), err)
-				return false
-			}
-			require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
-			require.Len(t, extProcDeployment.OwnerReferences, 1)
-			require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
-			require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
-			require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
-			require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
-
-			for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
-				require.True(t, v.ReadOnly)
-			}
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
+		extProcDeployment, err := s.kube.AppsV1().Deployments("ns").Get(t.Context(), extProcName(aiGatewayRoute), metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "envoyproxy/ai-gateway-extproc:foo", extProcDeployment.Spec.Template.Spec.Containers[0].Image)
+		require.Len(t, extProcDeployment.OwnerReferences, 1)
+		require.Equal(t, "myroute", extProcDeployment.OwnerReferences[0].Name)
+		require.Equal(t, "AIGatewayRoute", extProcDeployment.OwnerReferences[0].Kind)
+		require.Equal(t, int32(456), *extProcDeployment.Spec.Replicas)
+		require.Equal(t, newResourceLimits, &extProcDeployment.Spec.Template.Spec.Containers[0].Resources)
+		for _, v := range extProcDeployment.Spec.Template.Spec.Containers[0].VolumeMounts {
+			require.True(t, v.ReadOnly)
+		}
 	})
 }
 
@@ -1099,36 +1049,19 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	err := s.client.Create(t.Context(), r, &client.CreateOptions{})
 	require.NoError(t, err)
 
-	s.updateAIGatewayRouteStatus(t.Context(), r, false, "err1")
+	s.updateAIGatewayRouteStatus(t.Context(), r, aigv1a1.ConditionTypeNotAccepted, "err")
 
 	var updatedRoute aigv1a1.AIGatewayRoute
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, "err", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok1")
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, aigv1a1.ConditionTypeAccepted, "ok")
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-	require.Equal(t, "err1", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
-	require.Equal(t, "ok1", updatedRoute.Status.Conditions[1].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
-
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, false, "err2")
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
-	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, true, "ok2")
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
-	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 2)
-
-	require.Equal(t, "err2", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
-	require.Equal(t, "ok2", updatedRoute.Status.Conditions[1].Message)
-	require.Equal(t, aiGatewayRouteConditionTypeAccepted, updatedRoute.Status.Conditions[1].Type)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, "ok", updatedRoute.Status.Conditions[0].Message)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
