@@ -43,7 +43,7 @@ jobs:
       - name: Login into DockerHub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       # Push images for the push events, e.g. when a new tag is pushed as well as PR merges.
