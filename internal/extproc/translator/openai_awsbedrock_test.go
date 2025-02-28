@@ -83,6 +83,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							Content: openai.StringOrArray{
 								Value: "Weather in Queens, NY is 70F and clear skies.",
 							},
+							ToolCallID: "call_6g7a",
 						}, Type: openai.ChatMessageRoleTool,
 					},
 					{
@@ -144,6 +145,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Content: []*awsbedrock.ContentBlock{
 							{
 								ToolResult: &awsbedrock.ToolResultBlock{
+									ToolUseID: ptr.To("call_6g7a"),
 									Content: []*awsbedrock.ToolResultContentBlock{
 										{
 											Text: ptr.To("Weather in Queens, NY is 70F and clear skies."),
@@ -928,7 +930,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
@@ -1015,6 +1017,57 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 								},
 							},
 						},
+					},
+				},
+			},
+		},
+		{
+			name: "merge content",
+			input: awsbedrock.ConverseResponse{
+				Usage: &awsbedrock.TokenUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+				},
+				Output: &awsbedrock.ConverseOutput{
+					Message: awsbedrock.Message{
+						Role: awsbedrock.ConversationRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{Text: ptr.To("response")},
+							{ToolUse: &awsbedrock.ToolUseBlock{
+								Name:      "exec_python_code",
+								ToolUseID: "call_6g7a",
+								Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
+							}},
+						},
+					},
+				},
+			},
+			output: openai.ChatCompletionResponse{
+				Object: "chat.completion",
+				Usage: openai.ChatCompletionResponseUsage{
+					TotalTokens:      30,
+					PromptTokens:     10,
+					CompletionTokens: 20,
+				},
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index: 0,
+						Message: openai.ChatCompletionResponseChoiceMessage{
+							Content: ptr.To("response"),
+							Role:    awsbedrock.ConversationRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "call_6g7a",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "exec_python_code",
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								},
+							},
+						},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
 			},
@@ -1199,14 +1252,14 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "role",
 			in: awsbedrock.ConverseStreamEvent{
-				Role: ptrOf("assistant"),
+				Role: ptrOf(awsbedrock.ConversationRoleAssistant),
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: &emptyString,
 						},
 					},
