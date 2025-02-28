@@ -1,4 +1,5 @@
----
+apiVersion: gateway.networking.k8s.io/v1alpha1
+kind: HTTPRoute
 metadata:
   creationTimestamp: null
   name: envoy-ai-gateway-basic
@@ -74,6 +75,8 @@ spec:
 status:
   parents: null
 ---
+apiVersion: gateway.networking.k8s.io/v1alpha1
+kind: EnvoyExtensionPolicy
 metadata:
   creationTimestamp: null
   name: ai-eg-route-extproc-envoy-ai-gateway-basic
@@ -148,7 +151,7 @@ data:
     schema:
       name: OpenAI
     selectedBackendHeaderKey: x-ai-eg-selected-backend
-    uuid: 0cf4959e-f738-4488-a56c-dfdce63d1ad5
+    uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 kind: ConfigMap
 metadata:
   creationTimestamp: null

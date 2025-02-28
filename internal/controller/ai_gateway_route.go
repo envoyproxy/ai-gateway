@@ -17,7 +17,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,11 +58,13 @@ type AIGatewayRouteController struct {
 	extProcImage           string
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
+	uidFn                  func() types.UID
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	uidFn func() types.UID,
 	extProcImage, extProcLogLevel string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
@@ -73,6 +74,7 @@ func NewAIGatewayRouteController(
 		extProcImage:           extProcImage,
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
+		uidFn:                  uidFn,
 	}
 }
 
@@ -238,8 +240,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Update the extproc configmap.
-	uuid := string(uuid2.NewUUID())
-	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	uid := string(c.uidFn())
+	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uid); err != nil {
 		return fmt.Errorf("failed to update extproc configmap: %w", err)
 	}
 
@@ -250,7 +252,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Annotate all pods with the new config.
-	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
+	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uid)
 	if err != nil {
 		return fmt.Errorf("failed to annotate extproc pods: %w", err)
 	}

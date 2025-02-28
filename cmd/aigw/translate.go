@@ -64,10 +64,20 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 	return nil
 }
 
-func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBackends []*aigv1a1.AIServiceBackend, backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy, output io.Writer, logger *slog.Logger) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
+func fakeUID() types.UID {
+	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+}
+
+func translateCustomResourceObjects(
+	aigwRoutes []*aigv1a1.AIGatewayRoute,
+	aigwBackends []*aigv1a1.AIServiceBackend,
+	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	output io.Writer,
+	logger *slog.Logger,
+) error {
+	ctx := context.Background() // It's ok to use the raw Background context as this is synchronous code in a CLI.
+	builder := fake.NewClientBuilder().
+		WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
@@ -85,7 +95,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 		func(context.Context, *aigv1a1.AIServiceBackend) error { return nil })
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.Discard(),
 		func(context.Context, *aigv1a1.AIGatewayRoute) error { return nil })
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(),
+	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(), fakeUID,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"info",
 	)
@@ -126,7 +136,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 		}
 	}
 
-	// Now you can retrieve the translated objects from the fake client: HTTPRoutes.
+	// Now you can retrieve the translated objects from the fake client.
 	var httpRoutes gwapiv1.HTTPRouteList
 	err = fakeClient.List(ctx, &httpRoutes)
 	if err != nil {
@@ -157,6 +167,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	// Emit the translated objects.
 	for _, httpRoute := range httpRoutes.Items {
 		_, _ = output.Write([]byte("---\n"))
+		httpRoute.TypeMeta = metav1.TypeMeta{APIVersion: "gateway.networking.k8s.io/v1alpha1", Kind: "HTTPRoute"}
 		marshaled, err := kyaml.Marshal(httpRoute)
 		if err != nil {
 			return fmt.Errorf("error marshaling HTTPRoute: %w", err)
@@ -165,6 +176,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, extensionPolicy := range extensionPolicies.Items {
 		_, _ = output.Write([]byte("---\n"))
+		extensionPolicy.TypeMeta = metav1.TypeMeta{APIVersion: "gateway.networking.k8s.io/v1alpha1", Kind: "EnvoyExtensionPolicy"}
 		marshaled, err := kyaml.Marshal(extensionPolicy)
 		if err != nil {
 			return fmt.Errorf("error marshaling EnvoyExtensionPolicy: %w", err)
@@ -173,6 +185,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, configMap := range configMaps.Items {
 		_, _ = output.Write([]byte("---\n"))
+		configMap.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"}
 		configMap.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(configMap)
 		if err != nil {
@@ -182,6 +195,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, secret := range secrets.Items {
 		_, _ = output.Write([]byte("---\n"))
+		secret.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"}
 		secret.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(secret)
 		if err != nil {
@@ -191,6 +205,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, deployment := range deployments.Items {
 		_, _ = output.Write([]byte("---\n"))
+		deployment.TypeMeta = metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}
 		deployment.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(deployment)
 		if err != nil {
@@ -200,6 +215,7 @@ func translateCustomResourceObjects(aigwRoutes []*aigv1a1.AIGatewayRoute, aigwBa
 	}
 	for _, service := range services.Items {
 		_, _ = output.Write([]byte("---\n"))
+		service.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Service"}
 		service.ManagedFields = nil
 		marshaled, err := kyaml.Marshal(service)
 		if err != nil {
@@ -231,14 +247,12 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 			continue
 		}
 
-		// Decode the raw JSON (converted from YAML) into an unstructured object.
 		obj := &unstructured.Unstructured{}
 		_, _, err = unstructured.UnstructuredJSONScheme.Decode(rawObj.Raw, nil, obj)
 		if err != nil {
 			err = fmt.Errorf("error decoding unstructured object: %w", err)
 			return
 		}
-
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
 			var route *aigv1a1.AIGatewayRoute
