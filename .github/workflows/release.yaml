@@ -26,7 +26,7 @@ jobs:
       - name: Login into DockerHub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - name: Push Helm chart
         run: make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
