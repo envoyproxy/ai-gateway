@@ -11,9 +11,11 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,49 +189,91 @@ func TestWithRealProviders(t *testing.T) {
 		}
 	})
 
-	t.Run("Bedrock calls tool get_weather function", func(t *testing.T) {
-		cc.maybeSkip(t, requiredCredentialAWS)
+	t.Run("Bedrock uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
-		require.Eventually(t, func() bool {
-			chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-				Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-					openai.UserMessage("What is the weather like in Paris today?"),
-				}),
-				Tools: openai.F([]openai.ChatCompletionToolParam{
-					{
-						Type: openai.F(openai.ChatCompletionToolTypeFunction),
-						Function: openai.F(openai.FunctionDefinitionParam{
-							Name:        openai.String("get_weather"),
-							Description: openai.String("Get weather at the given location"),
-							Parameters: openai.F(openai.FunctionParameters{
-								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]string{
-										"type": "string",
-									},
-								},
-								"required": []string{"location"},
-							}),
+		for _, tc := range []realProvidersTestCase{
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: requiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
+		} {
+			t.Run(tc.modelName, func(t *testing.T) {
+				cc.maybeSkip(t, tc.required)
+				require.Eventually(t, func() bool {
+					// Step 1: Initial tool call request
+					question := "What is the weather in New York City?"
+					params := openai.ChatCompletionNewParams{
+						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+							openai.UserMessage(question),
 						}),
-					},
-				}),
-				Model: openai.F("us.anthropic.claude-3-5-sonnet-20240620-v1:0"),
+						Tools: openai.F([]openai.ChatCompletionToolParam{
+							{
+								Type: openai.F(openai.ChatCompletionToolTypeFunction),
+								Function: openai.F(openai.FunctionDefinitionParam{
+									Name:        openai.String("get_weather"),
+									Description: openai.String("Get weather at the given location"),
+									Parameters: openai.F(openai.FunctionParameters{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"location": map[string]string{
+												"type": "string",
+											},
+										},
+										"required": []string{"location"},
+									}),
+								}),
+							},
+						}),
+						Seed:  openai.Int(0),
+						Model: openai.F(tc.modelName),
+					}
+					completion, err := client.Chat.Completions.New(context.Background(), params)
+					if err != nil {
+						t.Logf("error: %v", err)
+						return false
+					}
+					// Step 2: Verify tool call
+					toolCalls := completion.Choices[0].Message.ToolCalls
+					if len(toolCalls) == 0 {
+						t.Logf("Expected tool call from completion result but got none")
+						return false
+					}
+					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response
+					params.Messages.Value = append(params.Messages.Value, completion.Choices[0].Message)
+					getWeatherCalled := false
+					for _, toolCall := range toolCalls {
+						if toolCall.Function.Name == "get_weather" {
+							getWeatherCalled = true
+							// Extract the location from the function call arguments
+							var args map[string]interface{}
+							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
+								t.Logf("Error unmarshalling the function arguments: %v", argErr)
+							}
+							location := args["location"].(string)
+							if location != "New York City" {
+								t.Logf("Expected location to be New York City but got %s", location)
+							}
+							// Simulate getting weather data
+							weatherData := "Sunny, 25°C"
+							params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, weatherData))
+							t.Logf("Appended tool message: %v", openai.ToolMessage(toolCall.ID, weatherData)) // Debug log
+						}
+					}
+					if getWeatherCalled == false {
+						t.Logf("get_weather tool not specified in chat completion response")
+						return false
+					}
+
+					secondChatCompletion, err := client.Chat.Completions.New(context.Background(), params)
+					if err != nil {
+						t.Logf("error during second response: %v", err)
+						return false
+					}
+
+					// Step 4: Verify that the second response is correct
+					completionResult := secondChatCompletion.Choices[0].Message.Content
+					t.Logf("content of completion response using tool: %s", secondChatCompletion.Choices[0].Message.Content)
+					return strings.Contains(completionResult, "New York City") && strings.Contains(completionResult, "sunny") && strings.Contains(completionResult, "25°C")
+				}, 60*time.Second, 4*time.Second)
 			})
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			returnsToolCall := false
-			for _, choice := range chatCompletion.Choices {
-				t.Logf("choice content: %s", choice.Message.Content)
-				t.Logf("finish reason: %s", choice.FinishReason)
-				t.Logf("choice toolcall: %v", choice.Message.ToolCalls)
-				if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonToolCalls {
-					returnsToolCall = true
-				}
-			}
-			return returnsToolCall
-		}, 30*time.Second, 2*time.Second)
+		}
 	})
 
 	// Models are served by the extproc filter as a direct response so this can run even if the
