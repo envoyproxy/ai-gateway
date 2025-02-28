@@ -94,10 +94,9 @@ Flags:
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
 					doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
 				})
-				require.Equal(t, tt.expOut, out.String())
-				return
+			} else {
+				doMain(out, os.Stderr, tt.args, nil, tt.tf)
 			}
-			doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
 			require.Equal(t, tt.expOut, out.String())
 		})
 	}
