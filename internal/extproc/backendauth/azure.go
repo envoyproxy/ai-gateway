@@ -23,25 +23,28 @@ type azureHandler struct {
 }
 
 func newAzureHandler(azureAuth *filterapi.AzureAuth) (Handler, error) {
-	secret, err := os.ReadFile(azureAuth.Filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read azure access token file: %w", err)
-	}
-	// Extract secret value from content which is a key-value string such as `azure_access_token: secret_value`
-	lines := strings.Split(string(secret), "\n")
-	var azureAccessToken string
-	for _, line := range lines {
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 && strings.TrimSpace(parts[0]) == "azure_access_token" {
-			azureAccessToken = strings.TrimSpace(parts[1])
-			break
+	if azureAuth != nil {
+		content, err := os.ReadFile(azureAuth.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read azure access token file: %w", err)
 		}
+		// Extract access token from secret which content a key-value string
+		// such as `azure_access_token: secret_value`.
+		lines := strings.Split(string(content), "\n")
+		var azureAccessToken string
+		for _, line := range lines {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "azure_access_token" {
+				azureAccessToken = strings.TrimSpace(parts[1])
+				break
+			}
+		}
+		if azureAccessToken == "" {
+			return nil, fmt.Errorf("azure_access_token not found in the secret file")
+		}
+		return &azureHandler{azureAccessToken: azureAccessToken}, nil
 	}
-	if azureAccessToken == "" {
-		return nil, fmt.Errorf("azure_access_token not found in the secret file")
-	}
-
-	return &azureHandler{azureAccessToken: azureAccessToken}, nil
+	return nil, fmt.Errorf("azure auth configuration is required")
 }
 
 func (a *azureHandler) Do(_ context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, bodyMut *extprocv3.BodyMutation) error {
