@@ -40,15 +40,17 @@ func Test_translate(t *testing.T) {
 			require.NoError(t, err)
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)
-			outHTTPRoutes, outEnvoyExtensionPolicy, outConfigMaps, outSecrets, outDeployments, outServices := requireCollectTranslatedObjects(t, buf.String())
-
-			expectedHTTPRoutes, expectedEnvoyExtensionPolicy, expectedConfigMaps, expectedSecrets, expectedDeployments, expectedServices := requireCollectTranslatedObjects(t, string(outBuf))
-			assert.Equal(t, expectedHTTPRoutes, outHTTPRoutes)
-			assert.Equal(t, expectedEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
-			assert.Equal(t, expectedConfigMaps, outConfigMaps)
-			assert.Equal(t, expectedSecrets, outSecrets)
-			assert.Equal(t, expectedDeployments, outDeployments)
-			assert.Equal(t, expectedServices, outServices)
+			outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
+				outConfigMaps, outSecrets, outDeployments, outServices := requireCollectTranslatedObjects(t, buf.String())
+			expHTTPRoutes, expEnvoyExtensionPolicy, expHTTPRouteFilter,
+				expConfigMaps, expSecrets, expDeployments, expServices := requireCollectTranslatedObjects(t, string(outBuf))
+			assert.Equal(t, expHTTPRoutes, outHTTPRoutes)
+			assert.Equal(t, expEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
+			assert.Equal(t, expHTTPRouteFilter, outHTTPRouteFilter)
+			assert.Equal(t, expConfigMaps, outConfigMaps)
+			assert.Equal(t, expSecrets, outSecrets)
+			assert.Equal(t, expDeployments, outDeployments)
+			assert.Equal(t, expServices, outServices)
 		})
 	}
 }
@@ -56,6 +58,7 @@ func Test_translate(t *testing.T) {
 func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 	outHTTPRoutes []gwapiv1.HTTPRoute,
 	outEnvoyExtensionPolicy []egv1a1.EnvoyExtensionPolicy,
+	outHTTPRouteFilter []egv1a1.HTTPRouteFilter,
 	outConfigMaps []corev1.ConfigMap,
 	outSecrets []corev1.Secret,
 	outDeployments []appsv1.Deployment,
@@ -81,6 +84,8 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 		switch obj.GetKind() {
 		case "HTTPRoute":
 			mustExtractAndAppend(obj, &outHTTPRoutes)
+		case "HTTPRouteFilter":
+			mustExtractAndAppend(obj, &outHTTPRouteFilter)
 		case "EnvoyExtensionPolicy":
 			mustExtractAndAppend(obj, &outEnvoyExtensionPolicy)
 		case "ConfigMap":

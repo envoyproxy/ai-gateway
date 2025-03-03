@@ -247,3 +247,14 @@ spec:
   selector:
     app: ai-eg-route-extproc-envoy-ai-gateway-basic
     app.kubernetes.io/managed-by: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: ai-eg-host-rewrite
+  namespace: default
+  resourceVersion: "1"
+spec:
+  urlRewrite:
+    hostname:
+      type: Backend

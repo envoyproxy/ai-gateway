@@ -173,6 +173,11 @@ func translateCustomResourceObjects(
 	if err != nil {
 		return fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
 	}
+	var httpRouteFilter egv1a1.HTTPRouteFilterList
+	err = fakeClient.List(ctx, &httpRouteFilter)
+	if err != nil {
+		return fmt.Errorf("error listing HTTPRouteFilters: %w", err)
+	}
 	configMaps, err := fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("error listing ConfigMaps: %w", err)
@@ -196,6 +201,9 @@ func translateCustomResourceObjects(
 	}
 	for _, extensionPolicy := range extensionPolicies.Items {
 		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
+	}
+	for _, filter := range httpRouteFilter.Items {
+		mustWriteObj(&filter.TypeMeta, &filter, output)
 	}
 	for _, configMap := range configMaps.Items {
 		mustWriteObj(&configMap.TypeMeta, &configMap, output)
