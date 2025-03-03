@@ -3,7 +3,7 @@ module github.com/envoyproxy/ai-gateway
 go 1.24.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.36.2
+	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10
 	github.com/aws/aws-sdk-go-v2/config v1.29.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.15
