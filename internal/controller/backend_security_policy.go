@@ -119,7 +119,6 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backend
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
 func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, oidcCreds egv1a1.OIDC, rotator rotators.Rotator) (time.Duration, error) {
 	bspKey := backendSecurityPolicyKey(policy.Namespace, policy.Name)
-
 	var err error
 	c.oidcTokenCacheMutex.RLock()
 	validToken, ok := c.oidcTokenCache[bspKey]
@@ -136,14 +135,11 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	}
 
 	token := validToken.AccessToken
-	err = rotator.Rotate(ctx, token)
+	expiration, err := rotator.Rotate(ctx, token)
 	if err != nil {
 		return time.Minute, err
 	}
-	rotationTime, err := rotator.GetPreRotationTime(ctx)
-	if err != nil {
-		return time.Minute, err
-	}
+	rotationTime := expiration.Add(-preRotationWindow)
 	return time.Until(rotationTime), nil
 }
 

@@ -134,7 +134,7 @@ func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.Assum
 // Rotate implements aws credential secret upsert operation to k8s secret store.
 //
 // This implements [Rotator.Rotate].
-func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
+func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, error) {
 	bspNamespace := r.backendSecurityPolicyNamespace
 	bspName := r.backendSecurityPolicyName
 	secretName := GetBSPSecretName(bspName)
@@ -143,9 +143,10 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 	awsIdentity, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
-		return err
+		return time.Time{}, err
+	} else if awsIdentity == nil || awsIdentity.Credentials == nil || awsIdentity.Credentials.Expiration == nil {
+		return time.Time{}, fmt.Errorf("unexpected nil for awsIdentity for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
 	}
-
 	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -159,14 +160,14 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 				Data: make(map[string][]byte),
 			}
 			populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
-			return r.client.Create(ctx, secret)
+			return *awsIdentity.Credentials.Expiration, r.client.Create(ctx, secret)
 		}
 		r.logger.Error(err, "failed to lookup aws credentials secret", "namespace", bspNamespace, "name", bspName)
-		return err
+		return time.Time{}, err
 	}
 	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
 	populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
-	return r.client.Update(ctx, secret)
+	return *awsIdentity.Credentials.Expiration, r.client.Update(ctx, secret)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.

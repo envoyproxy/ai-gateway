@@ -135,7 +135,10 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			roleArn:                        awsRoleArn,
 		}
 
-		require.NoError(t, awsOidcRotator.Rotate(t.Context(), newOidcToken))
+		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
+		require.NoError(t, err)
+		require.NotNil(t, expiration)
+		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
@@ -160,9 +163,45 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
-		err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
+
+		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
 		require.Error(t, err)
+		require.True(t, expiration.IsZero())
 		assert.Contains(t, err.Error(), "failed to assume role")
+	})
+
+	t.Run("error handling - invalid expiration failure", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
+			&corev1.Secret{},
+		)
+		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		createOidcClientSecret(t, testClientSecret)
+		var mockSTS STSClient = &mockStsOperations{
+			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
+				return &sts.AssumeRoleWithWebIdentityOutput{
+					Credentials: &types.Credentials{
+						AccessKeyId:     aws.String(newAwsAccessKey),
+						SecretAccessKey: aws.String(newAwsSecretKey),
+						SessionToken:    aws.String(newAwsSessionToken),
+					},
+				}, nil
+			},
+		}
+		awsOidcRotator := AWSOIDCRotator{
+			client:                         client,
+			stsClient:                      mockSTS,
+			backendSecurityPolicyNamespace: policyNameSpace,
+			backendSecurityPolicyName:      policyName,
+			region:                         awsRegion,
+			roleArn:                        awsRoleArn,
+		}
+
+		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
+		require.Error(t, err)
+		require.True(t, expiration.IsZero())
+		assert.Contains(t, err.Error(), "unexpected nil")
 	})
 
 	t.Run("rotation - create when aws credential secret does not exist", func(t *testing.T) {
@@ -192,8 +231,10 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
-		err := rotator.Rotate(t.Context(), newOidcToken)
+		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
 		require.NoError(t, err)
+		require.NotNil(t, expiration)
+		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
@@ -228,8 +269,11 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
-		err := rotator.Rotate(t.Context(), newOidcToken)
+
+		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
 		require.NoError(t, err)
+		require.NotNil(t, expiration)
+		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 }
