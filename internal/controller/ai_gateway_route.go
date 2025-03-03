@@ -157,7 +157,7 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
 }
 
-func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
+func (c *AIGatewayRouteController) applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
 	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
 		d.Replicas = nil
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
@@ -169,6 +169,7 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	} else {
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 	}
+	d.Template.Spec.Containers[0].Image = c.extProcImage
 	d.Replicas = extProc.Replicas
 }
 
@@ -548,7 +549,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
 			}
-			applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+			c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
@@ -563,7 +564,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
 		}
-		applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+		c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 		if _, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update deployment: %w", err)
 		}

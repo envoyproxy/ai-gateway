@@ -5,6 +5,21 @@ description: Release Notes for Envoy AI Gateway
 
 # Release Notes
 ---
+## v0.1.1
+**Date:** 2025-02-28
+
+AWS tooling bug fixes!
+
+## Overview
+
+This patch release `v0.1.1` includes fixes to AWS tooling call, new integration tests for AWS tools, and minor GitHub action validation.
+
+## Commits
+
+e2e: add agent test using tool - https://github.com/envoyproxy/ai-gateway/pull/426
+chore: allows backport prefix in commit title - https://github.com/envoyproxy/ai-gateway/pull/443
+
+---
 ## v0.1.0
 **Date:** 2025-02-25
 

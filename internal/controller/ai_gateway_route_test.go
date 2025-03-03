@@ -144,10 +144,12 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			},
 		},
 	}
+	extProcImage := "extproc:v0.1.0"
+	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build(), extProcImage: extProcImage}
 	t.Run("not panic", func(_ *testing.T) {
-		applyExtProcDeploymentConfigUpdate(dep, nil)
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+		c.applyExtProcDeploymentConfigUpdate(dep, nil)
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 		})
 	})
@@ -158,7 +160,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			},
 		}
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
@@ -167,11 +169,12 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
+		require.Equal(t, extProcImage, dep.Template.Spec.Containers[0].Image)
 	})
 	t.Run("remove partial config", func(t *testing.T) {
 		t.Run("replicas", func(t *testing.T) {
 			dep.Replicas = ptr.To[int32](123)
-			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 			})
 			require.Nil(t, dep.Replicas)
@@ -184,7 +187,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 				},
 			}
 			dep.Replicas = ptr.To[int32](123)
-			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{Replicas: ptr.To[int32](123)},
 			})
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
@@ -193,7 +196,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		})
 	})
 	t.Run("remove the whole config", func(t *testing.T) {
-		for _, c := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
+		for _, filterConfig := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
 			dep.Replicas = ptr.To[int32](123)
 			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 				Limits: corev1.ResourceList{
@@ -205,7 +208,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 					corev1.ResourceMemory: resource.MustParse("50Mi"),
 				},
 			}
-			applyExtProcDeploymentConfigUpdate(dep, c)
+			c.applyExtProcDeploymentConfigUpdate(dep, filterConfig)
 			require.Nil(t, dep.Replicas)
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)

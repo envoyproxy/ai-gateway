@@ -50,7 +50,7 @@ controller:
   #    configmap:
   #      defaultMode: placeholder
   #      name: configmap-name
-  volumes: {}
+  volumes: []
   service:
     type: ClusterIP
     ports:

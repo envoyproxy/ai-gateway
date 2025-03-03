@@ -17,6 +17,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -231,6 +232,10 @@ func mustCreateAndReconcile(
 	logger.Info("Fake creating", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 	err := fakeClient.Create(ctx, obj)
 	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			logger.Info("Skipping already existing object", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+			return
+		}
 		panic(err)
 	}
 	logger.Info("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
