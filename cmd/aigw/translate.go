@@ -269,6 +269,8 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 	typedMeta.SetGroupVersionKind(gvks[0])
 	// Ignore ManagedFields as they are not relevant to the user.
 	obj.SetManagedFields(nil)
+	// Ignore ResourceVersion as it is not relevant to the user.
+	obj.SetResourceVersion("")
 	marshaled, err := kyaml.Marshal(obj)
 	if err != nil {
 		panic(err)

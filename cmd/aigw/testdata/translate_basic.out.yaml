@@ -15,7 +15,6 @@ metadata:
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""
-  resourceVersion: "1"
 spec:
   parentRefs:
     - name: envoy-ai-gateway-basic
@@ -85,7 +84,6 @@ metadata:
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""
-  resourceVersion: "1"
 spec:
   extProc:
     - backendRefs:
@@ -253,7 +251,6 @@ kind: HTTPRouteFilter
 metadata:
   name: ai-eg-host-rewrite
   namespace: default
-  resourceVersion: "1"
 spec:
   urlRewrite:
     hostname:
