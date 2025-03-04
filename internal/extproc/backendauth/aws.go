@@ -52,6 +52,7 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (Handler, er
 				return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
 			}
 		}
+		// test case missing when credential file is empty
 	} else {
 		return nil, fmt.Errorf("aws auth configuration is required")
 	}
