@@ -77,23 +77,63 @@ rules:
 	cfg, raw, err := filterapi.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
 	require.Equal(t, []byte(config), raw)
-	require.Equal(t, "ai_gateway_llm_ns", cfg.MetadataNamespace)
-	require.Equal(t, "token_usage_key", cfg.LLMRequestCosts[0].MetadataKey)
-	require.Equal(t, "OutputToken", string(cfg.LLMRequestCosts[0].Type))
-	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
-	require.Equal(t, "x-ai-eg-selected-backend", cfg.SelectedBackendHeaderKey)
-	require.Equal(t, "x-ai-eg-model", cfg.ModelNameHeaderKey)
-	require.Len(t, cfg.Rules, 2)
-	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
-	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
-	require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
-	require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
-	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Name))
-	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
-	require.Equal(t, "apikey.txt", cfg.Rules[0].Backends[0].Auth.APIKey.Filename)
-	require.Equal(t, "aws.txt", cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
-	require.Equal(t, "us-east-1", cfg.Rules[0].Backends[1].Auth.AWSAuth.Region)
+
+	expectedCfg := &filterapi.Config{
+		Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
+		ModelNameHeaderKey:       "x-ai-eg-model",
+		MetadataNamespace:        "ai_gateway_llm_ns",
+		LLMRequestCosts: []filterapi.LLMRequestCost{
+			{
+				MetadataKey: "token_usage_key",
+				Type:        filterapi.LLMRequestCostTypeOutputToken,
+			},
+		},
+		Rules: []filterapi.RouteRule{
+			{
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-ai-eg-model", Value: "llama3.3333"},
+				},
+				Backends: []filterapi.Backend{
+					{
+						Name:   "kserve",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+						Weight: 1,
+						Auth: &filterapi.BackendAuth{
+							APIKey: &filterapi.APIKeyAuth{
+								Filename: "apikey.txt",
+							},
+						},
+					},
+					{
+						Name:   "awsbedrock",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
+						Weight: 10,
+						Auth: &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
+								CredentialFileName: "aws.txt",
+								Region:             "us-east-1",
+							},
+						},
+					},
+				},
+			},
+			{
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-ai-eg-model", Value: "gpt4.4444"},
+				},
+				Backends: []filterapi.Backend{
+					{
+						Name:   "openai",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+						Weight: 0,
+					},
+				},
+			},
+		},
+	}
+
+	require.Equal(t, expectedCfg, cfg)
 
 	t.Run("not found", func(t *testing.T) {
 		_, _, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
