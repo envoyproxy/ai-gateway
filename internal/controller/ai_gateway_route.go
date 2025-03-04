@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -302,7 +303,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), constants.APIKey)},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
@@ -311,8 +312,20 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
+								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), constants.AwsCredentialsKey),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
+							},
+						}
+					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					if backendSecurityPolicy.Spec.AzureCredentials == nil {
+						return fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
+					}
+					if cred := backendSecurityPolicy.Spec.AzureCredentials; cred.ClientSecretRef != nil {
+						// read path - tell backend handler to use specific authentication
+						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: path.Join(backendSecurityMountPath(volumeName), constants.AzureAccessToken),
 							},
 						}
 					}
@@ -631,6 +644,8 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 					} else {
 						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					secretName = string(backendSecurityPolicy.Spec.AzureCredentials.ClientSecretRef.Name)
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}
