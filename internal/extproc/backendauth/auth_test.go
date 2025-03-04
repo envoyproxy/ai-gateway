@@ -20,11 +20,15 @@ func TestNewHandler(t *testing.T) {
 [default]
 aws_access_key_id = test
 aws_secret_access_key = test
-`), 0o600)
+	`), 0o600)
 	require.NoError(t, err)
 
 	apiKeyFile := t.TempDir() + "/apikey"
 	err = os.WriteFile(apiKeyFile, []byte("TEST"), 0o600)
+	require.NoError(t, err)
+
+	azureFile := t.TempDir() + "/azuretest"
+	err = os.WriteFile(azureFile, []byte("some-access-token"), 0o600)
 	require.NoError(t, err)
 
 	for _, tt := range []struct {
@@ -41,6 +45,12 @@ aws_secret_access_key = test
 			name: "APIKey",
 			config: &filterapi.BackendAuth{
 				APIKey: &filterapi.APIKeyAuth{Filename: apiKeyFile},
+			},
+		},
+		{
+			name: "AzureAuth",
+			config: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{Filename: azureFile},
 			},
 		},
 	} {
