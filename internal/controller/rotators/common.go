@@ -26,8 +26,8 @@ type Rotator interface {
 	IsExpired(preRotationExpirationTime time.Time) bool
 	// GetPreRotationTime gets the time when the credentials need to be renewed.
 	GetPreRotationTime(ctx context.Context) (time.Time, error)
-	// Rotate will update the credential secret file with new credentials.
-	Rotate(ctx context.Context, token string) error
+	// Rotate will update the credential secret file with new credentials and return expiration time.
+	Rotate(ctx context.Context, token string) (time.Time, error)
 }
 
 // LookupSecret retrieves an existing secret.

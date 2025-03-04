@@ -134,7 +134,7 @@ func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.Assum
 // Rotate implements aws credential secret upsert operation to k8s secret store.
 //
 // This implements [Rotator.Rotate].
-func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
+func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, error) {
 	bspNamespace := r.backendSecurityPolicyNamespace
 	bspName := r.backendSecurityPolicyName
 	secretName := GetBSPSecretName(bspName)
@@ -143,8 +143,11 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 	awsIdentity, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
-		return err
+		return time.Time{}, err
+	} else if awsIdentity.Credentials == nil {
+		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
 	}
+	r.logger.Info(fmt.Sprintf("awsIdentity Credentials will expire in '%s'", awsIdentity.Credentials.Expiration.String()), "namespace", bspNamespace, "name", bspName)
 
 	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
 	if err != nil {
@@ -159,14 +162,14 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) error {
 				Data: make(map[string][]byte),
 			}
 			populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
-			return r.client.Create(ctx, secret)
+			return *awsIdentity.Credentials.Expiration, r.client.Create(ctx, secret)
 		}
 		r.logger.Error(err, "failed to lookup aws credentials secret", "namespace", bspNamespace, "name", bspName)
-		return err
+		return time.Time{}, err
 	}
 	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
 	populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
-	return r.client.Update(ctx, secret)
+	return *awsIdentity.Credentials.Expiration, r.client.Update(ctx, secret)
 }
 
 // assumeRoleWithToken exchanges an OIDC token for AWS credentials.
