@@ -24,7 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-func TestChatCompletion_Scheema(t *testing.T) {
+func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("unsupported", func(t *testing.T) {
 		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: "Foo", Version: "v123"}}
 		_, err := NewChatCompletionProcessor(cfg, nil, nil)
@@ -50,6 +50,11 @@ func TestChatCompletion_SelectTranslator(t *testing.T) {
 	})
 	t.Run("supported aws bedrock", func(t *testing.T) {
 		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
+	t.Run("supported azure openai", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI})
 		require.NoError(t, err)
 		require.NotNil(t, c.translator)
 	})

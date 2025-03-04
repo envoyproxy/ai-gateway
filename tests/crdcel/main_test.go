@@ -76,7 +76,8 @@ func TestAIServiceBackends(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
-		{name: "basic-eg-backend.yaml"},
+		{name: "basic-eg-backend-aws.yaml"},
+		{name: "basic-eg-backend-azure.yaml"},
 		{
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",

@@ -67,8 +67,17 @@ rules:
     value: llama3.3333
 - backends:
   - name: openai
+    weight: 1
     schema:
       name: OpenAI
+  - name: azureopenai
+    weight: 5
+    schema:
+      name: AzureOpenAI
+      version: 2024-10-21
+    auth:
+      azure:
+        filename: azure.txt
   headers:
   - name: x-ai-eg-model
     value: gpt4.4444
@@ -83,17 +92,24 @@ rules:
 	require.Equal(t, "OpenAI", string(cfg.Schema.Name))
 	require.Equal(t, "x-ai-eg-selected-backend", cfg.SelectedBackendHeaderKey)
 	require.Equal(t, "x-ai-eg-model", cfg.ModelNameHeaderKey)
+
 	require.Len(t, cfg.Rules, 2)
+	// check rule 0
 	require.Equal(t, "llama3.3333", cfg.Rules[0].Headers[0].Value)
-	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
 	require.Equal(t, "kserve", cfg.Rules[0].Backends[0].Name)
 	require.Equal(t, 10, cfg.Rules[0].Backends[1].Weight)
 	require.Equal(t, "AWSBedrock", string(cfg.Rules[0].Backends[1].Schema.Name))
-	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
 	require.Equal(t, "apikey.txt", cfg.Rules[0].Backends[0].Auth.APIKey.Filename)
 	require.Equal(t, "aws.txt", cfg.Rules[0].Backends[1].Auth.AWSAuth.CredentialFileName)
 	require.Equal(t, "us-east-1", cfg.Rules[0].Backends[1].Auth.AWSAuth.Region)
+
+	// check rule 1
+	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
+	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
+	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
+	require.Equal(t, "azureopenai", cfg.Rules[1].Backends[1].Name)
+	require.Equal(t, "AzureOpenAI", string(cfg.Rules[1].Backends[1].Schema.Name))
+	require.Equal(t, "2024-10-21", cfg.Rules[1].Backends[1].Schema.Version)
 
 	t.Run("not found", func(t *testing.T) {
 		_, _, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
