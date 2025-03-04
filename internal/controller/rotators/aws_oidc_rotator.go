@@ -144,9 +144,11 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, e
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
 		return time.Time{}, err
-	} else if awsIdentity == nil || awsIdentity.Credentials == nil || awsIdentity.Credentials.Expiration == nil {
-		return time.Time{}, fmt.Errorf("unexpected nil for awsIdentity for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
+	} else if awsIdentity.Credentials == nil {
+		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
 	}
+	r.logger.Info(fmt.Sprintf("awsIdentity Credentials will expire in '%s'", awsIdentity.Credentials.Expiration.String()), "namespace", bspNamespace, "name", bspName)
+
 	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {

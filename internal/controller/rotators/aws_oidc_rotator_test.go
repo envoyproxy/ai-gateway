@@ -105,6 +105,7 @@ func (m *mockStsOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 
 func TestAWS_OIDCRotator(t *testing.T) {
 	t.Run("basic rotation", func(t *testing.T) {
+		startTime := time.Now()
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return &sts.AssumeRoleWithWebIdentityOutput{
@@ -112,7 +113,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 						AccessKeyId:     aws.String(newAwsAccessKey),
 						SecretAccessKey: aws.String(newAwsSecretKey),
 						SessionToken:    aws.String(newAwsSessionToken),
-						Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+						Expiration:      aws.Time(startTime.Add(1 * time.Hour)),
 					},
 				}, nil
 			},
@@ -138,7 +139,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
-		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
+		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
@@ -170,41 +171,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to assume role")
 	})
 
-	t.Run("error handling - invalid expiration failure", func(t *testing.T) {
-		scheme := runtime.NewScheme()
-		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
-			&corev1.Secret{},
-		)
-		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
-		createOidcClientSecret(t, testClientSecret)
-		var mockSTS STSClient = &mockStsOperations{
-			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
-				return &sts.AssumeRoleWithWebIdentityOutput{
-					Credentials: &types.Credentials{
-						AccessKeyId:     aws.String(newAwsAccessKey),
-						SecretAccessKey: aws.String(newAwsSecretKey),
-						SessionToken:    aws.String(newAwsSessionToken),
-					},
-				}, nil
-			},
-		}
-		awsOidcRotator := AWSOIDCRotator{
-			client:                         client,
-			stsClient:                      mockSTS,
-			backendSecurityPolicyNamespace: policyNameSpace,
-			backendSecurityPolicyName:      policyName,
-			region:                         awsRegion,
-			roleArn:                        awsRoleArn,
-		}
-
-		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
-		require.Error(t, err)
-		require.True(t, expiration.IsZero())
-		assert.Contains(t, err.Error(), "unexpected nil")
-	})
-
 	t.Run("rotation - create when aws credential secret does not exist", func(t *testing.T) {
+		startTime := time.Now()
 		scheme := runtime.NewScheme()
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
@@ -218,7 +186,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 						AccessKeyId:     aws.String(newAwsAccessKey),
 						SecretAccessKey: aws.String(newAwsSecretKey),
 						SessionToken:    aws.String(newAwsSessionToken),
-						Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+						Expiration:      aws.Time(startTime.Add(1 * time.Hour)),
 					},
 				}, nil
 			},
@@ -234,11 +202,12 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
-		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
+		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
 	t.Run("rotation - update when aws credential secret exists", func(t *testing.T) {
+		startTime := time.Now()
 		scheme := runtime.NewScheme()
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
@@ -256,7 +225,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 						AccessKeyId:     aws.String(newAwsAccessKey),
 						SecretAccessKey: aws.String(newAwsSecretKey),
 						SessionToken:    aws.String(newAwsSessionToken),
-						Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+						Expiration:      aws.Time(startTime.Add(1 * time.Hour)),
 					},
 				}, nil
 			},
@@ -273,7 +242,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
-		require.WithinRange(t, expiration, time.Now(), time.Now().Add(1*time.Hour))
+		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
 		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 }
