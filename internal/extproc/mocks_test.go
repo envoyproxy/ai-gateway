@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -21,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 var (
@@ -168,3 +170,53 @@ func (m mockExternalProcessingStream) SendMsg(any) error { panic("TODO") }
 func (m mockExternalProcessingStream) RecvMsg(any) error { panic("TODO") }
 
 var _ extprocv3.ExternalProcessor_ProcessServer = &mockExternalProcessingStream{}
+
+type mockChatCompletionMetrics struct {
+	requestStart        time.Time
+	model               string
+	backend             string
+	requestSuccessCount int
+	requestErrorCount   int
+	tokenUsageCount     int
+	tokenLatencyCount   int
+}
+
+func (m *mockChatCompletionMetrics) StartRequest()                        { m.requestStart = time.Now() }
+func (m *mockChatCompletionMetrics) SetModel(model string)                { m.model = model }
+func (m *mockChatCompletionMetrics) SetBackend(backend filterapi.Backend) { m.backend = backend.Name }
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_, _, _ uint32)      { m.tokenUsageCount++ }
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ uint32)          { m.tokenLatencyCount++ }
+func (m *mockChatCompletionMetrics) RecordRequestCompletion(success bool) {
+	if success {
+		m.requestSuccessCount++
+	} else {
+		m.requestErrorCount++
+	}
+}
+
+func (m *mockChatCompletionMetrics) RequireSelected(t *testing.T, model, backend string) {
+	require.Equal(t, model, m.model)
+	require.Equal(t, backend, m.backend)
+}
+
+func (m *mockChatCompletionMetrics) RequireRequestFailure(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 1, m.requestErrorCount)
+}
+
+func (m *mockChatCompletionMetrics) RequireRequestNotCompleted(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+
+func (m *mockChatCompletionMetrics) RequireRequestSuccess(t *testing.T) {
+	require.Equal(t, 1, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+
+func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count int) {
+	require.Equal(t, count, m.tokenUsageCount)
+	require.Equal(t, count, m.tokenLatencyCount)
+}
+
+var _ metrics.ChatCompletion = &mockChatCompletionMetrics{}

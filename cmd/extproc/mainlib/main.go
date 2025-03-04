@@ -21,6 +21,7 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -107,11 +108,14 @@ func Main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	registry := prometheus.NewRegistry()
+	ccm := metrics.NewChatCompletion(registry)
+
 	server, err := extproc.NewServer(l)
 	if err != nil {
 		log.Fatalf("failed to create external processor server: %v", err)
 	}
-	server.Register("/v1/chat/completions", extproc.NewChatCompletionProcessor)
+	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(ccm))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
@@ -123,7 +127,7 @@ func Main() {
 	grpc_health_v1.RegisterHealthServer(s, server)
 
 	// Start metrics server.
-	metricsServer := startMetricsServer(flags.metricsAddr, l)
+	metricsServer := startMetricsServer(flags.metricsAddr, registry, l)
 
 	go func() {
 		<-ctx.Done()
@@ -148,32 +152,33 @@ func listenAddress(addrFlag string) (string, string) {
 }
 
 // startMetricsServer starts the HTTP server for Prometheus metrics.
-func startMetricsServer(addr string, logger *slog.Logger) *http.Server {
+func startMetricsServer(addr string, registry prometheus.Gatherer, logger *slog.Logger) *http.Server {
 	// Create a new HTTP server for metrics.
 	mux := http.NewServeMux()
 
 	// Register the metrics handler.
 	mux.Handle("/metrics", promhttp.HandlerFor(
-		metrics.GetRegistry(),
+		registry,
 		promhttp.HandlerOpts{
 			EnableOpenMetrics: true,
 		},
 	))
 
 	// Add a simple health check endpoint.
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		logger.Info("Starting metrics server", "address", addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Metrics server failed", "error", err)
 		}
 	}()

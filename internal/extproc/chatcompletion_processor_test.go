@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors.
-// SPDX-License-Identifier: Apache-2.0.
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -22,18 +22,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
-func TestChatCompletion_Scheema(t *testing.T) {
+func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("unsupported", func(t *testing.T) {
 		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: "Foo", Version: "v123"}}
-		_, err := NewChatCompletionProcessor(cfg, nil, nil)
+		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, nil)
 		require.ErrorContains(t, err, "unsupported API schema: Foo")
 	})
 	t.Run("supported openai", func(t *testing.T) {
 		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}}
-		_, err := NewChatCompletionProcessor(cfg, nil, nil)
+		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, nil)
 		require.NoError(t, err)
 	})
 }
@@ -57,8 +56,9 @@ func TestChatCompletion_SelectTranslator(t *testing.T) {
 }
 
 func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
+	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessor{
-		metrics: metrics.NewProcessorMetrics(),
+		metrics: mm,
 	}
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
@@ -66,139 +66,61 @@ func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
 	require.NoError(t, err)
 	_, ok := res.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 	require.True(t, ok)
-}
-
-// TestMetricsAreRecorded tests that metrics are properly recorded.
-func TestMetricsAreRecorded(t *testing.T) {
-	// Test verifies that the processor correctly calls the metrics methods.
-	// Create a custom mock translator that doesn't validate the body.
-	customMockTranslator := &struct {
-		translator.OpenAIChatCompletionTranslator
-	}{
-		OpenAIChatCompletionTranslator: &mockTranslator{
-			t:                 t,
-			retBodyMutation:   &extprocv3.BodyMutation{},
-			retHeaderMutation: &extprocv3.HeaderMutation{},
-			retUsedToken:      translator.LLMTokenUsage{OutputTokens: 100, InputTokens: 50, TotalTokens: 150},
-		},
-	}
-
-	// Override the ResponseBody method to not validate the body.
-	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
-		t:                 t,
-		retBodyMutation:   &extprocv3.BodyMutation{},
-		retHeaderMutation: &extprocv3.HeaderMutation{},
-		retUsedToken:      translator.LLMTokenUsage{OutputTokens: 100, InputTokens: 50, TotalTokens: 150},
-	}
-
-	// Create a processor with our mock translator.
-	p := &chatCompletionProcessor{
-		translator:  customMockTranslator.OpenAIChatCompletionTranslator,
-		metrics:     metrics.NewProcessorMetrics(),
-		backendName: "test-backend",
-		modelName:   "test-model",
-		logger:      slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		config: &processorConfig{
-			metadataNamespace: "test-namespace",
-		},
-	}
-
-	// Process a response body - this should call metrics methods.
-	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("test-body"), EndOfStream: true})
-	require.NoError(t, err)
-
-	// Verify token metrics were recorded correctly.
-	metricsRegistry := metrics.GetRegistry()
-	metricFamilies, err := metricsRegistry.Gather()
-	require.NoError(t, err)
-
-	// Find and verify token metrics.
-	var foundCompletionTokens, foundPromptTokens, foundTotalTokens bool
-	for _, metricFamily := range metricFamilies {
-		if metricFamily.GetName() == "aigateway_model_tokens_total" {
-			for _, metric := range metricFamily.GetMetric() {
-				labels := make(map[string]string)
-				for _, label := range metric.GetLabel() {
-					labels[label.GetName()] = label.GetValue()
-				}
-
-				// Check if this is one of our metrics.
-				if labels["backend"] == "test-backend" && labels["model"] == "test-model" {
-					switch labels["type"] {
-					case "completion":
-						require.Equal(t, float64(100), metric.GetCounter().GetValue(), "Completion tokens should be 100")
-						foundCompletionTokens = true
-					case "prompt":
-						require.Equal(t, float64(50), metric.GetCounter().GetValue(), "Prompt tokens should be 50")
-						foundPromptTokens = true
-					case "total":
-						require.Equal(t, float64(150), metric.GetCounter().GetValue(), "Total tokens should be 150")
-						foundTotalTokens = true
-					}
-				}
-			}
-		}
-	}
-
-	// Ensure we found all the metrics we expected.
-	require.True(t, foundCompletionTokens, "Completion tokens metric not found")
-	require.True(t, foundPromptTokens, "Prompt tokens metric not found")
-	require.True(t, foundTotalTokens, "Total tokens metric not found")
-
-	// Test error case.
-	customMockTranslator.OpenAIChatCompletionTranslator = &mockTranslator{
-		t:      t,
-		retErr: errors.New("test error"),
-	}
-	p.translator = customMockTranslator.OpenAIChatCompletionTranslator
-	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "test error")
+	require.NotZero(t, mm.requestStart)
+	mm.RequireRequestNotCompleted(t)
 }
 
 func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
+		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: make(map[string]string)}
 		p := &chatCompletionProcessor{
 			translator: mt,
-			metrics:    metrics.NewProcessorMetrics(),
+			metrics:    mm,
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseHeaders(t.Context(), nil)
 		require.ErrorContains(t, err, "test error")
+		mm.RequireRequestFailure(t)
 	})
 	t.Run("ok", func(t *testing.T) {
 		inHeaders := &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "dog", RawValue: []byte("cat")}},
 		}
 		expHeaders := map[string]string{"foo": "bar", "dog": "cat"}
+		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
 		p := &chatCompletionProcessor{
 			translator: mt,
-			metrics:    metrics.NewProcessorMetrics(),
+			metrics:    mm,
 		}
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
 		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		mm.RequireRequestNotCompleted(t)
 	})
 }
 
 func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
+		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t}
 		p := &chatCompletionProcessor{
 			translator: mt,
-			metrics:    metrics.NewProcessorMetrics(),
+			metrics:    mm,
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := &extprocv3.BodyMutation{}
 		expHeadMut := &extprocv3.HeaderMutation{}
+		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{
 			t: t, expResponseBody: inBody,
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
@@ -212,7 +134,7 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 		p := &chatCompletionProcessor{
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			metrics:    metrics.NewProcessorMetrics(),
+			metrics:    mm,
 			config: &processorConfig{
 				metadataNamespace: "ai_gateway_llm_ns",
 				requestCosts: []processorConfigRequestCost{
@@ -234,6 +156,8 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.Equal(t, expBodyMut, commonRes.BodyMutation)
 		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		mm.RequireRequestSuccess(t)
+		mm.RequireTokensRecorded(t, 1)
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
@@ -257,32 +181,41 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		return bytes
 	}
 	t.Run("body parser error", func(t *testing.T) {
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
-			metrics: metrics.NewProcessorMetrics(),
+			metrics: mm,
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
+		mm.RequireSelected(t, "", "")
 	})
 	t.Run("router error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
 			config:         &processorConfig{router: rt},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        metrics.NewProcessorMetrics(),
+			metrics:        mm,
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
+		mm.RequireSelected(t, "some-model", "")
 	})
 	t.Run("router error 404", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
 			config:         &processorConfig{router: rt},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        metrics.NewProcessorMetrics(),
+			metrics:        mm,
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.NoError(t, err)
@@ -291,6 +224,9 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, ir)
 		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
 		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
+		mm.RequireSelected(t, "some-model", "")
 	})
 	t.Run("translator not found", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
@@ -298,14 +234,18 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 			t: t, expHeaders: headers, retBackendName: "some-backend",
 			retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		}
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
 			config:         &processorConfig{router: rt},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        metrics.NewProcessorMetrics(),
+			metrics:        mm,
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
+		mm.RequireSelected(t, "some-model", "some-backend")
 	})
 	t.Run("translator error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
@@ -317,15 +257,19 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		var body openai.ChatCompletionRequest
 		require.NoError(t, json.Unmarshal(someBody, &body))
 		tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
 			config:         &processorConfig{router: rt},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        metrics.NewProcessorMetrics(),
+			metrics:        mm,
 			translator:     tr,
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
 		require.ErrorContains(t, err, "failed to transform request: test error")
+		mm.RequireRequestFailure(t)
+		mm.RequireTokensRecorded(t, 0)
+		mm.RequireSelected(t, "some-model", "some-backend")
 	})
 	t.Run("ok", func(t *testing.T) {
 		someBody := bodyFromModel(t, "some-model")
@@ -340,6 +284,7 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		var expBody openai.ChatCompletionRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
 		mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+		mm := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessor{
 			config: &processorConfig{
 				router:                   rt,
@@ -348,7 +293,7 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 			},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        metrics.NewProcessorMetrics(),
+			metrics:        mm,
 			translator:     mt,
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
@@ -358,6 +303,9 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
 		require.Equal(t, headerMut, commonRes.HeaderMutation)
 		require.Equal(t, bodyMut, commonRes.BodyMutation)
+
+		mm.RequireRequestNotCompleted(t)
+		mm.RequireSelected(t, "some-model", "some-backend")
 
 		// Check the model and backend headers are set in headerMut.
 		hdrs := headerMut.SetHeaders

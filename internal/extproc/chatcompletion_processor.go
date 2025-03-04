@@ -1,5 +1,5 @@
-// Copyright Envoy AI Gateway Authors.
-// SPDX-License-Identifier: Apache-2.0.
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
@@ -28,19 +28,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
-// NewChatCompletionProcessor implements [Processor] for the /chat/completions endpoint.
-func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
-	if config.schema.Name != filterapi.APISchemaOpenAI {
-		return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
+// ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
+func ChatCompletionProcessorFactory(ccm metrics.ChatCompletion) ProcessorFactory {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
+		if config.schema.Name != filterapi.APISchemaOpenAI {
+			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
+		}
+		return &chatCompletionProcessor{
+			config:         config,
+			requestHeaders: requestHeaders,
+			logger:         logger,
+			metrics:        ccm,
+		}, nil
 	}
-	return &chatCompletionProcessor{
-		config:         config,
-		requestHeaders: requestHeaders,
-		logger:         logger,
-		metrics:        metrics.NewProcessorMetrics(),
-		modelName:      "unknown",
-		backendName:    "unknown",
-	}, nil
 }
 
 // chatCompletionProcessor handles the processing of the request and response messages for a single stream.
@@ -54,16 +54,7 @@ type chatCompletionProcessor struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics     *metrics.ProcessorMetrics
-	modelName   string
-	backendName string
-}
-
-// recordErrorAndReturn records a failed request in metrics and returns an error.
-// This helper method consolidates the common pattern of recording metrics before returning an error.
-func (c *chatCompletionProcessor) recordErrorAndReturn(format string, args ...interface{}) error {
-	c.metrics.RecordRequestCompletion(c.backendName, c.modelName, false)
-	return fmt.Errorf(format, args...)
+	metrics metrics.ChatCompletion
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -96,18 +87,23 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(false)
+		}
+	}()
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
-		return nil, c.recordErrorAndReturn("failed to parse request body: %w", err)
+		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	c.logger.Info("Processing request", "path", c.requestHeaders[":path"], "model", model)
 
-	c.modelName = model
+	c.metrics.SetModel(model)
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
 		if errors.Is(err, x.ErrNoMatchingRule) {
-			c.metrics.RecordRequestCompletion(c.backendName, c.modelName, false)
+			c.metrics.RecordRequestCompletion(false)
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -118,18 +114,18 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 			}, nil
 		}
 
-		return nil, c.recordErrorAndReturn("failed to calculate route: %w", err)
+		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
-	c.backendName = b.Name
-	c.logger.Info("Selected backend", "backend", c.backendName)
+	c.logger.Info("Selected backend", "backend", b.Name)
+	c.metrics.SetBackend(*b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {
-		return nil, c.recordErrorAndReturn("failed to select translator: %w", err)
+		return nil, fmt.Errorf("failed to select translator: %w", err)
 	}
 
 	headerMutation, bodyMutation, override, err := c.translator.RequestBody(body)
 	if err != nil {
-		return nil, c.recordErrorAndReturn("failed to transform request: %w", err)
+		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
 
 	if headerMutation == nil {
@@ -144,7 +140,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
-			return nil, c.recordErrorAndReturn("failed to do auth request: %w", err)
+			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 	}
 
@@ -165,6 +161,11 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(false)
+		}
+	}()
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
@@ -178,7 +179,7 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 	}
 	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
-		return nil, c.recordErrorAndReturn("failed to transform response headers: %w", err)
+		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
@@ -189,12 +190,15 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		c.metrics.RecordRequestCompletion(err == nil)
+	}()
 	var br io.Reader
 	switch c.responseEncoding {
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
-			return nil, c.recordErrorAndReturn("failed to decode gzip: %w", err)
+			return nil, fmt.Errorf("failed to decode gzip: %w", err)
 		}
 	default:
 		br = bytes.NewReader(body.Body)
@@ -207,7 +211,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
-		return nil, c.recordErrorAndReturn("failed to transform response: %w", err)
+		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -227,17 +231,16 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	c.metrics.UpdateTokenMetrics(c.backendName, c.modelName, tokenUsage.OutputTokens, tokenUsage.InputTokens, tokenUsage.TotalTokens)
-	c.metrics.UpdateLatencyMetrics(c.backendName, c.modelName, tokenUsage.OutputTokens)
+	c.metrics.RecordTokenUsage(tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
+	c.metrics.RecordTokenLatency(tokenUsage.OutputTokens)
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
 		if err != nil {
-			return nil, c.recordErrorAndReturn("failed to build dynamic metadata: %w", err)
+			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
 	}
-	// Record successful completion of the request.
-	c.metrics.RecordRequestCompletion(c.backendName, c.modelName, true)
+
 	return resp, nil
 }
 
