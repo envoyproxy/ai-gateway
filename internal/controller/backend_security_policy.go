@@ -140,10 +140,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		return time.Minute, err
 	}
 	rotationTime := expiration.Add(-preRotationWindow)
-	if rotationTime.Before(time.Now()) {
-		return time.Minute, fmt.Errorf("newly rotate credentials is already expired (%v) for policy %s in %s", rotationTime, policy.Name, policy.Namespace)
+	if requeue := time.Until(rotationTime); requeue > 0 {
+		return requeue, nil
 	}
-	return time.Until(rotationTime), nil
+	return time.Minute, fmt.Errorf("newly rotate credentials is already expired (%v) for policy %s in %s", rotationTime, policy.Name, policy.Namespace)
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
