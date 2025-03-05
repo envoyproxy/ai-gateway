@@ -243,7 +243,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 }
 
 func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
-	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"

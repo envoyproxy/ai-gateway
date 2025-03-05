@@ -170,7 +170,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		},
 	}
 	extProcImage := "extproc:v0.1.0"
-	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build(), extProcImage: extProcImage}
+	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build(), extProcImage: extProcImage}
 	t.Run("not panic", func(_ *testing.T) {
 		c.applyExtProcDeploymentConfigUpdate(dep, nil)
 		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
