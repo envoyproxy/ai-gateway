@@ -108,8 +108,11 @@ func TestListenAddress(t *testing.T) {
 }
 
 func TestStartMetricsServer(t *testing.T) {
-	s, _ := startMetricsServer("127.0.0.1:", slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	s, m := startMetricsServer("127.0.0.1:", slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
 	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
+
+	require.NotNil(t, s)
+	require.NotNil(t, m)
 
 	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
 
