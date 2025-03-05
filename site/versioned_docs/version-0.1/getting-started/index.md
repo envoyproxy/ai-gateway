@@ -45,11 +45,11 @@ helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
   --create-namespace
 
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.1.1 \
+  --version v0.1.2 \
   --namespace envoy-ai-gateway-system \
   --create-namespace
 
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.1/examples/basic/basic.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.2/examples/basic/basic.yaml
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
