@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package main
 
 import (
@@ -47,24 +52,26 @@ func run(_ cmdRun, output, stderr io.Writer) error {
 
 	// Currently, this is not configurable:
 	// https://github.com/envoyproxy/gateway/blob/779c0a6bbdf7dacbf25a730140a112f99c239f0e/internal/infrastructure/host/infra.go#L22-L23
-	certsPath := "/tmp/envoy-gateway/certs"
+	const certsPath = "/tmp/envoy-gateway/certs"
 	mustRecreateDir(certsPath)
 
 	// Copy the entire certs directory to the temp directory recursively.
+	stderrLogger.Info("copying self-signed certs", "dst", certsPath)
 	dirs, err := certs.ReadDir("certs")
 	if err != nil {
 		return fmt.Errorf("failed to read directory certs: %w", err)
 	}
 	for _, d := range dirs {
 		// Create the directory.
-		err = os.Mkdir(path.Join(certsPath, d.Name()), 0755)
+		err = os.Mkdir(path.Join(certsPath, d.Name()), 0o755)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", path.Join(certsPath, d.Name()), err)
 		}
 		stderrLogger.Info("copying certs", "directory", d.Name())
 
 		// Copy the files.
-		files, err := certs.ReadDir(path.Join("certs", d.Name()))
+		var files []os.DirEntry
+		files, err = certs.ReadDir(path.Join("certs", d.Name()))
 		if err != nil {
 			return fmt.Errorf("failed to read directory certs/%s: %w", d.Name(), err)
 		}
@@ -72,11 +79,12 @@ func run(_ cmdRun, output, stderr io.Writer) error {
 			src := path.Join("certs", d.Name(), f.Name())
 			dst := path.Join(certsPath, d.Name(), f.Name())
 			stderrLogger.Info("copying file", "source", src, "destination", dst)
-			data, err := certs.ReadFile(src)
+			var data []byte
+			data, err = certs.ReadFile(src)
 			if err != nil {
 				return fmt.Errorf("failed to read file certs/%s/%s: %w", d.Name(), f.Name(), err)
 			}
-			err = os.WriteFile(dst, data, 0644)
+			err = os.WriteFile(dst, data, 0o600)
 			if err != nil {
 				return fmt.Errorf("failed to write file %s: %w", dst, err)
 			}
@@ -89,17 +97,19 @@ func run(_ cmdRun, output, stderr io.Writer) error {
 	mustRecreateDir(resourcesTmpdir)
 	egConfigDir := path.Join(tmpdir, "/envoy-gateway-config")
 	mustRecreateDir(egConfigDir)
+	stderrLogger.Info("writing envoy gateway config", "dst", egConfigDir)
 	egConfigPath := path.Join(egConfigDir, "envoy-gateway-config.yaml")
-	err = os.WriteFile(egConfigPath, []byte(strings.Replace(
-		envoyGatewayConfig, "PLACEHOLDER", resourcesTmpdir, -1),
-	), 0644)
+	err = os.WriteFile(egConfigPath, []byte(strings.ReplaceAll(
+		envoyGatewayConfig, "PLACEHOLDER", resourcesTmpdir),
+	), 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", egConfigPath, err)
 	}
 
 	// Write the default.yaml to a file.
 	defaultResourcePath := path.Join(resourcesTmpdir, "default.yaml")
-	err = os.WriteFile(defaultResourcePath, defaultYAML, 0644)
+	stderrLogger.Info("copying resources", "dst", defaultResourcePath)
+	err = os.WriteFile(defaultResourcePath, defaultYAML, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", defaultResourcePath, err)
 	}
@@ -118,7 +128,7 @@ func mustRecreateDir(path string) {
 	if err != nil {
 		panic(fmt.Errorf("failed to remove directory %s: %w", path, err))
 	}
-	err = os.MkdirAll(path, 0755)
+	err = os.MkdirAll(path, 0o755)
 	if err != nil {
 		panic(fmt.Errorf("failed to create directory %s: %w", path, err))
 	}

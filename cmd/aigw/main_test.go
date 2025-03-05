@@ -20,6 +20,7 @@ func Test_doMain(t *testing.T) {
 		name         string
 		args         []string
 		tf           translateFn
+		rf           runFn
 		expOut       string
 		expPanicCode *int
 	}{
@@ -40,6 +41,9 @@ Commands:
   translate <path> ... [flags]
     Translate yaml files containing AI Gateway resources to Envoy Gateway and
     Kubernetes resources. The translated resources are written to stdout.
+
+  run [flags]
+    Run the AI Gateway locally for given configuration.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -102,10 +106,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
+					doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
 				})
 			} else {
-				doMain(out, os.Stderr, tt.args, nil, tt.tf)
+				doMain(out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})
