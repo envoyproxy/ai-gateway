@@ -6,13 +6,17 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 )
@@ -115,11 +119,15 @@ func run(_ cmdRun, output, stderr io.Writer) error {
 	}
 
 	c := root.GetRootCommand()
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	c.SetContext(ctx)
 	c.SetOut(output)
 	c.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := c.Execute(); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
+	time.Sleep(5 * time.Second)
 	return nil
 }
 

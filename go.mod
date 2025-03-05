@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17
 	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250304233713-779c0a6bbdf7
-	github.com/envoyproxy/go-control-plane/envoy v1.32.4
+	github.com/envoyproxy/go-control-plane/envoy v1.32.5-0.20250303232259-0c5cb90447bb
 	github.com/go-logr/logr v1.4.2
 	github.com/google/cel-go v0.22.1
 	github.com/google/go-cmp v0.7.0
@@ -136,8 +136,8 @@ require (
 	github.com/elastic/crd-ref-docs v0.1.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/envoyproxy/go-control-plane v0.13.4 // indirect
-	github.com/envoyproxy/go-control-plane/contrib v1.32.4 // indirect
+	github.com/envoyproxy/go-control-plane v0.13.5-0.20250303232259-0c5cb90447bb // indirect
+	github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20250303232259-0c5cb90447bb // indirect
 	github.com/envoyproxy/go-control-plane/ratelimit v0.1.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/envoyproxy/ratelimit v1.4.1-0.20230427142404-e2a87f41d3a7 // indirect
