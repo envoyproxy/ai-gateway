@@ -645,7 +645,7 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-					secretName = string(backendSecurityPolicy.Spec.AzureCredentials.ClientSecretRef.Name)
+					secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}
