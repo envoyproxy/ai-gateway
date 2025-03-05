@@ -184,9 +184,16 @@ type mockChatCompletionMetrics struct {
 func (m *mockChatCompletionMetrics) StartRequest()                        { m.requestStart = time.Now() }
 func (m *mockChatCompletionMetrics) SetModel(model string)                { m.model = model }
 func (m *mockChatCompletionMetrics) SetBackend(backend filterapi.Backend) { m.backend = backend.Name }
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_, _, _ uint32)      { m.tokenUsageCount++ }
-func (m *mockChatCompletionMetrics) RecordTokenLatency(_ uint32)          { m.tokenLatencyCount++ }
-func (m *mockChatCompletionMetrics) RecordRequestCompletion(success bool) {
+
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32) {
+	m.tokenUsageCount++
+}
+
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32) {
+	m.tokenLatencyCount++
+}
+
+func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool) {
 	if success {
 		m.requestSuccessCount++
 	} else {

@@ -23,6 +23,9 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -108,14 +111,13 @@ func Main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	registry := prometheus.NewRegistry()
-	ccm := metrics.NewChatCompletion(registry)
+	metricsServer, meter := startMetricsServer(flags.metricsAddr, l)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
 		log.Fatalf("failed to create external processor server: %v", err)
 	}
-	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(ccm))
+	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(metrics.NewChatCompletion(meter)))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
@@ -125,9 +127,6 @@ func Main() {
 	s := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
-
-	// Start metrics server.
-	metricsServer := startMetricsServer(flags.metricsAddr, registry, l)
 
 	go func() {
 		<-ctx.Done()
@@ -152,7 +151,15 @@ func listenAddress(addrFlag string) (string, string) {
 }
 
 // startMetricsServer starts the HTTP server for Prometheus metrics.
-func startMetricsServer(addr string, registry prometheus.Gatherer, logger *slog.Logger) *http.Server {
+func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.Meter) {
+	registry := prometheus.NewRegistry()
+	exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
+	if err != nil {
+		log.Fatal("failed to create metrics exporter")
+	}
+	provider := metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
+	meter := provider.Meter("envoyproxy/ai-gateway")
+
 	// Create a new HTTP server for metrics.
 	mux := http.NewServeMux()
 
@@ -183,5 +190,5 @@ func startMetricsServer(addr string, registry prometheus.Gatherer, logger *slog.
 		}
 	}()
 
-	return server
+	return server, meter
 }

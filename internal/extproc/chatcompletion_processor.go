@@ -89,7 +89,7 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			c.metrics.RecordRequestCompletion(false)
+			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
@@ -103,7 +103,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
 		if errors.Is(err, x.ErrNoMatchingRule) {
-			c.metrics.RecordRequestCompletion(false)
+			c.metrics.RecordRequestCompletion(ctx, false)
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -160,10 +160,10 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			c.metrics.RecordRequestCompletion(false)
+			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
 	c.responseHeaders = headersToMap(headers)
@@ -189,9 +189,9 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(err == nil)
+		c.metrics.RecordRequestCompletion(ctx, err == nil)
 	}()
 	var br io.Reader
 	switch c.responseEncoding {
@@ -231,8 +231,8 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
-	c.metrics.RecordTokenLatency(tokenUsage.OutputTokens)
+	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
+	c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()

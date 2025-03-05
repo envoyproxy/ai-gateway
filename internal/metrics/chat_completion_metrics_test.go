@@ -9,22 +9,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestNewProcessorMetrics(t *testing.T) {
-	pm := NewChatCompletion(prometheus.NewRegistry()).(*chatCompletion)
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewChatCompletion(meter).(*chatCompletion)
+	)
+
 	assert.NotNil(t, pm)
 	assert.False(t, pm.firstTokenSent)
 }
 
 func TestStartRequest(t *testing.T) {
-	pm := NewChatCompletion(prometheus.NewRegistry()).(*chatCompletion)
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewChatCompletion(meter).(*chatCompletion)
+	)
+
 	before := time.Now()
 	pm.StartRequest()
 	after := time.Now()
@@ -35,128 +46,132 @@ func TestStartRequest(t *testing.T) {
 }
 
 func TestRecordTokenUsage(t *testing.T) {
-	pm := NewChatCompletion(prometheus.NewRegistry()).(*chatCompletion)
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewChatCompletion(meter).(*chatCompletion)
+
+		attrs = []attribute.KeyValue{
+			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+			attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+		}
+		inputAttrs  = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
+		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
+		totalAttrs  = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
+	)
+
 	pm.SetModel("test-model")
 	pm.SetBackend(filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+	pm.RecordTokenUsage(t.Context(), 10, 5, 15)
 
-	pm.RecordTokenUsage(10, 5, 15)
+	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 10.0, sum)
 
-	// Get the current value of the metrics.
-	input, _ := getHistogramValue(t, pm.metrics.tokenUsage, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "openai",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-		"gen_ai.token.type":     "input",
-	})
-	output, _ := getHistogramValue(t, pm.metrics.tokenUsage, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "openai",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-		"gen_ai.token.type":     "output",
-	})
-	total, _ := getHistogramValue(t, pm.metrics.tokenUsage, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "openai",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-		"gen_ai.token.type":     "total",
-	})
+	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 5.0, sum)
 
-	assert.Equal(t, float64(10), input)
-	assert.Equal(t, float64(5), output)
-	assert.Equal(t, float64(15), total)
+	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, totalAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 15.0, sum)
 }
 
 func TestRecordTokenLatency(t *testing.T) {
-	pm := NewChatCompletion(prometheus.NewRegistry()).(*chatCompletion)
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewChatCompletion(meter).(*chatCompletion)
+
+		attrs = attribute.NewSet(
+			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+			attribute.Key(genaiAttributeSystemName).String(genAISystemAWSBedrock),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+		)
+	)
+
 	pm.StartRequest()
 	pm.SetModel("test-model")
 	pm.SetBackend(filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 	// Test first token.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(1)
+	pm.RecordTokenLatency(t.Context(), 1)
 	assert.True(t, pm.firstTokenSent)
-
-	firstTokenLatency, count := getHistogramValue(t, pm.metrics.firstTokenLatency, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "aws.bedrock",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-	})
-	assert.Greater(t, firstTokenLatency, 0.0)
-	require.Equal(t, uint64(1), count)
+	count, sum := getHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Greater(t, sum, 0.0)
 
 	// Test subsequent tokens.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(5)
-
-	outputTokenLatency, count := getHistogramValue(t, pm.metrics.outputTokenLatency, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "aws.bedrock",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-	})
-	assert.Greater(t, outputTokenLatency, 0.0)
-	require.Equal(t, uint64(1), count)
+	pm.RecordTokenLatency(t.Context(), 5)
+	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Greater(t, sum, 0.0)
 
 	// Test zero tokens case.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(0)
-
-	outputTokenLatency, count = getHistogramValue(t, pm.metrics.outputTokenLatency, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "aws.bedrock",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-	})
-	assert.Greater(t, outputTokenLatency, 0.0)
-	require.Equal(t, uint64(1), count)
+	pm.RecordTokenLatency(t.Context(), 0)
+	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Greater(t, sum, 0.0)
 }
 
 func TestRecordRequestCompletion(t *testing.T) {
-	pm := NewChatCompletion(prometheus.NewRegistry()).(*chatCompletion)
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewChatCompletion(meter).(*chatCompletion)
+
+		attrs = []attribute.KeyValue{
+			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+			attribute.Key(genaiAttributeSystemName).String("custom"),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+		}
+		attrsSuccess = attribute.NewSet(attrs...)
+		attrsFailure = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback))...)
+	)
+
 	pm.StartRequest()
 	pm.SetModel("test-model")
 	pm.SetBackend(filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordRequestCompletion(true)
-
-	// Test total latency histogram.
-	totalLatency, count := getHistogramValue(t, pm.metrics.requestLatency, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "custom",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-		"error.type":            "",
-	})
-	assert.Greater(t, totalLatency, 0.0)
-	require.Equal(t, uint64(1), count)
+	pm.RecordRequestCompletion(t.Context(), true)
+	count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
+	assert.Equal(t, uint64(1), count)
+	assert.Greater(t, sum, 0.0)
 
 	// Test some failed requests.
-	pm.RecordRequestCompletion(false)
-	pm.RecordRequestCompletion(false)
-	failedRequests, count := getHistogramValue(t, pm.metrics.requestLatency, map[string]string{
-		"gen_ai.operation.name": "chat",
-		"gen_ai.system":         "custom",
-		"gen_ai.request.model":  "test-model",
-		"gen_ai.response.model": "test-model",
-		"error.type":            "_OTHER",
-	})
-	assert.Greater(t, failedRequests, 0.0)
-	require.Equal(t, uint64(2), count)
+	pm.RecordRequestCompletion(t.Context(), false)
+	pm.RecordRequestCompletion(t.Context(), false)
+	count, sum = getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
+	assert.Equal(t, uint64(2), count)
+	assert.Greater(t, sum, 0.0)
 }
 
-// Helper function to get the current sum of a histogram metric.
-func getHistogramValue(t *testing.T, metric *prometheus.HistogramVec, labels map[string]string) (float64, uint64) {
-	t.Helper()
-	m, err := metric.GetMetricWith(labels)
-	assert.NoError(t, err, "Error getting metric")
+// getHistogramValues returns the count and sum of a histogram metric with the given attributes.
+func getHistogramValues(t *testing.T, reader metric.Reader, metric string, attrs attribute.Set) (uint64, float64) {
+	var data metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &data))
 
-	metricpb := &dto.Metric{}
-	assert.NoError(t, m.(prometheus.Metric).Write(metricpb), "Error writing metric")
-	return metricpb.Histogram.GetSampleSum(), metricpb.Histogram.GetSampleCount()
+	var datapoints []metricdata.HistogramDataPoint[float64]
+	for _, sm := range data.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != metric {
+				continue
+			}
+			data := m.Data.(metricdata.Histogram[float64])
+			for _, dp := range data.DataPoints {
+				if dp.Attributes.Equals(&attrs) {
+					datapoints = append(datapoints, dp)
+				}
+			}
+		}
+	}
+
+	require.Len(t, datapoints, 1, "found %d datapoints for attributes: %v", len(datapoints), attrs)
+
+	return datapoints[0].Count, datapoints[0].Sum
 }

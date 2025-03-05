@@ -6,9 +6,11 @@
 package metrics
 
 import (
+	"context"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
@@ -24,11 +26,11 @@ type ChatCompletion interface {
 	SetBackend(backend filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(inputTokens, outputTokens, totalTokens uint32)
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32)
 	// RecordRequestCompletion records latency metrics for the entire request
-	RecordRequestCompletion(success bool)
+	RecordRequestCompletion(ctx context.Context, success bool)
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(tokens uint32)
+	RecordTokenLatency(ctx context.Context, tokens uint32)
 }
 
 // chatCompletion is the implementation for the chat completion AI Gateway metrics.
@@ -41,10 +43,10 @@ type chatCompletion struct {
 	backend        string
 }
 
-// NewChatCompletion creates a new ProcessorMetrics instance.
-func NewChatCompletion(registry prometheus.Registerer) ChatCompletion {
+// NewChatCompletion creates a new ChatCompletion instance.
+func NewChatCompletion(meter metric.Meter) ChatCompletion {
 	return &chatCompletion{
-		metrics: newGenAI(registry),
+		metrics: newGenAI(meter),
 		model:   "unknown",
 		backend: "unknown",
 	}
@@ -66,41 +68,72 @@ func (c *chatCompletion) SetModel(model string) {
 func (c *chatCompletion) SetBackend(backend filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
-		c.backend = "openai"
+		c.backend = genaiSystemOpenAI
 	case filterapi.APISchemaAWSBedrock:
-		c.backend = "aws.bedrock"
+		c.backend = genAISystemAWSBedrock
 	default:
 		c.backend = backend.Name
 	}
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(inputTokens, outputTokens, totalTokens uint32) {
-	c.metrics.tokenUsage.WithLabelValues("chat", c.backend, "input", c.model, c.model).Observe(float64(inputTokens))
-	c.metrics.tokenUsage.WithLabelValues("chat", c.backend, "output", c.model, c.model).Observe(float64(outputTokens))
-	c.metrics.tokenUsage.WithLabelValues("chat", c.backend, "total", c.model, c.model).Observe(float64(totalTokens))
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32) {
+	attrs := []attribute.KeyValue{
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+		attribute.Key(genaiAttributeSystemName).String(c.backend),
+		attribute.Key(genaiAttributeRequestModel).String(c.model),
+	}
+
+	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
+	)
+	c.metrics.tokenUsage.Record(ctx, float64(outputTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
+	)
+	c.metrics.tokenUsage.Record(ctx, float64(totalTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
+	)
 }
 
 // RecordRequestCompletion implements [ChatCompletion.RecordRequestCompletion].
-func (c *chatCompletion) RecordRequestCompletion(success bool) {
+func (c *chatCompletion) RecordRequestCompletion(ctx context.Context, success bool) {
+	attrs := []attribute.KeyValue{
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+		attribute.Key(genaiAttributeSystemName).String(c.backend),
+		attribute.Key(genaiAttributeRequestModel).String(c.model),
+	}
+
 	if success {
-		c.metrics.requestLatency.WithLabelValues("chat", c.backend, c.model, c.model, "").Observe(time.Since(c.requestStart).Seconds())
+		// According to the semantic conventions, the error attribute should not be added for successful operations
+		c.metrics.requestLatency.Record(ctx, time.Since(c.requestStart).Seconds(), metric.WithAttributes(attrs...))
 	} else {
 		// We don't have a set of typed errors yet, or a set of low-cardinality values, so we can just set the value to the
 		// placeholder one. See: https://opentelemetry.io/docs/specs/semconv/attributes-registry/error/#error-type
-		c.metrics.requestLatency.WithLabelValues("chat", c.backend, c.model, c.model, "_OTHER").Observe(time.Since(c.requestStart).Seconds())
+		c.metrics.requestLatency.Record(ctx, time.Since(c.requestStart).Seconds(),
+			metric.WithAttributes(attrs...),
+			metric.WithAttributes(attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback)),
+		)
 	}
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
-func (c *chatCompletion) RecordTokenLatency(tokens uint32) {
+func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32) {
+	attrs := []attribute.KeyValue{
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+		attribute.Key(genaiAttributeSystemName).String(c.backend),
+		attribute.Key(genaiAttributeRequestModel).String(c.model),
+	}
+
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
-		c.metrics.firstTokenLatency.WithLabelValues("chat", c.backend, c.model, c.model).Observe(time.Since(c.requestStart).Seconds())
+		c.metrics.firstTokenLatency.Record(ctx, time.Since(c.requestStart).Seconds(), metric.WithAttributes(attrs...))
 	} else if tokens > 0 {
 		// Calculate time between tokens.
 		itl := time.Since(c.lastTokenTime).Seconds() / float64(tokens)
-		c.metrics.outputTokenLatency.WithLabelValues("chat", c.backend, c.model, c.model).Observe(itl)
+		c.metrics.outputTokenLatency.Record(ctx, itl, metric.WithAttributes(attrs...))
 	}
 	c.lastTokenTime = time.Now()
 }
