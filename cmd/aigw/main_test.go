@@ -107,10 +107,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
 				})
 			} else {
-				doMain(out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})

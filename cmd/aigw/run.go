@@ -12,10 +12,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/signal"
 	"path"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
@@ -118,14 +116,14 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 		return fmt.Errorf("failed to write file %s: %w", defaultResourcePath, err)
 	}
 
-	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
 	c := root.GetRootCommand()
 	c.SetOut(output)
 	c.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := c.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
+	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
+	// Give it some time to do so, otherwise the process might become an orphan.
 	time.Sleep(5 * time.Second)
 	return nil
 }

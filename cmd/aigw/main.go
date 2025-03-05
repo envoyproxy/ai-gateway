@@ -11,6 +11,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/alecthomas/kong"
 
@@ -39,7 +41,9 @@ type (
 )
 
 func main() {
-	doMain(os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	doMain(ctx, os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
 }
 
 type (
@@ -56,7 +60,7 @@ type (
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 //   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
-func doMain(stdout, stderr io.Writer, args []string, exitFn func(int),
+func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	tf translateFn,
 	rf runFn,
 ) {
@@ -70,18 +74,18 @@ func doMain(stdout, stderr io.Writer, args []string, exitFn func(int),
 	if err != nil {
 		log.Fatalf("Error creating parser: %v", err)
 	}
-	ctx, err := parser.Parse(args)
+	cliCtx, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
-	switch ctx.Command() {
+	switch cliCtx.Command() {
 	case "version":
 		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
 	case "translate <path>":
-		err = tf(context.Background(), c.Translate, stdout, stderr)
+		err = tf(ctx, c.Translate, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
 		}
 	case "run":
-		err = rf(context.Background(), c.Run, stdout, stderr)
+		err = rf(ctx, c.Run, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}
