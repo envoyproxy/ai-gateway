@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -42,7 +43,7 @@ func main() {
 }
 
 type (
-	subCmdFn[T any] func(T, io.Writer, io.Writer) error
+	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
 	runFn           subCmdFn[cmdRun]
 )
@@ -75,12 +76,12 @@ func doMain(stdout, stderr io.Writer, args []string, exitFn func(int),
 	case "version":
 		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
 	case "translate <path>":
-		err = tf(c.Translate, stdout, stderr)
+		err = tf(context.Background(), c.Translate, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
 		}
 	case "run":
-		err = rf(c.Run, stdout, stderr)
+		err = rf(context.Background(), c.Run, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}

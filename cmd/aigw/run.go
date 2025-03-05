@@ -51,7 +51,7 @@ extensionApis:
   enableBackend: true
 `
 
-func run(_ cmdRun, output, stderr io.Writer) error {
+func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 
 	// Currently, this is not configurable:
@@ -118,13 +118,12 @@ func run(_ cmdRun, output, stderr io.Writer) error {
 		return fmt.Errorf("failed to write file %s: %w", defaultResourcePath, err)
 	}
 
-	c := root.GetRootCommand()
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	c.SetContext(ctx)
+	c := root.GetRootCommand()
 	c.SetOut(output)
 	c.SetArgs([]string{"server", "--config-path", egConfigPath})
-	if err := c.Execute(); err != nil {
+	if err := c.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
 	time.Sleep(5 * time.Second)
