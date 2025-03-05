@@ -37,6 +37,11 @@ func (m *myCustomRouter) Calculate(headers map[string]string) (backend *filterap
 	return m.defaultRouter.Calculate(headers)
 }
 
+// CalculateWithBody implements [x.Router.CalculateWithBody].
+func (m *myCustomRouter) CalculateWithBody(headers map[string]string, body []byte) (backend *filterapi.Backend, cacheInfo *filterapi.CacheInfo, err error) {
+	return nil, nil, x.ErrNotImplemented
+}
+
 // This demonstrates how to build a custom router for the external processor.
 func main() {
 	// Initializes the custom router.
