@@ -23,17 +23,29 @@ type (
 		Version struct{} `cmd:"" help:"Show version."`
 		// Translate is the sub-command parsed by the `cmdTranslate` struct.
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
+		// Run is the sub-command parsed by the `cmdRun` struct.
+		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
 	}
 	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
 		Debug bool     `help:"Enable debug logging emitted to stderr."`
 		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
 	}
+	// cmdRun corresponds to `aigw run` command.
+	cmdRun struct {
+		Debug bool `help:"Enable debug logging emitted to stderr."`
+	}
 )
 
 func main() {
-	doMain(os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
+	doMain(os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
 }
+
+type (
+	subCmdFn[T any] func(T, io.Writer, io.Writer) error
+	translateFn     subCmdFn[cmdTranslate]
+	runFn           subCmdFn[cmdRun]
+)
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
 //
@@ -42,7 +54,11 @@ func main() {
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
-func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf translateFn) {
+//   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
+func doMain(stdout, stderr io.Writer, args []string, exitFn func(int),
+	tf translateFn,
+	rf runFn,
+) {
 	var c cmd
 	parser, err := kong.New(&c,
 		kong.Name("aigw"),
@@ -62,6 +78,11 @@ func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf transl
 		err = tf(c.Translate, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
+		}
+	case "run":
+		err = rf(c.Run, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Error running: %v", err)
 		}
 	default:
 		panic("unreachable")

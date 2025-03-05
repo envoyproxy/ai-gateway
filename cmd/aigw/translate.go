@@ -34,10 +34,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-// translateFn is the function signature for the translate command for decoupling and testing.
-type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
-
-// translate implements the translateFn command. This function reads the input files, collects the AI Gateway custom resources,
+// translate implements subCmd[cmdTranslate]. This function reads the input files, collects the AI Gateway custom resources,
 // translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
 func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
