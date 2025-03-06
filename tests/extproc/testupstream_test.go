@@ -233,15 +233,15 @@ data: [DONE]
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
-				req.Header.Set("x-response-status", tc.responseStatus)
+				req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
 				if tc.responseType != "" {
-					req.Header.Set("testupstream.ResponseTypeKey", tc.responseType)
+					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
 				}
 				if tc.responseHeaders != "" {
-					req.Header.Set("x-response-headers", base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
+					req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
 				}
 				if tc.expRequestBody != "" {
-					req.Header.Set("x-expected-request-body", base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+					req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
 				}
 
 				resp, err := http.DefaultClient.Do(req)
