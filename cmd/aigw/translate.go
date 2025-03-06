@@ -34,12 +34,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-// translateFn is the function signature for the translate command for decoupling and testing.
-type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
-
-// translate implements the translateFn command. This function reads the input files, collects the AI Gateway custom resources,
+// translate implements subCmd[cmdTranslate]. This function reads the input files, collects the AI Gateway custom resources,
 // translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
-func translate(cmd cmdTranslate, output, stderr io.Writer) error {
+func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 	if !cmd.Debug {
 		stderrLogger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
@@ -54,7 +51,7 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	err = translateCustomResourceObjects(aigwRoutes, aigwBackends, backendSecurityPolicies, output, stderrLogger)
+	err = translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -122,13 +119,13 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 //
 // The resulting objects are written to the output writer.
 func translateCustomResourceObjects(
+	ctx context.Context,
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	output io.Writer,
 	logger *slog.Logger,
 ) error {
-	ctx := context.Background() // It's ok to use the raw Background context as this is synchronous code in a CLI.
 	builder := fake.NewClientBuilder().
 		WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
