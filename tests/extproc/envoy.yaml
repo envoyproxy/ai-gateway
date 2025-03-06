@@ -31,6 +31,31 @@ static_resources:
                         json_format:
                           used_token: "%DYNAMIC_METADATA(ai_gateway_llm_ns:used_token)%"
                           some_cel: "%DYNAMIC_METADATA(ai_gateway_llm_ns:some_cel)%"
+                          timestamp: "%START_TIME%"
+                          protocol: "%PROTOCOL%"
+                          method: "%REQ(:METHOD)%"
+                          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+                          response_code: "%RESPONSE_CODE%"
+                          response_code_detail: "%RESPONSE_CODE_DETAILS%"
+                          response_flags: "%RESPONSE_FLAGS%"
+                          bytes_received: "%BYTES_RECEIVED%"
+                          bytes_sent: "%BYTES_SENT%"
+                          duration: "%DURATION%"
+                          x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+                          user_agent: "%REQ(USER-AGENT)%"
+                          request_id: "%REQ(X-REQUEST-ID)%"
+                          authority: "%REQ(:AUTHORITY)%"
+                          upstream_host: "%UPSTREAM_HOST%"
+                          upstream_host_name: "%UPSTREAM_HOST_NAME%"
+                          requested_server_name: "%REQUESTED_SERVER_NAME%"
+                          host_name: "%HOSTNAME%"
+                          access_log_type: "%ACCESS_LOG_TYPE%"
+                          filter_chain_name: "%FILTER_CHAIN_NAME%"
+                          env_http_proxy: "%ENVIRONMENT(HTTP_PROXY)%"
+                          env_https_proxy: "%ENVIRONMENT(HTTPS_PROXY)%"
+                          env_proxy: "%ENVIRONMENT(PROXY)%"
+                          upstream_protocol: "%UPSTREAM_PROTOCOL%"
+
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -63,6 +88,14 @@ static_resources:
                                   exact: testupstream
                           route:
                             cluster: testupstream
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-selected-backend-name
+                                string_match:
+                                  exact: azure-openai
+                          route:
+                            cluster: azure_openai
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
@@ -80,6 +113,32 @@ static_resources:
                         receivingNamespaces:
                           untyped:
                             - ai_gateway_llm_ns
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      default_source_code:
+                        inline_string: |
+                          function envoy_on_request(handle)
+                            local body = handle:body(false)
+                            local data = body:getBytes(0, body:length())
+
+                            local headers = handle:headers()
+                            local query = headers:get(":query")
+                            handle:logDebug("Query Parameters: " .. tostring(query))
+                            local path = headers:get(":path")
+                            handle:logDebug("Request Path: " .. tostring(path))
+                            for key, value in pairs(headers) do
+                              handle:logDebug("Header: " .. key .. " = " .. tostring(value))
+                            end
+
+                            handle:logDebug(tostring(data))
+
+                          end
+                          function envoy_on_response(handle)
+                            local body = handle:body(false)
+                            local data = body:getBytes(0, body:length())
+                            handle:logDebug(tostring(data))
+                          end
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -154,6 +213,8 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: api.openai.com
+
+
 
 overload_manager:
   refresh_interval: 0.25s
