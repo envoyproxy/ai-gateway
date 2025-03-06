@@ -69,8 +69,6 @@ spec:
       matches:
         - path:
             value: /
-status:
-  parents: null
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -103,8 +101,6 @@ spec:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: envoy-ai-gateway-basic
-status:
-  ancestors: null
 ---
 apiVersion: v1
 data:
