@@ -76,6 +76,15 @@ static_resources:
                             headers:
                               - name: x-selected-backend-name
                                 string_match:
+                                  exact: azure-openai
+                          route:
+                            host_rewrite_literal: <azure_resource_name>.openai.azure.com  # Replace with your Azure resource name
+                            cluster: azure_openai
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-selected-backend-name
+                                string_match:
                                   exact: openai
                           route:
                             host_rewrite_literal: api.openai.com
@@ -121,17 +130,19 @@ static_resources:
                           function envoy_on_request(handle)
                             local body = handle:body(false)
                             local data = body:getBytes(0, body:length())
+                            handle:logDebug(tostring(data))
 
                             local headers = handle:headers()
+
                             local query = headers:get(":query")
                             handle:logDebug("Query Parameters: " .. tostring(query))
+
                             local path = headers:get(":path")
                             handle:logDebug("Request Path: " .. tostring(path))
+
                             for key, value in pairs(headers) do
                               handle:logDebug("Header: " .. key .. " = " .. tostring(value))
                             end
-
-                            handle:logDebug(tostring(data))
 
                           end
                           function envoy_on_response(handle)
@@ -213,9 +224,23 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: api.openai.com
-
-
-
+    - name: azure_openai
+      connect_timeout: 30s
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: azure_openai
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: <azure_resource_name>.openai.azure.com # Replace with your Azure resource name
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: <azure_resource_name>.openai.azure.com # Replace with your Azure resource name
 overload_manager:
   refresh_interval: 0.25s
   resource_monitors:
