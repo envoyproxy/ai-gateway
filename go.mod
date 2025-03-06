@@ -2,6 +2,10 @@ module github.com/envoyproxy/ai-gateway
 
 go 1.24.1
 
+replace (
+	github.com/envoyproxy/gateway => ../gateway
+)
+
 require (
 	github.com/alecthomas/kong v1.8.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3

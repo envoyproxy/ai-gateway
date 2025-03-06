@@ -38,7 +38,7 @@ provider:
     resource:
       type: File
       file:
-        paths: ["PLACEHOLDER"]
+        paths: ["PLACEHOLDER_TMPDIR"]
     infrastructure:
       type: Host
       host: {}
@@ -102,7 +102,7 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 	stderrLogger.Info("writing envoy gateway config", "dst", egConfigDir)
 	egConfigPath := path.Join(egConfigDir, "envoy-gateway-config.yaml")
 	err = os.WriteFile(egConfigPath, []byte(strings.ReplaceAll(
-		envoyGatewayConfig, "PLACEHOLDER", resourcesTmpdir),
+		envoyGatewayConfig, "PLACEHOLDER_TMPDIR", resourcesTmpdir),
 	), 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", egConfigPath, err)
