@@ -1071,9 +1071,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].MountPath)
 	// Azure Credentials.
-	// return azureAccessToken regardless of policy?? is it right though?
-	// TODO XL to think deeper of azure access token model with envoy gateway backend
-	require.Equal(t, "some-secret-policy-4", updatedSpec.Volumes[4].VolumeSource.Secret.SecretName)
+	require.Equal(t, rotators.GetBSPSecretName("some-other-backend-security-policy-4"), updatedSpec.Volumes[4].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Volumes[4].Name)
 	require.Equal(t, "rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Containers[0].VolumeMounts[4].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Containers[0].VolumeMounts[4].MountPath)

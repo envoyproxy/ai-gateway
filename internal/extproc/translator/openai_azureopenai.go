@@ -7,10 +7,12 @@ package translator
 
 import (
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // NewChatCompletionOpenAIToAzureOpenAITranslator implements [Factory] for OpenAI to Azure OpenAI translations.
@@ -34,8 +36,8 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(openAIReq *o
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte(fmt.Sprintf(pathTemplate, openAIReq.Model, o.apiVersion)),
+				Key:   ":path",
+				Value: fmt.Sprintf(pathTemplate, openAIReq.Model, o.apiVersion),
 			}},
 		},
 	}
