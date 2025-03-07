@@ -324,7 +324,6 @@ data: [DONE]
 		}()
 
 		acc := openaigo.ChatCompletionAccumulator{}
-		first := true
 		for stream.Next() {
 			chunk := stream.Current()
 			if len(chunk.Choices) == 0 {
@@ -337,12 +336,9 @@ data: [DONE]
 				continue
 			}
 			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
-			if first {
-				// Check the first event received less than half a second.
-				require.Less(t, time.Since(start), time.Millisecond*500)
-				first = false
-				continue
-			}
+			// Check each event is received less than half a second after the previous one.
+			require.Less(t, time.Since(start), time.Millisecond*500)
+			start = time.Now()
 		}
 		require.NoError(t, stream.Err())
 	})
