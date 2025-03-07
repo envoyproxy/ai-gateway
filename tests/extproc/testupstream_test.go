@@ -54,10 +54,10 @@ func TestWithTestUpstream(t *testing.T) {
 				Backends: []filterapi.Backend{{Name: "testupstream", Schema: awsBedrockSchema}},
 				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
 			},
-			//{
+			// {
 			//	Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
 			//	Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
-			//},
+			// },
 		},
 	})
 
@@ -66,7 +66,7 @@ func TestWithTestUpstream(t *testing.T) {
 		Data: []openai.Model{
 			{ID: "openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
 			{ID: "aws-bedrock", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			//{ID: "azure-openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			// {ID: "azure-openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
 		},
 	}
 
@@ -138,7 +138,7 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		},
-		//{
+		// {
 		//	name:            "openai - /v1/chat/completions",
 		//	backend:         "azure-openai",
 		//	path:            "/v1/chat/completions",
@@ -148,7 +148,7 @@ func TestWithTestUpstream(t *testing.T) {
 		//	responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		//	expStatus:       http.StatusOK,
 		//	expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
-		//},
+		// },
 		{
 			name:           "aws - /v1/chat/completions - streaming",
 			backend:        "aws-bedrock",

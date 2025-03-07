@@ -135,7 +135,17 @@ rules:
 					{
 						Name:   "openai",
 						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-						Weight: 0,
+						Weight: 1,
+					},
+					{
+						Name:   "azureopenai",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-10-21"},
+						Weight: 5,
+						Auth: &filterapi.BackendAuth{
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: "azure.txt",
+							},
+						},
 					},
 				},
 			},

@@ -212,15 +212,15 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.Error(t, err)
 
 	// first credential rotation should create aws credentials secret
-	res, err := c.rotateCredential(ctx, bsp, oidc, rotator)
+	res, err := c.rotateCredential(ctx, bsp, rotator)
 	require.NoError(t, err)
 	require.WithinRange(t, time.Now().Add(res), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
 	// ensure oidc token cache has oidc token
-	require.Len(t, c.oidcTokenCache, 1)
-	token, ok := c.oidcTokenCache[fmt.Sprintf("%s-OIDC.%s", bspName, bspNamespace)]
+	require.Len(t, c.tokenCache, 1)
+	tokenExpiry, ok := c.tokenCache[fmt.Sprintf("%s-OIDC.%s", bspName, bspNamespace)]
 	require.True(t, ok)
-	require.Equal(t, "some-access-token", token.AccessToken)
+	require.Equal(t, "some-access-token", tokenExpiry.Token)
 
 	// ensure both oidc secret and aws credential secret are created
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
@@ -241,7 +241,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
 	// rotate credential
-	_, err = c.rotateCredential(ctx, bsp, oidc, rotator)
+	_, err = c.rotateCredential(ctx, bsp, rotator)
 	require.NoError(t, err)
 	awsSecret2, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.NoError(t, err)
@@ -255,11 +255,11 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	c.oidcTokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &oauth2.Token{AccessToken: "some-access-token", Expiry: time.Now().Add(time.Hour)}
+	c.tokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = TokenExpiry{Token: "some-access-token", ExpiresAt: time.Now().Add(time.Hour)}
 	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, preRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
-	oidcCreds := egv1a1.OIDC{}
+	// oidcCreds := egv1a1.OIDC{}
 	policy := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bspName,
@@ -268,18 +268,19 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	}
 
 	// Expiration time will be before current time, so the requeue will be changed to one minute.
-	requeue, err := c.rotateCredential(t.Context(), policy, oidcCreds, rotator)
+	requeue, err := c.rotateCredential(t.Context(), policy, rotator)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "newly rotate credentials is already expired")
+	require.Contains(t, err.Error(), "newly rotated credentials is already expired")
 	require.Equal(t, time.Minute, requeue)
 }
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials}))
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
@@ -287,7 +288,7 @@ func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T
 	}))
 
 	// AWS type with OIDC defined.
-	oidc := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidc := getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
