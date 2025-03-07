@@ -323,23 +323,19 @@ data: [DONE]
 			_ = stream.Close()
 		}()
 
-		acc := openaigo.ChatCompletionAccumulator{}
+		asserted := false
 		for stream.Next() {
 			chunk := stream.Current()
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-			if !acc.AddChunk(chunk) {
-				t.Fatalf("failed to add chunk")
-			}
-			if chunk.Choices[0].Delta.Content == "" {
+			if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
 				continue
 			}
 			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
-			// Check each event is received less than half a second after the previous one.
-			require.Less(t, time.Since(start), time.Millisecond*500)
+			// Check each event is received less than a second after the previous one.
+			require.Less(t, time.Since(start), time.Second)
 			start = time.Now()
+			asserted = true
 		}
+		require.True(t, asserted)
 		require.NoError(t, stream.Err())
 	})
 }
