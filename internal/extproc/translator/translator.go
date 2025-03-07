@@ -10,11 +10,12 @@ import (
 	"io"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-var (
+const (
 	statusHeaderName       = ":status"
 	contentTypeHeaderName  = "content-type"
 	awsErrorTypeHeaderName = "x-amzn-errortype"
@@ -43,11 +44,9 @@ type Translator interface {
 	// RequestBody translates the request body.
 	// 	- `body` is the request body already parsed by [router.RequestBodyParser]. The concrete type is specific to the schema and the path.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `override` that to change the processing mode. This is used to process streaming requests properly.
-	RequestBody(body RequestBody) (
+	RequestBody(body *openai.ChatCompletionRequest) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
-		override *extprocv3http.ProcessingMode,
 		err error,
 	)
 
@@ -59,26 +58,14 @@ type Translator interface {
 		err error,
 	)
 
-	// ResponseBody translates the response body.
+	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//
-	// TODO: this is coupled with "LLM" specific. Once we have another use case, we need to refactor this.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,
-		err error,
-	)
-
-	// ResponseError translates the response error.
-	//  - `headers` is the response headers.
-	//  - `body` is the response error body.
-	//  - This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	ResponseError(respHeaders map[string]string, body io.Reader) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
 		err error,
 	)
 }

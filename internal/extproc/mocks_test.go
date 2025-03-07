@@ -13,13 +13,13 @@ import (
 	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
@@ -75,15 +75,14 @@ type mockTranslator struct {
 	expResponseBody   *extprocv3.HttpBody
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
-	retOverride       *extprocv3http.ProcessingMode
 	retUsedToken      translator.LLMTokenUsage
 	retErr            error
 }
 
-// RequestBody implements [translator.Translator.RequestBody].
-func (m mockTranslator) RequestBody(body translator.RequestBody) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error) {
+// RequestBody implements [translator.OpenAIChatCompletionTranslator].
+func (m mockTranslator) RequestBody(body *openai.ChatCompletionRequest) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
-	return m.retHeaderMutation, m.retBodyMutation, m.retOverride, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // ResponseHeaders implements [translator.Translator.ResponseHeaders].

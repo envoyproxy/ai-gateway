@@ -12,7 +12,6 @@ import (
 	"io"
 	"strconv"
 
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -31,23 +30,13 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(body RequestBody) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	req, ok := body.(*openai.ChatCompletionRequest)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("unexpected body type: %T", body)
-	}
 	if req.Stream {
 		o.stream = true
-		override = &extprocv3http.ProcessingMode{
-			// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
-			// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
-			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
-			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
-		}
 	}
-	return nil, nil, override, nil
+	return nil, nil, nil
 }
 
 // ResponseError implements [Translator.ResponseError]

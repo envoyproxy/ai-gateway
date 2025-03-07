@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"testing"
 
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
@@ -23,28 +22,16 @@ import (
 )
 
 func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
-	t.Run("invalid body", func(t *testing.T) {
-		o := &openAIToOpenAITranslatorV1ChatCompletion{}
-		_, _, _, err := o.RequestBody(&extprocv3.HttpBody{Body: []byte("invalid")})
-		require.Error(t, err)
-	})
 	t.Run("valid body", func(t *testing.T) {
 		for _, stream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToOpenAITranslatorV1ChatCompletion{}
-				hm, bm, mode, err := o.RequestBody(RequestBody(originalReq))
+				hm, bm, err := o.RequestBody(originalReq)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
-				if stream {
-					require.NotNil(t, mode)
-					require.Equal(t, extprocv3http.ProcessingMode_SEND, mode.ResponseHeaderMode)
-					require.Equal(t, extprocv3http.ProcessingMode_STREAMED, mode.ResponseBodyMode)
-				} else {
-					require.Nil(t, mode)
-				}
 
 				require.Nil(t, hm)
 			})
