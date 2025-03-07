@@ -17,7 +17,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"k8s.io/utils/ptr"
 
@@ -42,18 +41,11 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 
 // RequestBody implements [Translator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *openai.ChatCompletionRequest) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var pathTemplate string
 	if openAIReq.Stream {
 		o.stream = true
-		// We need to change the processing mode for streaming requests.
-		// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
-		// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
-		override = &extprocv3http.ProcessingMode{
-			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
-			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
-		}
 		pathTemplate = "/model/%s/converse-stream"
 	} else {
 		pathTemplate = "/model/%s/converse"
@@ -78,22 +70,22 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *op
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	// Convert ToolConfiguration.
 	if len(openAIReq.Tools) > 0 {
 		err = o.openAIToolsToBedrockToolConfiguration(openAIReq, &bedrockReq)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
 	if mut.Body, err = json.Marshal(bedrockReq); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal body: %w", err)
 	}
 	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 }
 
 // openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations.

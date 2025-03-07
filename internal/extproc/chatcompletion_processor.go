@@ -16,6 +16,7 @@ import (
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -55,6 +56,8 @@ type chatCompletionProcessor struct {
 	costs translator.LLMTokenUsage
 	// metrics tracking.
 	metrics metrics.ChatCompletion
+	// stream is set to true if the request is a streaming request.
+	stream bool
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -123,7 +126,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		return nil, fmt.Errorf("failed to select translator: %w", err)
 	}
 
-	headerMutation, bodyMutation, override, err := c.translator.RequestBody(body)
+	headerMutation, bodyMutation, err := c.translator.RequestBody(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -154,8 +157,8 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 				},
 			},
 		},
-		ModeOverride: override,
 	}
+	c.stream = body.Stream
 	return resp, nil
 }
 
@@ -181,11 +184,16 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, he
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	var mode *extprocv3http.ProcessingMode
+	if c.stream && c.responseHeaders[":status"] == "200" {
+		// We only stream the response if the status code is 200 and the response is a stream.
+		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
+	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
 		},
-	}}, nil
+	}, ModeOverride: mode}, nil
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
@@ -225,7 +233,7 @@ func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body 
 		},
 	}
 
-	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
+	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
