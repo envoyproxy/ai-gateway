@@ -240,7 +240,11 @@ func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body 
 
 	// Update metrics with token usage.
 	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
-	c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
+	if c.stream {
+		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
+		// these metrics are defined as a difference between the two output events.
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
+	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()

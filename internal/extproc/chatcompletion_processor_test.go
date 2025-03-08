@@ -166,6 +166,7 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
+			stream:     true,
 			config: &processorConfig{
 				metadataNamespace: "ai_gateway_llm_ns",
 				requestCosts: []processorConfigRequestCost{
