@@ -135,28 +135,28 @@ func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.Assum
 //
 // This implements [Rotator.Rotate].
 func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, error) {
-	bspNamespace := r.backendSecurityPolicyNamespace
-	bspName := r.backendSecurityPolicyName
-	secretName := GetBSPSecretName(bspName)
+	pNamespace := r.backendSecurityPolicyNamespace
+	pName := r.backendSecurityPolicyName
+	secretName := GetBSPSecretName(pName)
 
-	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
+	r.logger.Info("rotating aws credentials secret", "namespace", pNamespace, "name", pName)
 	awsIdentity, err := r.assumeRoleWithToken(ctx, token)
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
 		return time.Time{}, err
 	} else if awsIdentity.Credentials == nil {
-		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
+		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", pName, pNamespace)
 	}
-	r.logger.Info(fmt.Sprintf("awsIdentity Credentials will expire in '%s'", awsIdentity.Credentials.Expiration.String()), "namespace", bspNamespace, "name", bspName)
+	r.logger.Info(fmt.Sprintf("awsIdentity Credentials will expire in '%s'", awsIdentity.Credentials.Expiration.String()), "namespace", pNamespace, "name", pName)
 
-	secret, err := LookupSecret(ctx, r.client, bspNamespace, secretName)
+	secret, err := LookupSecret(ctx, r.client, pNamespace, secretName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			r.logger.Info("creating a new aws credentials secret", "namespace", bspNamespace, "name", bspName)
+			r.logger.Info("creating a new aws credentials secret", "namespace", pNamespace, "name", pName)
 			secret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      secretName,
-					Namespace: bspNamespace,
+					Namespace: pNamespace,
 				},
 				Type: corev1.SecretTypeOpaque,
 				Data: make(map[string][]byte),
@@ -164,10 +164,10 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, e
 			populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
 			return *awsIdentity.Credentials.Expiration, r.client.Create(ctx, secret)
 		}
-		r.logger.Error(err, "failed to lookup aws credentials secret", "namespace", bspNamespace, "name", bspName)
+		r.logger.Error(err, "failed to lookup aws credentials secret", "namespace", pNamespace, "name", pName)
 		return time.Time{}, err
 	}
-	r.logger.Info("updating existing aws credential secret", "namespace", bspNamespace, "name", bspName)
+	r.logger.Info("updating existing aws credential secret", "namespace", pNamespace, "name", pName)
 	populateSecretWithAwsIdentity(secret, awsIdentity, r.region)
 	return *awsIdentity.Credentials.Expiration, r.client.Update(ctx, secret)
 }

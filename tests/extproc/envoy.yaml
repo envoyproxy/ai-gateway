@@ -31,6 +31,30 @@ static_resources:
                         json_format:
                           used_token: "%DYNAMIC_METADATA(ai_gateway_llm_ns:used_token)%"
                           some_cel: "%DYNAMIC_METADATA(ai_gateway_llm_ns:some_cel)%"
+                          timestamp: "%START_TIME%"
+                          protocol: "%PROTOCOL%"
+                          method: "%REQ(:METHOD)%"
+                          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+                          response_code: "%RESPONSE_CODE%"
+                          response_code_detail: "%RESPONSE_CODE_DETAILS%"
+                          response_flags: "%RESPONSE_FLAGS%"
+                          bytes_received: "%BYTES_RECEIVED%"
+                          bytes_sent: "%BYTES_SENT%"
+                          duration: "%DURATION%"
+                          x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+                          user_agent: "%REQ(USER-AGENT)%"
+                          request_id: "%REQ(X-REQUEST-ID)%"
+                          authority: "%REQ(:AUTHORITY)%"
+                          upstream_host: "%UPSTREAM_HOST%"
+                          upstream_host_name: "%UPSTREAM_HOST_NAME%"
+                          requested_server_name: "%REQUESTED_SERVER_NAME%"
+                          host_name: "%HOSTNAME%"
+                          access_log_type: "%ACCESS_LOG_TYPE%"
+                          filter_chain_name: "%FILTER_CHAIN_NAME%"
+                          env_http_proxy: "%ENVIRONMENT(HTTP_PROXY)%"
+                          env_https_proxy: "%ENVIRONMENT(HTTPS_PROXY)%"
+                          env_proxy: "%ENVIRONMENT(PROXY)%"
+                          upstream_protocol: "%UPSTREAM_PROTOCOL%"
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -55,6 +79,15 @@ static_resources:
                           route:
                             host_rewrite_literal: api.openai.com
                             cluster: openai
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-selected-backend-name
+                                string_match:
+                                  exact: azure-openai
+                          route:
+                            host_rewrite_literal: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                            cluster: azure_openai
                         - match:
                             prefix: "/"
                             headers:
@@ -154,6 +187,23 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: api.openai.com
+    - name: azure_openai
+      connect_timeout: 30s
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: azure_openai
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
 
 overload_manager:
   refresh_interval: 0.25s
