@@ -121,7 +121,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
-	c.logger.Info("Selected backend", "backend", b.Name)
+	c.logger.Info("Selected backend", "backend", b.Name, "schema", b.Schema)
 	c.metrics.SetBackend(*b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {

@@ -8,15 +8,15 @@ package rotators
 import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/envoyproxy/ai-gateway/constants"
 )
 
-// AzureAccessTokenKey is the key used to store Azure credential in Kubernetes secret.
-const AzureAccessTokenKey = "azureToken"
-
-func populateAzureAccessToken(secret *corev1.Secret, azureToken azcore.AccessToken) {
+func populateAzureAccessToken(secret *corev1.Secret, azureToken *azcore.AccessToken) {
 	updateExpirationSecretAnnotation(secret, azureToken.ExpiresOn)
+
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[AzureAccessTokenKey] = []byte(azureToken.Token)
+	secret.Data[constants.AzureAccessTokenKey] = []byte(azureToken.Token)
 }

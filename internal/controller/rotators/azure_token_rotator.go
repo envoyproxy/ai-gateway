@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/go-logr/logr"
@@ -18,6 +19,47 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type TokenProvider interface {
+	GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error)
+}
+
+type TokenService struct {
+	tokenProvider TokenProvider
+}
+
+func (s *TokenService) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	token, err := s.tokenProvider.GetToken(ctx, opts)
+	if err != nil {
+		return azcore.AccessToken{}, err
+	}
+	return token, nil
+}
+
+func NewTokenServiceWithAzure(tenantID, clientID, clientSecret string) (*TokenService, error) {
+	cred, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenService{cred}, nil
+}
+
+type MockCredential struct {
+	mockToken    string
+	mockExpireAt time.Time
+}
+
+func (m MockCredential) GetToken(_ context.Context, _ policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	return azcore.AccessToken{Token: m.mockToken, ExpiresOn: m.mockExpireAt}, nil
+}
+
+func NewTokenServiceWithMock(mockToken string, mockExpireAt time.Time) *TokenService {
+	mockCred := &MockCredential{
+		mockToken:    mockToken,
+		mockExpireAt: mockExpireAt,
+	}
+	return &TokenService{mockCred}
+}
 
 type AzureTokenRotator struct {
 	// client is used for Kubernetes API operations.
@@ -33,7 +75,8 @@ type AzureTokenRotator struct {
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
 	// azureAuthClient provides Azure authentication with a client secret
-	azureAuthClient azidentity.ClientSecretCredential
+	// azureAuthClient azidentity.ClientSecretCredential
+	tokenProvider TokenProvider
 }
 
 func NewAzureTokenRotator(
@@ -43,17 +86,8 @@ func NewAzureTokenRotator(
 	backendSecurityPolicyNamespace string,
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
-	azureTenantID string,
-	azureClientID string,
-	azureClientSecret string,
+	tokenProvider TokenProvider,
 ) (*AzureTokenRotator, error) {
-	// TODO XL it seems Azure SDK requires env: AZURE_REGIONAL_AUTHORITY_NAME to construct ClientSecretCredential
-	// in confidential_client.go line 75 for region
-	// may not needed, need to run e2e test to verify
-	azureAuthClient, err := azidentity.NewClientSecretCredential(azureTenantID, azureClientID, azureClientSecret, nil)
-	if err != nil {
-		return nil, err
-	}
 	return &AzureTokenRotator{
 		client:                         client,
 		kube:                           kube,
@@ -61,7 +95,7 @@ func NewAzureTokenRotator(
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,
 		preRotationWindow:              preRotationWindow,
-		azureAuthClient:                *azureAuthClient,
+		tokenProvider:                  tokenProvider,
 	}, nil
 }
 
@@ -87,44 +121,39 @@ func (r *AzureTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, 
 }
 
 func (r *AzureTokenRotator) Rotate(ctx context.Context, _ string) (time.Time, error) {
-	policyNamespace := r.backendSecurityPolicyNamespace
-	policyName := r.backendSecurityPolicyName
-	secretName := GetBSPSecretName(policyName)
-	r.logger.Info("rotating Azure access token", "namespace", policyNamespace, "name", policyName)
+	pNamespace := r.backendSecurityPolicyNamespace
+	pName := r.backendSecurityPolicyName
+	secretName := GetBSPSecretName(pName)
 
-	// TODO XL think about how and where to pass info to construct policy.RequestTokenOption
-	// which only include "scope" info
-	// hardcoded here for now, maybe can be passed in from resource via helm chart deployment without code change/binary upgrade
+	r.logger.Info("start rotating azure access token", "namespace", pNamespace, "name", pName)
+
 	scopes := []string{"https://cognitiveservices.azure.com/.default"}
 	options := policy.TokenRequestOptions{Scopes: scopes}
-	azureToken, err := r.azureAuthClient.GetToken(ctx, options)
+	azureToken, err := r.tokenProvider.GetToken(ctx, options)
 	if err != nil {
-		r.logger.Error(err, "failed to get Azure access token", "scopes", scopes)
+		r.logger.Error(err, "failed to get access token via azure client", "scopes", scopes)
 		return time.Time{}, err
 	}
-	secret, err := LookupSecret(ctx, r.client, policyNamespace, secretName)
+	secret, err := LookupSecret(ctx, r.client, pNamespace, secretName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			r.logger.Info("creating a new azure access token into secret", "namespace", policyNamespace, "name", policyName)
-			// store Azure access token into k8s secret
+			r.logger.Info("creating a new azure access token into secret", "namespace", pNamespace, "name", pName)
 			secret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      secretName,
-					Namespace: policyNamespace,
+					Namespace: pNamespace,
 				},
 				Type: corev1.SecretTypeOpaque,
 				Data: make(map[string][]byte),
 			}
-			populateAzureAccessToken(secret, azureToken)
+			populateAzureAccessToken(secret, &azureToken)
 			return azureToken.ExpiresOn, r.client.Create(ctx, secret)
 		}
-		r.logger.Error(err, "failed to lookup azure access token secret", "namespace", policyNamespace, "name", policyName)
+		r.logger.Error(err, "failed to lookup azure access token secret", "namespace", pNamespace, "name", pName)
 		return time.Time{}, err
 	}
-	r.logger.Info("updating existing azure access token secret", "namespace", policyNamespace, "name", policyName)
+	r.logger.Info("updating existing azure access token secret", "namespace", pNamespace, "name", pName)
 
-	// updateExpirationSecretAnnotation(secret, azureToken.ExpiresOn)
-
-	populateAzureAccessToken(secret, azureToken)
+	populateAzureAccessToken(secret, &azureToken)
 	return azureToken.ExpiresOn, r.client.Update(ctx, secret)
 }

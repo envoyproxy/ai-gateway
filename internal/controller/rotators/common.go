@@ -55,16 +55,15 @@ func updateExpirationSecretAnnotation(secret *corev1.Secret, updateTime time.Tim
 
 // GetExpirationSecretAnnotation will get the expiration time of credentials set in secret annotation.
 func GetExpirationSecretAnnotation(secret *corev1.Secret) (time.Time, error) {
-	expirationTimeAnnotationKey, ok := secret.Annotations[ExpirationTimeAnnotationKey]
+	expirationTime, ok := secret.Annotations[ExpirationTimeAnnotationKey]
 	if !ok {
-		return time.Time{}, fmt.Errorf("secret %s/%s missing expiration time annotation", secret.Namespace, secret.Name)
+		return time.Time{}, fmt.Errorf("secret %s/%s missing %s annotation", secret.Namespace, secret.Name, ExpirationTimeAnnotationKey)
 	}
-
-	expirationTime, err := time.Parse(time.RFC3339, expirationTimeAnnotationKey)
+	expiration, err := time.Parse(time.RFC3339, expirationTime)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse expiration time annotation: %w", err)
 	}
-	return expirationTime, nil
+	return expiration, nil
 }
 
 // IsBufferedTimeExpired checks if the expired time minus duration buffer is before the current time.
