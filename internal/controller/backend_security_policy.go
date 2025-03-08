@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 )
@@ -41,7 +42,7 @@ type BackendSecurityPolicyController struct {
 	client               client.Client
 	kube                 kubernetes.Interface
 	logger               logr.Logger
-	tokenCache           map[string]TokenExpiry
+	tokenCache           map[string]*TokenExpiry
 	cacheMutex           sync.RWMutex
 	syncAIServiceBackend syncAIServiceBackendFn
 }
@@ -51,7 +52,7 @@ func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 		client:               client,
 		kube:                 kube,
 		logger:               logger,
-		tokenCache:           make(map[string]TokenExpiry),
+		tokenCache:           make(map[string]*TokenExpiry),
 		syncAIServiceBackend: syncAIServiceBackend,
 	}
 }
@@ -87,7 +88,7 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 
 	var rotator rotators.Rotator
 
-	switch bsp.Spec.Type {
+	switch pType {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		region := bsp.Spec.AWSCredentials.Region
 		roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
@@ -97,12 +98,12 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		}
 
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		c.logger.Info(fmt.Sprintf("creating azure rotator %s ", bsp.Spec.Type))
+		c.logger.Info(fmt.Sprintf("creating azure rotator %s ", pType))
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
 		clientSecretRef := bsp.Spec.AzureCredentials.ClientSecretRef
-		// TODO XL to check
-		if clientSecretRef.Namespace == nil {
+
+		if clientSecretRef == nil {
 			return ctrl.Result{}, errors.New("missing client secret ref")
 		}
 		secretNamespace := string(*clientSecretRef.Namespace)
@@ -113,18 +114,22 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 			c.logger.Error(err, "failed to lookup client secret", "namespace", secretNamespace, "name", secretName)
 			return ctrl.Result{}, err
 		}
-		secretValue, exists := secret.Data[rotators.AzureAccessTokenKey]
+		secretValue, exists := secret.Data[constants.AzureAccessTokenKey]
 		if !exists {
 			return ctrl.Result{}, errors.New("missing azure access token")
 		}
 		azureClientSecret := string(secretValue)
-		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, pNameSpace, pName, preRotationWindow, clientID, tenantID, azureClientSecret)
+		tokenProvider, tkErr := rotators.NewTokenServiceWithAzure(tenantID, clientID, azureClientSecret)
+		if tkErr != nil {
+			return ctrl.Result{}, tkErr
+		}
+		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, pNameSpace, pName, preRotationWindow, tokenProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		// maintain original logic.
-		// TODO XL question: is original logic correct though - when oidc is nil, syncBackendSecurityPolicy immediately?
+		// TODO question: is original logic correct though - when oidc is nil, syncBackendSecurityPolicy immediately?
 		return res, c.syncBackendSecurityPolicy(ctx, bsp)
 	default:
 		err = fmt.Errorf("backend security type %s is not supported", pType)
@@ -159,21 +164,21 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, policy *aigv1a1.BackendSecurityPolicy, rotator rotators.Rotator) (time.Duration, error) {
 	pNamespace := policy.Namespace
 	pName := policy.Name
-
 	key := backendSecurityPolicyKey(pNamespace, pName)
 
 	c.cacheMutex.RLock()
 	tokenExpiry, exists := c.tokenCache[key]
 	c.cacheMutex.RUnlock()
-
 	var tokenValue string
-	expired := rotators.IsBufferedTimeExpired(preRotationWindow, tokenExpiry.ExpiresAt)
-	if !exists || expired {
+	if !exists || tokenExpiry == nil || rotators.IsBufferedTimeExpired(preRotationWindow, tokenExpiry.ExpiresAt) {
 		if !exists {
-			c.logger.Info(fmt.Sprintf("cache does not have token, key %s", key))
+			c.logger.Info(fmt.Sprintf("cache have no token for %s, fetch new token", key))
 		}
-		if expired {
-			c.logger.Info(fmt.Sprintf("token from cache expired, key %s", key))
+		if tokenExpiry == nil {
+			c.logger.Info(fmt.Sprintf("token for %s is nil, fetch new token", key))
+		}
+		if tokenExpiry != nil && rotators.IsBufferedTimeExpired(preRotationWindow, tokenExpiry.ExpiresAt) {
+			c.logger.Info(fmt.Sprintf("token for %s is about to expire at %s, fetch new token", key, tokenExpiry.ExpiresAt))
 		}
 		// generate new token via oidc
 		oidc := getAuthOIDC(policy.Spec)
@@ -186,7 +191,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 				return time.Minute, err
 			}
 			c.logger.Info(fmt.Sprintf("fetched token via OIDC provider for policy name %s in namespace %s", pName, pNamespace))
-			tokenExpiry = TokenExpiry{Token: oauthToken.AccessToken, ExpiresAt: oauthToken.Expiry}
+			tokenExpiry = &TokenExpiry{Token: oauthToken.AccessToken, ExpiresAt: oauthToken.Expiry}
 			c.cacheMutex.Lock()
 			c.logger.Info(fmt.Sprintf("save token expiry to cache, cache key %s", key))
 			c.tokenCache[key] = tokenExpiry

@@ -7,8 +7,8 @@ package constants
 
 const (
 	APIKey = "apiKey"
-	// AzureAccessToken is the key used to store Azure access token in Kubernetes secrets.
-	AzureAccessToken = "azureAccessToken"
+	// AzureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	AzureAccessTokenKey = "azureAccessToken"
 	// AwsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
 	AwsCredentialsKey = "credentials"
 )

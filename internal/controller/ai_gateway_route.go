@@ -325,7 +325,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 						// read path - tell backend handler to use specific authentication
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AzureAuth: &filterapi.AzureAuth{
-								Filename: path.Join(backendSecurityMountPath(volumeName), constants.AzureAccessToken),
+								Filename: path.Join(backendSecurityMountPath(volumeName), constants.AzureAccessTokenKey),
 							},
 						}
 					}

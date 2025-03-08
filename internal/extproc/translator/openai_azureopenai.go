@@ -36,8 +36,8 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(openAIReq *o
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
-				Key:   ":path",
-				Value: fmt.Sprintf(pathTemplate, openAIReq.Model, o.apiVersion),
+				Key:      ":path",
+				RawValue: []byte(fmt.Sprintf(pathTemplate, openAIReq.Model, o.apiVersion)),
 			}},
 		},
 	}
