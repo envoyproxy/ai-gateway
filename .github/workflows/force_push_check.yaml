@@ -13,7 +13,7 @@ jobs:
   detect-force-push:
     name: Detect Force push
     runs-on: ubuntu-latest
-    if: github.actor != 'dependabot[bot]' &&!github.event.pull_request.draft &&!contains(github.event.pull_request.title, 'WIP')
+    if: github.actor != 'dependabot[bot]' && !github.event.pull_request.draft && !contains(github.event.pull_request.title, 'WIP')
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
