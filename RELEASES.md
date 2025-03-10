@@ -55,7 +55,7 @@ Since Envoy Gateway is a stable project and supposed to work across versions, we
 
 ## Release Process
 
-This section is for maintainers of the project. Let's say we are going to release the version v0.2.0.
+This section is for maintainers of the project. Let's say we are going to release the version v0.50.0.
 
 ### Release Candidate (RC) Phase
 
@@ -65,17 +65,18 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
   The main branch should only accept the bug fixes, the security fixes, and documentation changes.
   The release candidate should always be cut from the main branch.
 
-2. Cut the request candidate tag from the main branch. The tag should be v0.2.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
+2. Cut the request candidate tag from the main branch. The tag should be v0.50.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
   the command to cut the tag is:
     ```
-    git tag v0.2.0-rc1 origin/main
-    git push origin v0.2.0-rc1
+    git fetch origin # make sure you have the latest main branch locally.
+    git tag v0.50.0-rc1 origin/main
+    git push origin v0.50.0-rc1
     ```
    Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
    The release candidate image will be available in the GitHub Container Registry.
 
 3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
-  and the new rc tag should be created. For example, if there is an issue in the release candidate v0.2.0-rc1, replace `v0.2.0-rc1` with `v0.2.0-rc2`
+  and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
   in the above command and repeat the process.
 
 ### Release Phase
@@ -83,12 +84,33 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate.
   The command to cut the release is exactly the same as the release candidate:
     ```
-    git tag v0.2.0 origin/main
-    git push origin v0.2.0
+    git fetch origin # make sure you have the latest main branch locally.
+    git tag v0.50.0 origin/main
+    git push origin v0.50.0
     ```
    Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag.
    The release image will be available in the GitHub Container Registry.
 2. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
 3. Announce the release in the community.
-4. Create `release/v0.2` branch from the tag for the future backports, bug fixes, etc.
+4. Create `release/v0.50` branch from the tag for the future backports, bug fixes, etc.
+
+### Backport Phase
+
+1. If there is a bug fix or a security fix that needs to be backported to the previous release, maintainers should cherry-pick the commit and raise the PR to the `release/v0.50` branch.
+   Which commit should be backported is up to the maintainers and on a case-by-case basis.
+2. Once the PR is merged, the maintainers will decide when to cut the patch release. There's no need to wait for multiple backports to cut the patch release, etc.
+   Do not cut the tag until all CI passes on the release/v0.50 branch.
+3. The patch release should be cut from the `release/v0.50` branch. The command to cut the patch release is exactly the same as normal release:
+    ```
+    git fetch origin # make sure you have the latest release/v0.50 branch locally.
+    git tag v0.50.1 origin/release/v0.50
+    git push origin v0.50.1
+    ```
+   Pushing a tag will trigger the pipeline to build the patch release image and the helm chart tagged with the patch release tag.
+   The patch release image will be available in the GitHub Container Registry.
+4. The draft release note will be created in the GitHub repository after the pipeline is completed.
+   Edit the release note nicely by hand to reflect the changes in the release.
+5. Update the documentation on the main branch to reflect the new version. This has the following items:
+   * Change `v0.50.0` to `v0.50.1` in site/versioned_docs/version-0.50 directory.
+   * Update the site/src/pages/release-notes.md to add the new release note.

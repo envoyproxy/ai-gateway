@@ -10,9 +10,9 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 var (
@@ -74,15 +75,14 @@ type mockTranslator struct {
 	expResponseBody   *extprocv3.HttpBody
 	retHeaderMutation *extprocv3.HeaderMutation
 	retBodyMutation   *extprocv3.BodyMutation
-	retOverride       *extprocv3http.ProcessingMode
 	retUsedToken      translator.LLMTokenUsage
 	retErr            error
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) RequestBody(body *openai.ChatCompletionRequest) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error) {
+func (m mockTranslator) RequestBody(body *openai.ChatCompletionRequest) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
-	return m.retHeaderMutation, m.retBodyMutation, m.retOverride, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // ResponseHeaders implements [translator.OpenAIChatCompletionTranslator].
@@ -168,3 +168,74 @@ func (m mockExternalProcessingStream) SendMsg(any) error { panic("TODO") }
 func (m mockExternalProcessingStream) RecvMsg(any) error { panic("TODO") }
 
 var _ extprocv3.ExternalProcessor_ProcessServer = &mockExternalProcessingStream{}
+
+// mockChatCompletionMetrics implements [metrics.ChatCompletion] for testing.
+type mockChatCompletionMetrics struct {
+	requestStart        time.Time
+	model               string
+	backend             string
+	requestSuccessCount int
+	requestErrorCount   int
+	tokenUsageCount     int
+	tokenLatencyCount   int
+}
+
+// StartRequest implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) StartRequest() { m.requestStart = time.Now() }
+
+// SetModel implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
+
+// SetBackend implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) SetBackend(backend filterapi.Backend) { m.backend = backend.Name }
+
+// RecordTokenUsage implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32) {
+	m.tokenUsageCount++
+}
+
+// RecordTokenLatency implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32) {
+	m.tokenLatencyCount++
+}
+
+// RecordRequestCompletion implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool) {
+	if success {
+		m.requestSuccessCount++
+	} else {
+		m.requestErrorCount++
+	}
+}
+
+// RequireModelAndBackendSet asserts the model and backend set on the metrics.
+func (m *mockChatCompletionMetrics) RequireSelected(t *testing.T, model, backend string) {
+	require.Equal(t, model, m.model)
+	require.Equal(t, backend, m.backend)
+}
+
+// RequireRequestFailure asserts the request was marked as a failure.
+func (m *mockChatCompletionMetrics) RequireRequestFailure(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 1, m.requestErrorCount)
+}
+
+// RequireRequestNotCompleted asserts the request was not completed.
+func (m *mockChatCompletionMetrics) RequireRequestNotCompleted(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+
+// RequireRequestSuccess asserts the request was marked as a success.
+func (m *mockChatCompletionMetrics) RequireRequestSuccess(t *testing.T) {
+	require.Equal(t, 1, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+
+// RequireTokensRecorded asserts the number of tokens recorded.
+func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count int) {
+	require.Equal(t, count, m.tokenUsageCount)
+	require.Equal(t, count, m.tokenLatencyCount)
+}
+
+var _ metrics.ChatCompletion = &mockChatCompletionMetrics{}

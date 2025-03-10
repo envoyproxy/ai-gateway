@@ -91,7 +91,9 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 }
 
 // mockSTSClient implements the STSOperations interface for testing
-type mockSTSClient struct{}
+type mockSTSClient struct {
+	expTime time.Time
+}
 
 // AssumeRoleWithWebIdentity will return placeholder of type aws credentials.
 //
@@ -102,7 +104,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 			AccessKeyId:     aws.String("NEWKEY"),
 			SecretAccessKey: aws.String("NEWSECRET"),
 			SessionToken:    aws.String("NEWTOKEN"),
-			Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+			Expiration:      &m.expTime,
 		},
 	}, nil
 }
@@ -202,7 +204,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 
 	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// ensure aws credentials secret do not exist
@@ -245,6 +247,31 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NoError(t, err)
 	t2 := awsSecret2.Annotations[rotators.ExpirationTimeAnnotationKey]
 	require.NotEqual(t, t1, t2)
+}
+
+func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
+	bspName := "mybackendSecurityPolicy"
+	bspNamespace := "default"
+
+	c.oidcTokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &oauth2.Token{AccessToken: "some-access-token", Expiry: time.Now().Add(time.Hour)}
+	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, preRotationWindow, "placeholder", "us-east-1")
+	require.NoError(t, err)
+
+	oidcCreds := egv1a1.OIDC{}
+	policy := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      bspName,
+			Namespace: bspNamespace,
+		},
+	}
+
+	// Expiration time will be before current time, so the requeue will be changed to one minute.
+	requeue, err := c.rotateCredential(t.Context(), policy, oidcCreds, rotator)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "newly rotate credentials is already expired")
+	require.Equal(t, time.Minute, requeue)
 }
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {

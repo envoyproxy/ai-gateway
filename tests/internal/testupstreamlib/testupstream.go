@@ -13,7 +13,7 @@ const (
 	//	* If this is "aws-event-stream", the response body is expected to be an AWS Event Stream.
 	// 	Each line in x-response-body is treated as a separate event payload.
 	//	* If this is empty, the response body is expected to be a regular JSON response.
-	ResponseTypeKey = "testupstream.ResponseTypeKey"
+	ResponseTypeKey = "x-response-type"
 	// ExpectedHeadersKey is the key for the expected headers in the request.
 	// The value is a base64 encoded string of comma separated key-value pairs.
 	// E.g. "key1:value1,key2:value2".

@@ -17,7 +17,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"k8s.io/utils/ptr"
 
@@ -42,18 +41,11 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 
 // RequestBody implements [Translator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *openai.ChatCompletionRequest) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var pathTemplate string
 	if openAIReq.Stream {
 		o.stream = true
-		// We need to change the processing mode for streaming requests.
-		// TODO: We can delete this explicit setting of ResponseHeaderMode below as it is the default value we use
-		// 	after https://github.com/envoyproxy/envoy/pull/38254 this is released.
-		override = &extprocv3http.ProcessingMode{
-			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
-			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
-		}
 		pathTemplate = "/model/%s/converse-stream"
 	} else {
 		pathTemplate = "/model/%s/converse"
@@ -78,22 +70,22 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *op
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	// Convert ToolConfiguration.
 	if len(openAIReq.Tools) > 0 {
 		err = o.openAIToolsToBedrockToolConfiguration(openAIReq, &bedrockReq)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
 	if mut.Body, err = json.Marshal(bedrockReq); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal body: %w", err)
 	}
 	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, override, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 }
 
 // openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations.
@@ -252,11 +244,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	var bedrockMessage *awsbedrock.Message
-	contentBlocks := make([]*awsbedrock.ContentBlock, 1)
+	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
 	if openAiMessage.Content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
-		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal}
-	} else {
-		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text}
+		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal})
+	} else if openAiMessage.Content.Text != nil {
+		// TODO: we are sometimes missing the content (should fix)
+		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text})
 	}
 	bedrockMessage = &awsbedrock.Message{
 		Role:    role,
@@ -306,16 +299,34 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
+	// Validate and cast the openai content value into bedrock content block
+	content := make([]*awsbedrock.ToolResultContentBlock, 0)
+
+	switch v := openAiMessage.Content.Value.(type) {
+	case string:
+		content = []*awsbedrock.ToolResultContentBlock{
+			{
+				Text: &v,
+			},
+		}
+	case []openai.ChatCompletionContentPartTextParam:
+		for _, part := range v {
+			content = append(content, &awsbedrock.ToolResultContentBlock{
+				Text: &part.Text,
+			})
+		}
+
+	default:
+		return nil, fmt.Errorf("unexpected content type for tool message: %T", openAiMessage.Content.Value)
+	}
+
 	return &awsbedrock.Message{
 		Role: role,
 		Content: []*awsbedrock.ContentBlock{
 			{
 				ToolResult: &awsbedrock.ToolResultBlock{
-					Content: []*awsbedrock.ToolResultContentBlock{
-						{
-							Text: openAiMessage.Content.Value.(*string),
-						},
-					},
+					Content:   content,
+					ToolUseID: &openAiMessage.ToolCallID,
 				},
 			},
 		},
@@ -554,7 +565,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
@@ -572,6 +582,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 	}
+
 	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
 	choice := openai.ChatCompletionResponseChoice{
 		Index: (int64)(0),

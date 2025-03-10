@@ -17,7 +17,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,11 +58,15 @@ type AIGatewayRouteController struct {
 	extProcImage           string
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
+	// uidFn is a function that returns a unique identifier for the external process.
+	// Configured as a field to allow the deterministic generation of the UID for testing.
+	uidFn func() types.UID
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	uidFn func() types.UID,
 	extProcImage, extProcLogLevel string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
@@ -73,6 +76,7 @@ func NewAIGatewayRouteController(
 		extProcImage:           extProcImage,
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
+		uidFn:                  uidFn,
 	}
 }
 
@@ -153,7 +157,7 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
 }
 
-func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
+func (c *AIGatewayRouteController) applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
 	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
 		d.Replicas = nil
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
@@ -165,6 +169,7 @@ func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *
 	} else {
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 	}
+	d.Template.Spec.Containers[0].Image = c.extProcImage
 	d.Replicas = extProc.Replicas
 }
 
@@ -238,8 +243,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Update the extproc configmap.
-	uuid := string(uuid2.NewUUID())
-	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	uid := string(c.uidFn())
+	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uid); err != nil {
 		return fmt.Errorf("failed to update extproc configmap: %w", err)
 	}
 
@@ -250,7 +255,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Annotate all pods with the new config.
-	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
+	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uid)
 	if err != nil {
 		return fmt.Errorf("failed to annotate extproc pods: %w", err)
 	}
@@ -425,16 +430,21 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		rules[i] = rule
 	}
 
-	// Adds the default route rule with "/" path.
+	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend
+	// before entering the filters. So, all requests would result in a 404 if there is no default route. In practice,
+	// this default route is not used because our AI Gateway filters is the one who actually calculates the route based
+	// on the given Rules. If it doesn't match any backend, 404 will be returned from the AI Gateway filter as an immediate
+	// response.
+	//
+	// In other words, this default route is an implementation detail to make the Envoy router happy and does not affect
+	// the actual routing at all.
 	if len(rules) > 0 {
 		rules = append(rules, gwapiv1.HTTPRouteRule{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}},
-			},
+			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
 			BackendRefs: []gwapiv1.HTTPBackendRef{
+				// It can be any valid backend reference because it will not be used.
 				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
 			},
-			Filters: rewriteFilters,
 		})
 	}
 
@@ -539,7 +549,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
 			}
-			applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+			c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
@@ -554,7 +564,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
 		}
-		applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+		c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 		if _, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update deployment: %w", err)
 		}

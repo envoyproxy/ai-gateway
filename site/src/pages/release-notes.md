@@ -5,6 +5,37 @@ description: Release Notes for Envoy AI Gateway
 
 # Release Notes
 ---
+## v0.1.2
+**Date:** 2025-03-05
+
+Rotator bug and extproc image tag fix! Docker ci changes as well.
+
+## Overview
+
+This patch release `v0.1.2` includes fixes to BackendSecurityPolicy requeue bug, docker hub changes, and extproc image tag sync.
+
+## Commits
+
+- controller: fix syncing extproc image tag (https://github.com/envoyproxy/ai-gateway/pull/447)
+- controller: update rotate function to return expiration time (https://github.com/envoyproxy/ai-gateway/pull/455)
+- ci: update dockerhub user (https://github.com/envoyproxy/ai-gateway/pull/441)
+
+---
+## v0.1.1
+**Date:** 2025-02-28
+
+AWS tooling bug fixes!
+
+## Overview
+
+This patch release `v0.1.1` includes fixes to AWS tooling call, new integration tests for AWS tools, and minor GitHub action validation.
+
+## Commits
+
+e2e: add agent test using tool - https://github.com/envoyproxy/ai-gateway/pull/426
+chore: allows backport prefix in commit title - https://github.com/envoyproxy/ai-gateway/pull/443
+
+---
 ## v0.1.0
 **Date:** 2025-02-25
 

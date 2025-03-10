@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
@@ -74,6 +73,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						}, Type: openai.ChatMessageRoleUser,
 					},
 					{
+						Value: openai.ChatCompletionToolMessageParam{
+							Content: openai.StringOrArray{
+								Value: "Weather in Queens, NY is 70F and clear skies.",
+							},
+							ToolCallID: "call_6g7a",
+						}, Type: openai.ChatMessageRoleTool,
+					},
+					{
 						Value: openai.ChatCompletionAssistantMessageParam{
 							Content: openai.ChatCompletionAssistantMessageParamContent{
 								Text: ptr.To("I dunno"),
@@ -124,6 +131,21 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Content: []*awsbedrock.ContentBlock{
 							{
 								Text: ptr.To("part2"),
+							},
+						},
+					},
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									ToolUseID: ptr.To("call_6g7a"),
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{
+											Text: ptr.To("Weather in Queens, NY is 70F and clear skies."),
+										},
+									},
+								},
 							},
 						},
 					},
@@ -660,18 +682,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, mode, err := o.RequestBody(&originalReq)
+			hm, bm, err := o.RequestBody(&originalReq)
 			var expPath string
+			require.Equal(t, tt.input.Stream, o.stream)
 			if tt.input.Stream {
 				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
-				require.True(t, o.stream)
-				require.NotNil(t, mode)
-				require.Equal(t, extprocv3http.ProcessingMode_STREAMED, mode.ResponseBodyMode)
-				require.Equal(t, extprocv3http.ProcessingMode_SEND, mode.ResponseHeaderMode)
 			} else {
 				expPath = fmt.Sprintf("/model/%s/converse", tt.input.Model)
-				require.False(t, o.stream)
-				require.Nil(t, mode)
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hm)
@@ -902,7 +919,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Index: 0,
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Content: ptr.To("response"),
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 						},
 						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
@@ -989,6 +1006,57 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 								},
 							},
 						},
+					},
+				},
+			},
+		},
+		{
+			name: "merge content",
+			input: awsbedrock.ConverseResponse{
+				Usage: &awsbedrock.TokenUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+				},
+				Output: &awsbedrock.ConverseOutput{
+					Message: awsbedrock.Message{
+						Role: awsbedrock.ConversationRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{Text: ptr.To("response")},
+							{ToolUse: &awsbedrock.ToolUseBlock{
+								Name:      "exec_python_code",
+								ToolUseID: "call_6g7a",
+								Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
+							}},
+						},
+					},
+				},
+			},
+			output: openai.ChatCompletionResponse{
+				Object: "chat.completion",
+				Usage: openai.ChatCompletionResponseUsage{
+					TotalTokens:      30,
+					PromptTokens:     10,
+					CompletionTokens: 20,
+				},
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index: 0,
+						Message: openai.ChatCompletionResponseChoiceMessage{
+							Content: ptr.To("response"),
+							Role:    awsbedrock.ConversationRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "call_6g7a",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "exec_python_code",
+										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								},
+							},
+						},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
 			},
@@ -1173,14 +1241,14 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "role",
 			in: awsbedrock.ConverseStreamEvent{
-				Role: ptrOf("assistant"),
+				Role: ptrOf(awsbedrock.ConversationRoleAssistant),
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							Role:    "assistant",
+							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: &emptyString,
 						},
 					},

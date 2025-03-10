@@ -37,7 +37,7 @@ import (
 
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, "gcr.io/ai-gateway/extproc:latest", "info")
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info")
 
 	err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
@@ -144,10 +144,12 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 			},
 		},
 	}
+	extProcImage := "extproc:v0.1.0"
+	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build(), extProcImage: extProcImage}
 	t.Run("not panic", func(_ *testing.T) {
-		applyExtProcDeploymentConfigUpdate(dep, nil)
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+		c.applyExtProcDeploymentConfigUpdate(dep, nil)
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 		})
 	})
@@ -158,7 +160,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			},
 		}
-		applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
 				Resources: &req,
 				Replicas:  ptr.To[int32](123),
@@ -167,11 +169,12 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		)
 		require.Equal(t, req, dep.Template.Spec.Containers[0].Resources)
 		require.Equal(t, int32(123), *dep.Replicas)
+		require.Equal(t, extProcImage, dep.Template.Spec.Containers[0].Image)
 	})
 	t.Run("remove partial config", func(t *testing.T) {
 		t.Run("replicas", func(t *testing.T) {
 			dep.Replicas = ptr.To[int32](123)
-			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 			})
 			require.Nil(t, dep.Replicas)
@@ -184,7 +187,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 				},
 			}
 			dep.Replicas = ptr.To[int32](123)
-			applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
+			c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{Replicas: ptr.To[int32](123)},
 			})
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
@@ -193,7 +196,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 		})
 	})
 	t.Run("remove the whole config", func(t *testing.T) {
-		for _, c := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
+		for _, filterConfig := range []*aigv1a1.AIGatewayFilterConfig{nil, {}} {
 			dep.Replicas = ptr.To[int32](123)
 			dep.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 				Limits: corev1.ResourceList{
@@ -205,7 +208,7 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 					corev1.ResourceMemory: resource.MustParse("50Mi"),
 				},
 			}
-			applyExtProcDeploymentConfigUpdate(dep, c)
+			c.applyExtProcDeploymentConfigUpdate(dep, filterConfig)
 			require.Nil(t, dep.Replicas)
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Limits)
 			require.Empty(t, dep.Template.Spec.Containers[0].Resources.Requests)
@@ -230,7 +233,7 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "defaultExtProcImage", "debug")
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -291,7 +294,7 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 
 func Test_newHTTPRoute(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), "defaultExtProcImage", "debug")
+	s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 	httpRoute := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
 		Spec:       gwapiv1.HTTPRouteSpec{},
@@ -405,13 +408,12 @@ func Test_newHTTPRoute(t *testing.T) {
 				require.Equal(t, expRules[i].Matches, r.Matches)
 				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
 				require.Equal(t, expRules[i].Timeouts, r.Timeouts)
+				// Each rule should have a host rewrite filter by default.
+				require.Len(t, r.Filters, 1)
+				require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+				require.NotNil(t, r.Filters[0].ExtensionRef)
+				require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 			}
-
-			// Each rule should have a host rewrite filter by default.
-			require.Len(t, r.Filters, 1)
-			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-			require.NotNil(t, r.Filters[0].ExtensionRef)
-			require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 		})
 	}
 }
@@ -420,7 +422,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "defaultExtProcImage", "debug")
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}}))
 
@@ -644,7 +646,7 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "envoyproxy/ai-gateway-extproc:foo", "debug")
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "envoyproxy/ai-gateway-extproc:foo", "debug")
 	err := fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}})
 	require.NoError(t, err)
 
@@ -796,7 +798,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
-	c := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "defaultExtProcImage", "debug")
+	c := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 	require.NoError(t, fakeClient.Create(t.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy"}}))
 
 	for _, secret := range []*corev1.Secret{
@@ -1004,7 +1006,7 @@ func TestAIGatewayRouteController_AnnotateExtProcPods(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "defaultExtProcImage", "debug")
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "foons"},
@@ -1038,7 +1040,7 @@ func TestAIGatewayRouteController_AnnotateExtProcPods(t *testing.T) {
 func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), "foo", "debug")
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "foo", "debug")
 
 	r := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{

@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -222,8 +223,8 @@ func TestStartControllers(t *testing.T) {
 				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
 				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
 
-				// Check all rule has the host rewrite filter.
-				for _, rule := range httpRoute.Spec.Rules {
+				// Check all rule has the host rewrite filter except for the last rule.
+				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
 					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
@@ -331,7 +332,7 @@ func TestStartControllers(t *testing.T) {
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
-	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), "gcr.io/ai-gateway/extproc:latest", "info")
+	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info")
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)

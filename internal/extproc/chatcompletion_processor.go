@@ -16,6 +16,7 @@ import (
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -25,18 +26,22 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
-// NewChatCompletionProcessor implements [Processor] for the /chat/completions endpoint.
-func NewChatCompletionProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
-	if config.schema.Name != filterapi.APISchemaOpenAI {
-		return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
+// ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
+func ChatCompletionProcessorFactory(ccm metrics.ChatCompletion) ProcessorFactory {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
+		if config.schema.Name != filterapi.APISchemaOpenAI {
+			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
+		}
+		return &chatCompletionProcessor{
+			config:         config,
+			requestHeaders: requestHeaders,
+			logger:         logger,
+			metrics:        ccm,
+		}, nil
 	}
-	return &chatCompletionProcessor{
-		config:         config,
-		requestHeaders: requestHeaders,
-		logger:         logger,
-	}, nil
 }
 
 // chatCompletionProcessor handles the processing of the request and response messages for a single stream.
@@ -49,6 +54,10 @@ type chatCompletionProcessor struct {
 	translator       translator.OpenAIChatCompletionTranslator
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
+	// metrics tracking.
+	metrics metrics.ChatCompletion
+	// stream is set to true if the request is a streaming request.
+	stream bool
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -70,7 +79,10 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	// The request headers have already been at the time the processor was created
+	// Start tracking metrics for this request.
+	c.metrics.StartRequest()
+
+	// The request headers have already been at the time the processor was created.
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{},
 	}}, nil
@@ -78,16 +90,23 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false)
+		}
+	}()
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	c.logger.Info("Processing request", "path", c.requestHeaders[":path"], "model", model)
 
+	c.metrics.SetModel(model)
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
 	b, err := c.config.router.Calculate(c.requestHeaders)
 	if err != nil {
 		if errors.Is(err, x.ErrNoMatchingRule) {
+			c.metrics.RecordRequestCompletion(ctx, false)
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -101,12 +120,13 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 	c.logger.Info("Selected backend", "backend", b.Name)
+	c.metrics.SetBackend(*b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return nil, fmt.Errorf("failed to select translator: %w", err)
 	}
 
-	headerMutation, bodyMutation, override, err := c.translator.RequestBody(body)
+	headerMutation, bodyMutation, err := c.translator.RequestBody(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -137,13 +157,18 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 				},
 			},
 		},
-		ModeOverride: override,
 	}
+	c.stream = body.Stream
 	return resp, nil
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false)
+		}
+	}()
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
@@ -159,15 +184,23 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(_ context.Context, head
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	var mode *extprocv3http.ProcessingMode
+	if c.stream && c.responseHeaders[":status"] == "200" {
+		// We only stream the response if the status code is 200 and the response is a stream.
+		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
+	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
 		},
-	}}, nil
+	}, ModeOverride: mode}, nil
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		c.metrics.RecordRequestCompletion(ctx, err == nil)
+	}()
 	var br io.Reader
 	switch c.responseEncoding {
 	case "gzip":
@@ -200,16 +233,26 @@ func (c *chatCompletionProcessor) ProcessResponseBody(_ context.Context, body *e
 		},
 	}
 
-	// TODO: this is coupled with "LLM" specific logic. Once we have another use case, we need to refactor this.
+	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
+
+	// Update metrics with token usage.
+	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
+	if c.stream {
+		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
+		// these metrics are defined as a difference between the two output events.
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
+	}
+
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
 	}
+
 	return resp, nil
 }
 
