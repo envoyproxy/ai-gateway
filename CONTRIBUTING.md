@@ -93,8 +93,8 @@ make sure that these automated checks pass after you open a PR by following the 
 * During the review, address the comments and commit the changes
 **without squashing the commits, force pushing, or rebasing the branch**.
 This facilitates incremental reviews since the reviewer does not go through all the code again to find out
-what has changed since the last review. When a change goes out of sync with main,
-please rebase and force push, keeping the original commits where practical.
+what has changed since the last review. When a change goes out of sych with master, please use `git merge`
+to avoid force pushing.
   * The only exception to this rule is when you mistakenly pushed a non-signoff commit.
     In this case, you can amend the commit with the signoff line and force push.
 * Commits are squashed prior to merging a pull request, using the title and PR description

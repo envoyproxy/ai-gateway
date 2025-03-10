@@ -15,7 +15,7 @@ The easiest way to install Envoy AI Gateway is using the Helm chart. First, inst
 
 ```shell
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --version v0.1.1 \
+    --version v0.1.2 \
     --namespace envoy-ai-gateway-system \
     --create-namespace
 
@@ -27,9 +27,9 @@ kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-contr
 After installing Envoy AI Gateway, apply the AI Gateway-specific configuration to Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.1/manifests/envoy-gateway-config/redis.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.1/manifests/envoy-gateway-config/config.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.1/manifests/envoy-gateway-config/rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.2/manifests/envoy-gateway-config/redis.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.2/manifests/envoy-gateway-config/config.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.2/manifests/envoy-gateway-config/rbac.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 

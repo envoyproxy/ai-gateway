@@ -2,9 +2,7 @@ module github.com/envoyproxy/ai-gateway
 
 go 1.24.1
 
-replace (
-	github.com/envoyproxy/gateway => ../gateway
-)
+replace github.com/envoyproxy/gateway => ../gateway
 
 require (
 	github.com/alecthomas/kong v1.8.1
@@ -16,24 +14,24 @@ require (
 	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250305132535-64b753bfa5fd
 	github.com/envoyproxy/go-control-plane/envoy v1.32.5-0.20250303232259-0c5cb90447bb
 	github.com/go-logr/logr v1.4.2
-	github.com/google/cel-go v0.22.1
+	github.com/google/cel-go v0.24.1
 	github.com/google/go-cmp v0.7.0
-	github.com/openai/openai-go v0.1.0-alpha.61
+	github.com/openai/openai-go v0.1.0-alpha.62
 	github.com/prometheus/client_golang v1.20.5
 	github.com/stretchr/testify v1.10.0
-	go.opentelemetry.io/otel v1.34.0
+	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.56.0
-	go.opentelemetry.io/otel/metric v1.34.0
+	go.opentelemetry.io/otel/metric v1.35.0
 	go.opentelemetry.io/otel/sdk/metric v1.34.0
 	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250228200357-dead58393ab7
-	golang.org/x/oauth2 v0.27.0
+	golang.org/x/oauth2 v0.28.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5
 	k8s.io/api v0.32.2
 	k8s.io/apiextensions-apiserver v0.32.2
-	k8s.io/apimachinery v0.33.0-alpha.2
+	k8s.io/apimachinery v0.33.0-alpha.3
 	k8s.io/client-go v0.32.2
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	sigs.k8s.io/controller-runtime v0.20.2
@@ -402,7 +400,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.28.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.34.0 // indirect
-	go.opentelemetry.io/otel/trace v1.34.0 // indirect
+	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
