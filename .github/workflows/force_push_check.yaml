@@ -3,10 +3,7 @@ name: PR Force Push Check
 on:
   pull_request_target:
     types:
-      - opened
-      - edited
       - synchronize
-      - ready_for_review
 
 permissions:
   pull-requests: write
@@ -40,7 +37,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const comment = "Force push detected. Please read CONTRIBUTION.md and do not force push unless DCO issue.";
+            const comment = "We’ve detected a force push. Please review the [contribution guidelines](https://github.com/envoyproxy/ai-gateway/blob/main/CONTRIBUTING.md), and avoid force pushing unless you’re addressing a DCO issue after marking your PR as ready for review."
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
