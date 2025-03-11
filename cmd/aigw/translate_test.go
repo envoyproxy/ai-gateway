@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"sigs.k8s.io/gateway-api/apis/v1alpha3"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -22,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 )
 
 func Test_translate(t *testing.T) {
@@ -71,7 +71,7 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 	outDeployments []appsv1.Deployment,
 	outServices []corev1.Service,
 	outBackends []egv1a1.Backend,
-	outBackendTLSPolicy []v1alpha3.BackendTLSPolicy,
+	outBackendTLSPolicy []gwapiv1a3.BackendTLSPolicy,
 	outGatewayClasses []gwapiv1.GatewayClass,
 	outGateway []gwapiv1.Gateway,
 ) {

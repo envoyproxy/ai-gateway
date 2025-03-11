@@ -11,14 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"log/slog"
 	"os"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -48,13 +48,12 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(yaml, output, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, _, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err :=
-		translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
+	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -98,13 +97,14 @@ func readYamlsAsString(paths []string) (string, error) {
 	return buf.String(), nil
 }
 
-// collectCustomResourceObjects reads the YAML input and collects the AI Gateway custom resources.
+// collectObjects reads the YAML input and collects target resources.
 //
 // If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
-func collectCustomResourceObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
+func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	secrets []*corev1.Secret,
 	err error,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
@@ -137,6 +137,8 @@ func collectCustomResourceObjects(yamlInput string, out io.Writer, logger *slog.
 			mustExtractAndAppend(obj, &aigwBackends)
 		case "BackendSecurityPolicy":
 			mustExtractAndAppend(obj, &backendSecurityPolicies)
+		case "Secret":
+			mustExtractAndAppend(obj, &secrets)
 		default:
 			// Deduplicate non-AI Gateway resources.
 			key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
@@ -146,7 +148,7 @@ func collectCustomResourceObjects(yamlInput string, out io.Writer, logger *slog.
 				continue
 			}
 			// Now you can inspect or manipulate the CRD.
-			logger.Info("Writing non-AIGateway object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
+			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
 			mustWriteObj(nil, obj, out)
 		}
 	}
@@ -276,11 +278,7 @@ func mustCreateAndReconcile(
 	}
 }
 
-// mustWriteObj writes the object to the writer, panicking on error.
-//
-// This sets the kind and API version of the object to the values in the TypeMeta as it is not set from the fake client.
-func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
-	_, _ = w.Write([]byte("---\n"))
+func mustSetGroupVersionKind(typedMeta *metav1.TypeMeta, obj client.Object) {
 	// https://github.com/kubernetes-sigs/controller-runtime/issues/1517#issuecomment-844703142
 	gvks, unversioned, err := controller.Scheme.ObjectKinds(obj)
 	if err != nil {
@@ -289,8 +287,16 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 	if !unversioned && len(gvks) != 1 {
 		panic(fmt.Errorf("expected exactly one GVK, got %d", len(gvks)))
 	}
+	typedMeta.SetGroupVersionKind(gvks[0])
+}
+
+// mustWriteObj writes the object to the writer, panicking on error.
+//
+// This sets the kind and API version of the object to the values in the TypeMeta as it is not set from the fake client.
+func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
+	_, _ = w.Write([]byte("---\n"))
 	if typedMeta != nil {
-		typedMeta.SetGroupVersionKind(gvks[0])
+		mustSetGroupVersionKind(typedMeta, obj)
 	}
 	// Ignore ManagedFields as they are not relevant to the user.
 	obj.SetManagedFields(nil)

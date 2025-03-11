@@ -6,7 +6,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -42,5 +44,5 @@ func main() {
 	// Initializes the custom router.
 	x.NewCustomRouter = newCustomRouter
 	// Executes the main function of the external processor.
-	mainlib.Main()
+	mainlib.Main(context.Background(), os.Args[1:])
 }
