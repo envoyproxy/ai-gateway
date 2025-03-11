@@ -25,7 +25,7 @@ import (
 var certs embed.FS
 
 //go:embed default.yaml
-var defaultYAML []byte
+var defaultYAML string
 
 const envoyGatewayConfig = `
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -108,12 +108,15 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 		return fmt.Errorf("failed to write file %s: %w", egConfigPath, err)
 	}
 
-	// Write the default.yaml to a file.
-	defaultResourcePath := path.Join(resourcesTmpdir, "default.yaml")
-	stderrLogger.Info("copying resources", "dst", defaultResourcePath)
-	err = os.WriteFile(defaultResourcePath, defaultYAML, 0o600)
+	// Write the config.yaml containing the resources.
+	resourceYamlPath := path.Join(resourcesTmpdir, "config.yaml")
+	f, err := os.Create(resourceYamlPath)
 	if err != nil {
-		return fmt.Errorf("failed to write file %s: %w", defaultResourcePath, err)
+		return fmt.Errorf("failed to create file %s: %w", resourceYamlPath, err)
+	}
+	err = writeEnvoyResourcesAndRunExtProc(ctx, defaultYAML, f, stderrLogger)
+	if err != nil {
+		return err
 	}
 
 	c := root.GetRootCommand()
@@ -137,4 +140,36 @@ func mustRecreateDir(path string) {
 	if err != nil {
 		panic(fmt.Errorf("failed to create directory %s: %w", path, err))
 	}
+}
+
+func writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string, out io.Writer, stderrLogger *slog.Logger) error {
+	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(original, out, stderrLogger)
+	if err != nil {
+		return fmt.Errorf("error collecting: %w", err)
+	}
+
+	for _, bsp := range backendSecurityPolicies {
+		spec := bsp.Spec
+		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
+			// TODO: this is a TODO. We can make it work by generalizing the rotation logic.
+			return fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
+		}
+	}
+
+	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err :=
+		translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
+	if err != nil {
+		return fmt.Errorf("error translating: %w", err)
+	}
+
+	// We ignore deployments and services as we run external processes locally here.
+	_ = deployments
+	_ = services
+
+	// We don't need special logic for HTTPRouteFilter, so write them now.
+	for _, hrf := range httpRouteFilter.Items {
+		mustWriteObj(&hrf.TypeMeta, &hrf, out)
+	}
+
+	return nil
 }

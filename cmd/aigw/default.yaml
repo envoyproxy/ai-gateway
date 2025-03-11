@@ -3,6 +3,15 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: ai-eg-host-rewrite
+spec:
+  urlRewrite:
+    hostname:
+      type: Backend
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -33,6 +42,12 @@ spec:
         - group: "gateway.envoyproxy.io"
           kind: Backend
           name: envoy-ai-gateway-basic-openai
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
       matches:
         - path:
             type: PathPrefix
