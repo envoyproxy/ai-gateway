@@ -243,24 +243,6 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NotEqual(t, t1, t2)
 }
 
-/*
-func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
-	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	bspName := "mybackendSecurityPolicy"
-	bspNamespace := "default"
-
-	oidc := egv1a1.OIDC{}
-	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName,
-		preRotationWindow, oidc, "placeholder", "us-east-1")
-	require.NoError(t, err)
-
-	// Expiration time will be before current time, so the requeue will be changed to one minute.
-	requeue, err := rotator.Rotate(t.Context())
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "newly rotate credentials is already expired")
-	require.Equal(t, time.Minute, requeue)
-}*/
-
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
