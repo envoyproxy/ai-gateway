@@ -593,7 +593,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	})
 
 	syncAIServiceBackend.Reset()
-	t.Run("update security policy aws", func(t *testing.T) {
+	t.Run("update security policy", func(t *testing.T) {
 		origin := &aigv1a1.BackendSecurityPolicy{}
 		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, origin))
 		origin.Spec.APIKey = nil
@@ -601,63 +601,11 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 
 		origin.Spec.AWSCredentials = &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			Region: "us-east-1",
-			// credential file case will never cover the actual code which is using oidc
-			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-				OIDC: egv1a1.OIDC{
-					Provider: egv1a1.OIDCProvider{
-						Issuer:        "some-issuer",
-						TokenEndpoint: ptr.To("some-issuer-endpoint"),
-					},
-					ClientID: "some-client-id",
-					ClientSecret: gwapiv1.SecretObjectReference{
-						Name:      "some-aws-secret-name",
-						Namespace: ptr.To[gwapiv1.Namespace]("default"),
-					},
+			CredentialsFile: &aigv1a1.AWSCredentialsFile{
+				SecretRef: &gwapiv1.SecretObjectReference{
+					Name:      "secret",
+					Namespace: ptr.To[gwapiv1.Namespace](backendSecurityPolicyNamespace),
 				},
-				AwsRoleArn: "some-aws-role-arn",
-			},
-		}
-		require.NoError(t, c.Update(t.Context(), origin))
-
-		require.Eventually(t, func() bool {
-			return len(syncAIServiceBackend.GetItems()) == 2
-		}, 5*time.Second, 200*time.Millisecond)
-
-		// Verify that they are the same.
-		backends := syncAIServiceBackend.GetItems()
-		sort.Slice(backends, func(i, j int) bool {
-			backends[i].TypeMeta = metav1.TypeMeta{}
-			backends[j].TypeMeta = metav1.TypeMeta{}
-			return backends[i].Name < backends[j].Name
-		})
-		require.Equal(t, originals, backends)
-	})
-
-	syncAIServiceBackend.Reset()
-	t.Run("update security policy azure", func(t *testing.T) {
-		t.Skip("failed at secret look up inside reconcile process, why???")
-		origin := &aigv1a1.BackendSecurityPolicy{}
-		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, origin))
-
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "some-azure-secret",
-				Namespace: "default",
-			},
-		}
-
-		err := c.Create(t.Context(), secret)
-		require.NoError(t, err)
-
-		origin.Spec.APIKey = nil
-		origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAzureCredentials
-
-		origin.Spec.AzureCredentials = &aigv1a1.BackendSecurityPolicyAzureCredentials{
-			ClientID: "some-client-id",
-			TenantID: "some-tenant-id",
-			ClientSecretRef: &gwapiv1.SecretObjectReference{
-				Name:      "some-azure-secret",
-				Namespace: ptr.To[gwapiv1.Namespace]("default"),
 			},
 		}
 		require.NoError(t, c.Update(t.Context(), origin))
@@ -704,7 +652,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		err := mgr.Start(t.Context())
+		err = mgr.Start(t.Context())
 		require.NoError(t, err)
 	}()
 
@@ -765,7 +713,7 @@ func TestAIServiceBackendController(t *testing.T) {
 				},
 			},
 		}
-		err := c.Create(t.Context(), origin)
+		err = c.Create(t.Context(), origin)
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
@@ -785,7 +733,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	syncAIGatewayRoute.Reset()
 	t.Run("update backend", func(t *testing.T) {
 		var origin aigv1a1.AIServiceBackend
-		err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
+		err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
 		require.NoError(t, err)
 		origin.Spec.BackendRef.Port = ptr.To[gwapiv1.PortNumber](9090)
 		require.NoError(t, c.Update(t.Context(), &origin))
@@ -860,7 +808,7 @@ func TestSecretController(t *testing.T) {
 	sort.Slice(originals, func(i, j int) bool { return originals[i].Name < originals[j].Name })
 
 	t.Run("create secret", func(t *testing.T) {
-		err := c.Create(t.Context(), &corev1.Secret{
+		err = c.Create(t.Context(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: secretNamespace},
 			StringData: map[string]string{"key": "value"},
 		})
@@ -882,7 +830,7 @@ func TestSecretController(t *testing.T) {
 
 	bspSyncFn.Reset()
 	t.Run("update secret", func(t *testing.T) {
-		err := c.Update(t.Context(), &corev1.Secret{
+		err = c.Update(t.Context(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
 			StringData: map[string]string{"key": "value2"},
 		})

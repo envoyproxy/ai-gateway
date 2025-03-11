@@ -14,14 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
@@ -36,7 +33,9 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -96,15 +95,6 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 // mockSTSClient implements the STSOperations interface for testing
 type mockSTSClient struct {
 	expTime time.Time
-}
-
-type MockTokenProvider struct {
-	mock.Mock
-}
-
-func (m *MockTokenProvider) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	args := m.Called(ctx, opts)
-	return args.Get(0).(azcore.AccessToken), args.Error(1)
 }
 
 // AssumeRoleWithWebIdentity will return placeholder of type aws credentials.
@@ -216,7 +206,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 
 	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, constants.PreRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// ensure aws credentials secret do not exist
@@ -248,7 +238,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	// set secret time expired
 	parsedTime, err := time.Parse(time.RFC3339, t0)
 	require.NoError(t, err)
-	t1 := parsedTime.Add(-preRotationWindow - time.Minute).String()
+	t1 := parsedTime.Add(-constants.PreRotationWindow - time.Minute).String()
 	awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey] = t1
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
@@ -264,8 +254,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 func TestBackendSecurityController_RotateCredential_Azure(t *testing.T) {
 	now := time.Now()
 	twoHourAfterNow := now.Add(2 * time.Hour)
-	mockProvider := new(MockTokenProvider)
-	mockProvider.Mock.On("GetToken", mock.Anything, mock.Anything).Return(azcore.AccessToken{Token: "fake-token", ExpiresOn: twoHourAfterNow}, nil)
+	mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, nil)
 
 	pNamespace := "default"
 	pName := "some-policy"
@@ -291,8 +280,8 @@ func TestBackendSecurityController_RotateCredential_Azure(t *testing.T) {
 	}
 	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
-	tokenProvider := rotators.NewTokenServiceWithMock("fake-token", time.Now().Add(2*time.Hour))
-	rotator, err := rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, pNamespace, pName, preRotationWindow, tokenProvider)
+
+	rotator, err := rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, pNamespace, pName, constants.PreRotationWindow, mockProvider)
 	require.NoError(t, err)
 
 	duration, err := c.rotateCredential(t.Context(), bsp, rotator)
@@ -300,18 +289,14 @@ func TestBackendSecurityController_RotateCredential_Azure(t *testing.T) {
 	require.Less(t, duration, 2*time.Hour)
 }
 
-// func TestBackendSecurityPolicyController_RotateCredential_CacheValueExpired(t *testing.T) {}
-//
-// func TestBackendSecurityPolicyController_RotateCredential_CacheValueNotExpired(t *testing.T) {}
-
 func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	c.tokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &TokenExpiry{Token: "some-access-token", ExpiresAt: time.Now().Add(time.Hour)}
-	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, preRotationWindow, "placeholder", "us-east-1")
+	c.tokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &tokenprovider.TokenExpiry{Token: "some-access-token", ExpiresAt: time.Now().Add(time.Hour)}
+	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, constants.PreRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// oidcCreds := egv1a1.OIDC{}
@@ -331,11 +316,11 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
-	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
-	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials}))
+	require.Nil(t, getOIDCConfig(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+	require.Nil(t, getOIDCConfig(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials}))
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getOIDCConfig(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
@@ -343,7 +328,7 @@ func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T
 	}))
 
 	// AWS type with OIDC defined.
-	oidc := getAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidc := getOIDCConfig(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{

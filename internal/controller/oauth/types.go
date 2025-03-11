@@ -5,14 +5,12 @@
 
 package oauth
 
-import (
-	"context"
-
-	"golang.org/x/oauth2"
-)
+/*
 
 // TokenProvider defines the interface for OAuth token providers.
 type TokenProvider interface {
-	// FetchToken will obtain oauth token using oidc credentials.
-	FetchToken(ctx context.Context) (*oauth2.Token, error)
+	// GetToken will obtain oauth token using oidc credentials.
+	GetToken(ctx context.Context) (*oauth2.Token, error)
 }
+
+*/

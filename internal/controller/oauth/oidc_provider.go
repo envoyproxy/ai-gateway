@@ -5,16 +5,7 @@
 
 package oauth
 
-import (
-	"context"
-	"fmt"
-
-	"github.com/coreos/go-oidc/v3/oidc"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"golang.org/x/oauth2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
+/*
 // OIDCProvider extends ClientCredentialsTokenProvider with OIDC support.
 type OIDCProvider struct {
 	tokenProvider TokenProvider
@@ -61,10 +52,10 @@ func (p *OIDCProvider) getOIDCProviderConfig(ctx context.Context, issuerURL stri
 	return &config, claims.SupportedScopes, nil
 }
 
-// FetchToken retrieves and validates tokens using the client credentials flow with OIDC support.
+// GetToken retrieves and validates tokens using the client credentials flow with OIDC support.
 //
-// This implements [TokenProvider.FetchToken].
-func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
+// This implements [TokenProvider.GetToken].
+func (p *OIDCProvider) GetToken(ctx context.Context) (*oauth2.Token, error) {
 	// If issuer URL is provided, fetch OIDC metadata.
 	if issuerURL := p.oidcConfig.Provider.Issuer; issuerURL != "" {
 		config, supportedScopes, err := p.getOIDCProviderConfig(ctx, issuerURL)
@@ -94,10 +85,12 @@ func (p *OIDCProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	// Get token response from the provider.
-	token, err := p.tokenProvider.FetchToken(ctx)
+	token, err := p.tokenProvider.GetToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
 	return token, nil
 }
+
+*/

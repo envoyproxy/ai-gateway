@@ -6,17 +6,17 @@
 package rotators
 
 import (
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/envoyproxy/ai-gateway/constants"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
-func populateAzureAccessToken(secret *corev1.Secret, azureToken *azcore.AccessToken) {
-	updateExpirationSecretAnnotation(secret, azureToken.ExpiresOn)
+func populateAzureAccessToken(secret *corev1.Secret, token *tokenprovider.TokenExpiry) {
+	updateExpirationSecretAnnotation(secret, token.ExpiresAt)
 
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[constants.AzureAccessTokenKey] = []byte(azureToken.Token)
+	secret.Data[constants.AzureAccessTokenKey] = []byte(token.Token)
 }

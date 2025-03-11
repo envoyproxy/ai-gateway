@@ -53,6 +53,5 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(openAIReq *o
 
 // ResponseHeaders implements [Translator.ResponseHeaders].
 func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
-	// TODO XL double check with Azure OpenAI spec with OpenAI API spec
 	return nil, nil
 }

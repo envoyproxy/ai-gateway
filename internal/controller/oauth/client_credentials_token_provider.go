@@ -5,28 +5,17 @@
 
 package oauth
 
-import (
-	"context"
-	"fmt"
-	"net/http"
-	"time"
-
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
-	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
 // tokenTimeoutDuration specifies duration of token retrieval query.
-const tokenTimeoutDuration = time.Minute
+// const tokenTimeoutDuration = time.Minute
 
+/*
 // ClientCredentialsTokenProvider implements the standard OAuth2 client credentials flow.
 type ClientCredentialsTokenProvider struct {
 	client client.Client
 	// oidcConfig will be in sync with the caller of newClientCredentialsTokenProvider.
 	oidcConfig *egv1a1.OIDC
 }
+
 
 // newClientCredentialsProvider creates a new client credentials provider.
 func newClientCredentialsProvider(cl client.Client, oidcConfig *egv1a1.OIDC) *ClientCredentialsTokenProvider {
@@ -39,13 +28,13 @@ func newClientCredentialsProvider(cl client.Client, oidcConfig *egv1a1.OIDC) *Cl
 // FetchToken gets the client secret from the secret reference and fetches the token from the provider token URL.
 //
 // This implements [TokenProvider.FetchToken].
-func (p *ClientCredentialsTokenProvider) FetchToken(ctx context.Context) (*oauth2.Token, error) {
+func (p *ClientCredentialsTokenProvider) GetToken(ctx context.Context) (*oauth2.Token, error) {
 	// client secret namespace is optional on egv1a1.OIDC, but it is required for AI Gateway for now.
 	if p.oidcConfig.ClientSecret.Namespace == nil {
 		return nil, fmt.Errorf("oidc-client-secret namespace is nil")
 	}
 
-	clientSecret, err := getClientSecret(ctx, p.client, &corev1.SecretReference{
+	clientSecret, err := GetClientSecret(ctx, p.client, &corev1.SecretReference{
 		Name:      string(p.oidcConfig.ClientSecret.Name),
 		Namespace: string(*p.oidcConfig.ClientSecret.Namespace),
 	})
@@ -79,3 +68,5 @@ func (p *ClientCredentialsTokenProvider) getTokenWithClientCredentialConfig(ctx 
 	}
 	return token, nil
 }
+
+*/

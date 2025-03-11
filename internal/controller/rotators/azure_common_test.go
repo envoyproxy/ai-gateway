@@ -9,18 +9,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/envoyproxy/ai-gateway/constants"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
 func TestPopulateAzureAccessToken(t *testing.T) {
 	secret := &corev1.Secret{}
 	expiration := time.Now()
 
-	azureToken := azcore.AccessToken{Token: "some-azure-token", ExpiresOn: expiration}
+	azureToken := tokenprovider.TokenExpiry{Token: "some-azure-token", ExpiresAt: expiration}
 	populateAzureAccessToken(secret, &azureToken)
 
 	annotation, ok := secret.Annotations[ExpirationTimeAnnotationKey]

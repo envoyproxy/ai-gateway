@@ -11,9 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,16 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/envoyproxy/ai-gateway/constants"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
-
-type MockTokenProvider struct {
-	mock.Mock
-}
-
-func (m *MockTokenProvider) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	args := m.Called(ctx, opts)
-	return args.Get(0).(azcore.AccessToken), args.Error(1)
-}
 
 func TestAzureTokenRotator_Rotate(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -40,8 +29,8 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 	t.Run("failed to get azure token", func(t *testing.T) {
 		now := time.Now()
 		oneHourBeforeNow := now.Add(-1 * time.Hour)
-		mockProvider := new(MockTokenProvider)
-		mockProvider.Mock.On("GetToken", mock.Anything, mock.Anything).Return(azcore.AccessToken{}, fmt.Errorf("failure to get azure access token error"))
+		twoHourAfterNow := now.Add(2 * time.Hour)
+		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, fmt.Errorf("failed to get azure access token"))
 
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -60,10 +49,10 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 
 		rotator := &AzureTokenRotator{
 			client:                         client,
-			tokenProvider:                  mockProvider,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-policy",
 			preRotationWindow:              5 * time.Minute,
+			tokenProvider:                  mockProvider,
 		}
 
 		_, err = rotator.Rotate(context.Background(), "test-policy")
@@ -75,15 +64,15 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 	t.Run("secret does not exist", func(t *testing.T) {
 		now := time.Now()
 		twoHourAfterNow := now.Add(2 * time.Hour)
-		mockProvider := new(MockTokenProvider)
-		mockProvider.Mock.On("GetToken", mock.Anything, mock.Anything).Return(azcore.AccessToken{Token: "fake-token", ExpiresOn: twoHourAfterNow}, nil)
+		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, nil)
 
 		rotator := &AzureTokenRotator{
-			client:                         client,
-			tokenProvider:                  mockProvider,
+			client: client,
+
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-policy",
 			preRotationWindow:              5 * time.Minute,
+			tokenProvider:                  mockProvider,
 		}
 		expiration, err := rotator.Rotate(context.Background(), "test-policy")
 		require.NoError(t, err)
@@ -98,8 +87,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 		now := time.Now()
 		twoHourAfterNow := now.Add(2 * time.Hour)
 		oneHourBeforeNow := now.Add(-1 * time.Hour)
-		mockProvider := new(MockTokenProvider)
-		mockProvider.Mock.On("GetToken", mock.Anything, mock.Anything).Return(azcore.AccessToken{Token: "fake-token", ExpiresOn: twoHourAfterNow}, nil)
+		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, nil)
 
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
