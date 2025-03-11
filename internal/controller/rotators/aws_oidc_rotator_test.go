@@ -9,25 +9,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"golang.org/x/oauth2"
-	"k8s.io/utils/ptr"
 	"net/http"
 	"net/http/httptest"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // -----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, s
 }
 
 // createOidcClientSecret creates the OIDC client secret
-func createOidcClientSecret(t *testing.T, name string) {
+func createOidcClientSecret(t *testing.T, client client.Client, name string) {
 	data := map[string][]byte{
 		clientSecretKey: []byte(testClientSecret),
 	}
@@ -87,7 +87,6 @@ func createOidcClientSecret(t *testing.T, name string) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 		&corev1.Secret{},
 	)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 	err := client.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -153,12 +152,12 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
 		)
-		client := fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 		// Setup initial credentials and client secret.
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
-		createOidcClientSecret(t, testClientSecret)
+		createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		createOidcClientSecret(t, fakeClient, testClientSecret)
 		awsOidcRotator := AWSOIDCRotator{
-			client:                         client,
+			client:                         fakeClient,
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
@@ -171,7 +170,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
-		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
+		verifyAwsCredentialsSecret(t, fakeClient, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
 	t.Run("error handling - STS assume role failure", func(t *testing.T) {
@@ -179,16 +178,16 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
 		)
-		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
-		createOidcClientSecret(t, testClientSecret)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+		createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		createOidcClientSecret(t, fakeClient, testClientSecret)
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return nil, fmt.Errorf("failed to assume role")
 			},
 		}
 		awsOidcRotator := AWSOIDCRotator{
-			client:                         client,
+			client:                         fakeClient,
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
@@ -209,8 +208,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
 		)
-		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createOidcClientSecret(t, testClientSecret)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+		createOidcClientSecret(t, fakeClient, testClientSecret)
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 				return &sts.AssumeRoleWithWebIdentityOutput{
@@ -224,7 +223,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			},
 		}
 		rotator := AWSOIDCRotator{
-			client:                         client,
+			client:                         fakeClient,
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
@@ -236,7 +235,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
-		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
+		verifyAwsCredentialsSecret(t, fakeClient, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 
 	t.Run("rotation - update when aws credential secret exists", func(t *testing.T) {
@@ -245,11 +244,11 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 			&corev1.Secret{},
 		)
-		client := fake.NewClientBuilder().WithScheme(scheme).Build()
-		createOidcClientSecret(t, testClientSecret)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+		createOidcClientSecret(t, fakeClient, testClientSecret)
 
-		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
-		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+		verifyAwsCredentialsSecret(t, fakeClient, policyNameSpace, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 
 		var mockSTS STSClient = &mockStsOperations{
 			assumeRoleWithWebIdentityFunc: func(_ context.Context, _ *sts.AssumeRoleWithWebIdentityInput, _ ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
@@ -264,7 +263,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			},
 		}
 		rotator := AWSOIDCRotator{
-			client:                         client,
+			client:                         fakeClient,
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
@@ -277,7 +276,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
-		verifyAwsCredentialsSecret(t, client, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
+		verifyAwsCredentialsSecret(t, fakeClient, policyNameSpace, policyName, newAwsAccessKey, newAwsSecretKey, newAwsSessionToken, awsProfileName, awsRegion)
 	})
 }
 
