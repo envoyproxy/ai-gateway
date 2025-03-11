@@ -110,11 +110,6 @@ func (m *mockStsOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 }
 
 func TestAWS_OIDCRotator(t *testing.T) {
-	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
-		require.NoError(t, err)
-	}))
-	defer discoveryServer.Close()
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		b, err := json.Marshal(oauth2.Token{AccessToken: "newOidcToken", TokenType: "Bearer", ExpiresIn: 60})
@@ -285,9 +280,9 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 		&corev1.Secret{},
 	)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	awsOidcRotator := AWSOIDCRotator{
-		client:                         client,
+		client:                         fakeClient,
 		backendSecurityPolicyNamespace: policyNameSpace,
 		backendSecurityPolicyName:      policyName,
 	}
@@ -295,15 +290,15 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+	createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	secret, err := LookupSecret(t.Context(), client, policyNameSpace, GetBSPSecretName(policyName))
+	secret, err := LookupSecret(t.Context(), fakeClient, policyNameSpace, GetBSPSecretName(policyName))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
-	require.NoError(t, client.Update(t.Context(), secret))
+	require.NoError(t, fakeClient.Update(t.Context(), secret))
 	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, expiredTime.Format(time.RFC3339), preRotateTime.Format(time.RFC3339))
 }
@@ -313,30 +308,30 @@ func TestAWS_IsExpired(t *testing.T) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 		&corev1.Secret{},
 	)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	awsOidcRotator := AWSOIDCRotator{
-		client:                         client,
+		client:                         fakeClient,
 		backendSecurityPolicyNamespace: policyNameSpace,
 		backendSecurityPolicyName:      policyName,
 	}
 	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
-	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+	createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	secret, err := LookupSecret(t.Context(), client, policyNameSpace, GetBSPSecretName(policyName))
+	secret, err := LookupSecret(t.Context(), fakeClient, policyNameSpace, GetBSPSecretName(policyName))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
-	require.NoError(t, client.Update(t.Context(), secret))
+	require.NoError(t, fakeClient.Update(t.Context(), secret))
 	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.True(t, awsOidcRotator.IsExpired(preRotateTime))
 
 	hourFromNowTime := time.Now().Add(1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, hourFromNowTime)
-	require.NoError(t, client.Update(t.Context(), secret))
+	require.NoError(t, fakeClient.Update(t.Context(), secret))
 	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.False(t, awsOidcRotator.IsExpired(preRotateTime))
 }

@@ -112,6 +112,8 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backend
 				}
 			} else {
 				requeue = time.Until(rotationTime)
+				c.logger.Info(fmt.Sprintf("credentials has not yet expired for %s in namespace %s of auth type %s, renewing in %f minutes",
+					backendSecurityPolicy.Name, backendSecurityPolicy.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
 			}
 		}
 		res = ctrl.Result{RequeueAfter: requeue}
