@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -28,8 +27,8 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 	openAIToOpenAITranslatorV1ChatCompletion
 }
 
-func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(openAIReq *openai.ChatCompletionRequest) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, override *extprocv3http.ProcessingMode, err error,
+func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	// assume deployment_id is same as model name
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
@@ -37,21 +36,12 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(openAIReq *o
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: []byte(fmt.Sprintf(pathTemplate, openAIReq.Model, o.apiVersion)),
+				RawValue: []byte(fmt.Sprintf(pathTemplate, req.Model, o.apiVersion)),
 			}},
 		},
 	}
-	if openAIReq.Stream {
+	if req.Stream {
 		o.stream = true
-		override = &extprocv3http.ProcessingMode{
-			ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
-			ResponseBodyMode:   extprocv3http.ProcessingMode_STREAMED,
-		}
 	}
-	return headerMutation, nil, override, nil
-}
-
-// ResponseHeaders implements [Translator.ResponseHeaders].
-func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
-	return nil, nil
+	return headerMutation, nil, nil
 }
