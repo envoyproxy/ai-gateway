@@ -15,7 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/envoyproxy/gateway/api/v1alpha1"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -45,7 +45,7 @@ type AWSOIDCRotator struct {
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
 	// OIDC config
-	oidc v1alpha1.OIDC
+	oidc egv1a1.OIDC
 	// roleArn is the role ARN used to obtain credentials.
 	roleArn string
 	// region is the AWS region for the credentials.
@@ -63,7 +63,7 @@ func NewAWSOIDCRotator(
 	backendSecurityPolicyNamespace string,
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
-	oidc v1alpha1.OIDC,
+	oidc egv1a1.OIDC,
 	roleArn string,
 	region string,
 ) (*AWSOIDCRotator, error) {
