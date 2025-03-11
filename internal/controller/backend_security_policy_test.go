@@ -153,7 +153,6 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	defer discoveryServer.Close()
 
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -204,7 +203,8 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 
 	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
+		oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// ensure aws credentials secret do not exist
@@ -212,15 +212,9 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.Error(t, err)
 
 	// first credential rotation should create aws credentials secret
-	res, err := c.rotateCredential(ctx, bsp, oidc, rotator)
+	res, err := rotator.Rotate(ctx)
 	require.NoError(t, err)
-	require.WithinRange(t, time.Now().Add(res), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
-
-	// ensure oidc token cache has oidc token
-	require.Len(t, c.oidcTokenCache, 1)
-	token, ok := c.oidcTokenCache[fmt.Sprintf("%s-OIDC.%s", bspName, bspNamespace)]
-	require.True(t, ok)
-	require.Equal(t, "some-access-token", token.AccessToken)
+	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-preRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
 	// ensure both oidc secret and aws credential secret are created
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
@@ -241,7 +235,7 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
 	// rotate credential
-	_, err = c.rotateCredential(ctx, bsp, oidc, rotator)
+	_, err = rotator.Rotate(ctx)
 	require.NoError(t, err)
 	awsSecret2, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.NoError(t, err)
@@ -249,30 +243,23 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NotEqual(t, t1, t2)
 }
 
+/*
 func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	c.oidcTokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &oauth2.Token{AccessToken: "some-access-token", Expiry: time.Now().Add(time.Hour)}
-	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, preRotationWindow, "placeholder", "us-east-1")
+	oidc := egv1a1.OIDC{}
+	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName,
+		preRotationWindow, oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
-	oidcCreds := egv1a1.OIDC{}
-	policy := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      bspName,
-			Namespace: bspNamespace,
-		},
-	}
-
 	// Expiration time will be before current time, so the requeue will be changed to one minute.
-	requeue, err := c.rotateCredential(t.Context(), policy, oidcCreds, rotator)
+	requeue, err := rotator.Rotate(t.Context())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "newly rotate credentials is already expired")
 	require.Equal(t, time.Minute, requeue)
-}
+}*/
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.

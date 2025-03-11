@@ -7,7 +7,14 @@ package rotators
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"golang.org/x/oauth2"
+	"k8s.io/utils/ptr"
+	"net/http"
+	"net/http/httptest"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"testing"
 	"time"
 
@@ -104,6 +111,30 @@ func (m *mockStsOperations) AssumeRoleWithWebIdentity(ctx context.Context, param
 }
 
 func TestAWS_OIDCRotator(t *testing.T) {
+	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": []}`))
+		require.NoError(t, err)
+	}))
+	defer discoveryServer.Close()
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		b, err := json.Marshal(oauth2.Token{AccessToken: "newOidcToken", TokenType: "Bearer", ExpiresIn: 60})
+		require.NoError(t, err)
+		_, err = w.Write(b)
+		require.NoError(t, err)
+	}))
+	defer tokenServer.Close()
+	oidc := egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{
+			Issuer:        "",
+			TokenEndpoint: &tokenServer.URL,
+		},
+		ClientID: "some-client-id",
+		ClientSecret: gwapiv1.SecretObjectReference{
+			Name:      gwapiv1.ObjectName(testClientSecret),
+			Namespace: (*gwapiv1.Namespace)(ptr.To(policyNameSpace)),
+		},
+	}
 	t.Run("basic rotation", func(t *testing.T) {
 		startTime := time.Now()
 		var mockSTS STSClient = &mockStsOperations{
@@ -126,17 +157,17 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		// Setup initial credentials and client secret.
 		createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 		createOidcClientSecret(t, testClientSecret)
-
 		awsOidcRotator := AWSOIDCRotator{
 			client:                         client,
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
+			oidc:                           oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
+		expiration, err := awsOidcRotator.Rotate(t.Context())
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
@@ -161,11 +192,12 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
+			oidc:                           oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := awsOidcRotator.Rotate(t.Context(), newOidcToken)
+		expiration, err := awsOidcRotator.Rotate(t.Context())
 		require.Error(t, err)
 		require.True(t, expiration.IsZero())
 		assert.Contains(t, err.Error(), "failed to assume role")
@@ -196,10 +228,11 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
+			oidc:                           oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
-		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
+		expiration, err := rotator.Rotate(t.Context())
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
@@ -235,11 +268,12 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
+			oidc:                           oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := rotator.Rotate(t.Context(), newOidcToken)
+		expiration, err := rotator.Rotate(t.Context())
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
