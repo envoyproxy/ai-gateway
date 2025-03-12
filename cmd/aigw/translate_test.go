@@ -35,8 +35,9 @@ func Test_translate(t *testing.T) {
 		},
 		{
 			name: "nonairesources",
-			in:   "testdata/translate_nonairesources.in.yaml",
-			out:  "testdata/translate_nonairesources.out.yaml",
+			in:   "testdata/translate_nonairesources.yaml",
+			// The result should be the same as the input.
+			out: "testdata/translate_nonairesources.yaml",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
