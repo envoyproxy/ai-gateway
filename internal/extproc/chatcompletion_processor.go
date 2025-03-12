@@ -158,6 +158,13 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		},
 	}
 	c.stream = body.Stream
+
+	if b.Name == "testupstream" {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: "host", RawValue: []byte("0.0.0.0:8080")},
+		})
+	}
+
 	return resp, nil
 }
 

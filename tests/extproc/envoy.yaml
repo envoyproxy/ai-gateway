@@ -62,12 +62,14 @@ static_resources:
                                 string_match:
                                   exact: testupstream
                           route:
-                            cluster: testupstream
+                            cluster: dynamic_forward_proxy_cluster
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                       allow_mode_override: true
+                      mutation_rules:
+                        allow_all_routing: true
                       processing_mode:
                         request_header_mode: "SEND"
                         response_header_mode: "SEND"
@@ -80,25 +82,29 @@ static_resources:
                         receivingNamespaces:
                           untyped:
                             - ai_gateway_llm_ns
+                  - name: envoy.filters.http.dynamic_forward_proxy
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+                      dns_cache_config:
+                        name: dynamic_forward_proxy_cache_config
+                        dns_lookup_family: V4_ONLY
+                        typed_dns_resolver_config:
+                          name: envoy.network.dns_resolver.cares
+                          typed_config:
+                            "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.cares.v3.CaresDnsResolverConfig
+                            resolvers:
+                              - socket_address:
+                                  address: "8.8.8.8"
+                                  port_value: 53
+                            dns_resolver_options:
+                              use_tcp_for_dns_lookups: true
+                              no_default_search_domain: true
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
                       suppressEnvoyHeaders: true
 
   clusters:
-    - name: testupstream
-      connect_timeout: 0.25s
-      type: STATIC
-      lb_policy: ROUND_ROBIN
-      load_assignment:
-        cluster_name: testupstream
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: 127.0.0.1
-                      port_value: 8080
     - name: extproc_cluster
       connect_timeout: 0.25s
       type: STATIC
@@ -154,6 +160,27 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: api.openai.com
+
+    - name: dynamic_forward_proxy_cluster
+      lb_policy: CLUSTER_PROVIDED
+      cluster_type:
+        name: envoy.clusters.dynamic_forward_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
+          dns_cache_config:
+            name: dynamic_forward_proxy_cache_config
+            dns_lookup_family: V4_ONLY
+            typed_dns_resolver_config:
+              name: envoy.network.dns_resolver.cares
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.network.dns_resolver.cares.v3.CaresDnsResolverConfig
+                resolvers:
+                  - socket_address:
+                      address: 8.8.8.8
+                      port_value: 53
+                dns_resolver_options:
+                  use_tcp_for_dns_lookups: true
+                  no_default_search_domain: true
 
 overload_manager:
   refresh_interval: 0.25s
