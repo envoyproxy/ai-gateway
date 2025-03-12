@@ -19,6 +19,6 @@ provider:
       host: {}
 logging:
   level:
-    default: info
+    default: error
 extensionApis:
   enableBackend: true

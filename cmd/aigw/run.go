@@ -134,7 +134,7 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 	}
 
 	c := root.GetRootCommand()
-	c.SetOut(output)
+	c.SetOut(stderr)
 	c.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := c.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
