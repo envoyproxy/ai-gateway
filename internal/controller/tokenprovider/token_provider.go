@@ -54,7 +54,7 @@ func (a *AzureTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) 
 }
 
 type OidcTokenProvider struct {
-	oidcConfig *egv1a1.OIDC // passed in from callsite in backend_security_policy
+	oidcConfig *egv1a1.OIDC
 	client     client.Client
 	context    context.Context
 }
@@ -77,16 +77,17 @@ func NewOidcTokenProvider(ctx context.Context, client client.Client, oidcConfig 
 	var claims struct {
 		SupportedScopes []string `json:"scopes_supported"`
 	}
+
 	if err = oidcProvider.Claims(&claims); err != nil {
-		return nil, fmt.Errorf("failed to decode provider scope supported claims: %w", err)
+		return nil, fmt.Errorf("failed to get scopes_supported field in claim: %w", err)
 	}
 
 	// Validate required fields.
 	if config.IssuerURL == "" {
-		return nil, fmt.Errorf("issuer is required in OIDC provider config")
+		return nil, fmt.Errorf("issuer is required in oidc provider config")
 	}
 	if config.TokenURL == "" {
-		return nil, fmt.Errorf("token_endpoint is required in OIDC provider config")
+		return nil, fmt.Errorf("token_endpoint is required in oidc provider config")
 	}
 
 	// Use discovered token endpoint if not explicitly provided
@@ -140,14 +141,13 @@ func (o *OidcTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
 	if err != nil {
 		return TokenExpiry{}, fmt.Errorf("failed to get oauth2 token: %w", err)
 	}
-	// Handle expiration
 	if token.ExpiresIn > 0 {
 		token.Expiry = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 	}
 	return TokenExpiry{Token: token.AccessToken, ExpiresAt: token.Expiry}, nil
 }
 
-// MockTokenProvider for unit tests, simply allow user to pass int any token string and expiry to facilitate mock test
+// MockTokenProvider for backend_security_test.go unit tests, simply allow user to pass in any token string and expiry to facilitate mock test
 type MockTokenProvider struct {
 	Token     string
 	ExpiresAt time.Time

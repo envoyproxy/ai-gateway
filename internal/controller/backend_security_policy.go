@@ -54,17 +54,17 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	var bsp aigv1a1.BackendSecurityPolicy
 	if err = c.client.Get(ctx, req.NamespacedName, &bsp); err != nil {
 		if apierrors.IsNotFound(err) {
-			c.logger.Info("Deleting Backend Security Policy",
+			c.logger.Info("Deleting backend security policy",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	c.logger.Info("Reconciling Backend Security Policy", "namespace", req.Namespace, "name", req.Name)
+	c.logger.Info("Reconciling backend security policy", "namespace", req.Namespace, "name", req.Name)
 	res, err = c.reconcile(ctx, &bsp)
 	if err != nil {
-		c.logger.Error(err, "failed to reconcile Backend Security Policy")
+		c.logger.Error(err, "failed to reconcile backend security policy")
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeNotAccepted, err.Error())
 	} else {
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
@@ -133,7 +133,6 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		// maintain original logic.
-		// TODO question: is original logic correct though - when oidc is nil, syncBackendSecurityPolicy immediately?
 		return res, c.syncBackendSecurityPolicy(ctx, bsp)
 	default:
 		err = fmt.Errorf("backend security type %s is not supported", bspType)

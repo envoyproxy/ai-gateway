@@ -111,15 +111,15 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 	}, nil
 }
 
-func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
+func TestBackendSecurityPolicyController_ReconcileAws(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
-	pName := "mybackendSecurityPolicy"
-	namespace := "default"
+	bspName := "mybackendSecurityPolicy"
+	bspNamespace := "default"
 
 	bsp := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", pName), Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", bspName), Namespace: bspNamespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
@@ -131,11 +131,76 @@ func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	}
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
-
 	// Expects rotate credentials to fail due to missing OIDC details.
-	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: fmt.Sprintf("%s-OIDC", pName)}})
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-OIDC", bspName)}})
 	require.Error(t, err)
 	require.Equal(t, time.Minute, res.RequeueAfter)
+}
+
+func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	bspName := "my-azure-backend-security-policy"
+	tenantID := "some-tenant-id"
+	clientID := "some-client-id"
+
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: "default"},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+			AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+				ClientID:        clientID,
+				TenantID:        tenantID,
+				ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-azure-secret", Namespace: ptr.To[gwapiv1.Namespace]("default")},
+			},
+		},
+	}
+	err := cl.Create(t.Context(), bsp)
+	require.NoError(t, err)
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: bspName}})
+	require.Error(t, err)
+	require.Equal(t, time.Duration(0), res.RequeueAfter)
+}
+
+func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *testing.T) {
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	bspName := "my-azure-backend-security-policy"
+	tenantID := "some-tenant-id"
+	clientID := "some-client-id"
+
+	azureClientSecret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-azure-secret",
+			Namespace: "default",
+		},
+		//Data: map[string][]byte{
+		//	"client-secret": []byte("client-secret"),
+		//},
+	}
+	require.NoError(t, cl.Create(t.Context(), &azureClientSecret, &client.CreateOptions{}))
+
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: "default"},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+			AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+				ClientID: clientID,
+				TenantID: tenantID,
+				ClientSecretRef: &gwapiv1.SecretObjectReference{
+					Name:      "some-azure-secret",
+					Namespace: ptr.To[gwapiv1.Namespace]("default"),
+				},
+			},
+		},
+	}
+	err := cl.Create(t.Context(), bsp)
+	require.NoError(t, err)
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: bspName}})
+	require.Error(t, err)
+	require.Equal(t, time.Duration(0), res.RequeueAfter)
 }
 
 func TestBackendSecurityController_RotateCredentials(t *testing.T) {
