@@ -20,6 +20,20 @@ spec:
     - name: http
       protocol: HTTP
       port: 8888
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway
+spec:
+  logging:
+    level:
+      default: warn
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute

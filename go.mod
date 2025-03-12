@@ -2,16 +2,14 @@ module github.com/envoyproxy/ai-gateway
 
 go 1.24.1
 
-replace github.com/envoyproxy/gateway => ../gateway
-
 require (
-	github.com/alecthomas/kong v1.8.1
+	github.com/alecthomas/kong v1.9.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250310060548-8b74d01a6d49
+	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250312011906-4be098d71a29
 	github.com/envoyproxy/go-control-plane/envoy v1.32.5-0.20250303232259-0c5cb90447bb
 	github.com/go-logr/logr v1.4.2
 	github.com/google/cel-go v0.22.1
