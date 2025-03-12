@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"fmt"
@@ -58,7 +59,10 @@ type runCmdContext struct {
 	sm map[string]*corev1.Secret
 }
 
-func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
+func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
+	if !c.Debug {
+		stderr = io.Discard
+	}
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 
 	// Currently, this is not configurable:
@@ -133,11 +137,16 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 		return err
 	}
 
-	c := root.GetRootCommand()
-	c.SetOut(stderr)
-	c.SetArgs([]string{"server", "--config-path", egConfigPath})
-	if err := c.ExecuteContext(ctx); err != nil {
+	server := root.GetRootCommand()
+	egOut := &bytes.Buffer{}
+	server.SetOut(egOut)
+	server.SetErr(egOut)
+	server.SetArgs([]string{"server", "--config-path", egConfigPath})
+	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
+	}
+	if c.Debug {
+		stderrLogger.Info("Envoy Gateway output", "output", egOut.String())
 	}
 	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
 	// Give it some time to do so, otherwise the process might become an orphan.

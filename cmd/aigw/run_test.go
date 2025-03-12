@@ -9,8 +9,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,10 +32,31 @@ import (
 )
 
 func TestRun_default(t *testing.T) {
-	t.Skip()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, run(ctx, cmdRun{}, os.Stdout, os.Stderr))
+	done := make(chan struct{})
+	go func() {
+		require.NoError(t, run(ctx, cmdRun{}, os.Stdout, os.Stderr))
+		close(done)
+	}()
+	require.Eventually(t, func() bool {
+		// Make request to 8888 and wait for the response.
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8888/", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		defer resp.Body.Close()
+		// We don't care about the content and just check the connection is successful.
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		t.Logf("status=%d, body: %s", resp.StatusCode, string(body))
+		return true
+	}, 20*time.Second, 1*time.Second)
+	cancel()
+	<-done
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
