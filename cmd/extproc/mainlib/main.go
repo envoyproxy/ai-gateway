@@ -10,14 +10,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -84,27 +82,23 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 
 // Main is a main function for the external processor exposed
 // for allowing users to build their own external processor.
-func Main() {
-	flags, err := parseAndValidateFlags(os.Args[1:])
+//
+// * ctx is the context for the external processor.
+// * args are the command line arguments passed to the external processor without the program name.
+// * stderr is the writer to use for standard error where the external processor will output logs.
+func Main(ctx context.Context, args []string, stderr io.Writer) {
+	flags, err := parseAndValidateFlags(args)
 	if err != nil {
 		log.Fatalf("failed to parse and validate extProcFlags: %v", err)
 	}
 
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: flags.logLevel}))
+	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
 
 	l.Info("starting external processor",
 		slog.String("version", version.Version),
 		slog.String("address", flags.extProcAddr),
 		slog.String("configPath", flags.configPath),
 	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	signalsChan := make(chan os.Signal, 1)
-	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-signalsChan
-		cancel()
-	}()
 
 	lis, err := net.Listen(listenAddress(flags.extProcAddr))
 	if err != nil {
