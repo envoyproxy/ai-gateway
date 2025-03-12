@@ -15,7 +15,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -123,11 +123,6 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 	f, err := os.Create(resourceYamlPath)
 	defer func() {
 		_ = f.Close()
-		content, err := os.ReadFile(resourceYamlPath)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(string(content))
 	}()
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", resourceYamlPath, err)
@@ -178,8 +173,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		}
 	}
 
-	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, _, deployments, _, err :=
-		translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, runCtx.stderrLogger)
+	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, _, deployments, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, runCtx.stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}

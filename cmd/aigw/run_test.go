@@ -9,23 +9,24 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/filterapi"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"log/slog"
 	"net"
 	"os"
-	"path"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	"sigs.k8s.io/yaml"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	"sigs.k8s.io/yaml"
+
+	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestRun_default(t *testing.T) {
@@ -195,28 +196,29 @@ uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 	}
 
 	wd, port, filterConfig := runCtx.mustWriteExtensionPolicy(extP)
-	require.Equal(t, path.Join(runCtx.tmpdir, "envoy-ai-gateway-extproc-foo-namespace-myextproc"), wd)
+	require.Equal(t, filepath.Join(runCtx.tmpdir, "envoy-ai-gateway-extproc-foo-namespace-myextproc"), wd)
 	require.NotZero(t, port)
 	require.NotEmpty(t, filterConfig)
 
 	// Check the secrets are written to the working directory.
 	// API key secret.
-	_, err := os.Stat(path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey"))
+	_, err := os.Stat(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey"))
 	require.NoError(t, err)
-	content, err := os.ReadFile(path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
+	content, err := os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
 	require.NoError(t, err)
 	require.Equal(t, "my-api-key", string(content))
 	// AWS credentials secret.
-	_, err = os.Stat(path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials"))
+	_, err = os.Stat(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials"))
 	require.NoError(t, err)
-	content, err = os.ReadFile(path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
+	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
 	require.NoError(t, err)
+	require.Equal(t, "my-aws-credentials", content)
 
 	// Check the file path in the filter config.
 	require.Equal(t, filterConfig.Rules[0].Backends[0].Auth.APIKey.Filename,
-		path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
+		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
 	require.Equal(t, filterConfig.Rules[1].Backends[0].Auth.AWSAuth.CredentialFileName,
-		path.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
+		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
 
 	// Check the Backend and ExtensionPolicy resources are written to the output file.
 	out := runCtx.envoyGatewayResourcesOut.(*bytes.Buffer).String()
@@ -245,14 +247,13 @@ spec:
       kind: Backend
       name: myextproc
       namespace: foo-namespace`)
-
 }
 
 func Test_mustStartExtProc(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dir := t.TempDir() + "/aaaaaaaaaaaaaaaaaaaaa"
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 	var fc filterapi.Config
 	require.NoError(t, yaml.Unmarshal([]byte(filterapi.DefaultConfig), &fc))
 	mustStartExtProc(ctx, dir, mustGetAvailablePort(), fc)
@@ -264,7 +265,7 @@ func Test_mustStartExtProc(t *testing.T) {
 
 func Test_mustGetAvailablePort(t *testing.T) {
 	p := mustGetAvailablePort()
-	require.True(t, p > 0)
+	require.Positive(t, p)
 	l, err := net.Listen("tcp", ":"+strconv.Itoa(int(p)))
 	require.NoError(t, err)
 	require.NoError(t, l.Close())
