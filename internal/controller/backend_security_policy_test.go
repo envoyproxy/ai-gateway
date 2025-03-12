@@ -176,9 +176,6 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *t
 			Name:      "some-azure-secret",
 			Namespace: "default",
 		},
-		//Data: map[string][]byte{
-		//	"client-secret": []byte("client-secret"),
-		//},
 	}
 	require.NoError(t, cl.Create(t.Context(), &azureClientSecret, &client.CreateOptions{}))
 

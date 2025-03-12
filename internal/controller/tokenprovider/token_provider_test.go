@@ -9,6 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -18,12 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-	"net/http"
-	"net/http/httptest"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	"testing"
-	"time"
 )
 
 func TestNewAzureTokenProvider(t *testing.T) {
@@ -33,7 +34,6 @@ func TestNewAzureTokenProvider(t *testing.T) {
 }
 
 func TestAzureTokenProvider_GetToken(t *testing.T) {
-
 	t.Run("missing azure scope", func(t *testing.T) {
 		provider, err := NewAzureTokenProvider("tenantID", "clientID", "clientSecret", policy.TokenRequestOptions{})
 		require.NoError(t, err)
@@ -56,11 +56,6 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "Tenant 'invalidtenantid' not found. Check to make sure you have the correct tenant ID and are signing into the correct cloud.")
 	})
-
-	t.Run("return valid token", func(t *testing.T) {
-
-	})
-
 }
 
 func TestOidcTokenProvider_GetToken(t *testing.T) {
@@ -85,30 +80,40 @@ func TestOidcTokenProvider_GetToken(t *testing.T) {
 		expErrMsg string
 		oidcStr   string
 	}{
-		{"invalid oidc config",
+		{
+			"invalid oidc config",
 			true,
 			"failed to create oidc config",
-			`{"issuer": "issuer", "token_endpoint": "token_endpoint", }`},
+			`{"issuer": "issuer", "token_endpoint": "token_endpoint", }`,
+		},
 
-		{"invalid issuer",
+		{
+			"invalid issuer",
 			true,
 			"issuer is required in oidc provider config",
-			`{"issuer": "", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope1", "scope2"]}`},
+			`{"issuer": "", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope1", "scope2"]}`,
+		},
 
-		{"invalid claim scope",
+		{
+			"invalid claim scope",
 			true,
 			"failed to get scopes_supported field in claim",
-			`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ""}`},
+			`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ""}`,
+		},
 
-		{"invalid token endpoint",
+		{
+			"invalid token endpoint",
 			true,
 			"token_endpoint is required in oidc provider config",
-			`{"issuer": "issuer", "token_endpoint": "", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope1", "scope2"]}`},
+			`{"issuer": "issuer", "token_endpoint": "", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope1", "scope2"]}`,
+		},
 
-		{"valid claim scope endpoint",
+		{
+			"valid claim scope endpoint",
 			false,
 			"",
-			`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope3"]}`},
+			`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope3"]}`,
+		},
 	}
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -153,7 +158,6 @@ func TestOidcTokenProvider_GetToken(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestOidcTokenProvider_GetToken_Success(t *testing.T) {
@@ -209,7 +213,7 @@ func TestOidcTokenProvider_GetToken_Success(t *testing.T) {
 		token, err := provider.GetToken(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, token)
-		require.Equal(t, token.Token, "some-access-token")
+		require.Equal(t, "some-access-token", token.Token)
 		require.WithinRange(t, token.ExpiresAt, time.Now().Add(-1*time.Minute), time.Now().Add(time.Minute))
 	})
 }
