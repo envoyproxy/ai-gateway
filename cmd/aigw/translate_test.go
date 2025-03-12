@@ -33,6 +33,11 @@ func Test_translate(t *testing.T) {
 			in:   "testdata/translate_basic.in.yaml",
 			out:  "testdata/translate_basic.out.yaml",
 		},
+		{
+			name: "nonairesources",
+			in:   "testdata/translate_nonairesources.in.yaml",
+			out:  "testdata/translate_nonairesources.out.yaml",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}

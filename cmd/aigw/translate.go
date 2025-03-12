@@ -48,7 +48,7 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, _, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
@@ -73,6 +73,9 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	}
 	for _, secret := range secrets.Items {
 		mustWriteObj(&secret.TypeMeta, &secret, output)
+	}
+	for _, secret := range originalSecrets {
+		mustWriteObj(nil, secret, output)
 	}
 	for _, deployment := range deployments.Items {
 		mustWriteObj(&deployment.TypeMeta, &deployment, output)
@@ -132,6 +135,13 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			err = fmt.Errorf("error decoding unstructured object: %w", err)
 			return
 		}
+		// Deduplicate non-AI Gateway resources.
+		key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
+		if _, ok := nonAIResourceDedup[key]; !ok {
+			nonAIResourceDedup[key] = struct{}{}
+		} else {
+			continue
+		}
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
 			mustExtractAndAppend(obj, &aigwRoutes)
@@ -142,13 +152,6 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 		case "Secret":
 			mustExtractAndAppend(obj, &secrets)
 		default:
-			// Deduplicate non-AI Gateway resources.
-			key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
-			if _, ok := nonAIResourceDedup[key]; !ok {
-				nonAIResourceDedup[key] = struct{}{}
-			} else {
-				continue
-			}
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
 			mustWriteObj(nil, obj, out)
