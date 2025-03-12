@@ -191,14 +191,6 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 	// Also HTTPRoutes.
 	for _, hr := range httpRoutes.Items {
-		for i := range hr.Spec.Rules {
-			for j := range hr.Spec.Rules[i].BackendRefs {
-				backendRef := &hr.Spec.Rules[i].BackendRefs[j]
-				if backendRef.Namespace == nil {
-					backendRef.Namespace = ptr.To(gwapiv1.Namespace(hr.Namespace))
-				}
-			}
-		}
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, &hr)
 	}
 

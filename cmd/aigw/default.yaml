@@ -14,7 +14,6 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: aigw-run
-  namespace: default
 spec:
   gatewayClassName: aigw-run
   listeners:
@@ -26,7 +25,6 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
-  namespace: default
 spec:
   schema:
     name: OpenAI
@@ -54,7 +52,6 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: openai
-  namespace: default
 spec:
   schema:
     name: OpenAI
@@ -71,7 +68,6 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: aws
-  namespace: default
 spec:
   schema:
     name: AWSBedrock
@@ -88,19 +84,16 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey
-  namespace: default
 spec:
   type: APIKey
   apiKey:
     secretRef:
       name: openai-apikey
-      namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: aws-credentials
-  namespace: default
 spec:
   type: AWSCredentials
   awsCredentials:
@@ -113,7 +106,6 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: openai
-  namespace: default
 spec:
   endpoints:
     - fqdn:
@@ -124,7 +116,6 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: aws
-  namespace: default
 spec:
   endpoints:
     - fqdn:
@@ -135,7 +126,6 @@ apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
   name: openai-tls
-  namespace: default
 spec:
   targetRefs:
     - group: 'gateway.envoyproxy.io'
@@ -149,7 +139,6 @@ apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
   name: aws-tls
-  namespace: default
 spec:
   targetRefs:
     - group: 'gateway.envoyproxy.io'
@@ -163,7 +152,6 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: openai-apikey
-  namespace: default
 type: Opaque
 stringData:
   apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
@@ -172,7 +160,6 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: aws-credentials
-  namespace: default
 type: Opaque
 stringData:
   # Replace with your AWS credentials.
