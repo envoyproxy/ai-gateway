@@ -21,7 +21,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 var (
@@ -181,7 +180,7 @@ type mockChatCompletionMetrics struct {
 }
 
 // StartRequest implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) StartRequest() { m.requestStart = time.Now() }
+func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
 // SetModel implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
@@ -238,4 +237,4 @@ func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count in
 	require.Equal(t, count, m.tokenLatencyCount)
 }
 
-var _ metrics.ChatCompletion = &mockChatCompletionMetrics{}
+var _ x.ChatCompletionMetrics = &mockChatCompletionMetrics{}

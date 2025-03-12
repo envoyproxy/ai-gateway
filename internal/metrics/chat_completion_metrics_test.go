@@ -22,7 +22,7 @@ func TestNewProcessorMetrics(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewChatCompletion(meter).(*chatCompletion)
+		pm    = DefaultChatCompletion(meter).(*chatCompletion)
 	)
 
 	assert.NotNil(t, pm)
@@ -33,11 +33,11 @@ func TestStartRequest(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewChatCompletion(meter).(*chatCompletion)
+		pm    = DefaultChatCompletion(meter).(*chatCompletion)
 	)
 
 	before := time.Now()
-	pm.StartRequest()
+	pm.StartRequest(nil)
 	after := time.Now()
 
 	assert.False(t, pm.firstTokenSent)
@@ -49,7 +49,7 @@ func TestRecordTokenUsage(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewChatCompletion(meter).(*chatCompletion)
+		pm    = DefaultChatCompletion(meter).(*chatCompletion)
 
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
@@ -82,7 +82,7 @@ func TestRecordTokenLatency(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewChatCompletion(meter).(*chatCompletion)
+		pm    = DefaultChatCompletion(meter).(*chatCompletion)
 
 		attrs = attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
@@ -91,7 +91,7 @@ func TestRecordTokenLatency(t *testing.T) {
 		)
 	)
 
-	pm.StartRequest()
+	pm.StartRequest(nil)
 	pm.SetModel("test-model")
 	pm.SetBackend(filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
@@ -122,7 +122,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewChatCompletion(meter).(*chatCompletion)
+		pm    = DefaultChatCompletion(meter).(*chatCompletion)
 
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
@@ -133,7 +133,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 		attrsFailure = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback))...)
 	)
 
-	pm.StartRequest()
+	pm.StartRequest(nil)
 	pm.SetModel("test-model")
 	pm.SetBackend(filterapi.Backend{Name: "custom"})
 

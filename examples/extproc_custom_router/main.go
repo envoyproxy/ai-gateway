@@ -24,7 +24,7 @@ func newCustomRouter(defaultRouter x.Router, config *filterapi.Config) x.Router 
 	return &myCustomRouter{config: config, defaultRouter: defaultRouter}
 }
 
-// myCustomRouter implements [filterapi.Router].
+// myCustomRouter implements [x.Router].
 type myCustomRouter struct {
 	config        *filterapi.Config
 	defaultRouter x.Router

@@ -7,7 +7,10 @@
 package x
 
 import (
+	"context"
 	"errors"
+
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
@@ -38,4 +41,29 @@ type Router interface {
 	//
 	// Returns the backend.
 	Calculate(requestHeaders map[string]string) (backend *filterapi.Backend, err error)
+}
+
+// NewCustomChatCompletionMetrics is the function to create a custom chat completion AI Gateway metrics over
+// the default metrics. This is nil by default and can be set by the custom build of external processor.
+var NewCustomChatCompletionMetrics NewCustomChatCompletionMetricsFn
+
+// NewCustomChatCompletionMetricsFn is the function to create a custom chat completion AI Gateway metrics.
+type NewCustomChatCompletionMetricsFn func(meter metric.Meter) ChatCompletionMetrics
+
+// ChatCompletionMetrics is the interface for the chat completion AI Gateway metrics.
+type ChatCompletionMetrics interface {
+	// StartRequest initializes timing for a new request.
+	StartRequest(headers map[string]string)
+	// SetModel sets the model the request. This is usually called after parsing the request body .
+	SetModel(model string)
+	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
+	// after parsing the request body to determine the model and invoke the routing logic.
+	SetBackend(backend filterapi.Backend)
+
+	// RecordTokenUsage records token usage metrics.
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32)
+	// RecordRequestCompletion records latency metrics for the entire request
+	RecordRequestCompletion(ctx context.Context, success bool)
+	// RecordTokenLatency records latency metrics for token generation.
+	RecordTokenLatency(ctx context.Context, tokens uint32)
 }

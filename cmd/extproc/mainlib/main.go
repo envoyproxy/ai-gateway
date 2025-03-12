@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -106,12 +107,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) {
 	}
 
 	metricsServer, meter := startMetricsServer(flags.metricsAddr, l)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
 		log.Fatalf("failed to create external processor server: %v", err)
 	}
-	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(metrics.NewChatCompletion(meter)))
+	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
