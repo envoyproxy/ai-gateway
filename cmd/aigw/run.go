@@ -146,7 +146,7 @@ func run(ctx context.Context, _ cmdRun, output, stderr io.Writer) error {
 	}
 	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
 	// Give it some time to do so, otherwise the process might become an orphan.
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 	return nil
 }
 
