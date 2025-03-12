@@ -98,7 +98,9 @@ func readYamlsAsString(paths []string) (string, error) {
 	return buf.String(), nil
 }
 
-// collectObjects reads the YAML input and collects target resources.
+// collectObjects reads the YAML input and collects target resources. Currently, this will collect
+// AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and Secret resources. Other resources
+// will be written back to the output writer.
 //
 // If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
 func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
