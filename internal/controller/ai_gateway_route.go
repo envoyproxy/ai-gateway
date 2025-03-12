@@ -120,7 +120,10 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 
 	pm := egv1a1.BufferedExtProcBodyProcessingMode
 	port := gwapiv1.PortNumber(1063)
-	objNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
+	var objNsPtr *gwapiv1.Namespace
+	if aiGatewayRoute.Namespace != "" {
+		objNsPtr = ptr.To(gwapiv1.Namespace(aiGatewayRoute.Namespace))
+	}
 	extPolicy := &egv1a1.EnvoyExtensionPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace},
 		Spec: egv1a1.EnvoyExtensionPolicySpec{
@@ -134,7 +137,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name:      gwapiv1.ObjectName(extProcName(aiGatewayRoute)),
-						Namespace: &objNs,
+						Namespace: objNsPtr,
 						Port:      &port,
 					},
 				}}},
@@ -455,9 +458,13 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
 	for i, egRef := range targetRefs {
 		egName := egRef.Name
+		var namespace *gwapiv1.Namespace
+		if egNs != "" {
+			namespace = ptr.To(egNs)
+		}
 		parentRefs[i] = gwapiv1.ParentReference{
 			Name:      egName,
-			Namespace: &egNs,
+			Namespace: namespace,
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
