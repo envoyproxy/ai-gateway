@@ -212,7 +212,7 @@ uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 	require.NoError(t, err)
 	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
 	require.NoError(t, err)
-	require.Equal(t, "my-aws-credentials", content)
+	require.Equal(t, "my-aws-credentials", string(content))
 
 	// Check the file path in the filter config.
 	require.Equal(t, filterConfig.Rules[0].Backends[0].Auth.APIKey.Filename,
