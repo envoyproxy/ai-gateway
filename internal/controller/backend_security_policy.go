@@ -70,19 +70,18 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
-	if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
-		requeue, err := c.rotateCredentialWithOIDCFederation(ctx, *backendSecurityPolicy, *oidc)
+	if backendSecurityPolicy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
+		res, err = c.rotateCredential(ctx, *backendSecurityPolicy)
 		if err != nil {
-			return ctrl.Result{}, err
+			return res, err
 		}
-		res = ctrl.Result{RequeueAfter: requeue}
 	}
-	return res, c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy)
+	err = c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy)
+	return res, err
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	// Currently only supports AWS.
 	switch spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
@@ -94,22 +93,25 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 	return nil
 }
 
-func (c *BackendSecurityPolicyController) rotateCredentialWithOIDCFederation(ctx context.Context, backendSecurityPolicy aigv1a1.BackendSecurityPolicy, oidc egv1a1.OIDC) (time.Duration, error) {
+func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, backendSecurityPolicy aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	var rotator rotators.Rotator
-	var err error
 	switch backendSecurityPolicy.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		region := backendSecurityPolicy.Spec.AWSCredentials.Region
-		roleArn := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
-		rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name,
-			preRotationWindow, oidc, roleArn, region)
-		if err != nil {
-			return time.Minute, err
+		if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
+			region := backendSecurityPolicy.Spec.AWSCredentials.Region
+			roleArn := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
+			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name,
+				preRotationWindow, *oidc, roleArn, region)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, nil
 		}
 	default:
-		err := fmt.Errorf("backend security type %s does not support OIDC token exchange", backendSecurityPolicy.Spec.Type)
+		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", backendSecurityPolicy.Spec.Type)
 		c.logger.Error(err, "namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
-		return time.Minute, err
+		return ctrl.Result{}, err
 	}
 
 	requeue := time.Minute
@@ -141,7 +143,7 @@ func (c *BackendSecurityPolicyController) rotateCredentialWithOIDCFederation(ctx
 				backendSecurityPolicy.Name, backendSecurityPolicy.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
 		}
 	}
-	return requeue, err
+	return ctrl.Result{RequeueAfter: requeue}, err
 }
 
 // backendSecurityPolicyKey returns the key used for indexing and caching the backendSecurityPolicy.

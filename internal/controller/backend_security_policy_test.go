@@ -136,7 +136,7 @@ func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
 	require.Equal(t, time.Minute, res.RequeueAfter)
 }
 
-func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
+func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		b, err := json.Marshal(oauth2.Token{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: 60})
@@ -206,12 +206,11 @@ func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	}
 	err = cl.Create(t.Context(), secret)
 	require.NoError(t, err)
-	// perform oidc token exchange
-	_, err = c.rotateCredentialWithOIDCFederation(t.Context(), *bsp, oidc)
+	_, err = c.rotateCredential(t.Context(), *bsp)
 	require.NoError(t, err)
 }
 
-func TestBackendSecurityController_RotateCredentials(t *testing.T) {
+func TestBackendSecurityController_RotateExpiredCredential(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		b, err := json.Marshal(oauth2.Token{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: 60})
