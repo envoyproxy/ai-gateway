@@ -380,6 +380,17 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")}},
 	}, originalMutation.GetSetHeaders())
 	require.Contains(t, buf.String(), "filtering sensitive header")
+
+	t.Run("do nothing for immediate response", func(t *testing.T) {
+		resp := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{},
+			},
+		}
+		filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
+		require.NotNil(t, filtered)
+		require.Equal(t, resp, filtered)
+	})
 }
 
 func Test_headersToMap(t *testing.T) {
