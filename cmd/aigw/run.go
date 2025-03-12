@@ -382,7 +382,7 @@ func mustStartExtProc(
 		"--metricsAddr", fmt.Sprintf(":%d", mustGetAvailablePort()),
 	}
 	go func() {
-		mainlib.Main(ctx, args)
+		mainlib.Main(ctx, args, os.Stderr)
 	}()
 }
 
