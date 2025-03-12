@@ -22,5 +22,5 @@ func main() {
 		<-signalsChan
 		cancel()
 	}()
-	mainlib.Main(ctx, os.Args[1:])
+	mainlib.Main(ctx, os.Args[1:], os.Stderr)
 }

@@ -99,7 +99,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
-	c.logger.Info("Processing request", "path", c.requestHeaders[":path"], "model", model)
+	c.logger.Info("processing request body", "path", c.requestHeaders[":path"], "model", model)
 
 	c.metrics.SetModel(model)
 	c.requestHeaders[c.config.modelNameHeaderKey] = model

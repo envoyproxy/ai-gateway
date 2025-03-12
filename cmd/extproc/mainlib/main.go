@@ -10,11 +10,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -83,14 +83,16 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 // Main is a main function for the external processor exposed
 // for allowing users to build their own external processor.
 //
-// args is the list of arguments passed to the external processor without the program name.
-func Main(ctx context.Context, args []string) {
+// * ctx is the context for the external processor.
+// * args are the command line arguments passed to the external processor without the program name.
+// * stderr is the writer to use for standard error where the external processor will output logs.
+func Main(ctx context.Context, args []string, stderr io.Writer) {
 	flags, err := parseAndValidateFlags(args)
 	if err != nil {
 		log.Fatalf("failed to parse and validate extProcFlags: %v", err)
 	}
 
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: flags.logLevel}))
+	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
 
 	l.Info("Starting external processor",
 		slog.String("version", version.Version),
