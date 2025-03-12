@@ -121,7 +121,8 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		c.logger.Error(err, "failed to get rotation time, retry in one minute")
 	} else {
 		if rotator.IsExpired(rotationTime) {
-			expirationTime, err := rotator.Rotate(ctx)
+			var expirationTime time.Time
+			expirationTime, err = rotator.Rotate(ctx)
 			if err != nil {
 				c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 			} else {
