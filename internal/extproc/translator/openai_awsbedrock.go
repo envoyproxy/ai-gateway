@@ -254,8 +254,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			// TODO: we are sometimes missing the content (should fix)
 			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
 		}
-	} else {
-		return nil, fmt.Errorf("unexpected content type for assistant message")
 	}
 	bedrockMessage = &awsbedrock.Message{
 		Role:    role,
