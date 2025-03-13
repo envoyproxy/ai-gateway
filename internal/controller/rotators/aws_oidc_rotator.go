@@ -8,6 +8,8 @@ package rotators
 import (
 	"context"
 	"fmt"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,6 +43,8 @@ type AWSOIDCRotator struct {
 	backendSecurityPolicyNamespace string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
+	// OIDC config
+	oidc egv1a1.OIDC
 	// roleArn is the role ARN used to obtain credentials.
 	roleArn string
 	// region is the AWS region for the credentials.
@@ -58,6 +62,7 @@ func NewAWSOIDCRotator(
 	backendSecurityPolicyNamespace string,
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
+	oidc egv1a1.OIDC,
 	roleArn string,
 	region string,
 ) (*AWSOIDCRotator, error) {
@@ -88,6 +93,7 @@ func NewAWSOIDCRotator(
 		backendSecurityPolicyNamespace: backendSecurityPolicyNamespace,
 		backendSecurityPolicyName:      backendSecurityPolicyName,
 		preRotationWindow:              preRotationWindow,
+		oidc:                           oidc,
 		roleArn:                        roleArn,
 		region:                         region,
 	}, nil
@@ -134,15 +140,27 @@ func populateSecretWithAwsIdentity(secret *corev1.Secret, awsIdentity *sts.Assum
 // Rotate implements aws credential secret upsert operation to k8s secret store.
 //
 // This implements [Rotator.Rotate].
-func (r *AWSOIDCRotator) Rotate(ctx context.Context, token string) (time.Time, error) {
+func (r *AWSOIDCRotator) Rotate(ctx context.Context) (time.Time, error) {
 	bspNamespace := r.backendSecurityPolicyNamespace
 	bspName := r.backendSecurityPolicyName
 	secretName := GetBSPSecretName(bspName)
 
 	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
-	awsIdentity, err := r.assumeRoleWithToken(ctx, token)
+
+	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, &r.oidc)
 	if err != nil {
-		r.logger.Error(err, "failed to assume role", "role", r.roleArn, "access token", token)
+		r.logger.Error(err, "failed to construct oidc provider")
+		return time.Time{}, err
+	}
+	accessToken, err := oidcProvider.GetToken(ctx)
+	if err != nil {
+		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.oidc.Provider.Issuer)
+		return time.Time{}, err
+	}
+	awsIdentity, err := r.assumeRoleWithToken(ctx, accessToken.Token)
+
+	if err != nil {
+		r.logger.Error(err, "failed to assume role", "role", r.roleArn)
 		return time.Time{}, err
 	} else if awsIdentity.Credentials == nil {
 		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", bspName, bspNamespace)
