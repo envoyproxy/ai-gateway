@@ -245,11 +245,17 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) (*awsbedrock.Message, error) {
 	var bedrockMessage *awsbedrock.Message
 	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
-	if openAiMessage.Content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
-		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal})
-	} else if openAiMessage.Content.Text != nil {
-		// TODO: we are sometimes missing the content (should fix)
-		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text})
+	if v, ok := openAiMessage.Content.Value.(string); ok {
+		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: &v})
+	} else if content, ok := openAiMessage.Content.Value.(openai.ChatCompletionAssistantMessageParamContent); ok {
+		if content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
+			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
+		} else if content.Text != nil {
+			// TODO: we are sometimes missing the content (should fix)
+			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
+		}
+	} else {
+		return nil, fmt.Errorf("unexpected content type for assistant message")
 	}
 	bedrockMessage = &awsbedrock.Message{
 		Role:    role,

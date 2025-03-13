@@ -149,6 +149,28 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 	return nil
 }
 
+type StringOrAssistantRoleContentUnion struct {
+	Value interface{}
+}
+
+func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
+	var str string
+	err := json.Unmarshal(data, &str)
+	if err == nil {
+		s.Value = str
+		return nil
+	}
+
+	var content ChatCompletionAssistantMessageParamContent
+	err = json.Unmarshal(data, &content)
+	if err == nil {
+		s.Value = content
+		return nil
+	}
+
+	return fmt.Errorf("cannot unmarshal JSON data as string or assistant content parts")
+}
+
 type StringOrArray struct {
 	Value interface{}
 }
@@ -335,7 +357,7 @@ type ChatCompletionAssistantMessageParam struct {
 	Audio ChatCompletionAssistantMessageParamAudio `json:"audio,omitempty"`
 	// The contents of the assistant message. Required unless `tool_calls` or
 	// `function_call` is specified.
-	Content ChatCompletionAssistantMessageParamContent `json:"content"`
+	Content StringOrAssistantRoleContentUnion `json:"content"`
 	// An optional name for the participant. Provides the model information to
 	// differentiate between participants of the same role.
 	Name string `json:"name,omitempty"`
