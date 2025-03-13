@@ -1,36 +1,39 @@
 # Inference Gateway API Extension Support
 
+## Propsal Summary
+
+This proposal extends Envoy AI Gateway (EAIG) to support the Gateway API Inference Extension (GAIE), enabling seamless integration of both egress (external AI providers) and ingress (internal Kubernetes LLM deployments) traffic management.
+
+By allowing `AIServiceBackend.BackendRef` to reference GAIE's `InferencePool`, we unlock advanced capabilities like intelligent load balancing with fallbacks while maintaining a unified API.
+
+This strategic enhancement addresses user's needs without disrupting existing implementations, positioning EAIG as a comprehensive solution for all AI traffic management.
+
+**This document is about:**
+
+- Expanding the EAIG project scope to support GAIE
+- How it integrates with the existing EAIG APIs
+- Proposed implementation details
+
 ## Background
 
-[Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io) (GAIE) is a brand new extension of
-the Gateway API that aims to solve the problem of serving large language models (LLMs) inside Kubernetes. Especially,
-it specifies a way to make an intelligent load balancing decision etc.
+[Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io) (GAIE) is a new extension of the Kubernetes Gateway API that addresses serving large language models (LLMs) inside Kubernetes, with particular focus on intelligent load balancing decisions.
 
-Envoy AI Gateway (EAIG) 's initial goal was, in contrast, to provide a way to route traffic to different AI providers.
-In other words, EAIG is closer to the application developers vs GAIE is closer to the AI platform team. Or, EAIG is
-more focused on the "egress" vs GAIE is more focused on the "ingress" (especially k8s).
+Envoy AI Gateway (EAIG) was initially designed to route traffic to different AI providers, serving primarily as an egress solution.
 
-Even though, there's a clear difference between these two projects, some of the capability GAIE specifying can be useful for EAIG
-users as well. For example, [Endpoint picker with fallback and subset](https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445) is a nice feature that can be leveraged and one of the
-oldest feature requests for EAIG.
+The EAIG MVP features targeted application developers with an egress focus, while the GAIE serves AI platform teams with a Kubernetes ingress focus.
 
-This document is about two key points; how EAIG project's scope can be changed to support GAIE,
-and how it integrates with the existing API.
+To make EAIG a comprehensive solution for all AI traffic management, this proposal is to extend EAIG to support GAIE.
 
-## Changes to the scope of the project
 
-Initially, the project was focused on routing traffic to different AI providers, namely "egress" traffic. However, with the
-introduction of GAIE, we need to expand it to support "ingress" traffic as well. This means EAIG will evolve to support
-"all AI traffic" instead of just "egress AI traffic".
+## Expanding Project Scope
 
-However, this doesn't mean that we need to have completely different APIs for "ingress" and "egress". Instead, we will ensure
-that the existing APIs nicely integrate with GAIE APIs.
+By evolving EAIG's focus beyond routing traffic to external AI providers (egress) to include internal Kubernetes LLM deployments (ingress) through GAIE implementation we position EAIG as a comprehensive traffic management solution for all AI traffic.
 
-## How it integrates with the existing API
+Note that this enhancement is an addition to the existing EAIG APIs, and does not compete with existing functionality for the egress use case.
 
-We propose to allow the existing `AIServiceBackend.BackendRef` to reference an `InferencePool`. This will allow
-the users to leverage the new features of GAIE without changing the existing APIs. Even the translation and security policy
-related functionalities can be applied as is.
+## API Integration Approach
+
+We propose enabling the existing `AIServiceBackend.BackendRef` to reference GAIE's `InferencePool`. This approach allows users to leverage GAIE's advanced features without changing existing APIs. Translation and security policy functionalities will continue to work as designed.
 
 ```diff
 --- a/api/v1alpha1/api.go
@@ -46,11 +49,17 @@ related functionalities can be applied as is.
         //
 ```
 
-This will also ensure that we have only one configuration API layer for both "ingress" and "egress" traffic. Otherwise, we would end up maintaining two different APIs without
-for different types of traffic.
+This integration ensures a single, unified configuration API layer for both ingress and egress traffic, avoiding the maintenance burden of parallel APIs for different traffic types.
 
 ## Implementation Notes
 
-* The "BackendRef" pointing to an InferencePool will utilize the endpoint picker mechanism as described [here](https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445). In its implementation, this will rely on the new load balancing policy that uses dynamic metadata to make decisions.
-* We will not change the abstraction where the extproc lives currently: it will be free of the k8s/control plane specific details and the `filterapi` layers should contain the enough configuration to support the load balancing policy for GAIE.
-* We can conditionally disable the translation and buffering only when the AIGatewayRoute is referencing only one InferencePool based AIServiceBackend and the translation is not needed. This will be aligned with the reference implementation of GAIE, but that will be an optimization that can be done later.
+* `BackendRef` pointing to an `InferencePool` will leverage the endpoint picker mechanism described in [GAIE PR #445](https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445), using dynamic metadata-based load balancing policies.
+
+* The existing abstraction where extproc resides will remain unchanged, keeping it independent of Kubernetes/control plane specifics while ensuring the `filterapi` layer supports GAIE load balancing policies.
+
+* As a future optimization, we can conditionally disable translation and buffering when an `AIGatewayRoute` references only one `InferencePool`-based `AIServiceBackend` without translation requirements, aligning with GAIE's reference implementation.
+
+
+## Options considered
+
+One consideration was to implement this in Envoy Gateway directly, however as this is directly related to AI Traffic, we believe Envoy AI Gateway is the best initial home for this enhancement. In the future, this enhancement may be migrated to the Envoy Gateway project, and hence still be available to EAIG users.
