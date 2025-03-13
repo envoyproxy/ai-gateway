@@ -8,8 +8,6 @@ package rotators
 import (
 	"context"
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,12 +15,15 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
 // AWSOIDCRotator implements the Rotator interface for AWS OIDC token exchange.
@@ -70,9 +71,7 @@ func NewAWSOIDCRotator(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
-
 	cfg.Region = region
-
 	if proxyURL := os.Getenv("AI_GATEWAY_STS_PROXY_URL"); proxyURL != "" {
 		cfg.HTTPClient = &http.Client{
 			Transport: &http.Transport{
@@ -147,6 +146,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
 
+	// TODO XL should move to constructor be consistent with other provider
 	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, &r.oidc)
 	if err != nil {
 		r.logger.Error(err, "failed to construct oidc provider")

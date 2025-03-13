@@ -214,7 +214,7 @@ spec:
             secretName: envoy-ai-gateway-basic-openai-apikey
         - name: rule1-backref0-envoy-ai-gateway-basic-aws-credentials
           secret:
-            secretName: ai-eg-bsp-envoy-ai-gateway-basic-aws-credentials
+            secretName: envoy-ai-gateway-basic-aws-credentials
 ---
 apiVersion: v1
 kind: Service

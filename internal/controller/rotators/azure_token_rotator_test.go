@@ -55,7 +55,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 			tokenProvider:                  mockProvider,
 		}
 
-		_, err = rotator.Rotate(context.Background(), "test-policy")
+		_, err = rotator.Rotate(context.Background())
 		require.Error(t, err)
 		err = client.Delete(context.Background(), secret)
 		require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 			preRotationWindow:              5 * time.Minute,
 			tokenProvider:                  mockProvider,
 		}
-		expiration, err := rotator.Rotate(context.Background(), "test-policy")
+		expiration, err := rotator.Rotate(context.Background())
 		require.NoError(t, err)
 		secret, err := LookupSecret(context.Background(), client, "default", GetBSPSecretName("test-policy"))
 		require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 			preRotationWindow:              5 * time.Minute,
 		}
 
-		expiration, err := rotator.Rotate(context.Background(), "test-policy")
+		expiration, err := rotator.Rotate(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, twoHourAfterNow, expiration)
 

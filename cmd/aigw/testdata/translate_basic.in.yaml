@@ -93,21 +93,9 @@ spec:
   type: AWSCredentials
   awsCredentials:
     region: us-east-1
-    oidcExchangeToken:
-      aud: some-aws-bedrock-aud
-      awsRoleArn: some-aws-role-arn
-      grantType: client_credentials
-      oidc:
-        clientID: some-client-id
-        clientSecret:
-          group: ""
-          kind: Secret
-          name: some-policy-secret
-          namespace: gateway
-        provider:
-          issuer: some-issuer-link
-        scopes:
-          - openid profile
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-aws-credentials
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend

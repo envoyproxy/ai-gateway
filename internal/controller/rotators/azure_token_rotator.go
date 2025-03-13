@@ -77,7 +77,7 @@ func (r *AzureTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, 
 	return preRotationTime, nil
 }
 
-func (r *AzureTokenRotator) Rotate(ctx context.Context, _ string) (time.Time, error) {
+func (r *AzureTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	bspNamespace := r.backendSecurityPolicyNamespace
 	bspName := r.backendSecurityPolicyName
 	secretName := GetBSPSecretName(bspName)
