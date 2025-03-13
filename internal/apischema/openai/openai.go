@@ -10,6 +10,7 @@ package openai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -168,7 +169,7 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return fmt.Errorf("cannot unmarshal JSON data as string or assistant content parts")
+	return errors.New("cannot unmarshal JSON data as string or assistant content parts")
 }
 
 type StringOrArray struct {

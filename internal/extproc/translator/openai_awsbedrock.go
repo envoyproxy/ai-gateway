@@ -251,7 +251,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		if content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
 			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
 		} else if content.Text != nil {
-			// TODO: we are sometimes missing the content (should fix)
 			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
 		}
 	}

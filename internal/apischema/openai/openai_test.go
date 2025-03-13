@@ -164,7 +164,8 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			name: "assistant message string",
 			in: []byte(`{"model": "gpu-o4",
                         "messages": [
-                         {"role": "assistant", "content": "you are a helpful assistant"}
+                         {"role": "assistant", "content": "you are a helpful assistant"},
+                         {"role": "assistant", "content": "{'text': 'you are a helpful assistant'}"}
 						 ]}
 `),
 			out: &ChatCompletionRequest{
@@ -174,6 +175,13 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						Value: ChatCompletionAssistantMessageParam{
 							Role:    ChatMessageRoleAssistant,
 							Content: StringOrAssistantRoleContentUnion{Value: "you are a helpful assistant"},
+						},
+						Type: ChatMessageRoleAssistant,
+					},
+					{
+						Value: ChatCompletionAssistantMessageParam{
+							Role:    ChatMessageRoleAssistant,
+							Content: StringOrAssistantRoleContentUnion{Value: "{'text': 'you are a helpful assistant'}"},
 						},
 						Type: ChatMessageRoleAssistant,
 					},

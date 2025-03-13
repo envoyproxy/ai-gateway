@@ -84,6 +84,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Value: openai.ChatCompletionAssistantMessageParam{
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: openai.ChatCompletionAssistantMessageParamContent{
+									Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
 									Text: ptr.To("I dunno"),
 								},
 							},
