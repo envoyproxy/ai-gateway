@@ -296,9 +296,9 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion,
 		&corev1.Secret{},
 	)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	awsOidcRotator := AWSOIDCRotator{
-		client:                         client,
+		client:                         fakeClient,
 		backendSecurityPolicyNamespace: policyNameSpace,
 		backendSecurityPolicyName:      policyName,
 	}
@@ -306,15 +306,15 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	createTestAwsSecret(t, client, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
+	createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
 
-	secret, err := LookupSecret(t.Context(), client, policyNameSpace, GetBSPSecretName(policyName))
+	secret, err := LookupSecret(t.Context(), fakeClient, policyNameSpace, GetBSPSecretName(policyName))
 	require.NoError(t, err)
 
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	updateExpirationSecretAnnotation(secret, expiredTime)
-	require.NoError(t, client.Update(t.Context(), secret))
+	require.NoError(t, fakeClient.Update(t.Context(), secret))
 	preRotateTime, _ = awsOidcRotator.GetPreRotationTime(t.Context())
 	require.Equal(t, expiredTime.Format(time.RFC3339), preRotateTime.Format(time.RFC3339))
 }

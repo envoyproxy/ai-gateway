@@ -153,8 +153,9 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 

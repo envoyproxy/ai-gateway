@@ -169,62 +169,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		}
 	}
 	return ctrl.Result{RequeueAfter: requeue}, err
-
-	/*
-		bspNamespace := bsp.Namespace
-		bspName := bsp.Name
-		key := backendSecurityPolicyKey(bspNamespace, bspName)
-
-		c.cacheMutex.RLock()
-		tokenExpiry, exists := c.tokenCache[key]
-		c.cacheMutex.RUnlock()
-		var tokenValue string
-		if !exists || tokenExpiry == nil || rotators.IsBufferedTimeExpired(constants.PreRotationWindow, tokenExpiry.ExpiresAt) {
-			if !exists {
-				c.logger.Info(fmt.Sprintf("cache have no token for %s, fetch new token", key))
-			}
-			if tokenExpiry == nil {
-				c.logger.Info(fmt.Sprintf("token for %s is nil, fetch new token", key))
-			}
-			if tokenExpiry != nil && rotators.IsBufferedTimeExpired(constants.PreRotationWindow, tokenExpiry.ExpiresAt) {
-				c.logger.Info(fmt.Sprintf("token for %s is about to expire at %s, fetch new token", key, tokenExpiry.ExpiresAt))
-			}
-			// generate new token via oidc
-			oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
-			if oidc != nil {
-				provider, err := tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
-				if err != nil {
-					c.logger.Error(err, "failed to initialize oidc token provider")
-					return time.Minute, err
-				}
-				newTokenExpiry, err := provider.GetToken(ctx)
-				if err != nil {
-					// it's possible oidc is nil
-					c.logger.Error(err, fmt.Sprintf("failed to fetch oidc token for policy name %s in namespace %s", bspName, bspNamespace))
-					return time.Minute, err
-				}
-				c.logger.Info(fmt.Sprintf("fetched oidc token for policy name %s in namespace %s", bspName, bspNamespace))
-				c.logger.Info(fmt.Sprintf("cache oidc token, cache key %s", key))
-				tokenValue = newTokenExpiry.Token
-			}
-			// For Azure, it is using the Azure tenant credential to exchange the access token.
-		}
-		expiration, err := rotator.Rotate(ctx)
-		if err != nil {
-			c.logger.Error(err, fmt.Sprintf("failed to rotate token for policy name %s in namespace %s", bspName, bspNamespace))
-			return time.Minute, err
-		}
-		rotationTime := expiration.Add(-constants.PreRotationWindow)
-		if duration := time.Until(rotationTime); duration > 0 {
-			return duration, nil
-		}
-		return time.Minute, fmt.Errorf("newly rotated credentials is already expired (%v) for policy name %s in namespace %s", rotationTime, bspName, bspNamespace)
-	*/
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
 func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	// Currently only AWS support OIDC.
 	switch spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
