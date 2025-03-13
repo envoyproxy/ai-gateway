@@ -361,7 +361,6 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, constants.PreRotationWindow, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
-	// oidcCreds := egv1a1.OIDC{}
 	policy := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bspName,
