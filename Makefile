@@ -154,6 +154,7 @@ test-crdcel: apigen
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc
 	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
+	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
 	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc

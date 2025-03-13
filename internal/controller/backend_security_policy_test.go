@@ -109,7 +109,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 	}, nil
 }
 
-func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
+func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
@@ -136,7 +136,81 @@ func TestBackendSecurityPolicyController_ReconcileOIDC(t *testing.T) {
 	require.Equal(t, time.Minute, res.RequeueAfter)
 }
 
-func TestBackendSecurityController_RotateCredentials(t *testing.T) {
+func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		b, err := json.Marshal(oauth2.Token{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: 60})
+		require.NoError(t, err)
+		_, err = w.Write(b)
+		require.NoError(t, err)
+	}))
+	defer tokenServer.Close()
+
+	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	backendSecurityPolicyName := "mybackendSecurityPolicy"
+	bspNamespace := "default"
+	// create oidc secret
+	oidcSecretName := "oidcClientSecret"
+	oidcSecret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      oidcSecretName,
+			Namespace: bspNamespace,
+		},
+		Data: map[string][]byte{
+			"client-secret": []byte("client-secret"),
+		},
+	}
+	require.NoError(t, cl.Create(t.Context(), &oidcSecret, &client.CreateOptions{}))
+	// create backend security policy with OIDC config
+	oidc := egv1a1.OIDC{
+		Provider: egv1a1.OIDCProvider{
+			Issuer:        "",
+			TokenEndpoint: &tokenServer.URL,
+		},
+		ClientID: "some-client-id",
+		ClientSecret: gwapiv1.SecretObjectReference{
+			Name:      gwapiv1.ObjectName(oidcSecretName),
+			Namespace: (*gwapiv1.Namespace)(&bspNamespace),
+		},
+	}
+	bspName := fmt.Sprintf("%s-OIDC", backendSecurityPolicyName)
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+					OIDC: oidc,
+				},
+			},
+		},
+	}
+	err := cl.Create(t.Context(), bsp)
+	require.NoError(t, err)
+
+	data := map[string][]byte{
+		"credentials": []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+			"default", "accessKey", "secretKey", "sessionToken", "us-east-2")),
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("ai-eg-bsp-%s", bspName),
+			Namespace: bspNamespace,
+			Annotations: map[string]string{
+				rotators.ExpirationTimeAnnotationKey: time.Now().Add(60 * time.Minute).Format(time.RFC3339),
+			},
+		},
+		Data: data,
+	}
+	err = cl.Create(t.Context(), secret)
+	require.NoError(t, err)
+	_, err = c.rotateCredential(t.Context(), *bsp)
+	require.NoError(t, err)
+}
+
+func TestBackendSecurityController_RotateExpiredCredential(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		b, err := json.Marshal(oauth2.Token{AccessToken: "some-access-token", TokenType: "Bearer", ExpiresIn: 60})
@@ -153,7 +227,6 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	defer discoveryServer.Close()
 
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -204,7 +277,8 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 
 	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow, "placeholder", "us-east-1")
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
+		oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// ensure aws credentials secret do not exist
@@ -212,15 +286,9 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.Error(t, err)
 
 	// first credential rotation should create aws credentials secret
-	res, err := c.rotateCredential(ctx, bsp, oidc, rotator)
+	res, err := rotator.Rotate(ctx)
 	require.NoError(t, err)
-	require.WithinRange(t, time.Now().Add(res), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
-
-	// ensure oidc token cache has oidc token
-	require.Len(t, c.oidcTokenCache, 1)
-	token, ok := c.oidcTokenCache[fmt.Sprintf("%s-OIDC.%s", bspName, bspNamespace)]
-	require.True(t, ok)
-	require.Equal(t, "some-access-token", token.AccessToken)
+	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-preRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
 	// ensure both oidc secret and aws credential secret are created
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
@@ -241,37 +309,12 @@ func TestBackendSecurityController_RotateCredentials(t *testing.T) {
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
 	// rotate credential
-	_, err = c.rotateCredential(ctx, bsp, oidc, rotator)
+	_, err = rotator.Rotate(ctx)
 	require.NoError(t, err)
 	awsSecret2, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.NoError(t, err)
 	t2 := awsSecret2.Annotations[rotators.ExpirationTimeAnnotationKey]
 	require.NotEqual(t, t1, t2)
-}
-
-func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
-	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]().Sync)
-	bspName := "mybackendSecurityPolicy"
-	bspNamespace := "default"
-
-	c.oidcTokenCache[backendSecurityPolicyKey(bspNamespace, bspName)] = &oauth2.Token{AccessToken: "some-access-token", Expiry: time.Now().Add(time.Hour)}
-	rotator, err := rotators.NewAWSOIDCRotator(t.Context(), cl, &mockSTSClient{time.Now().Add(-time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bspName, preRotationWindow, "placeholder", "us-east-1")
-	require.NoError(t, err)
-
-	oidcCreds := egv1a1.OIDC{}
-	policy := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      bspName,
-			Namespace: bspNamespace,
-		},
-	}
-
-	// Expiration time will be before current time, so the requeue will be changed to one minute.
-	requeue, err := c.rotateCredential(t.Context(), policy, oidcCreds, rotator)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "newly rotate credentials is already expired")
-	require.Equal(t, time.Minute, requeue)
 }
 
 func TestBackendSecurityController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {

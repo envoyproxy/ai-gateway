@@ -13,25 +13,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
-
-// ChatCompletion is the interface for the chat completion AI Gateway metrics.
-type ChatCompletion interface {
-	// StartRequest initializes timing for a new request.
-	StartRequest()
-	// SetModel sets the model the request. This is usually called after parsing the request body .
-	SetModel(model string)
-	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
-	// after parsing the request body to determine the model and invoke the routing logic.
-	SetBackend(backend filterapi.Backend)
-
-	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32)
-	// RecordRequestCompletion records latency metrics for the entire request
-	RecordRequestCompletion(ctx context.Context, success bool)
-	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32)
-}
 
 // chatCompletion is the implementation for the chat completion AI Gateway metrics.
 type chatCompletion struct {
@@ -44,7 +27,15 @@ type chatCompletion struct {
 }
 
 // NewChatCompletion creates a new ChatCompletion instance.
-func NewChatCompletion(meter metric.Meter) ChatCompletion {
+func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn) x.ChatCompletionMetrics {
+	if newCustomFn != nil {
+		return newCustomFn(meter)
+	}
+	return DefaultChatCompletion(meter)
+}
+
+// DefaultChatCompletion creates a new default ChatCompletion instance.
+func DefaultChatCompletion(meter metric.Meter) x.ChatCompletionMetrics {
 	return &chatCompletion{
 		metrics: newGenAI(meter),
 		model:   "unknown",
@@ -53,7 +44,7 @@ func NewChatCompletion(meter metric.Meter) ChatCompletion {
 }
 
 // StartRequest initializes timing for a new request.
-func (c *chatCompletion) StartRequest() {
+func (c *chatCompletion) StartRequest(_ map[string]string) {
 	c.requestStart = time.Now()
 	c.firstTokenSent = false
 }
@@ -77,12 +68,14 @@ func (c *chatCompletion) SetBackend(backend filterapi.Backend) {
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32) {
-	attrs := []attribute.KeyValue{
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
+	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
+	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeSystemName).String(c.backend),
 		attribute.Key(genaiAttributeRequestModel).String(c.model),
-	}
+	)
+	attrs = append(attrs, extraAttrs...)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributes(attrs...),
@@ -99,12 +92,14 @@ func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outp
 }
 
 // RecordRequestCompletion implements [ChatCompletion.RecordRequestCompletion].
-func (c *chatCompletion) RecordRequestCompletion(ctx context.Context, success bool) {
-	attrs := []attribute.KeyValue{
+func (c *chatCompletion) RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue) {
+	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
+	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeSystemName).String(c.backend),
 		attribute.Key(genaiAttributeRequestModel).String(c.model),
-	}
+	)
+	attrs = append(attrs, extraAttrs...)
 
 	if success {
 		// According to the semantic conventions, the error attribute should not be added for successful operations
@@ -120,12 +115,14 @@ func (c *chatCompletion) RecordRequestCompletion(ctx context.Context, success bo
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
-func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32) {
-	attrs := []attribute.KeyValue{
+func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, extraAttrs ...attribute.KeyValue) {
+	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
+	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeSystemName).String(c.backend),
 		attribute.Key(genaiAttributeRequestModel).String(c.model),
-	}
+	)
+	attrs = append(attrs, extraAttrs...)
 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true

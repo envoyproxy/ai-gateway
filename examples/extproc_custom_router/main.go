@@ -6,7 +6,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -20,7 +24,7 @@ func newCustomRouter(defaultRouter x.Router, config *filterapi.Config) x.Router 
 	return &myCustomRouter{config: config, defaultRouter: defaultRouter}
 }
 
-// myCustomRouter implements [filterapi.Router].
+// myCustomRouter implements [x.Router].
 type myCustomRouter struct {
 	config        *filterapi.Config
 	defaultRouter x.Router
@@ -42,5 +46,12 @@ func main() {
 	// Initializes the custom router.
 	x.NewCustomRouter = newCustomRouter
 	// Executes the main function of the external processor.
-	mainlib.Main()
+	ctx, cancel := context.WithCancel(context.Background())
+	signalsChan := make(chan os.Signal, 1)
+	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-signalsChan
+		cancel()
+	}()
+	mainlib.Main(ctx, os.Args[1:], os.Stderr)
 }

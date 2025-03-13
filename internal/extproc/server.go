@@ -276,7 +276,11 @@ func filterSensitiveBodyForLogging(resp *extprocv3.ProcessingResponse, logger *s
 	if resp == nil {
 		return &extprocv3.ProcessingResponse{}
 	}
-	original := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	original, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	if !ok {
+		// Meaning this is the immediate response, that doesn't need to be filtered.
+		return resp
+	}
 	originalHeaderMutation := original.RequestBody.Response.GetHeaderMutation()
 	redactedHeaderMutation := &extprocv3.HeaderMutation{
 		RemoveHeaders: originalHeaderMutation.GetRemoveHeaders(),
