@@ -127,6 +127,13 @@ func (m mockRouter) Calculate(headers map[string]string) (*filterapi.Backend, er
 	return b, m.retErr
 }
 
+// CalculateWithBody implements [router.Router.CalculateWithBody].
+func (m mockRouter) CalculateWithBody(headers map[string]string, _ []byte) (*filterapi.Backend, *filterapi.CacheInfo, error) {
+	require.Equal(m.t, m.expHeaders, headers)
+	b := &filterapi.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
+	return b, nil, m.retErr
+}
+
 // mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.
 type mockExternalProcessingStream struct {
 	t                 *testing.T
