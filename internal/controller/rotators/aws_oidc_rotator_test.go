@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
+	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/envoyproxy/ai-gateway/constants"
 )
 
 // -----------------------------------------------------------------------------
@@ -57,7 +60,7 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 		profile = awsProfileName
 	}
 	data := map[string][]byte{
-		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+		constants.AwsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
 			profile, accessKey, secretKey, sessionToken, awsRegion)),
 	}
 	err := client.Create(t.Context(), &corev1.Secret{
@@ -75,7 +78,7 @@ func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, s
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	expectedSecretData := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, expectedKeyID, expectedSecret, expectedToken, region)
-	require.Equal(t, expectedSecretData, string(secret.Data[awsCredentialsKey]))
+	require.Equal(t, expectedSecretData, string(secret.Data[constants.AwsCredentialsKey]))
 }
 
 // createOidcClientSecret creates the OIDC client secret
@@ -118,9 +121,16 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		require.NoError(t, err)
 	}))
 	defer tokenServer.Close()
+
+	discoveryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"issuer": "issuer", "token_endpoint": "token_endpoint", "authorization_endpoint": "authorization_endpoint", "jwks_uri": "jwks_uri", "scopes_supported": ["scope3"]}`))
+		require.NoError(t, err)
+	}))
+	defer discoveryServer.Close()
+
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
-			Issuer:        "",
+			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
 		ClientID: "some-client-id",
@@ -129,6 +139,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			Namespace: (*gwapiv1.Namespace)(ptr.To(policyNameSpace)),
 		},
 	}
+
 	t.Run("basic rotation", func(t *testing.T) {
 		startTime := time.Now()
 		var mockSTS STSClient = &mockStsOperations{
@@ -151,6 +162,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 		// Setup initial credentials and client secret.
 		createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 		createOidcClientSecret(t, fakeClient, testClientSecret)
+
 		awsOidcRotator := AWSOIDCRotator{
 			client:                         fakeClient,
 			stsClient:                      mockSTS,
@@ -161,7 +173,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := awsOidcRotator.Rotate(t.Context())
+		ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
+		expiration, err := awsOidcRotator.Rotate(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
@@ -191,7 +204,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := awsOidcRotator.Rotate(t.Context())
+		ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
+		expiration, err := awsOidcRotator.Rotate(ctx)
 		require.Error(t, err)
 		require.True(t, expiration.IsZero())
 		assert.Contains(t, err.Error(), "failed to assume role")
@@ -226,7 +240,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
-		expiration, err := rotator.Rotate(t.Context())
+		ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
+		expiration, err := rotator.Rotate(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))
@@ -267,7 +282,8 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			roleArn:                        awsRoleArn,
 		}
 
-		expiration, err := rotator.Rotate(t.Context())
+		ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
+		expiration, err := rotator.Rotate(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, expiration)
 		require.WithinRange(t, expiration, startTime, startTime.Add(1*time.Hour))

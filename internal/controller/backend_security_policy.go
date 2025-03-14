@@ -11,20 +11,20 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
-
-// preRotationWindow specifies how long before expiry to rotate credentials.
-// Temporarily a fixed duration.
-const preRotationWindow = 5 * time.Minute
 
 // BackendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 //
@@ -47,73 +47,98 @@ func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 
 // Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
 func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
-	var backendSecurityPolicy aigv1a1.BackendSecurityPolicy
-	if err = c.client.Get(ctx, req.NamespacedName, &backendSecurityPolicy); err != nil {
+	var bsp aigv1a1.BackendSecurityPolicy
+	if err = c.client.Get(ctx, req.NamespacedName, &bsp); err != nil {
 		if apierrors.IsNotFound(err) {
-			c.logger.Info("Deleting Backend Security Policy",
+			c.logger.Info("Deleting backend security policy",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	c.logger.Info("Reconciling Backend Security Policy", "namespace", req.Namespace, "name", req.Name)
-	res, err = c.reconcile(ctx, &backendSecurityPolicy)
+	c.logger.Info("Reconciling backend security policy", "namespace", req.Namespace, "name", req.Name)
+	res, err = c.reconcile(ctx, &bsp)
 	if err != nil {
-		c.logger.Error(err, "failed to reconcile Backend Security Policy")
-		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeNotAccepted, err.Error())
+		c.logger.Error(err, "failed to reconcile backend security policy")
+		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeNotAccepted, err.Error())
 	} else {
-		c.updateBackendSecurityPolicyStatus(ctx, &backendSecurityPolicy, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
+		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
 	}
 	return
 }
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
-func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
-	if backendSecurityPolicy.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
-		res, err = c.rotateCredential(ctx, *backendSecurityPolicy)
+func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
+		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
 			return res, err
 		}
 	}
-	err = c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy)
+	err = c.syncBackendSecurityPolicy(ctx, bsp)
 	return res, err
 }
 
-// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
-func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
-	switch spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
-			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
-		}
-	default:
-		return nil
-	}
-	return nil
-}
-
-func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, backendSecurityPolicy aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+// rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
+func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	var rotator rotators.Rotator
-	switch backendSecurityPolicy.Spec.Type {
+
+	switch bsp.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		if oidc := getBackendSecurityPolicyAuthOIDC(backendSecurityPolicy.Spec); oidc != nil {
-			region := backendSecurityPolicy.Spec.AWSCredentials.Region
-			roleArn := backendSecurityPolicy.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
-			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, backendSecurityPolicy.Namespace, backendSecurityPolicy.Name,
-				preRotationWindow, *oidc, roleArn, region)
+		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		if oidc != nil {
+			region := bsp.Spec.AWSCredentials.Region
+			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
+			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, *oidc, roleArn, region)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 		} else {
 			return ctrl.Result{}, nil
 		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		clientID := bsp.Spec.AzureCredentials.ClientID
+		tenantID := bsp.Spec.AzureCredentials.TenantID
+		secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
+		if secretRef == nil {
+			return ctrl.Result{}, fmt.Errorf("azure credentials secret reference is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
+		}
+		secretNamespace := string(*secretRef.Namespace)
+		secretName := string(secretRef.Name)
+		var secret *corev1.Secret
+		secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
+		if err != nil {
+			c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
+			return ctrl.Result{}, err
+		}
+		secretValue, exists := secret.Data[constants.ClientSecretKey]
+		if !exists {
+			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", constants.ClientSecretKey)
+		}
+		clientSecret := string(secretValue)
+		// Per https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow
+		// "scope: The value passed for the scope parameter in this request should be the resource identifier
+		// (application ID URI) of the resource you want, suffixed with .default."
+		// Azure OpenAI is one resource of Microsoft Azure Cognitive Service.
+		scopes := []string{"https://cognitiveservices.azure.com/.default"}
+		options := policy.TokenRequestOptions{Scopes: scopes}
+		var tokenProvider *tokenprovider.AzureTokenProvider
+		tokenProvider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, tokenProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	default:
-		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", backendSecurityPolicy.Spec.Type)
-		c.logger.Error(err, "namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
+		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", bsp.Spec.Type)
+		c.logger.Error(err, "namespace", bsp.Namespace, "name", bsp.Name)
 		return ctrl.Result{}, err
 	}
 
+	// at this point, rotator is not nil
 	requeue := time.Minute
 	var rotationTime time.Time
 	rotationTime, err = rotator.GetPreRotationTime(ctx)
@@ -126,25 +151,37 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			if err != nil {
 				c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
 			} else {
-				rotationTime = expirationTime.Add(-preRotationWindow)
+				rotationTime = expirationTime.Add(-constants.PreRotationWindow)
 				if r := time.Until(rotationTime); r > 0 {
 					requeue = r
 					c.logger.Info(
 						fmt.Sprintf("successfully rotated credential for %s in namespace %s of auth type %s, renewing in %f minutes",
-							backendSecurityPolicy.Name, backendSecurityPolicy.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
+							bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 				} else {
 					c.logger.Error(fmt.Errorf("newly rotated credential is already expired %s",
-						rotationTime), "namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
+						rotationTime), "namespace", bsp.Namespace, "name", bsp.Name)
 				}
-
 			}
 		} else {
 			requeue = time.Until(rotationTime)
 			c.logger.Info(fmt.Sprintf("credentials has not yet expired for %s in namespace %s of auth type %s, renewing in %f minutes",
-				backendSecurityPolicy.Name, backendSecurityPolicy.Namespace, backendSecurityPolicy.Spec.Type, requeue.Minutes()))
+				bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 		}
 	}
 	return ctrl.Result{RequeueAfter: requeue}, err
+}
+
+// getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
+func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
+	switch spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
+			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
+		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		return nil
+	}
+	return nil
 }
 
 // backendSecurityPolicyKey returns the key used for indexing and caching the backendSecurityPolicy.
