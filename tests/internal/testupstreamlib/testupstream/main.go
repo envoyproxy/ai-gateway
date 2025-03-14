@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -219,11 +220,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
 		var expResponseBody []byte
-		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
-		if err != nil {
-			logger.Println("failed to decode the response body")
-			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
-			return
+		if raw := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); raw != "" {
+			expResponseBody, err = base64.StdEncoding.DecodeString(raw)
+			if err != nil {
+				logger.Println("failed to decode the response body")
+				http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+				return
+			}
+		} else {
+			logger.Println("response body is not set. Using huge fake response.")
+			expResponseBody = getFakeSSEStreamingResponse()
+			// Do not sleep for the huge fake response to put stress on the Envoy/ExtProc.
+			streamingInterval = 0
 		}
 
 		w.WriteHeader(status)
@@ -244,7 +252,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				panic("expected http.ResponseWriter to be an http.Flusher")
 			}
-			logger.Println("response line sent:", line)
 		}
 		logger.Println("response sent")
 		r.Context().Done()
@@ -365,4 +372,14 @@ func getFakeResponse(path string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}
+}
+
+func getFakeSSEStreamingResponse() []byte {
+	// 1GB+ in total.
+	b := strings.Repeat(`{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This This"},"logprobs":null,"finish_reason":null}],"usage":null}
+`, 3000000)
+	b += `{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[],"usage":{"prompt_tokens":25,"completion_tokens":61,"total_tokens":86,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]`
+	return []byte(b)
 }

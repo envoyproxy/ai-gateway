@@ -63,6 +63,8 @@ static_resources:
                                   exact: testupstream
                           route:
                             cluster: testupstream
+                            # Huge event tests take a long time to complete.
+                            timeout: 600s
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:

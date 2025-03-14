@@ -338,6 +338,39 @@ data: [DONE]
 		require.True(t, asserted)
 		require.NoError(t, stream.Err())
 	})
+
+	t.Run("stream huge events", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping in short mode as this test takes tens of seconds")
+		}
+		client := openaigo.NewClient(
+			option.WithBaseURL(listenerAddress+"/v1/"),
+			option.WithHeader("x-test-backend", "openai"),
+			option.WithHeader(testupstreamlib.ResponseTypeKey, "sse"),
+		)
+		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
+			Messages: openaigo.F([]openaigo.ChatCompletionMessageParamUnion{
+				openaigo.UserMessage("Say this is a test")}),
+			Model: openaigo.F("something"),
+		})
+		defer func() {
+			_ = stream.Close()
+		}()
+
+		var eventCount int
+		var bytes int
+		for stream.Next() {
+			chunk := stream.Current()
+			if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
+				continue
+			}
+			eventCount++
+			bytes += len(chunk.Choices[0].Delta.Content)
+		}
+		require.Equal(t, 3000001, eventCount)
+		require.Equal(t, bytes, 1095000001) // 1GB+.
+		require.NoError(t, stream.Err())
+	})
 }
 
 func checkModelsIgnoringTimestamps(want openai.ModelList) func(t require.TestingT, body []byte) {
