@@ -320,3 +320,11 @@ spec:
     - name: http
       protocol: HTTP
       port: 8888
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: something
+type: Opaque
+stringData:
+  something: foo

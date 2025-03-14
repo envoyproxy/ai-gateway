@@ -11,10 +11,9 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/alecthomas/kong"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -40,9 +39,7 @@ type (
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-	doMain(ctx, os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.

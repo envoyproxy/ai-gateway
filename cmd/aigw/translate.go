@@ -113,7 +113,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	err error,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
-	nonAIResourceDedup := make(map[string]struct{})
+	exists := make(map[string]struct{})
 	for {
 		var rawObj runtime.RawExtension
 		err = decoder.Decode(&rawObj)
@@ -135,11 +135,12 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			err = fmt.Errorf("error decoding unstructured object: %w", err)
 			return
 		}
-		// Deduplicate non-AI Gateway resources.
+		// Deduplicate objects, skipping if already seen.
 		key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
-		if _, ok := nonAIResourceDedup[key]; !ok {
-			nonAIResourceDedup[key] = struct{}{}
+		if _, ok := exists[key]; !ok {
+			exists[key] = struct{}{}
 		} else {
+			logger.Info("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
 			continue
 		}
 		switch obj.GetKind() {

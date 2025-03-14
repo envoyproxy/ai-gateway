@@ -179,3 +179,10 @@ spec:
     kind: Service
     port: 80
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: something
+type: Opaque
+stringData:
+  something: foo
