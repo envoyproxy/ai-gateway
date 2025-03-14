@@ -28,7 +28,7 @@ func Test_doMain(t *testing.T) {
 		{
 			name: "help",
 			args: []string{"--help"},
-			expOut: `Usage: aigw <command>
+			expOut: `Usage: aigw <command> [flags]
 
 Envoy AI Gateway CLI
 
@@ -36,7 +36,7 @@ Flags:
   -h, --help    Show context-sensitive help.
 
 Commands:
-  version
+  version [flags]
     Show version.
 
   translate <path> ... [flags]
@@ -59,7 +59,7 @@ Run "aigw <command> --help" for more information on a command.
 			name:         "version help",
 			args:         []string{"version", "--help"},
 			expPanicCode: ptr.To(0),
-			expOut: `Usage: aigw version
+			expOut: `Usage: aigw version [flags]
 
 Show version.
 
@@ -81,7 +81,7 @@ Flags:
 			name:         "translate no arg",
 			args:         []string{"translate"},
 			tf:           func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
-			expPanicCode: ptr.To(80),
+			expPanicCode: ptr.To(1),
 		},
 		{
 			name: "translate with help",

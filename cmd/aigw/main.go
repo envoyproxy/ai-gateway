@@ -72,9 +72,9 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	if err != nil {
 		log.Fatalf("Error creating parser: %v", err)
 	}
-	cli, err := parser.Parse(args)
+	parsed, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
-	switch cli.Command() {
+	switch parsed.Command() {
 	case "version":
 		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
 	case "translate <path>":
