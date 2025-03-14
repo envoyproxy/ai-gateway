@@ -25,21 +25,29 @@ type (
 		Version struct{} `cmd:"" help:"Show version."`
 		// Translate is the sub-command parsed by the `cmdTranslate` struct.
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
+		// Run is the sub-command parsed by the `cmdRun` struct.
+		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
 	}
 	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
 		Debug bool     `help:"Enable debug logging emitted to stderr."`
 		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
 	}
+	// cmdRun corresponds to `aigw run` command.
+	cmdRun struct {
+		Debug bool   `help:"Enable debug logging emitted to stderr."`
+		Path  string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration." type:"path"`
+	}
 )
 
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
+	runFn           subCmdFn[cmdRun]
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -49,8 +57,10 @@ func main() {
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
+//   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	tf translateFn,
+	rf runFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -71,6 +81,11 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		err = tf(ctx, c.Translate, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
+		}
+	case "run":
+		err = rf(ctx, c.Run, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Error running: %v", err)
 		}
 	default:
 		panic("unreachable")

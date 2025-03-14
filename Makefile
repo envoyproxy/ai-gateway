@@ -127,7 +127,7 @@ check: precommit
 # This runs the editorconfig-checker on the codebase.
 editorconfig:
 	@echo "running editorconfig-checker"
-	@go tool editorconfig-checker
+	@go tool editorconfig-checker -exclude cmd/aigw/certs
 
 # This runs the unit tests for the codebase.
 .PHONY: test
@@ -181,7 +181,7 @@ test-e2e:
 .PHONY: test-coverage
 test-coverage:
 	@mkdir -p $(OUTPUT_DIR)
-	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
 	@go tool go-test-coverage --config=.testcoverage.yml
 
 # This clears all built artifacts and installed binaries.

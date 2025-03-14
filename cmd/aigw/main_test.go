@@ -21,6 +21,7 @@ func Test_doMain(t *testing.T) {
 		name         string
 		args         []string
 		tf           translateFn
+		rf           runFn
 		expOut       string
 		expPanicCode *int
 	}{
@@ -41,6 +42,9 @@ Commands:
   translate <path> ... [flags]
     Translate yaml files containing AI Gateway resources to Envoy Gateway and
     Kubernetes resources. The translated resources are written to stdout.
+
+  run [<path>] [flags]
+    Run the AI Gateway locally for given configuration.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -97,16 +101,40 @@ Flags:
 `,
 			expPanicCode: ptr.To(0),
 		},
+		{
+			name: "run no arg",
+			args: []string{"run"},
+			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+		},
+		{
+			name: "run help",
+			args: []string{"run", "--help"},
+			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+			expOut: `Usage: aigw run [<path>] [flags]
+
+Run the AI Gateway locally for given configuration.
+
+Arguments:
+  [<path>]    Path to the AI Gateway configuration yaml file. Optional. When
+              this is not given, aigw runs the default configuration.
+
+Flags:
+  -h, --help     Show context-sensitive help.
+
+      --debug    Enable debug logging emitted to stderr.
+`,
+			expPanicCode: ptr.To(0),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})
