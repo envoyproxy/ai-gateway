@@ -34,3 +34,6 @@ header:
     - LICENSE
     - CODEOWNERS
     - pre-commit.sh
+    - '**/*.key'
+    - '**/*.pem'
+    - '**/*.crt'
