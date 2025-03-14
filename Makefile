@@ -31,7 +31,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
-GO_TEST_ARGS ?= -v
+GO_TEST_ARGS ?= -race
 # Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
 GO_TEST_E2E_ARGS ?= -count=1
 
@@ -181,7 +181,7 @@ test-e2e:
 .PHONY: test-coverage
 test-coverage:
 	@mkdir -p $(OUTPUT_DIR)
-	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=./... $(GO_TEST_ARGS)"
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
 	@go tool go-test-coverage --config=.testcoverage.yml
 
 # This clears all built artifacts and installed binaries.
