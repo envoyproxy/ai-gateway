@@ -350,7 +350,8 @@ data: [DONE]
 		)
 		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
 			Messages: openaigo.F([]openaigo.ChatCompletionMessageParamUnion{
-				openaigo.UserMessage("Say this is a test")}),
+				openaigo.UserMessage("Say this is a test"),
+			}),
 			Model: openaigo.F("something"),
 		})
 		defer func() {
@@ -368,7 +369,7 @@ data: [DONE]
 			bytes += len(chunk.Choices[0].Delta.Content)
 		}
 		require.Equal(t, 3000001, eventCount)
-		require.Equal(t, bytes, 1095000001) // 1GB+.
+		require.Equal(t, 1095000001, bytes) // 1GB+.
 		require.NoError(t, stream.Err())
 	})
 }
