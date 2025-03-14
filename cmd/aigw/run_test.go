@@ -23,10 +23,12 @@ func TestRun_default(t *testing.T) {
 	stderr := new(bytes.Buffer)
 	// Run the AI Gateway with the default configuration in a separate goroutine.
 	go func() {
+		defer func() {
+			close(done)
+		}()
 		require.NoError(t, run(ctx, cmdRun{
 			Debug: true,
 		}, os.Stdout, stderr))
-		close(done)
 	}()
 	// Wait for the server to start.
 	time.Sleep(5 * time.Second)
