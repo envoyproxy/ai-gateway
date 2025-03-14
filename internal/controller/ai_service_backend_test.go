@@ -15,7 +15,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -91,10 +90,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 }
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {
-	c := fake.NewClientBuilder().
-		WithScheme(Scheme).
-		WithIndex(&aigv1a1.AIServiceBackend{}, k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc).
-		Build()
+	c := requireNewFakeClientWithIndexes(t)
 
 	// Create Backend Security Policies.
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -146,7 +142,11 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "four", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendRef: gwapiv1.BackendObjectReference{
+					Name:      "my-inference-pool",
+					Kind:      ptr.To(gwapiv1.Kind("InferencePool")),
+					Namespace: ptr.To[gwapiv1.Namespace]("foonamespace"),
+				},
 			},
 		},
 	} {
@@ -168,4 +168,10 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-3.ns"}))
 	require.Len(t, aiServiceBackend.Items, 1)
 	require.Equal(t, "three", aiServiceBackend.Items[0].Name)
+
+	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
+		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIServiceBackend: "my-inference-pool.foonamespace"}))
+	require.Len(t, aiServiceBackend.Items, 1)
+	require.Equal(t, "four", aiServiceBackend.Items[0].Name)
+	require.Equal(t, "ns", aiServiceBackend.Items[0].Namespace)
 }

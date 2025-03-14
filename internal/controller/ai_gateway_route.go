@@ -286,6 +286,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			}
+			ec.Rules[i].Backends[j].DynamicLoadBalancing = c.maybeCreateDynamicLoadBalancing(backendObj)
 			ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 			ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 
@@ -685,4 +686,13 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}
+}
+
+func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(aiServiceBackend *aigv1a1.AIServiceBackend) *filterapi.DynamicLoadBalancing {
+	if ref := aiServiceBackend.Spec.BackendRef; ref.Kind != nil && string(*ref.Kind) != "InferenceService" {
+		return nil
+	}
+	// TODO: do some real work like getting InferencePool and corresponding InferenceModels as well as
+	// 	get the target external endpoints and services from the InferenceService.Selector.
+	return &filterapi.DynamicLoadBalancing{}
 }

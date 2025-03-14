@@ -134,11 +134,18 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
-	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
-	})
+	if b.DynamicLoadBalancing != nil {
+		// 1. Do the backend selection.
+		// 2. Set the dynamic routing metadata, including the fallback ips into the dynamic metadata as in
+		// https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445 which will become implementable
+		// with a new LB policy by Yan.
+	} else {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
+		}, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
+		})
+	}
 
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
