@@ -15,7 +15,7 @@ require (
 	github.com/google/cel-go v0.24.1
 	github.com/google/go-cmp v0.7.0
 	github.com/openai/openai-go v0.1.0-alpha.62
-	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.56.0
@@ -32,8 +32,9 @@ require (
 	k8s.io/apimachinery v0.33.0-alpha.3
 	k8s.io/client-go v0.32.2
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
-	sigs.k8s.io/controller-runtime v0.20.2
+	sigs.k8s.io/controller-runtime v0.20.3
 	sigs.k8s.io/gateway-api v1.2.1
+	sigs.k8s.io/gateway-api-inference-extension v0.0.0-20250313185953-fb804b06a2a8
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -389,7 +390,7 @@ require (
 	sigs.k8s.io/kind v0.27.0 // indirect
 	sigs.k8s.io/kustomize/api v0.18.0 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.18.1 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 )
 
 tool (

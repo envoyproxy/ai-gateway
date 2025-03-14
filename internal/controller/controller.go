@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	gwaieav1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -65,6 +66,9 @@ type (
 	// syncBackendSecurityPolicyFn is a function that syncs a BackendSecurityPolicy. This is used to cross the controller boundary
 	// from Secret to BackendSecurityPolicy when a Secret is referenced by a BackendSecurityPolicy.
 	syncBackendSecurityPolicyFn func(context.Context, *aigv1a1.BackendSecurityPolicy) error
+	// syncInferencePoolFn is a function that syncs an InferencePool. This is used to cross the controller boundary
+	// from InferenceModel to InferencePool when an InferenceModel is referenced by an InferencePool.
+	syncInferencePoolFn func(context.Context, *gwaieav1a2.InferencePool) error
 )
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -115,6 +119,22 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
+	inferencePoolC := NewInferencePoolController(c,
+		kubernetes.NewForConfigOrDie(config), logger.WithName("inference-pool"),
+		backendSecurityPolicyC.syncAIServiceBackend)
+	if err = TypedControllerBuilderForCRD(mgr, &gwaieav1a2.InferencePool{}).
+		Complete(inferencePoolC); err != nil {
+		return fmt.Errorf("failed to create controller for InferencePool: %w", err)
+	}
+
+	inferenceModelC := NewInferenceModelController(c,
+		kubernetes.NewForConfigOrDie(config), logger.WithName("inference-model"),
+		inferencePoolC.syncInferencePool)
+	if err = TypedControllerBuilderForCRD(mgr, &gwaieav1a2.InferenceModel{}).
+		Complete(inferenceModelC); err != nil {
+		return fmt.Errorf("failed to create controller for InferenceModel: %w", err)
+	}
+
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("secret"), backendSecurityPolicyC.syncBackendSecurityPolicy)
 	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.
@@ -152,6 +172,9 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+	// k8sClientIndexInferencePoolToReferencingAIServiceBackend is the index name that maps from an InferencePool to the AIServiceBackend
+	// that references it.
+	k8sClientIndexInferencePoolToReferencingAIServiceBackend = "InferencePoolToReferencingAIServiceBackend"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -162,7 +185,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
-		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
+		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFuncForBackendPolicyRef)
+	if err != nil {
+		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
+		k8sClientIndexInferencePoolToReferencingAIServiceBackend, aiServiceBackendIndexFuncForInferencePool)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
 	}
@@ -186,11 +214,24 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 	return ret
 }
 
-func aiServiceBackendIndexFunc(o client.Object) []string {
+func aiServiceBackendIndexFuncForBackendPolicyRef(o client.Object) []string {
 	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
 	var ret []string
 	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
+	}
+	return ret
+}
+
+func aiServiceBackendIndexFuncForInferencePool(o client.Object) []string {
+	aiServiceBackendRef := o.(*aigv1a1.AIServiceBackend).Spec.BackendRef
+	var ret []string
+	if aiServiceBackendRef.Kind != nil && *aiServiceBackendRef.Kind == "InferencePool" {
+		ns := o.GetNamespace()
+		if aiServiceBackendRef.Namespace != nil {
+			ns = string(*aiServiceBackendRef.Namespace)
+		}
+		ret = append(ret, fmt.Sprintf("%s.%s", aiServiceBackendRef.Name, ns))
 	}
 	return ret
 }
