@@ -48,7 +48,7 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, _, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
@@ -74,6 +74,9 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	for _, secret := range secrets.Items {
 		mustWriteObj(&secret.TypeMeta, &secret, output)
 	}
+	for _, secret := range originalSecrets {
+		mustWriteObj(nil, secret, output)
+	}
 	for _, deployment := range deployments.Items {
 		mustWriteObj(&deployment.TypeMeta, &deployment, output)
 	}
@@ -97,7 +100,9 @@ func readYamlsAsString(paths []string) (string, error) {
 	return buf.String(), nil
 }
 
-// collectObjects reads the YAML input and collects target resources.
+// collectObjects reads the YAML input and collects target resources. Currently, this will collect
+// AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and Secret resources. Other resources
+// will be written back to the output writer.
 //
 // If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
 func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
@@ -108,7 +113,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	err error,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
-	nonAIResourceDedup := make(map[string]struct{})
+	exists := make(map[string]struct{})
 	for {
 		var rawObj runtime.RawExtension
 		err = decoder.Decode(&rawObj)
@@ -130,6 +135,14 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			err = fmt.Errorf("error decoding unstructured object: %w", err)
 			return
 		}
+		// Deduplicate objects, skipping if already seen.
+		key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
+		if _, ok := exists[key]; !ok {
+			exists[key] = struct{}{}
+		} else {
+			logger.Info("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
+			continue
+		}
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
 			mustExtractAndAppend(obj, &aigwRoutes)
@@ -140,13 +153,6 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 		case "Secret":
 			mustExtractAndAppend(obj, &secrets)
 		default:
-			// Deduplicate non-AI Gateway resources.
-			key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
-			if _, ok := nonAIResourceDedup[key]; !ok {
-				nonAIResourceDedup[key] = struct{}{}
-			} else {
-				continue
-			}
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
 			mustWriteObj(nil, obj, out)
@@ -155,8 +161,6 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 }
 
 // translateCustomResourceObjects translates the AI Gateway custom resources to Envoy Gateway and Kubernetes objects.
-//
-// The resulting objects are written to the output writer.
 func translateCustomResourceObjects(
 	ctx context.Context,
 	aigwRoutes []*aigv1a1.AIGatewayRoute,

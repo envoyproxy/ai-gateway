@@ -26,11 +26,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(ccm metrics.ChatCompletion) ProcessorFactory {
+func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
 		if config.schema.Name != filterapi.APISchemaOpenAI {
 			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
@@ -55,7 +54,7 @@ type chatCompletionProcessor struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.ChatCompletion
+	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
 }
@@ -80,7 +79,7 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	// Start tracking metrics for this request.
-	c.metrics.StartRequest()
+	c.metrics.StartRequest(c.requestHeaders)
 
 	// The request headers have already been at the time the processor was created.
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{

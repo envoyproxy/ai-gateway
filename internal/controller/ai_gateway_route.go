@@ -458,9 +458,9 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
 	for i, egRef := range targetRefs {
 		egName := egRef.Name
-		namespace := &egNs
-		if egNs == "" {
-			namespace = nil
+		var namespace *gwapiv1.Namespace
+		if egNs != "" {
+			namespace = ptr.To(egNs)
 		}
 		parentRefs[i] = gwapiv1.ParentReference{
 			Name:      egName,
