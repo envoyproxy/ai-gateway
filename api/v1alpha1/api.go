@@ -334,7 +334,7 @@ type AIServiceBackendSpec struct {
 	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
-	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
+	// A backend can be of either k8s Service, Backend resource of Envoy Gateway, or InferencePool in Gateway API Inference Extension.
 	//
 	// This is required to be set.
 	//
