@@ -8,13 +8,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/alecthomas/kong"
 	"io"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
-
-	"github.com/alecthomas/kong"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -41,9 +39,7 @@ type (
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-	doMain(ctx, os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
 }
 
 type (

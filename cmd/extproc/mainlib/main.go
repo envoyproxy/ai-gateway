@@ -95,7 +95,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) {
 
 	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
 
-	l.Info("Starting external processor",
+	l.Info("starting external processor",
 		slog.String("version", version.Version),
 		slog.String("address", flags.extProcAddr),
 		slog.String("configPath", flags.configPath),
