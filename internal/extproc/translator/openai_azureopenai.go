@@ -30,7 +30,7 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	// assume deployment_id is same as model name
+	// Assume deployment_id is same as model name.
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{

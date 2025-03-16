@@ -154,7 +154,6 @@ rules:
 
 	require.Equal(t, expectedCfg, cfg)
 
-	// check rule 1
 	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
 	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
 	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))

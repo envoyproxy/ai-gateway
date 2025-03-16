@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
@@ -121,4 +122,13 @@ func (r *AzureTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return azureToken.ExpiresAt, nil
+}
+
+func populateAzureAccessToken(secret *corev1.Secret, token *tokenprovider.TokenExpiry) {
+	updateExpirationSecretAnnotation(secret, token.ExpiresAt)
+
+	if secret.Data == nil {
+		secret.Data = make(map[string][]byte)
+	}
+	secret.Data[constants.AzureAccessTokenKey] = []byte(token.Token)
 }

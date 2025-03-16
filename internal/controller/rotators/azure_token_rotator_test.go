@@ -225,3 +225,20 @@ func TestAzureTokenRotator_IsExpired(t *testing.T) {
 		})
 	}
 }
+
+func TestPopulateAzureAccessToken(t *testing.T) {
+	secret := &corev1.Secret{}
+	expiration := time.Now()
+
+	azureToken := tokenprovider.TokenExpiry{Token: "some-azure-token", ExpiresAt: expiration}
+	populateAzureAccessToken(secret, &azureToken)
+
+	annotation, ok := secret.Annotations[ExpirationTimeAnnotationKey]
+	require.True(t, ok)
+	require.Equal(t, expiration.Format(time.RFC3339), annotation)
+
+	require.Len(t, secret.Data, 1)
+	val, ok := secret.Data[constants.AzureAccessTokenKey]
+	require.True(t, ok)
+	require.Equal(t, "some-azure-token", string(val))
+}
