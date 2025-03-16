@@ -83,7 +83,7 @@ func TestNewAzureHandler_Do(t *testing.T) {
 
 	bearerToken, ok := requestHeaders["Authorization"]
 	require.True(t, ok)
-	require.Equal(t, "Bearer "+string(secret), bearerToken)
+	require.Equal(t, "Bearer some-access-token", bearerToken)
 
 	require.Len(t, headerMut.SetHeaders, 2)
 	require.Equal(t, "Authorization", headerMut.SetHeaders[1].Header.Key)

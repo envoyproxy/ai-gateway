@@ -60,7 +60,7 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	c.logger.Info("Reconciling backend security policy", "namespace", req.Namespace, "name", req.Name)
 	res, err = c.reconcile(ctx, &bsp)
 	if err != nil {
-		c.logger.Error(err, "failed to reconcile backend security policy")
+		c.logger.Error(err, "failed to reconcile backend security policy", "namespace", req.Namespace, "name", req.Name)
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeNotAccepted, err.Error())
 	} else {
 		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
@@ -98,8 +98,6 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return ctrl.Result{}, nil
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		clientID := bsp.Spec.AzureCredentials.ClientID
-		tenantID := bsp.Spec.AzureCredentials.TenantID
 		secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
 		if secretRef == nil {
 			return ctrl.Result{}, fmt.Errorf("azure credentials secret reference is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
@@ -117,18 +115,16 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", constants.ClientSecretKey)
 		}
 		clientSecret := string(secretValue)
-		// Per https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow
-		// "scope: The value passed for the scope parameter in this request should be the resource identifier
-		// (application ID URI) of the resource you want, suffixed with .default."
-		// Azure OpenAI is one resource of Microsoft Azure Cognitive Service.
 		scopes := []string{"https://cognitiveservices.azure.com/.default"}
 		options := policy.TokenRequestOptions{Scopes: scopes}
-		var tokenProvider *tokenprovider.AzureTokenProvider
-		tokenProvider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
+		var provider *tokenprovider.AzureTokenProvider
+		clientID := bsp.Spec.AzureCredentials.ClientID
+		tenantID := bsp.Spec.AzureCredentials.TenantID
+		provider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, tokenProvider)
+		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, provider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -137,8 +133,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		c.logger.Error(err, "namespace", bsp.Namespace, "name", bsp.Name)
 		return ctrl.Result{}, err
 	}
+	return c.executeRotation(ctx, rotator, bsp)
+}
 
-	// at this point, rotator is not nil
+func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	requeue := time.Minute
 	var rotationTime time.Time
 	rotationTime, err = rotator.GetPreRotationTime(ctx)
@@ -149,7 +147,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			var expirationTime time.Time
 			expirationTime, err = rotator.Rotate(ctx)
 			if err != nil {
-				c.logger.Error(err, "failed to rotate OIDC exchange token, retry in one minute")
+				c.logger.Error(err, "failed to rotate token, retry in one minute")
 			} else {
 				rotationTime = expirationTime.Add(-constants.PreRotationWindow)
 				if r := time.Until(rotationTime); r > 0 {

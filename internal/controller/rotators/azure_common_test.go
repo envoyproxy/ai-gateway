@@ -30,5 +30,5 @@ func TestPopulateAzureAccessToken(t *testing.T) {
 	require.Len(t, secret.Data, 1)
 	val, ok := secret.Data[constants.AzureAccessTokenKey]
 	require.True(t, ok)
-	require.NotEmpty(t, val)
+	require.Equal(t, "some-azure-token", string(val))
 }

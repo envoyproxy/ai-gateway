@@ -190,7 +190,6 @@ type APIKeyAuth struct {
 
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
-	// which essentially is a secret in Envoy gateway
 	Filename string `json:"filename"`
 }
 

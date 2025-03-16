@@ -145,7 +145,7 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context) (time.Time, error) {
 	secretName := GetBSPSecretName(bspName)
 
 	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
-	// TODO XL should move to constructor be consistent with other provider
+	// TODO xiaolin593 move provider as part of constructor to make mock test possible when implement Azure OIDC.
 	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, &r.oidc)
 	if err != nil {
 		r.logger.Error(err, "failed to construct oidc provider")

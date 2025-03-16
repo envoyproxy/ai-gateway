@@ -22,7 +22,6 @@ type azureHandler struct {
 }
 
 func newAzureHandler(auth *filterapi.AzureAuth) (Handler, error) {
-	// https://github.com/envoyproxy/ai-gateway/blob/beec3dd8b4871f7b775dcca424a965b1c55ea693/examples/basic/basic.yaml#L169-L176
 	secret, err := os.ReadFile(auth.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read azure access token file: %w", err)

@@ -26,7 +26,7 @@ type AzureTokenRotator struct {
 	kube kubernetes.Interface
 	// logger is used for structured logging.
 	logger logr.Logger
-	// backendSecurityPolicyName provides name of backend security policy
+	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
 	backendSecurityPolicyNamespace string

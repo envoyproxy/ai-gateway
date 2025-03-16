@@ -13,7 +13,8 @@ const (
 	AzureAccessTokenKey = "azureAccessToken"
 	// AwsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
 	AwsCredentialsKey = "credentials"
-	ClientSecretKey   = "client-secret"
+	// ClientSecretKey is key used to store Azure and OIDC client secret in Kubernetes secrets.
+	ClientSecretKey = "client-secret"
 
 	// PreRotationWindow specifies how long before expiry to rotate credentials.
 	// Temporarily a fixed duration.
