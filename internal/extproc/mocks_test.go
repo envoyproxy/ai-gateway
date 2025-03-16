@@ -15,6 +15,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -189,17 +190,17 @@ func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
 func (m *mockChatCompletionMetrics) SetBackend(backend filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32) {
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32, _ ...attribute.KeyValue) {
 	m.tokenUsageCount++
 }
 
 // RecordTokenLatency implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32) {
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ ...attribute.KeyValue) {
 	m.tokenLatencyCount++
 }
 
 // RecordRequestCompletion implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool) {
+func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
 	if success {
 		m.requestSuccessCount++
 	} else {

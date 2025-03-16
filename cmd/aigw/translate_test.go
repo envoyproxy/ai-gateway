@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 )
 
 func Test_translate(t *testing.T) {
@@ -32,18 +33,26 @@ func Test_translate(t *testing.T) {
 			in:   "testdata/translate_basic.in.yaml",
 			out:  "testdata/translate_basic.out.yaml",
 		},
+		{
+			name: "nonairesources",
+			in:   "testdata/translate_nonairesources.yaml",
+			// The result should be the same as the input.
+			out: "testdata/translate_nonairesources.yaml",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			// Multiple files should be supported and duplicated resources should be deduplicated.
-			err := translate(cmdTranslate{Paths: []string{tc.in, tc.in}}, buf, os.Stderr)
+			err := translate(t.Context(), cmdTranslate{Paths: []string{tc.in, tc.in}, Debug: true}, buf, os.Stderr)
 			require.NoError(t, err)
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)
 			outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
-				outConfigMaps, outSecrets, outDeployments, outServices := requireCollectTranslatedObjects(t, buf.String())
+				outConfigMaps, outSecrets, outDeployments, outServices,
+				outBackends, outBackendTLSPolicy, outGatewayClass, outGateway := requireCollectTranslatedObjects(t, buf.String())
 			expHTTPRoutes, expEnvoyExtensionPolicy, expHTTPRouteFilter,
-				expConfigMaps, expSecrets, expDeployments, expServices := requireCollectTranslatedObjects(t, string(outBuf))
+				expConfigMaps, expSecrets, expDeployments, expServices,
+				expBackends, expBackendTLSPolicy, expGatewayClass, expGateway := requireCollectTranslatedObjects(t, string(outBuf))
 			assert.Equal(t, expHTTPRoutes, outHTTPRoutes)
 			assert.Equal(t, expEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
 			assert.Equal(t, expHTTPRouteFilter, outHTTPRouteFilter)
@@ -51,6 +60,10 @@ func Test_translate(t *testing.T) {
 			assert.Equal(t, expSecrets, outSecrets)
 			assert.Equal(t, expDeployments, outDeployments)
 			assert.Equal(t, expServices, outServices)
+			assert.Equal(t, expBackends, outBackends)
+			assert.Equal(t, expBackendTLSPolicy, outBackendTLSPolicy)
+			assert.Equal(t, expGatewayClass, outGatewayClass)
+			assert.Equal(t, expGateway, outGateway)
 		})
 	}
 }
@@ -63,6 +76,10 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 	outSecrets []corev1.Secret,
 	outDeployments []appsv1.Deployment,
 	outServices []corev1.Service,
+	outBackends []egv1a1.Backend,
+	outBackendTLSPolicy []gwapiv1a3.BackendTLSPolicy,
+	outGatewayClasses []gwapiv1.GatewayClass,
+	outGateway []gwapiv1.Gateway,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
 	for {
@@ -96,8 +113,16 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 			mustExtractAndAppend(obj, &outDeployments)
 		case "Service":
 			mustExtractAndAppend(obj, &outServices)
+		case "Backend":
+			mustExtractAndAppend(obj, &outBackends)
+		case "BackendTLSPolicy":
+			mustExtractAndAppend(obj, &outBackendTLSPolicy)
+		case "GatewayClass":
+			mustExtractAndAppend(obj, &outGatewayClasses)
+		case "Gateway":
+			mustExtractAndAppend(obj, &outGateway)
 		default:
-			t.Fatalf("unexpected kind: %s", obj.GetKind())
+			t.Fatalf("Skipping unknown kind %q", obj.GetKind())
 		}
 	}
 }

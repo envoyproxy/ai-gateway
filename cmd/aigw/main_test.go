@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"testing"
@@ -65,7 +66,7 @@ Flags:
 		{
 			name: "translate",
 			args: []string{"translate", "path1", "path2", "--debug"},
-			tf: func(c cmdTranslate, _, _ io.Writer) error {
+			tf: func(_ context.Context, c cmdTranslate, _, _ io.Writer) error {
 				cwd, err := os.Getwd()
 				require.NoError(t, err)
 				require.Equal(t, []string{cwd + "/path1", cwd + "/path2"}, c.Paths)
@@ -75,7 +76,7 @@ Flags:
 		{
 			name:         "translate no arg",
 			args:         []string{"translate"},
-			tf:           func(_ cmdTranslate, _, _ io.Writer) error { return nil },
+			tf:           func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
 			expPanicCode: ptr.To(1),
 		},
 		{
@@ -102,10 +103,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf)
 				})
 			} else {
-				doMain(out, os.Stderr, tt.args, nil, tt.tf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})

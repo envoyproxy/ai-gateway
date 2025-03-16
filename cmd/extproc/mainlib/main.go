@@ -41,7 +41,7 @@ type extProcFlags struct {
 	metricsAddr string     // HTTP address for the metrics server.
 }
 
-// parseAndValidateFlags parses and validates the flas passed to the external processor.
+// parseAndValidateFlags parses and validates the flags passed to the external processor.
 func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	var (
 		flags extProcFlags

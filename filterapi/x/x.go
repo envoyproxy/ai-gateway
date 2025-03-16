@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -61,9 +62,9 @@ type ChatCompletionMetrics interface {
 	SetBackend(backend filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32)
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
 	// RecordRequestCompletion records latency metrics for the entire request
-	RecordRequestCompletion(ctx context.Context, success bool)
+	RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue)
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32)
+	RecordTokenLatency(ctx context.Context, tokens uint32, extraAttrs ...attribute.KeyValue)
 }

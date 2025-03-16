@@ -6,12 +6,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
 
 	"github.com/alecthomas/kong"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -31,8 +33,13 @@ type (
 	}
 )
 
+type (
+	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
+	translateFn     subCmdFn[cmdTranslate]
+)
+
 func main() {
-	doMain(os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -42,7 +49,9 @@ func main() {
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
-func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf translateFn) {
+func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
+	tf translateFn,
+) {
 	var c cmd
 	parser, err := kong.New(&c,
 		kong.Name("aigw"),
@@ -53,13 +62,13 @@ func doMain(stdout, stderr io.Writer, args []string, exitFn func(int), tf transl
 	if err != nil {
 		log.Fatalf("Error creating parser: %v", err)
 	}
-	ctx, err := parser.Parse(args)
+	parsed, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
-	switch ctx.Command() {
+	switch parsed.Command() {
 	case "version":
 		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
 	case "translate <path>":
-		err = tf(c.Translate, stdout, stderr)
+		err = tf(ctx, c.Translate, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
 		}

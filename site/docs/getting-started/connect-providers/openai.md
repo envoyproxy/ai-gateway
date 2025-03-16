@@ -96,8 +96,39 @@ If you encounter issues:
    - 429: Rate limit exceeded
    - 503: OpenAI service unavailable
 
+## Configuring More Models
+
+To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field. For example, to use [o1]
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: o1
+      backendRefs:
+        - name: envoy-ai-gateway-basic-openai
+```
+
 ## Next Steps
 
 After configuring OpenAI:
 
 - [Connect AWS Bedrock](./aws-bedrock.md) to add another provider
+
+[AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
+[model alias]: https://platform.openai.com/docs/models#current-model-aliases
+[o1]: https://platform.openai.com/docs/models#o1

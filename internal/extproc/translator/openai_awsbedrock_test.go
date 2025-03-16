@@ -82,8 +82,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						Value: openai.ChatCompletionAssistantMessageParam{
-							Content: openai.ChatCompletionAssistantMessageParamContent{
-								Text: ptr.To("I dunno"),
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: openai.ChatCompletionAssistantMessageParamContent{
+									Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+									Text: ptr.To("I dunno"),
+								},
 							},
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
@@ -94,6 +97,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 									},
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},
+							},
+						}, Type: openai.ChatMessageRoleAssistant,
+					},
+					{
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: "I also dunno",
 							},
 						}, Type: openai.ChatMessageRoleAssistant,
 					},
@@ -161,6 +171,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 									ToolUseID: "call_6g7a",
 									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
+							},
+						},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("I also dunno"),
 							},
 						},
 					},

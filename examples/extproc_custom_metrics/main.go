@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
@@ -61,14 +62,14 @@ func (m *myCustomChatCompletionMetrics) SetBackend(backend filterapi.Backend) {
 	m.logger.Info("SetBackend", "backend", backend.Name)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordTokenUsage(_ context.Context, inputTokens, outputTokens, totalTokens uint32) {
+func (m *myCustomChatCompletionMetrics) RecordTokenUsage(_ context.Context, inputTokens, outputTokens, totalTokens uint32, _ ...attribute.KeyValue) {
 	m.logger.Info("RecordTokenUsage", "inputTokens", inputTokens, "outputTokens", outputTokens, "totalTokens", totalTokens)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool) {
+func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
 	m.logger.Info("RecordRequestCompletion", "success", success)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordTokenLatency(_ context.Context, tokens uint32) {
+func (m *myCustomChatCompletionMetrics) RecordTokenLatency(_ context.Context, tokens uint32, _ ...attribute.KeyValue) {
 	m.logger.Info("RecordTokenLatency", "tokens", tokens)
 }
