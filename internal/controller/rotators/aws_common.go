@@ -29,14 +29,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/envoyproxy/ai-gateway/constants"
 )
 
 // Common constants for AWS operations.
 const (
 	// awsSessionNameFormat is the format string for AWS session names.
 	awsSessionNameFormat = "ai-gateway-%s"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	awsCredentialsKey = "credentials"
 )
 
 // defaultAWSConfig returns an AWS config with adaptive retry mode enabled.
@@ -122,5 +122,5 @@ func updateAWSCredentialsInSecret(secret *corev1.Secret, creds *awsCredentialsFi
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[constants.AwsCredentialsKey] = []byte(formatAWSCredentialsFile(creds))
+	secret.Data[awsCredentialsKey] = []byte(formatAWSCredentialsFile(creds))
 }

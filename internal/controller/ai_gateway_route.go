@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -44,6 +43,11 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
+	apiKey                   = "apiKey"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	awsCredentialsKey = "credentials"
+	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	azureAccessTokenKey = "azureAccessToken"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
@@ -306,7 +310,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), constants.APIKey)},
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), apiKey)},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
@@ -315,7 +319,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), constants.AwsCredentialsKey),
+								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), awsCredentialsKey),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
 						}
@@ -326,7 +330,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					}
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 						AzureAuth: &filterapi.AzureAuth{
-							Filename: path.Join(backendSecurityMountPath(volumeName), constants.AzureAccessTokenKey),
+							Filename: path.Join(backendSecurityMountPath(volumeName), azureAccessTokenKey),
 						},
 					}
 				default:

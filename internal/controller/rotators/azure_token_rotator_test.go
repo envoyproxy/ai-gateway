@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
@@ -41,7 +40,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				constants.AzureAccessTokenKey: []byte("some-azure-access-token"),
+				azureAccessTokenKey: []byte("some-azure-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -98,7 +97,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				constants.AzureAccessTokenKey: []byte("some-azure-access-token"),
+				azureAccessTokenKey: []byte("some-azure-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -149,7 +148,7 @@ func TestAzureTokenRotator_GetPreRotationTime(t *testing.T) {
 					Namespace: "default",
 				},
 				Data: map[string][]byte{
-					constants.AzureAccessTokenKey: []byte("some-azure-access-token"),
+					azureAccessTokenKey: []byte("some-azure-access-token"),
 				},
 			},
 			expectedTime:  time.Time{},
@@ -166,7 +165,7 @@ func TestAzureTokenRotator_GetPreRotationTime(t *testing.T) {
 					},
 				},
 				Data: map[string][]byte{
-					constants.AzureAccessTokenKey: []byte("some-azure-access-token"),
+					azureAccessTokenKey: []byte("some-azure-access-token"),
 				},
 			},
 			expectedTime:  now.Add(2 * time.Hour),
@@ -238,7 +237,7 @@ func TestPopulateAzureAccessToken(t *testing.T) {
 	require.Equal(t, expiration.Format(time.RFC3339), annotation)
 
 	require.Len(t, secret.Data, 1)
-	val, ok := secret.Data[constants.AzureAccessTokenKey]
+	val, ok := secret.Data[azureAccessTokenKey]
 	require.True(t, ok)
 	require.Equal(t, "some-azure-token", string(val))
 }

@@ -12,8 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/envoyproxy/ai-gateway/constants"
 )
 
 func TestNewSTSClient(t *testing.T) {
@@ -55,7 +53,7 @@ func TestUpdateAWSCredentialsInSecret(t *testing.T) {
 	updateAWSCredentialsInSecret(secret, &awsCredentialsFile{credentials})
 	require.Len(t, secret.Data, 1)
 
-	val, ok := secret.Data[constants.AwsCredentialsKey]
+	val, ok := secret.Data[awsCredentialsKey]
 	require.True(t, ok)
 	require.NotEmpty(t, val)
 }

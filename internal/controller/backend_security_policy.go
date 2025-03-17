@@ -21,9 +21,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+)
+
+const (
+	// clientSecretKey is key used to store Azure and OIDC client secret in Kubernetes secrets.
+	clientSecretKey = "client-secret"
+
+	// azureScopeURL specifies Microsoft Azure OAuth 2.0 scope to authenticate and authorize when accessing Azure OpenAI.
+	azureScopeURL = "https://cognitiveservices.azure.com/.default"
+
+	// preRotationWindow specifies how long before expiry to rotate credentials.
+	// Temporarily a fixed duration.
+	preRotationWindow = 5 * time.Minute
 )
 
 // BackendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
@@ -90,7 +101,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if oidc != nil {
 			region := bsp.Spec.AWSCredentials.Region
 			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
-			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, *oidc, roleArn, region)
+			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, *oidc, roleArn, region)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -102,10 +113,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if secretRef == nil {
 			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
-		if secretRef.Namespace == nil {
-			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref namespace is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
+		secretNamespace := bsp.Namespace
+		if secretRef.Namespace != nil {
+			secretNamespace = string(*secretRef.Namespace)
 		}
-		secretNamespace := string(*secretRef.Namespace)
 		secretName := string(secretRef.Name)
 		var secret *corev1.Secret
 		secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
@@ -113,12 +124,12 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
 			return ctrl.Result{}, err
 		}
-		secretValue, exists := secret.Data[constants.ClientSecretKey]
+		secretValue, exists := secret.Data[clientSecretKey]
 		if !exists {
-			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", constants.ClientSecretKey)
+			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
 		}
 		clientSecret := string(secretValue)
-		options := policy.TokenRequestOptions{Scopes: []string{constants.AzureScopeURL}}
+		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
 		var provider tokenprovider.TokenProvider
@@ -126,7 +137,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, constants.PreRotationWindow, provider)
+		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, provider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -151,7 +162,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 			if err != nil {
 				c.logger.Error(err, "failed to rotate token, retry in one minute")
 			} else {
-				rotationTime = expirationTime.Add(-constants.PreRotationWindow)
+				rotationTime = expirationTime.Add(-preRotationWindow)
 				if r := time.Until(rotationTime); r > 0 {
 					requeue = r
 					c.logger.Info(

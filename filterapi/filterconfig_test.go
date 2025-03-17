@@ -154,13 +154,6 @@ rules:
 
 	require.Equal(t, expectedCfg, cfg)
 
-	require.Equal(t, "gpt4.4444", cfg.Rules[1].Headers[0].Value)
-	require.Equal(t, "openai", cfg.Rules[1].Backends[0].Name)
-	require.Equal(t, "OpenAI", string(cfg.Rules[1].Backends[0].Schema.Name))
-	require.Equal(t, "azureopenai", cfg.Rules[1].Backends[1].Name)
-	require.Equal(t, "AzureOpenAI", string(cfg.Rules[1].Backends[1].Schema.Name))
-	require.Equal(t, "2024-10-21", cfg.Rules[1].Backends[1].Schema.Version)
-
 	t.Run("not found", func(t *testing.T) {
 		_, _, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
 		require.Error(t, err)

@@ -33,7 +33,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -295,7 +294,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
-	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, constants.PreRotationWindow,
+	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
 		oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
@@ -306,7 +305,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	// first credential rotation should create aws credentials secret
 	res, err := rotator.Rotate(ctx)
 	require.NoError(t, err)
-	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-constants.PreRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
+	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-preRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
 	// ensure both oidc secret and aws credential secret are created
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
@@ -322,7 +321,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	// set secret time expired
 	parsedTime, err := time.Parse(time.RFC3339, t0)
 	require.NoError(t, err)
-	t1 := parsedTime.Add(-constants.PreRotationWindow - time.Minute).String()
+	t1 := parsedTime.Add(-preRotationWindow - time.Minute).String()
 	awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey] = t1
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
@@ -596,7 +595,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 		fake2.NewClientset(),
 		ctrl.Log, bspNamespace,
 		bsp.Name,
-		constants.PreRotationWindow,
+		preRotationWindow,
 		oidc,
 		"placeholder",
 		"us-east-1",

@@ -18,7 +18,7 @@ type azureTokenProvider struct {
 	tokenOption policy.TokenRequestOptions
 }
 
-// NewAzureTokenProvider creates a new azureTokenProvider with the given tenant ID, client ID, client secret, and token request options.
+// NewAzureTokenProvider creates a new TokenProvider with the given tenant ID, client ID, client secret, and token request options.
 func NewAzureTokenProvider(tenantID, clientID, clientSecret string, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
 	credential, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, nil)
 	if err != nil {

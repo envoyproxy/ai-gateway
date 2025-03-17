@@ -16,8 +16,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/constants"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+)
+
+const (
+	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	azureAccessTokenKey = "azureAccessToken"
 )
 
 // azureTokenRotator implements Rotator interface for Azure access token exchange.
@@ -135,5 +139,5 @@ func populateAzureAccessToken(secret *corev1.Secret, token *tokenprovider.TokenE
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[constants.AzureAccessTokenKey] = []byte(token.Token)
+	secret.Data[azureAccessTokenKey] = []byte(token.Token)
 }

@@ -29,8 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-
-	"github.com/envoyproxy/ai-gateway/constants"
 )
 
 // -----------------------------------------------------------------------------
@@ -60,7 +58,7 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 		profile = awsProfileName
 	}
 	data := map[string][]byte{
-		constants.AwsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
 			profile, accessKey, secretKey, sessionToken, awsRegion)),
 	}
 	err := client.Create(t.Context(), &corev1.Secret{
@@ -78,7 +76,7 @@ func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, s
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	expectedSecretData := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, expectedKeyID, expectedSecret, expectedToken, region)
-	require.Equal(t, expectedSecretData, string(secret.Data[constants.AwsCredentialsKey]))
+	require.Equal(t, expectedSecretData, string(secret.Data[awsCredentialsKey]))
 }
 
 // createOidcClientSecret creates the OIDC client secret
