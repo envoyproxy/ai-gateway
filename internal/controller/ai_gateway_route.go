@@ -324,9 +324,6 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					if backendSecurityPolicy.Spec.AzureCredentials == nil {
 						return fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
 					}
-					if cred := backendSecurityPolicy.Spec.AzureCredentials; cred.ClientSecretRef == nil {
-						return fmt.Errorf("AzureCredentials client secret is nil %s", backendSecurityPolicy.Name)
-					}
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 						AzureAuth: &filterapi.AzureAuth{
 							Filename: path.Join(backendSecurityMountPath(volumeName), constants.AzureAccessTokenKey),

@@ -115,8 +115,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", constants.ClientSecretKey)
 		}
 		clientSecret := string(secretValue)
-		scopes := []string{"https://cognitiveservices.azure.com/.default"}
-		options := policy.TokenRequestOptions{Scopes: scopes}
+		options := policy.TokenRequestOptions{Scopes: []string{constants.AzureScopeURL}}
 		var provider *tokenprovider.AzureTokenProvider
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID

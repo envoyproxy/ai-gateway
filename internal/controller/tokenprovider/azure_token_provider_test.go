@@ -11,6 +11,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/constants"
 )
 
 func TestNewAzureTokenProvider(t *testing.T) {
@@ -32,7 +34,7 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 	})
 
 	t.Run("invalid azure credential info", func(t *testing.T) {
-		scopes := []string{"https://cognitiveservices.azure.com/.default"}
+		scopes := []string{constants.AzureScopeURL}
 		provider, err := NewAzureTokenProvider("invalidTenantID", "invalidClientID", "invalidClientSecret", policy.TokenRequestOptions{Scopes: scopes})
 		require.NoError(t, err)
 
