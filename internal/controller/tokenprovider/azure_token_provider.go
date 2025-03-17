@@ -12,20 +12,23 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
-type AzureTokenProvider struct {
+// azureTokenProvider is a provider implements TokenProvider interface for Azure access tokens.
+type azureTokenProvider struct {
 	credential  *azidentity.ClientSecretCredential
 	tokenOption policy.TokenRequestOptions
 }
 
-func NewAzureTokenProvider(tenantID, clientID, clientSecret string, tokenOption policy.TokenRequestOptions) (*AzureTokenProvider, error) {
+// NewAzureTokenProvider creates a new azureTokenProvider with the given tenant ID, client ID, client secret, and token request options.
+func NewAzureTokenProvider(tenantID, clientID, clientSecret string, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
 	credential, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &AzureTokenProvider{credential: credential, tokenOption: tokenOption}, nil
+	return &azureTokenProvider{credential: credential, tokenOption: tokenOption}, nil
 }
 
-func (a *AzureTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
+// GetToken implements TokenProvider.GetToken method to retrieve an Azure access token and its expiration time.
+func (a *azureTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
 	azureToken, err := a.credential.GetToken(ctx, a.tokenOption)
 	if err != nil {
 		return TokenExpiry{}, err

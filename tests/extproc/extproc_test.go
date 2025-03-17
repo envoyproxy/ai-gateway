@@ -70,7 +70,6 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 	cmd := exec.CommandContext(t.Context(), "envoy",
 		"-c", envoyYamlPath,
 		"--log-level", "warn",
-		"--component-log-level", "lua:debug",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 	)
 	cmd.Stdout = os.Stdout

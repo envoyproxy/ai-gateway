@@ -47,7 +47,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 		err := client.Create(context.Background(), secret)
 		require.NoError(t, err)
 
-		rotator := &AzureTokenRotator{
+		rotator := &azureTokenRotator{
 			client:                         client,
 			backendSecurityPolicyNamespace: "default",
 			backendSecurityPolicyName:      "test-policy",
@@ -66,7 +66,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 		twoHourAfterNow := now.Add(2 * time.Hour)
 		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, nil)
 
-		rotator := &AzureTokenRotator{
+		rotator := &azureTokenRotator{
 			client: client,
 
 			backendSecurityPolicyNamespace: "default",
@@ -104,7 +104,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 		err := client.Create(context.Background(), secret)
 		require.NoError(t, err)
 
-		rotator := &AzureTokenRotator{
+		rotator := &azureTokenRotator{
 			client:                         client,
 			tokenProvider:                  mockProvider,
 			backendSecurityPolicyNamespace: "default",
@@ -126,7 +126,7 @@ func TestAzureTokenRotator_GetPreRotationTime(t *testing.T) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Secret{})
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	rotator := &AzureTokenRotator{
+	rotator := &azureTokenRotator{
 		client:                         client,
 		preRotationWindow:              5 * time.Minute,
 		backendSecurityPolicyNamespace: "default",
@@ -197,7 +197,7 @@ func TestAzureTokenRotator_IsExpired(t *testing.T) {
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Secret{})
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	rotator := &AzureTokenRotator{
+	rotator := &azureTokenRotator{
 		client: client,
 	}
 	tests := []struct {

@@ -100,7 +100,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
 		secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
 		if secretRef == nil {
-			return ctrl.Result{}, fmt.Errorf("azure credentials secret reference is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
+			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
+		}
+		if secretRef.Namespace == nil {
+			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref namespace is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
 		secretNamespace := string(*secretRef.Namespace)
 		secretName := string(secretRef.Name)
@@ -116,9 +119,9 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		}
 		clientSecret := string(secretValue)
 		options := policy.TokenRequestOptions{Scopes: []string{constants.AzureScopeURL}}
-		var provider *tokenprovider.AzureTokenProvider
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
+		var provider tokenprovider.TokenProvider
 		provider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
 		if err != nil {
 			return ctrl.Result{}, err

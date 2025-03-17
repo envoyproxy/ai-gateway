@@ -19,12 +19,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type OidcTokenProvider struct {
+// oidcTokenProvider is a provider implements TokenProvider interface for OIDC tokens.
+type oidcTokenProvider struct {
 	oidcConfig *egv1a1.OIDC
 	client     client.Client
 }
 
-func NewOidcTokenProvider(ctx context.Context, client client.Client, oidcConfig *egv1a1.OIDC) (*OidcTokenProvider, error) {
+// NewOidcTokenProvider creates a new OidcTokenProvider with the given OIDC configuration.
+func NewOidcTokenProvider(ctx context.Context, client client.Client, oidcConfig *egv1a1.OIDC) (TokenProvider, error) {
 	issuerURL := oidcConfig.Provider.Issuer
 	oidcProvider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
@@ -68,10 +70,11 @@ func NewOidcTokenProvider(ctx context.Context, client client.Client, oidcConfig 
 		}
 	}
 	// Now OidcTokenProvider has all fields configured and is ready for caller to use by calling GetToken(ctx).
-	return &OidcTokenProvider{oidcConfig, client}, nil
+	return &oidcTokenProvider{oidcConfig, client}, nil
 }
 
-func (o *OidcTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
+// GetToken implements TokenProvider.GetToken method to retrieve an OIDC token and its expiration time.
+func (o *oidcTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
 	if o.oidcConfig.ClientSecret.Namespace == nil {
 		return TokenExpiry{}, fmt.Errorf("oidc client secret namespace is nil")
 	}

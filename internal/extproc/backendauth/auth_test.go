@@ -20,7 +20,7 @@ func TestNewHandler(t *testing.T) {
 [default]
 aws_access_key_id = test
 aws_secret_access_key = test
-	`), 0o600)
+`), 0o600)
 	require.NoError(t, err)
 
 	apiKeyFile := t.TempDir() + "/apikey"

@@ -121,7 +121,6 @@ func TestOidcTokenProvider_GetToken(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, provider)
-				require.Len(t, provider.oidcConfig.Scopes, 3)
 			}
 		})
 	}

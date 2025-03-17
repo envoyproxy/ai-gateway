@@ -20,7 +20,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
-type AzureTokenRotator struct {
+// azureTokenRotator implements Rotator interface for Azure access token exchange.
+type azureTokenRotator struct {
 	// client is used for Kubernetes API operations.
 	client client.Client
 	// kube provides additional API capabilities.
@@ -33,10 +34,11 @@ type AzureTokenRotator struct {
 	backendSecurityPolicyNamespace string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
-
+	// tokenProvider specifies provider to fetch Azure access token
 	tokenProvider tokenprovider.TokenProvider
 }
 
+// NewAzureTokenRotator creates a new azureTokenRotator with the given parameters.
 func NewAzureTokenRotator(
 	client client.Client,
 	kube kubernetes.Interface,
@@ -45,8 +47,8 @@ func NewAzureTokenRotator(
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
 	tokenProvider tokenprovider.TokenProvider,
-) (*AzureTokenRotator, error) {
-	return &AzureTokenRotator{
+) (Rotator, error) {
+	return &azureTokenRotator{
 		client:                         client,
 		kube:                           kube,
 		logger:                         logger.WithName("azure-token-rotator"),
@@ -57,12 +59,13 @@ func NewAzureTokenRotator(
 	}, nil
 }
 
-// IsExpired checks if the preRotation time is before the current time.
-func (r *AzureTokenRotator) IsExpired(preRotationExpirationTime time.Time) bool {
+// IsExpired implements Rotator.IsExpired method to check if the preRotation time is before the current time.
+func (r *azureTokenRotator) IsExpired(preRotationExpirationTime time.Time) bool {
 	return IsBufferedTimeExpired(0, preRotationExpirationTime)
 }
 
-func (r *AzureTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, error) {
+// GetPreRotationTime implements Rotator.GetPreRotationTime method to retrieve the pre-rotation time for Azure token.
+func (r *azureTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, error) {
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -78,7 +81,8 @@ func (r *AzureTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, 
 	return preRotationTime, nil
 }
 
-func (r *AzureTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
+// Rotate implements Rotator.Rotate method to rotate Azure access token and updates the Kubernetes secret.
+func (r *azureTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	bspNamespace := r.backendSecurityPolicyNamespace
 	bspName := r.backendSecurityPolicyName
 	secretName := GetBSPSecretName(bspName)
@@ -124,6 +128,7 @@ func (r *AzureTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	return azureToken.ExpiresAt, nil
 }
 
+// populateAzureAccessToken updates the secret with the Azure access token.
 func populateAzureAccessToken(secret *corev1.Secret, token *tokenprovider.TokenExpiry) {
 	updateExpirationSecretAnnotation(secret, token.ExpiresAt)
 
