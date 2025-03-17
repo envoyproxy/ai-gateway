@@ -22,7 +22,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -82,8 +81,7 @@ func NewAIGatewayRouteController(
 
 // Reconcile implements [reconcile.TypedReconciler].
 func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
+	c.logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
 
 	var aiGatewayRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &aiGatewayRoute); err != nil {
