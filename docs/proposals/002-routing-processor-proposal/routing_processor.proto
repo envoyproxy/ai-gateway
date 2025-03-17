@@ -1,0 +1,272 @@
+syntax = "proto3";
+
+// Package for routing processor functionality including semantic caching and model selection
+package routing_processor.v1alpha1;
+
+option go_package = "routing_processor/go";
+
+// ===== Core Value Types =====
+
+message Value {
+  oneof kind {
+    string string_value = 1;
+    double number_value = 2;
+    bool bool_value = 3;
+    Metadata struct_value = 4;
+    ListValue list_value = 5;
+  }
+}
+
+message ListValue {
+  repeated Value values = 1;
+}
+
+message Metadata {
+  map<string, Value> fields = 1;
+}
+
+// ===== Basic Types =====
+
+message Header {
+  string key = 1;
+  string value = 2;
+}
+
+message Usage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+}
+
+// ===== Message & Tool Types =====
+
+message Message {
+  string role = 1;
+  string content = 2;
+  repeated ToolCall tool_calls = 3;
+  string tool_call_id = 4;
+  string name = 5;
+  string function_call = 6;
+}
+
+message ToolCall {
+  string id = 1;
+  string type = 2;
+  string function = 3;
+  string arguments = 4;
+}
+
+// ===== Configuration Types =====
+
+message CachingBehavior {
+  optional float similarity_threshold = 1;
+  optional int32 max_cache_size = 2;
+  optional int32 ttl_seconds = 3;
+}
+
+message ProcessingMode {
+  bool semantic_cache_enabled = 1;
+  bool model_selection_enabled = 2;
+  optional uint32 timeout = 3;
+  optional CachingBehavior caching_behavior = 4;
+  optional bool allow_mode_override = 5;
+}
+
+message APISchema {
+  string name = 1;
+  string version = 2;
+}
+
+// ===== Metrics & Backend Types =====
+
+message BackendMetrics {
+  optional float avg_latency = 1;
+  optional float cost_per_unit = 2;
+}
+
+message Backend {
+  string name = 1;
+  int32 weight = 2;
+  APISchema schema = 3;
+  Metadata properties = 4;
+  optional BackendMetrics metrics = 5;
+}
+
+// ===== Cache Info Types =====
+
+message CacheInfo {
+  bool cache_hit = 1;
+  float similarity_score = 2;
+  string cached_request_id = 3;
+  uint32 age = 4;
+}
+
+// ===== Mutation Types =====
+
+message HeaderValueOption {
+  Header header = 1;
+  bool append = 2;
+}
+
+message HeaderMutation {
+  repeated HeaderValueOption set_headers = 1;
+  repeated string remove_headers = 2;
+}
+
+message BodyMutation {
+  bytes body = 1;
+}
+
+// ===== Request/Response Types =====
+
+enum MessageType {
+  UNKNOWN = 0;
+  CLIENT_REQUEST = 1;
+  UPSTREAM_RESPONSE = 2;
+  CACHED_RESPONSE = 3;
+}
+
+message RequestMetadata {
+  string request_id = 1;
+  string model_name = 2;
+  float response_latency = 3;
+  uint64 token_count = 4;
+  float cache_score = 5;
+  optional int32 status_code = 6;
+}
+
+message RequestHeaders {
+  repeated Header headers = 1;
+  repeated Backend available_backends = 2;
+  string request_id = 3;
+}
+
+message RequestBody {
+  bytes body = 1;
+  bool end_of_stream = 2;
+  MessageType message_type = 3;
+  RequestMetadata metadata = 4;
+}
+
+message ProcessingRequest {
+  oneof request {
+    RequestHeaders headers = 1;
+    RequestBody body = 2;
+  }
+  ProcessingMode processing_mode = 3;
+}
+
+message CommonResponse {
+  HeaderMutation header_mutation = 1;
+  BodyMutation body_mutation = 2;
+  optional CacheInfo cache_info = 3;
+  optional string selected_backend = 4;
+}
+
+message ImmediateResponse {
+  int32 status_code = 1;
+  repeated Header headers = 2;
+  bytes body = 3;
+}
+
+message MessageProcessingResponse {
+  CommonResponse response = 1;
+}
+
+message ProcessingResponse {
+  oneof response {
+    ImmediateResponse immediate_response = 1;
+    MessageProcessingResponse message_processing = 2;
+  }
+  Metadata dynamic_metadata = 3;
+}
+
+// ===== Semantic Cache Types =====
+
+message SearchRequest {
+  repeated Message messages = 1;
+  float similarity_threshold = 2;
+  string model = 3;
+}
+
+message SearchResponse {
+  bool found = 1;
+  repeated Message response_messages = 2;
+  float similarity_score = 3;
+  Usage usage = 4;
+}
+
+message StoreChatRequest {
+  repeated Message request_messages = 1;
+  repeated Message response_messages = 2;
+  string model = 3;
+  string ttl = 4;
+  Usage usage = 5;
+}
+
+message StoreChatResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// ===== Capability Types =====
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  bool stateless_semantic_cache_supported = 1;
+  bool stateful_semantic_cache_supported = 2;
+  bool model_selection_supported = 3;
+  bool immediate_response_supported = 4;
+}
+
+// ===== Stateful Semantic Cache Types =====
+
+message InitiateCacheSearchRequest {
+  repeated Message messages = 1;
+  float similarity_threshold = 2;
+  string model = 3;
+}
+
+message InitiateCacheSearchResponse {
+  string request_id = 1;
+}
+
+message CompleteCacheSearchRequest {
+  string request_id = 1;
+}
+
+message InitiateCacheStoreRequest {
+  repeated Message request_messages = 1;
+  string model = 2;
+  string ttl = 3;
+}
+
+message InitiateCacheStoreResponse {
+  string request_id = 1;
+}
+
+message CompleteCacheStoreRequest {
+  string request_id = 1;
+  repeated Message response_messages = 2;
+  Usage usage = 3;
+}
+
+// ===== Services =====
+
+service RoutingProcessor {
+  rpc ExternalProcess(stream ProcessingRequest) returns (stream ProcessingResponse);
+  rpc GetCapabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+}
+
+service SemanticCacheService {
+  // Stateless semantic cache methods
+  rpc SearchCache(SearchRequest) returns (SearchResponse) {}
+  rpc StoreChat(StoreChatRequest) returns (StoreChatResponse) {}
+  
+  // Stateful semantic cache methods
+  rpc InitiateCacheSearch(InitiateCacheSearchRequest) returns (InitiateCacheSearchResponse) {}
+  rpc CompleteCacheSearch(CompleteCacheSearchRequest) returns (SearchResponse) {}
+  rpc InitiateCacheStore(InitiateCacheStoreRequest) returns (InitiateCacheStoreResponse) {}
+  rpc CompleteCacheStore(CompleteCacheStoreRequest) returns (StoreChatResponse) {}
+} 
