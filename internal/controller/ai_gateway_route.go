@@ -43,7 +43,8 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
-	apiKey                   = "apiKey"
+	// apiKey is the key to store OpenAI API key.
+	apiKey = "apiKey"
 	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
 	awsCredentialsKey = "credentials"
 	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
