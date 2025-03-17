@@ -25,7 +25,7 @@ type oidcTokenProvider struct {
 	client     client.Client
 }
 
-// NewOidcTokenProvider creates a new OidcTokenProvider with the given OIDC configuration.
+// NewOidcTokenProvider creates a new TokenProvider with the given OIDC configuration.
 func NewOidcTokenProvider(ctx context.Context, client client.Client, oidcConfig *egv1a1.OIDC) (TokenProvider, error) {
 	issuerURL := oidcConfig.Provider.Issuer
 	oidcProvider, err := oidc.NewProvider(ctx, issuerURL)
