@@ -107,6 +107,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							},
 						}, Type: openai.ChatMessageRoleAssistant,
 					},
+					{
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: "",
+							},
+						}, Type: openai.ChatMessageRoleAssistant,
+					},
 				},
 			},
 			output: awsbedrock.ConverseInput{
@@ -181,6 +188,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								Text: ptr.To("I also dunno"),
 							},
 						},
+					},
+					{
+						Role:    openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{},
 					},
 				},
 			},
