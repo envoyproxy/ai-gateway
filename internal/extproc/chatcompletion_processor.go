@@ -70,6 +70,8 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator()
 	case filterapi.APISchemaAWSBedrock:
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator()
+	case filterapi.APISchemaAzureOpenAI:
+		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -118,7 +120,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
-	c.logger.Info("Selected backend", "backend", b.Name)
+	c.logger.Info("Selected backend", "backend", b.Name, "schema", b.Schema)
 	c.metrics.SetBackend(*b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {

@@ -30,8 +30,9 @@ const listenerAddress = "http://localhost:1062"
 var envoyYamlBase string
 
 var (
-	openAISchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
-	awsBedrockSchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 )
 
 // requireExtProc starts the external processor with the provided executable and configPath

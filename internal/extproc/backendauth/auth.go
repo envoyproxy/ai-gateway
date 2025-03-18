@@ -24,10 +24,14 @@ type Handler interface {
 
 // NewHandler returns a new implementation of [Handler] based on the configuration.
 func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (Handler, error) {
-	if config.AWSAuth != nil {
+	switch {
+	case config.AWSAuth != nil:
 		return newAWSHandler(ctx, config.AWSAuth)
-	} else if config.APIKey != nil {
+	case config.APIKey != nil:
 		return newAPIKeyHandler(config.APIKey)
+	case config.AzureAuth != nil:
+		return newAzureHandler(config.AzureAuth)
+	default:
+		return nil, errors.New("no backend auth handler found")
 	}
-	return nil, errors.New("no backend auth handler found")
 }

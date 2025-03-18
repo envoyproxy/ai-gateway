@@ -133,8 +133,9 @@ type VersionedAPISchema struct {
 type APISchemaName string
 
 const (
-	APISchemaOpenAI     APISchemaName = "OpenAI"
-	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
+	APISchemaOpenAI      APISchemaName = "OpenAI"
+	APISchemaAWSBedrock  APISchemaName = "AWSBedrock"
+	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"
 )
 
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
@@ -172,6 +173,8 @@ type BackendAuth struct {
 	APIKey *APIKeyAuth `json:"apiKey,omitempty"`
 	// AWSAuth specifies the location of the AWS credential file and region.
 	AWSAuth *AWSAuth `json:"aws,omitempty"`
+	// AzureAuth specifies the location of Azure access token file.
+	AzureAuth *AzureAuth `json:"azure,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
@@ -182,6 +185,11 @@ type AWSAuth struct {
 
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
+	Filename string `json:"filename"`
+}
+
+// AzureAuth defines the file containing azure access token that will be mounted to the external proc.
+type AzureAuth struct {
 	Filename string `json:"filename"`
 }
 
