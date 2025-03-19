@@ -449,8 +449,13 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 		if envSubValue, ok := s.Annotations[envSubKey]; ok {
 			// If this is an environment variable, substitute it.
 			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubValue)
-			v = []byte(os.Getenv(envSubValue))
+			envVal := os.Getenv(envSubValue)
+			if envVal == "" {
+				return fmt.Errorf("environment variable %s is not set", envSubValue)
+			}
+			v = []byte(envVal)
 		} else if fileSubValue, ok := s.Annotations[fileSubKey]; ok {
+			fileSubValue = maybeResolveHome(fileSubValue)
 			// Create a symlink to the file inside the dir pointing to the file in the annotation.
 			runCtx.stderrLogger.Info("Creating symlink", "path", p, "key", k, "value", fileSubValue)
 			err = os.Symlink(fileSubValue, p)
@@ -468,4 +473,15 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 		}
 	}
 	return nil
+}
+
+func maybeResolveHome(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return p
+		}
+		return filepath.Join(home, p[2:])
+	}
+	return p
 }
