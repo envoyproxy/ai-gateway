@@ -1,11 +1,17 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package internaltesting
 
 import (
 	"cmp"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type RequiredCredential byte
@@ -45,12 +51,12 @@ func (c CredentialsContext) MaybeSkip(t *testing.T, required RequiredCredential)
 // RequireNewCredentialsContext creates a new credential context for the tests from the environment variables.
 func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	// Set up credential file for OpenAI.
-	openAIAPIKey := os.Getenv("TEST_OPENAI_API_KEY")
+	openAIAPIKey := cmp.Or(os.Getenv("TEST_OPENAI_API_KEY"), "dummy-openai-api-key")
 
 	openAIAPIKeyFilePath := t.TempDir() + "/open-ai-api-key"
 	openaiFile, err := os.Create(openAIAPIKeyFilePath)
 	require.NoError(t, err)
-	_, err = openaiFile.WriteString(cmp.Or(openAIAPIKey, "dummy-openai-api-key"))
+	_, err = openaiFile.WriteString(openAIAPIKey)
 	require.NoError(t, err)
 
 	// Set up credential file for Azure.

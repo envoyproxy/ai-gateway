@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"os"
 	"strings"
 	"testing"
@@ -24,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.

@@ -39,7 +39,7 @@ func TestRun(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
 	aiGatewayResources := strings.Replace(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath, 1)
-	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0600)
+	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -99,7 +99,7 @@ func TestRunCmdContext_writeExtensionPolicy(t *testing.T) {
 	// They will be used for substitutions.
 	t.Setenv("FOO", "bar")
 	tmpFilePath := filepath.Join(t.TempDir(), "some-temp")
-	require.NoError(t, os.WriteFile(tmpFilePath, []byte("some-temp-content"), 0600))
+	require.NoError(t, os.WriteFile(tmpFilePath, []byte("some-temp-content"), 0o600))
 
 	extP := &egv1a1.EnvoyExtensionPolicy{
 		ObjectMeta: metav1.ObjectMeta{
