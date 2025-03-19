@@ -33,7 +33,7 @@ metadata:
 spec:
   logging:
     level:
-      default: warn
+      default: debug
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute

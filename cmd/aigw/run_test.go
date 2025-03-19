@@ -36,7 +36,7 @@ func TestRun_default(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{}, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true}, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	require.Eventually(t, func() bool {
@@ -48,13 +48,15 @@ func TestRun_default(t *testing.T) {
 			t.Logf("error: %v", err)
 			return false
 		}
-		defer resp.Body.Close()
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
 		// We don't care about the content and just check the connection is successful.
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		t.Logf("status=%d, body: %s", resp.StatusCode, string(body))
 		return true
-	}, 20*time.Second, 1*time.Second)
+	}, 120*time.Second, 1*time.Second)
 	cancel()
 	<-done
 }

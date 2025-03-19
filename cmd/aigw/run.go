@@ -135,8 +135,8 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 
 	server := root.GetRootCommand()
 	egOut := &bytes.Buffer{}
-	server.SetOut(egOut)
-	server.SetErr(egOut)
+	server.SetOut(os.Stdout)
+	server.SetErr(os.Stdout)
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
@@ -415,7 +415,7 @@ func (runCtx *runCmdContext) mustClearSetOwnerReferencesAndStatusAndWriteObj(typ
 	if err != nil {
 		panic(err)
 	}
-	_, err = runCtx.envoyGatewayResourcesOut.Write(append([]byte{'-', '-', '-', '\n'}, marshaled...))
+	_, err = runCtx.envoyGatewayResourcesOut.Write(append([]byte("---\n"), marshaled...))
 	if err != nil {
 		panic(err)
 	}
