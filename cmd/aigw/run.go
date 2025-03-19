@@ -35,8 +35,8 @@ import (
 
 // This is the default configuration for the AI Gateway when --path is not given.
 //
-//go:embed ai-gateway-default-config.yaml
-var aiGatewayDefaultConfig string
+//go:embed ai-gateway-default-resources.yaml
+var aiGatewayDefaultResources string
 
 // This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
 // directory where the resources are written to.
@@ -118,7 +118,7 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, tmpdir: tmpdir, isDebug: c.Debug}
 	// Use the default configuration if the path is not given.
-	aiGatewayResourcesYaml := aiGatewayDefaultConfig
+	aiGatewayResourcesYaml := aiGatewayDefaultResources
 	if c.Path != "" {
 		var yamlBytes []byte
 		yamlBytes, err = os.ReadFile(c.Path)

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"io"
 	"log/slog"
 	"net"
@@ -32,13 +33,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-func TestRun_default(t *testing.T) {
-	t.Skip()
+func TestRun(t *testing.T) {
+	credCtx := internaltesting.RequireNewCredentialsContext(t)
+	// Set up the credential substitution.
+	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
+	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
+	aiGatewayResources := strings.Replace(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath, 1)
+	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0600)
+	require.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true}, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: aiGatewayResourcesPath}, os.Stdout, os.Stderr))
 		close(done)
 	}()
 
@@ -79,7 +87,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		tmpdir:                   t.TempDir(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayDefaultConfig)
+	err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayDefaultResources)
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
