@@ -66,7 +66,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		tmpdir:                   t.TempDir(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, defaultYAML)
+	err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayDefaultConfig)
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()

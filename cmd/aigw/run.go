@@ -33,9 +33,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-//go:embed default.yaml
-var defaultYAML string
-
 // This is the default configuration for the AI Gateway when --path is not given.
 //
 //go:embed ai-gateway-default-config.yaml
