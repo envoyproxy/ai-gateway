@@ -185,5 +185,5 @@ metadata:
     substitution.aigw.run/file/credentials: ~/.aws/credentials
 type: Opaque
 stringData:
-  # Replace with your AWS credentials.
-  credentials: NOT_A_REAL_KEY
+  # This will be symlinked to ~/.aws/credentials.
+  credentials: NOT_A_REAL_AWS_CREDENTIALS

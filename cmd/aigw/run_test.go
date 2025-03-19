@@ -33,20 +33,26 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-func TestRun(t *testing.T) {
+// setupDefaultAIGatewayResourcesWithAvailableCredentials sets up the default AI Gateway resources with available
+// credentials and returns the path to the resources file and the credentials context.
+func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (string, internaltesting.CredentialsContext) {
 	credCtx := internaltesting.RequireNewCredentialsContext(t)
 	// Set up the credential substitution.
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	aiGatewayResources := strings.Replace(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath, 1)
+	aiGatewayResources := strings.Replace(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath, -1)
 	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
+	return aiGatewayResourcesPath, credCtx
+}
 
+func TestRun(t *testing.T) {
+	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: aiGatewayResourcesPath}, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, os.Stdout, os.Stderr))
 		close(done)
 	}()
 
@@ -81,13 +87,16 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	runCtx := &runCmdContext{
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
 	}
+	content, err := os.ReadFile(resourcePath)
+	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
-	err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayDefaultResources)
+	err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
