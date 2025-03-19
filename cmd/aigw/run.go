@@ -70,7 +70,7 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 	}
 
 	tmpdir := os.TempDir()
-	egConfigPath := filepath.Join(tmpdir, "envoy-gateway-config.yam")       // 2. The path to the Envoy Gateway config.
+	egConfigPath := filepath.Join(tmpdir, "envoy-gateway-config.yaml")      // 2. The path to the Envoy Gateway config.
 	resourcesTmpdir := filepath.Join(tmpdir, "/envoy-ai-gateway-resources") // 3. The path to the resources.
 	if err := recreateDir(resourcesTmpdir); err != nil {
 		return err
