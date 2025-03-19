@@ -44,6 +44,11 @@ var aiGatewayDefaultConfig string
 //go:embed envoy-gateway-config.yaml
 var envoyGatewayConfigTemplate string
 
+const (
+	substitutionEnvAnnotationPrefix  = "substitution.aigw.run/env/"
+	substitutionFileAnnotationPrefix = "substitution.aigw.run/file/"
+)
+
 type runCmdContext struct {
 	isDebug bool
 	// envoyGatewayResourcesOut is the output file for the envoy gateway resources.
@@ -218,7 +223,10 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 			mustWriteObj(&ep.TypeMeta, ep, runCtx.envoyGatewayResourcesOut)
 			continue
 		}
-		wd, port, filterCfg := runCtx.mustWriteExtensionPolicy(ep)
+		wd, port, filterCfg, err := runCtx.writeExtensionPolicy(ep)
+		if err != nil {
+			return err
+		}
 		runCtx.stderrLogger.Info("Running external process",
 			"policy", ep.Name, "port", port,
 			"working directory", wd, "config", filterCfg,
@@ -231,11 +239,9 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 // mustWriteExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
 // modified policy to the output file, and returns the working directory, the port the external process is supposed to
 // listen on, and the filter configuration.
-//
-// All the failure modes here are panics since they are the bugs of translation if they happen.
-func (runCtx *runCmdContext) mustWriteExtensionPolicy(
+func (runCtx *runCmdContext) writeExtensionPolicy(
 	ep *egv1a1.EnvoyExtensionPolicy,
-) (wd string, port int32, filterCfg filterapi.Config) {
+) (wd string, port int32, filterCfg filterapi.Config, err error) {
 	if len(ep.Spec.ExtProc) != 1 {
 		panic(fmt.Sprintf("BUG: unexpected number of ext-proc items: %d", len(ep.Spec.ExtProc)))
 	}
@@ -270,7 +276,7 @@ func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 
 	// Make sure that config works locally.
 	wd = filepath.Join(runCtx.tmpdir, fmt.Sprintf("envoy-ai-gateway-extproc-%s-%s", ns, string(backendRef.Name)))
-	if err := recreateDir(wd); err != nil {
+	if err = recreateDir(wd); err != nil {
 		panic(fmt.Sprintf("BUG: failed to create directory %s: %v", wd, err))
 	}
 
@@ -283,7 +289,7 @@ func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 	if !ok {
 		panic(fmt.Sprintf("BUG: extproc-config.yaml not found in configmap %s", key))
 	}
-	if err := yaml.Unmarshal([]byte(raw), &filterCfg); err != nil {
+	if err = yaml.Unmarshal([]byte(raw), &filterCfg); err != nil {
 		panic(fmt.Sprintf("BUG: failed to unmarshal extproc-config.yaml: %v", err))
 	}
 	deployment, ok := runCtx.dm[key]
@@ -305,25 +311,13 @@ func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 		// Write the secret to the working directory.
 		dir := filepath.Join(wd, secretKey)
 		runCtx.stderrLogger.Info("Creating secret directory", "path", dir)
-		err := os.MkdirAll(dir, 0o755)
+		err = os.MkdirAll(dir, 0o755)
 		if err != nil {
 			panic(fmt.Sprintf("BUG: failed to create directory %s: %v", dir, err))
 		}
-		for k, v := range s.Data {
-			p := filepath.Join(dir, k)
-			runCtx.stderrLogger.Info("Writing secret", "path", p)
-			err := os.WriteFile(p, v, 0o600)
-			if err != nil {
-				panic(fmt.Sprintf("BUG: failed to write file %s: %v", p, err))
-			}
-		}
-		for k, v := range s.StringData {
-			p := filepath.Join(dir, k)
-			runCtx.stderrLogger.Info("Writing secret", "path", p)
-			err := os.WriteFile(p, []byte(v), 0o600)
-			if err != nil {
-				panic(fmt.Sprintf("BUG: failed to write file %s: %v", p, err))
-			}
+		err = runCtx.writeSecretToWorkingDir(dir, s)
+		if err != nil {
+			return
 		}
 		volumeNameToWd[volume.Name] = dir
 	}
@@ -438,4 +432,40 @@ func (runCtx *runCmdContext) mustClearSetOwnerReferencesAndStatusAndWriteObj(typ
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secret) (err error) {
+	allData := s.Data
+	if allData == nil {
+		allData = make(map[string][]byte)
+	}
+	for k, v := range s.StringData {
+		allData[k] = []byte(v)
+	}
+	for k, v := range allData {
+		p := filepath.Join(dir, k)
+		envSubKey := substitutionEnvAnnotationPrefix + k
+		fileSubKey := substitutionFileAnnotationPrefix + k
+		if envSubValue, ok := s.Annotations[envSubKey]; ok {
+			// If this is an environment variable, substitute it.
+			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubValue)
+			v = []byte(os.Getenv(envSubValue))
+		} else if fileSubValue, ok := s.Annotations[fileSubKey]; ok {
+			// Create a symlink to the file inside the dir pointing to the file in the annotation.
+			runCtx.stderrLogger.Info("Creating symlink", "path", p, "key", k, "value", fileSubValue)
+			err = os.Symlink(fileSubValue, p)
+			if err != nil {
+				// This might be a user error, so return the error.
+				err = fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubValue, err)
+				return
+			}
+			continue
+		}
+		runCtx.stderrLogger.Info("Writing secret", "path", p)
+		err = os.WriteFile(p, v, 0o600)
+		if err != nil {
+			panic(fmt.Sprintf("BUG: failed to write file %s: %v", p, err))
+		}
+	}
+	return nil
 }

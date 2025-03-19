@@ -166,18 +166,24 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: openai-apikey
+  annotations:
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable OPENAI_API_KEY.
+    substitution.aigw.run/env/apiKey: OPENAI_API_KEY
 type: Opaque
 stringData:
-  apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
+  # This will be replaced with the environment variable OPENAI_API_KEY.
+  apiKey: NOT_A_REAL_OPENAI_API_KEY
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: aws-credentials
+  annotations:
+    # This will tell the CLI to symlink the file used via the credentials field
+    # to the file at ~/.aws/credentials.
+    substitution.aigw.run/file/credentials: ~/.aws/credentials
 type: Opaque
 stringData:
   # Replace with your AWS credentials.
-  credentials: |
-    [default]
-    aws_access_key_id = AWS_ACCESS_KEY_ID
-    aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+  credentials: NOT_A_REAL_KEY
