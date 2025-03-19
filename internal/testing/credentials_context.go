@@ -56,12 +56,13 @@ func (c CredentialsContext) MaybeSkip(t *testing.T, required RequiredCredential)
 // RequireNewCredentialsContext creates a new credential context for the tests from the environment variables.
 func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	// Set up credential file for OpenAI.
-	openAIAPIKey := cmp.Or(os.Getenv("TEST_OPENAI_API_KEY"), "dummy-openai-api-key")
+	openAIAPIKeyEnv := os.Getenv("TEST_OPENAI_API_KEY")
+	openAIAPIKeyVal := cmp.Or(openAIAPIKeyEnv, "dummy-openai-api-key")
 
 	openAIAPIKeyFilePath := t.TempDir() + "/open-ai-api-key"
 	openaiFile, err := os.Create(openAIAPIKeyFilePath)
 	require.NoError(t, err)
-	_, err = openaiFile.WriteString(openAIAPIKey)
+	_, err = openaiFile.WriteString(openAIAPIKeyVal)
 	require.NoError(t, err)
 
 	// Set up credential file for Azure.
@@ -92,10 +93,10 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	require.NoError(t, err)
 
 	return CredentialsContext{
-		OpenAIValid:              openAIAPIKey != "",
+		OpenAIValid:              openAIAPIKeyEnv != "",
 		AWSValid:                 awsAccessKeyID != "" && awsSecretAccessKey != "",
 		AzureValid:               azureAccessToken != "",
-		OpenAIAPIKey:             openAIAPIKey,
+		OpenAIAPIKey:             openAIAPIKeyVal,
 		OpenAIAPIKeyFilePath:     openAIAPIKeyFilePath,
 		AWSFilePath:              awsFilePath,
 		AzureAccessTokenFilePath: azureAccessTokenFilePath,
