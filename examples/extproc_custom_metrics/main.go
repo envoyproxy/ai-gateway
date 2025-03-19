@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -33,7 +34,9 @@ func main() {
 		<-signalsChan
 		cancel()
 	}()
-	mainlib.Main(ctx, os.Args[1:], os.Stderr)
+	if err := mainlib.Main(ctx, os.Args[1:], os.Stderr); err != nil {
+		log.Fatalf("error: %v", err)
+	}
 }
 
 // newCustomChatCompletionMetrics implements [x.NewCustomChatCompletionMetrics].

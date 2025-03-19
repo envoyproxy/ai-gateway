@@ -87,10 +87,18 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 // * ctx is the context for the external processor.
 // * args are the command line arguments passed to the external processor without the program name.
 // * stderr is the writer to use for standard error where the external processor will output logs.
-func Main(ctx context.Context, args []string, stderr io.Writer) {
+//
+// This returns an error if the external processor fails to start, or nil otherwise. When the `ctx` is canceled,
+// the function will return nil.
+func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
+	defer func() {
+		if errors.Is(err, context.Canceled) {
+			err = nil
+		}
+	}()
 	flags, err := parseAndValidateFlags(args)
 	if err != nil {
-		log.Fatalf("failed to parse and validate extProcFlags: %v", err)
+		return fmt.Errorf("failed to parse and validate extProcFlags: %w", err)
 	}
 
 	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
@@ -103,7 +111,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) {
 
 	lis, err := net.Listen(listenAddress(flags.extProcAddr))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	metricsServer, meter := startMetricsServer(flags.metricsAddr, l)
@@ -111,13 +119,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) {
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
-		log.Fatalf("failed to create external processor server: %v", err)
+		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
-		log.Fatalf("failed to start config watcher: %v", err)
+		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
 	s := grpc.NewServer()
@@ -135,7 +143,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) {
 		}
 	}()
 
-	_ = s.Serve(lis)
+	return s.Serve(lis)
 }
 
 // listenAddress returns the network and address for the given address flag.

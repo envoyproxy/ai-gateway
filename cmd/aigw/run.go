@@ -45,6 +45,7 @@ var aiGatewayDefaultConfig string
 var envoyGatewayConfigTemplate string
 
 type runCmdContext struct {
+	isDebug bool
 	// envoyGatewayResourcesOut is the output file for the envoy gateway resources.
 	envoyGatewayResourcesOut io.Writer
 	// stderrLogger is the logger for stderr.
@@ -110,7 +111,7 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 		return fmt.Errorf("failed to create file %s: %w", resourceYamlPath, err)
 	}
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
-	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, tmpdir: tmpdir}
+	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, tmpdir: tmpdir, isDebug: c.Debug}
 	// Use the default configuration if the path is not given.
 	aiGatewayResourcesYaml := aiGatewayDefaultConfig
 	if c.Path != "" {
@@ -222,7 +223,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 			"policy", ep.Name, "port", port,
 			"working directory", wd, "config", filterCfg,
 		)
-		mustStartExtProc(ctx, wd, port, filterCfg)
+		runCtx.mustStartExtProc(ctx, wd, port, filterCfg)
 	}
 	return nil
 }
@@ -359,7 +360,7 @@ func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 	return
 }
 
-func mustStartExtProc(
+func (runCtx *runCmdContext) mustStartExtProc(
 	ctx context.Context,
 	wd string,
 	port int32,
@@ -375,13 +376,19 @@ func mustStartExtProc(
 		panic(fmt.Sprintf("BUG: failed to write extension proc config: %v", err))
 	}
 	args := []string{
-		"--logLevel", "debug",
 		"--configPath", configPath,
 		"--extProcAddr", fmt.Sprintf(":%d", port),
 		"--metricsAddr", fmt.Sprintf(":%d", mustGetAvailablePort()),
 	}
+	if runCtx.isDebug {
+		args = append(args, "--logLevel", "debug")
+	} else {
+		args = append(args, "--logLevel", "warn")
+	}
 	go func() {
-		mainlib.Main(ctx, args, os.Stderr)
+		if err := mainlib.Main(ctx, args, os.Stderr); err != nil {
+			runCtx.stderrLogger.Error("Failed to run external processor", "error", err)
+		}
 	}()
 }
 

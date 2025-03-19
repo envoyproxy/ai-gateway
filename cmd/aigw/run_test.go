@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,9 +40,12 @@ func TestRun_default(t *testing.T) {
 		require.NoError(t, run(ctx, cmdRun{Debug: true}, os.Stdout, os.Stderr))
 		close(done)
 	}()
+
+	// This is the health checking to see the extproc is working as expected.
 	require.Eventually(t, func() bool {
-		// Make request to 8888 and wait for the response.
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8888/", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:8888/v1/chat/completions",
+			strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -52,9 +56,15 @@ func TestRun_default(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 		}()
 		// We don't care about the content and just check the connection is successful.
-		body, err := io.ReadAll(resp.Body)
+		raw, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		t.Logf("status=%d, body: %s", resp.StatusCode, string(body))
+		body := string(raw)
+		t.Logf("status=%d, body: %s", resp.StatusCode, body)
+		// This ensures that the response is returned from the external processor where the body says about the
+		// matching rule not found since we send an empty JSON.
+		if resp.StatusCode != http.StatusNotFound || body != "no matching rule found" {
+			return false
+		}
 		return true
 	}, 120*time.Second, 1*time.Second)
 	cancel()
@@ -281,7 +291,8 @@ func Test_mustStartExtProc(t *testing.T) {
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	var fc filterapi.Config
 	require.NoError(t, yaml.Unmarshal([]byte(filterapi.DefaultConfig), &fc))
-	mustStartExtProc(ctx, dir, mustGetAvailablePort(), fc)
+	runCtx := &runCmdContext{stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))}
+	runCtx.mustStartExtProc(ctx, dir, mustGetAvailablePort(), fc)
 	time.Sleep(1 * time.Second)
 	cancel()
 	// Wait for the external processor to stop.
