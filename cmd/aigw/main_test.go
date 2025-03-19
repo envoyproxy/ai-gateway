@@ -28,7 +28,7 @@ func Test_doMain(t *testing.T) {
 		{
 			name: "help",
 			args: []string{"--help"},
-			expOut: `Usage: aigw <command>
+			expOut: `Usage: aigw <command> [flags]
 
 Envoy AI Gateway CLI
 
@@ -36,14 +36,14 @@ Flags:
   -h, --help    Show context-sensitive help.
 
 Commands:
-  version
+  version [flags]
     Show version.
 
   translate <path> ... [flags]
     Translate yaml files containing AI Gateway resources to Envoy Gateway and
     Kubernetes resources. The translated resources are written to stdout.
 
-  run [flags]
+  run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
 
 Run "aigw <command> --help" for more information on a command.
@@ -59,7 +59,7 @@ Run "aigw <command> --help" for more information on a command.
 			name:         "version help",
 			args:         []string{"version", "--help"},
 			expPanicCode: ptr.To(0),
-			expOut: `Usage: aigw version
+			expOut: `Usage: aigw version [flags]
 
 Show version.
 
@@ -81,7 +81,7 @@ Flags:
 			name:         "translate no arg",
 			args:         []string{"translate"},
 			tf:           func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
-			expPanicCode: ptr.To(80),
+			expPanicCode: ptr.To(1),
 		},
 		{
 			name: "translate with help",
@@ -93,6 +93,30 @@ Kubernetes resources. The translated resources are written to stdout.
 
 Arguments:
   <path> ...    Paths to yaml files to translate.
+
+Flags:
+  -h, --help     Show context-sensitive help.
+
+      --debug    Enable debug logging emitted to stderr.
+`,
+			expPanicCode: ptr.To(0),
+		},
+		{
+			name: "run no arg",
+			args: []string{"run"},
+			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+		},
+		{
+			name: "run help",
+			args: []string{"run", "--help"},
+			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+			expOut: `Usage: aigw run [<path>] [flags]
+
+Run the AI Gateway locally for given configuration.
+
+Arguments:
+  [<path>]    Path to the AI Gateway configuration yaml file. Optional. When
+              this is not given, aigw runs the default configuration.
 
 Flags:
   -h, --help     Show context-sensitive help.

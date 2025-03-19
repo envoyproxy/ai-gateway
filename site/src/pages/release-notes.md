@@ -5,6 +5,22 @@ description: Release Notes for Envoy AI Gateway
 
 # Release Notes
 ---
+## v0.1.3
+**Date:** 2025-03-14
+
+Fixes streaming for chat completion, adds chat completion metrics, and openai assistant content type.
+
+## Overview
+
+This patch release `v0.1.3` includes fixes to chat completion streaming and openai assistant content type, and adds genai metrics.
+
+## Commits
+
+- extproc: add genai metrics to track token usage and latency (https://github.com/envoyproxy/ai-gateway/pull/459)
+- extproc: properly stream chat completions (https://github.com/envoyproxy/ai-gateway/pull/468)
+- feat: openai: allow assistant content to be string (https://github.com/envoyproxy/ai-gateway/pull/486)
+
+---
 ## v0.1.2
 **Date:** 2025-03-05
 

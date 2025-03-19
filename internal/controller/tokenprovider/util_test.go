@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package oauth
+package tokenprovider
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ func TestGetClientSecret(t *testing.T) {
 
 	secretName, secretNamespace := "secret", "secret-ns"
 
-	secret, err := getClientSecret(t.Context(), cl, &corev1.SecretReference{
+	secret, err := GetClientSecret(t.Context(), cl, &corev1.SecretReference{
 		Name:      secretName,
 		Namespace: secretNamespace,
 	})
@@ -45,7 +45,7 @@ func TestGetClientSecret(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	secret, err = getClientSecret(t.Context(), cl, &corev1.SecretReference{
+	secret, err = GetClientSecret(t.Context(), cl, &corev1.SecretReference{
 		Name:      secretName,
 		Namespace: secretNamespace,
 	})

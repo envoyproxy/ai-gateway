@@ -22,4 +22,6 @@ spec:
         - name: kserve
           weight: 20
         - name: aws-bedrock
-          weight: 80
+          weight: 40
+        - name: azure-openai
+          weight: 40

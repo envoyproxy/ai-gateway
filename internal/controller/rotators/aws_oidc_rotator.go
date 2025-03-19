@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/envoyproxy/ai-gateway/internal/controller/oauth"
+	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
 // AWSOIDCRotator implements the Rotator interface for AWS OIDC token exchange.
@@ -71,9 +71,7 @@ func NewAWSOIDCRotator(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
-
 	cfg.Region = region
-
 	if proxyURL := os.Getenv("AI_GATEWAY_STS_PROXY_URL"); proxyURL != "" {
 		cfg.HTTPClient = &http.Client{
 			Transport: &http.Transport{
@@ -147,18 +145,24 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context) (time.Time, error) {
 	secretName := GetBSPSecretName(bspName)
 
 	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
-	oidcProvider := oauth.NewOIDCProvider(r.client, r.oidc)
-	oauth2Token, err := oidcProvider.FetchToken(ctx)
+	// TODO  move provider as part of constructor to make mock test possible when implement Azure OIDC.
+	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, &r.oidc)
+	if err != nil {
+		r.logger.Error(err, "failed to construct oidc provider")
+		return time.Time{}, err
+	}
+	accessToken, err := oidcProvider.GetToken(ctx)
 	if err != nil {
 		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.oidc.Provider.Issuer)
 		return time.Time{}, err
 	}
-	awsIdentity, err := r.assumeRoleWithToken(ctx, oauth2Token.AccessToken)
+	awsIdentity, err := r.assumeRoleWithToken(ctx, accessToken.Token)
+
 	if err != nil {
 		r.logger.Error(err, "failed to assume role", "role", r.roleArn)
 		return time.Time{}, err
 	} else if awsIdentity.Credentials == nil {
-		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", r.backendSecurityPolicyName, r.backendSecurityPolicyNamespace)
+		return time.Time{}, fmt.Errorf("unexpected nil awsIdentity credentials for %s in %s", bspName, bspNamespace)
 	}
 	r.logger.Info(fmt.Sprintf("awsIdentity Credentials will expire in '%s'", awsIdentity.Credentials.Expiration.String()), "namespace", bspNamespace, "name", bspName)
 

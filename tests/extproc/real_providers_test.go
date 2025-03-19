@@ -65,6 +65,14 @@ func TestWithRealProviders(t *testing.T) {
 					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
 				},
 			},
+			{
+				Backends: []filterapi.Backend{
+					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+						AzureAuth: &filterapi.AzureAuth{Filename: cc.azureAccessTokenFilePath},
+					}},
+				},
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
+			},
 		},
 	})
 
@@ -75,6 +83,7 @@ func TestWithRealProviders(t *testing.T) {
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
 			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
+			{name: "azure-openai", modelName: "o1", required: requiredCredentialAzure},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.maybeSkip(t, tc.required)
@@ -104,6 +113,7 @@ func TestWithRealProviders(t *testing.T) {
 
 	// Read all access logs and check if the used token is logged.
 	// If the used token is set correctly in the metadata, it should be logged in the access log.
+
 	t.Run("check-used-token-metadata-access-log", func(t *testing.T) {
 		cc.maybeSkip(t, requiredCredentialOpenAI|requiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
@@ -296,6 +306,7 @@ func TestWithRealProviders(t *testing.T) {
 			"gpt-4o-mini",
 			"us.meta.llama3-2-1b-instruct-v1:0",
 			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+			"o1",
 		}, models)
 	})
 }
@@ -313,14 +324,17 @@ type requiredCredential byte
 const (
 	requiredCredentialOpenAI requiredCredential = 1 << iota
 	requiredCredentialAWS
+	requiredCredentialAzure
 )
 
 // credentialsContext holds the context for the credentials used in the tests.
 type credentialsContext struct {
-	openAIValid          bool
-	awsValid             bool
-	openAIAPIKeyFilePath string
-	awsFilePath          string
+	openAIValid              bool
+	awsValid                 bool
+	azureValid               bool
+	openAIAPIKeyFilePath     string
+	awsFilePath              string
+	azureAccessTokenFilePath string
 }
 
 // maybeSkip skips the test if the required credentials are not set.
@@ -331,6 +345,9 @@ func (c credentialsContext) maybeSkip(t *testing.T, required requiredCredential)
 	if required&requiredCredentialAWS != 0 && !c.awsValid {
 		t.Skip("skipping test as AWS credentials are not set in TEST_AWS_ACCESS_KEY_ID and TEST_AWS_SECRET_ACCESS_KEY")
 	}
+	if required&requiredCredentialAzure != 0 && !c.azureValid {
+		t.Skip("skipping test as Azure credentials are not set in TEST_AZURE_ACCESS_TOKEN")
+	}
 }
 
 // requireNewCredentialsContext creates a new credential context for the tests from the environment variables.
@@ -339,9 +356,17 @@ func requireNewCredentialsContext(t *testing.T) (ctx credentialsContext) {
 	openAIAPIKey := os.Getenv("TEST_OPENAI_API_KEY")
 
 	openAIAPIKeyFilePath := t.TempDir() + "/open-ai-api-key"
-	file, err := os.Create(openAIAPIKeyFilePath)
+	openaiFile, err := os.Create(openAIAPIKeyFilePath)
 	require.NoError(t, err)
-	_, err = file.WriteString(cmp.Or(openAIAPIKey, "dummy-openai-api-key"))
+	_, err = openaiFile.WriteString(cmp.Or(openAIAPIKey, "dummy-openai-api-key"))
+	require.NoError(t, err)
+
+	// Set up credential file for Azure.
+	azureAccessToken := os.Getenv("TEST_AZURE_ACCESS_TOKEN")
+	azureAccessTokenFilePath := t.TempDir() + "/azureAccessToken"
+	azureFile, err := os.Create(azureAccessTokenFilePath)
+	require.NoError(t, err)
+	_, err = azureFile.WriteString(cmp.Or(azureAccessToken, "dummy-azure-access-token"))
 	require.NoError(t, err)
 
 	// Set up credential file for AWS.
@@ -364,9 +389,11 @@ func requireNewCredentialsContext(t *testing.T) (ctx credentialsContext) {
 	require.NoError(t, err)
 
 	return credentialsContext{
-		openAIValid:          openAIAPIKey != "",
-		awsValid:             awsAccessKeyID != "" && awsSecretAccessKey != "",
-		openAIAPIKeyFilePath: openAIAPIKeyFilePath,
-		awsFilePath:          awsFilePath,
+		openAIValid:              openAIAPIKey != "",
+		awsValid:                 awsAccessKeyID != "" && awsSecretAccessKey != "",
+		azureValid:               azureAccessToken != "",
+		openAIAPIKeyFilePath:     openAIAPIKeyFilePath,
+		awsFilePath:              awsFilePath,
+		azureAccessTokenFilePath: azureAccessTokenFilePath,
 	}
 }

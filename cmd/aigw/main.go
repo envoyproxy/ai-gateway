@@ -8,10 +8,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/alecthomas/kong"
 	"io"
 	"log"
 	"os"
+
+	"github.com/alecthomas/kong"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -34,19 +35,20 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug bool `help:"Enable debug logging emitted to stderr."`
+		Debug bool   `help:"Enable debug logging emitted to stderr."`
+		Path  string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration." type:"path"`
 	}
 )
-
-func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
-}
 
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
 	runFn           subCmdFn[cmdRun]
 )
+
+func main() {
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+}
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
 //
@@ -70,9 +72,9 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	if err != nil {
 		log.Fatalf("Error creating parser: %v", err)
 	}
-	cli, err := parser.Parse(args)
+	parsed, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
-	switch cli.Command() {
+	switch parsed.Command() {
 	case "version":
 		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
 	case "translate <path>":

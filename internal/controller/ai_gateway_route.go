@@ -22,7 +22,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -43,6 +42,12 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
+	// apiKey is the key to store OpenAI API key.
+	apiKey = "apiKey"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	awsCredentialsKey = "credentials"
+	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	azureAccessTokenKey = "azureAccessToken"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
@@ -82,8 +87,7 @@ func NewAIGatewayRouteController(
 
 // Reconcile implements [reconcile.TypedReconciler].
 func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
+	c.logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
 
 	var aiGatewayRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &aiGatewayRoute); err != nil {
@@ -305,7 +309,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), apiKey)},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
@@ -314,10 +318,19 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
+								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), awsCredentialsKey),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
 						}
+					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					if backendSecurityPolicy.Spec.AzureCredentials == nil {
+						return fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
+					}
+					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+						AzureAuth: &filterapi.AzureAuth{
+							Filename: path.Join(backendSecurityMountPath(volumeName), azureAccessTokenKey),
+						},
 					}
 				default:
 					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
@@ -638,6 +651,8 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 					} else {
 						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}
