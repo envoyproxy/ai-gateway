@@ -14,24 +14,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// RequiredCredential is a bit flag for the required credentials.
 type RequiredCredential byte
 
 const (
+	// RequiredCredentialOpenAI is the bit flag for the OpenAI API key.
 	RequiredCredentialOpenAI RequiredCredential = 1 << iota
+	// RequiredCredentialAWS is the bit flag for the AWS credentials.
 	RequiredCredentialAWS
+	// RequiredCredentialAzure is the bit flag for the Azure access token.
 	RequiredCredentialAzure
 )
 
 // CredentialsContext holds the context for the credentials used in the tests.
 type CredentialsContext struct {
-	OpenAIValid bool
-	AWSValid    bool
-	AzureValid  bool
-	// OpenAIAPIKey is the OpenAI API key.
+	// OpenAIValid, AWSValid, AzureValid are true if the credentials are set and ready to use the real services.
+	OpenAIValid, AWSValid, AzureValid bool
+	// OpenAIAPIKey is the OpenAI API key. This defaults to "dummy-openai-api-key" if not set.
 	OpenAIAPIKey string
 	// OpenAIAPIKeyFilePath is the path to the temporary file containing the OpenAIAPIKey.
-	OpenAIAPIKeyFilePath     string
-	AWSFilePath              string
+	OpenAIAPIKeyFilePath string
+	// AWSFilePath is the path to the temporary file containing the AWS credentials (or dummy credentials).
+	AWSFilePath string
+	// AzureAccessTokenFilePath is the path to the temporary file containing the Azure access token (or dummy token).
 	AzureAccessTokenFilePath string
 }
 
