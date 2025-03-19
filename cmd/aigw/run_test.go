@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"io"
 	"log/slog"
 	"net"
@@ -31,6 +30,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestRun(t *testing.T) {
