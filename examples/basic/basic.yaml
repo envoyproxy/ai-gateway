@@ -92,6 +92,24 @@ spec:
     group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-azure
+  namespace: default
+spec:
+  schema:
+    name: AzureOpenAI
+    version: 2025-02-01-preview
+  backendRef:
+    name: envoy-ai-gateway-basic-azure
+    kind: Backend
+    group: gateway.envoyproxy.io
+  backendSecurityPolicyRef:
+    name: envoy-ai-gateway-basic-azure-credentials
+    kind: BackendSecurityPolicy
+    group: aigateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-openai-apikey
@@ -101,6 +119,20 @@ spec:
   apiKey:
     secretRef:
       name: envoy-ai-gateway-basic-openai-apikey
+      namespace: default
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-azure-credentials
+  namespace: default
+spec:
+  type: AzureCredentials
+  azureCredentials:
+    clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
+    tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
+    clientSecretRef:
+      name: envoy-ai-gateway-basic-azure-client-secret
       namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -138,6 +170,17 @@ spec:
         hostname: bedrock-runtime.us-east-1.amazonaws.com
         port: 443
 ---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-azure
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: dummy-azure-resource.openai.azure.com  # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
+        port: 443
+---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
@@ -166,6 +209,20 @@ spec:
     wellKnownCACertificates: "System"
     hostname: bedrock-runtime.us-east-1.amazonaws.com
 ---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-azure-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: envoy-ai-gateway-basic-azure
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: dummy-azure-resource.openai.azure.com  # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -174,6 +231,15 @@ metadata:
 type: Opaque
 stringData:
   apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-azure-client-secret
+  namespace: default
+type: Opaque
+stringData:
+  client-secret: AZURE_CLIENT_SECRET  # Replace with your Azure client secret for authentication.
 ---
 apiVersion: v1
 kind: Secret

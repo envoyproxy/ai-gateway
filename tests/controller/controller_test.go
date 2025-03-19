@@ -596,8 +596,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	t.Run("update security policy", func(t *testing.T) {
 		origin := &aigv1a1.BackendSecurityPolicy{}
 		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, origin))
-		origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAWSCredentials
 		origin.Spec.APIKey = nil
+		origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAWSCredentials
+
 		origin.Spec.AWSCredentials = &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			Region: "us-east-1",
 			CredentialsFile: &aigv1a1.AWSCredentialsFile{
@@ -651,7 +652,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		err := mgr.Start(t.Context())
+		err = mgr.Start(t.Context())
 		require.NoError(t, err)
 	}()
 
@@ -712,7 +713,7 @@ func TestAIServiceBackendController(t *testing.T) {
 				},
 			},
 		}
-		err := c.Create(t.Context(), origin)
+		err = c.Create(t.Context(), origin)
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
@@ -732,7 +733,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	syncAIGatewayRoute.Reset()
 	t.Run("update backend", func(t *testing.T) {
 		var origin aigv1a1.AIServiceBackend
-		err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
+		err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
 		require.NoError(t, err)
 		origin.Spec.BackendRef.Port = ptr.To[gwapiv1.PortNumber](9090)
 		require.NoError(t, c.Update(t.Context(), &origin))
@@ -807,7 +808,7 @@ func TestSecretController(t *testing.T) {
 	sort.Slice(originals, func(i, j int) bool { return originals[i].Name < originals[j].Name })
 
 	t.Run("create secret", func(t *testing.T) {
-		err := c.Create(t.Context(), &corev1.Secret{
+		err = c.Create(t.Context(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: secretNamespace},
 			StringData: map[string]string{"key": "value"},
 		})
@@ -829,7 +830,7 @@ func TestSecretController(t *testing.T) {
 
 	bspSyncFn.Reset()
 	t.Run("update secret", func(t *testing.T) {
-		err := c.Update(t.Context(), &corev1.Secret{
+		err = c.Update(t.Context(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
 			StringData: map[string]string{"key": "value2"},
 		})
