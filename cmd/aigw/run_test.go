@@ -21,6 +21,8 @@ import (
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -40,20 +42,25 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 	// Set up the credential substitution.
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	aiGatewayResources := strings.Replace(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath, -1)
+	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath)
 	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
 	return aiGatewayResourcesPath, credCtx
 }
 
 func TestRun(t *testing.T) {
-	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
+	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
 		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, os.Stdout, os.Stderr))
 		close(done)
+	}()
+	defer func() {
+		// Make sure the external processor is stopped regardless of the test result.
+		cancel()
+		<-done
 	}()
 
 	// This is the health checking to see the extproc is working as expected.
@@ -82,8 +89,47 @@ func TestRun(t *testing.T) {
 		}
 		return true
 	}, 120*time.Second, 1*time.Second)
-	cancel()
-	<-done
+
+	for _, tc := range []struct {
+		testName, modelName string
+		required            internaltesting.RequiredCredential
+	}{
+		{
+			testName:  "openai",
+			modelName: "gpt-4o-mini",
+			required:  internaltesting.RequiredCredentialOpenAI,
+		},
+		{
+			testName:  "aws",
+			modelName: "us.meta.llama3-2-1b-instruct-v1:0",
+			required:  internaltesting.RequiredCredentialAWS,
+		},
+	} {
+		t.Run(tc.testName, func(t *testing.T) {
+			client := openai.NewClient(option.WithBaseURL("http://0.0.0.0:8888" + "/v1/"))
+			cc.MaybeSkip(t, tc.required)
+			require.Eventually(t, func() bool {
+				chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
+					Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+						openai.UserMessage("Say this is a test"),
+					}),
+					Model: openai.F(tc.modelName),
+				})
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				nonEmptyCompletion := false
+				for _, choice := range chatCompletion.Choices {
+					t.Logf("choice: %s", choice.Message.Content)
+					if choice.Message.Content != "" {
+						nonEmptyCompletion = true
+					}
+				}
+				return nonEmptyCompletion
+			}, 30*time.Second, 2*time.Second)
+		})
+	}
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
