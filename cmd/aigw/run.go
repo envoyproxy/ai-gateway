@@ -146,7 +146,7 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
 	// Give it some time to do so, otherwise the process might become an orphan. This is the limitation of the current
 	// API of func-e library that is used by Envoy Gateway to run the Envoy process.
-	// TODO: actually fix the library and the EG accordingly.
+	// TODO: https://github.com/envoyproxy/gateway/pull/5527 will allow us to remove this.
 	time.Sleep(2 * time.Second)
 	return nil
 }
@@ -231,6 +231,8 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 // mustWriteExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
 // modified policy to the output file, and returns the working directory, the port the external process is supposed to
 // listen on, and the filter configuration.
+//
+// All the failure modes here are panics since they are the bugs of translation if they happen.
 func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 	ep *egv1a1.EnvoyExtensionPolicy,
 ) (wd string, port int32, filterCfg filterapi.Config) {
@@ -360,6 +362,7 @@ func (runCtx *runCmdContext) mustWriteExtensionPolicy(
 	return
 }
 
+// mustStartExtProc starts the external process with the given working directory, port, and filter configuration.
 func (runCtx *runCmdContext) mustStartExtProc(
 	ctx context.Context,
 	wd string,
@@ -392,6 +395,9 @@ func (runCtx *runCmdContext) mustStartExtProc(
 	}()
 }
 
+// mustGetAvailablePort returns an available local port. This is used to run the external process.
+//
+// This function panics if it fails to find an available port. This should not happen in practice.
 func mustGetAvailablePort() int32 {
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -405,6 +411,12 @@ func mustGetAvailablePort() int32 {
 	return int32(port) // nolint:gosec
 }
 
+// mustClearSetOwnerReferencesAndStatusAndWriteObj clears the owner references and status of the given object, marshals it
+// to YAML, and writes it to the output file.
+//
+// The resources must not have these fields set to be run by the Envoy Gateway agent.
+//
+// All operation here are done in a panic if an error occurs since the error should not happen in practice.
 func (runCtx *runCmdContext) mustClearSetOwnerReferencesAndStatusAndWriteObj(typedMeta *metav1.TypeMeta, obj client.Object) {
 	obj.SetOwnerReferences(nil)
 	mustSetGroupVersionKind(typedMeta, obj)
