@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   unittest:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     name: Unit Test
     runs-on: ubuntu-latest
     steps:
@@ -58,7 +58,11 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - run: make test-coverage
+      - env:
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+        run: make test-coverage
 
   test_crdcel:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
