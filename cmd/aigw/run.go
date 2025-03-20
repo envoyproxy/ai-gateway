@@ -141,8 +141,8 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 
 	server := root.GetRootCommand()
 	egOut := &bytes.Buffer{}
-	server.SetOut(os.Stdout)
-	server.SetErr(os.Stdout)
+	server.SetOut(egOut)
+	server.SetErr(egOut)
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
@@ -151,7 +151,7 @@ func run(ctx context.Context, c cmdRun, _, stderr io.Writer) error {
 	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
 	// Give it some time to do so, otherwise the process might become an orphan. This is the limitation of the current
 	// API of func-e library that is used by Envoy Gateway to run the Envoy process.
-	// TODO: https://github.com/envoyproxy/gateway/pull/5527 will allow us to remove this.
+	// TODO: actually fix the library and the EG accordingly.
 	time.Sleep(2 * time.Second)
 	return nil
 }
