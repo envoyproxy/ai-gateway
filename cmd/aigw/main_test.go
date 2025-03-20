@@ -115,13 +115,15 @@ Flags:
 Run the AI Gateway locally for given configuration.
 
 Arguments:
-  [<path>]    Path to the AI Gateway configuration yaml file. Optional. When
-              this is not given, aigw runs the default configuration.
+  [<path>]    Path to the AI Gateway configuration yaml file. Optional.
+              When this is not given, aigw runs the default configuration.
+              Use --show-default to check the default configuration's behavior'
 
 Flags:
-  -h, --help     Show context-sensitive help.
+  -h, --help            Show context-sensitive help.
 
-      --debug    Enable debug logging emitted to stderr.
+      --debug           Enable debug logging emitted to stderr.
+      --show-default    Show the default configuration, and exit.
 `,
 			expPanicCode: ptr.To(0),
 		},
