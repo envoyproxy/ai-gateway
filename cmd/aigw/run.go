@@ -460,21 +460,28 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubValue)
 			envVal := os.Getenv(envSubValue)
 			if envVal == "" {
-				return fmt.Errorf("environment variable %s is not set", envSubValue)
+				runCtx.stderrLogger.Warn("Missing environment variable, skipping substitution",
+					"key", k, "value", envSubValue)
+			} else {
+				v = []byte(envVal)
 			}
-			v = []byte(envVal)
 		} else if fileSubValue, ok := s.Annotations[fileSubKey]; ok {
 			fileSubValue = maybeResolveHome(fileSubValue)
-			// Create a symlink to the file inside the dir pointing to the file in the annotation.
-			runCtx.stderrLogger.Info("Creating symlink", "path", p, "key", k, "value", fileSubValue)
-			err = os.Symlink(fileSubValue, p)
-			// If it's exist, then the credentials are already referenced by other resources, so we can ignore the error.
-			if err != nil && !os.IsExist(err) {
-				// This might be a user error, so return the error.
-				err = fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubValue, err)
-				return
+			// Check the target file exists.
+			if _, err = os.Stat(fileSubValue); err == nil {
+				// Create a symlink to the file inside the dir pointing to the file in the annotation.
+				runCtx.stderrLogger.Info("Creating symlink", "path", p, "key", k, "value", fileSubValue)
+				err = os.Symlink(fileSubValue, p)
+				// If it's exist, then the credentials are already referenced by other resources, so we can ignore the error.
+				if err != nil && !os.IsExist(err) {
+					// This might be a user error, so return the error.
+					return fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubValue, err)
+				}
+				continue
+			} else {
+				runCtx.stderrLogger.Warn("Target file does not exist. Skipping substitution",
+					"path", p, "key", k, "value", fileSubValue)
 			}
-			continue
 		}
 		runCtx.stderrLogger.Info("Writing secret", "path", p)
 		err = os.WriteFile(p, v, 0o600)

@@ -260,4 +260,7 @@ metadata:
 type: Opaque
 stringData:
   # This will be symlinked to ~/.aws/credentials.
-  credentials: NOT_A_REAL_AWS_CREDENTIALS
+  credentials: |
+    [default]
+    aws_access_key_id = NOT_A_REAL_AWS_CREDENTIALS
+    aws_secret_access_key = NOT_A_REAL_AWS_CREDENTIALS
