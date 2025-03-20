@@ -8,9 +8,12 @@
 # suit your needs. `aigw run --path <path-to-your-config>` will run the configuration at <path-to-your-config>.
 #
 # This routes three backends:
+#
 # * OpenAI: The API key is expected to be provided via the OPENAI_API_KEY environment variable.
-# * AWS Bedrock (ue-east-1): The AWS credentials are expected to be provided via the ~/.aws/credentials file.
-# * Ollama: The Ollama service is expected to be running on localhost:11434.
+# * AWS Bedrock (ue-east-1): The AWS credentials are expected to be provided via the conventional ~/.aws/credentials file.
+# * ollama: The ollama service is expected to be running on localhost:11434 which is the default as per # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network.
+#
+# TODO: add more backends.
 #
 # The special header `aigw-backend-selector` is used to select the backend regardless of the model.
 # For example, -H `aigw-backend-selector: openai` will route to the OpenAI backend, etc.
@@ -109,6 +112,8 @@ kind: AIServiceBackend
 metadata:
   name: openai
 spec:
+  timeouts:
+    request: 3m
   schema:
     name: OpenAI
   backendRef:
@@ -125,6 +130,8 @@ kind: AIServiceBackend
 metadata:
   name: aws
 spec:
+  timeouts:
+    request: 3m
   schema:
     name: AWSBedrock
   backendRef:
@@ -141,6 +148,8 @@ kind: AIServiceBackend
 metadata:
   name: ollama
 spec:
+  timeouts:
+    request: 3m
   schema:
     name: OpenAI
   backendRef:
@@ -196,8 +205,8 @@ metadata:
   name: ollama
 spec:
   endpoints:
-    - fqdn:
-        hostname: localhost
+    - ip:
+        address: 0.0.0.0
         # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network
         port: 11434
 ---
