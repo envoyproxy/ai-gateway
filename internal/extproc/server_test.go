@@ -8,7 +8,6 @@ package extproc
 import (
 	"context"
 	"errors"
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"io"
 	"log/slog"
 	"testing"
@@ -21,6 +20,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )

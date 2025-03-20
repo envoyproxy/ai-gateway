@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"io"
 	"log/slog"
 	"slices"
@@ -24,6 +23,7 @@ import (
 	"google.golang.org/grpc/status"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
