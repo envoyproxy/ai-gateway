@@ -2,6 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
+#
+#
+# This is the default configuration run by `aigw run` command. You can customize this file to
+# suit your needs. `aigw run --path <path-to-your-config>` will run the configuration at <path-to-your-config>.
+#
+# This routes three backends:
+# * OpenAI: The API key is expected to be provided via the OPENAI_API_KEY environment variable.
+# * AWS Bedrock (ue-east-1): The AWS credentials are expected to be provided via the ~/.aws/credentials file.
+# * Ollama: The Ollama service is expected to be running on localhost:11434.
+#
+# The special header `aigw-backend-selector` is used to select the backend regardless of the model.
+# For example, -H `aigw-backend-selector: openai` will route to the OpenAI backend, etc.
+#
+# The endpoint is http://localhost:8888:
+#
+# curl -H "aigw-backend-selector: ollama" -H "Content-Type: application/json" -XPOST http://localhost:8888/v1/chat/completions -d '{"model": "aaaaa","messages": [{"role": "user", "content": "Say this is a test! ... well, just say i am good"}],"temperature": 0.7}'
 
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -47,6 +63,31 @@ spec:
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:
+    # Special rule to unconditionally route to the OpenAI backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: openai
+      backendRefs:
+        - name: openai
+    # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: aws
+      backendRefs:
+        - name: aws
+    # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: ollama
+      backendRefs:
+        - name: ollama
+    # A Model-specific rule, routing to the OpenAI backend if the model is gpt-4o-mini.
     - matches:
         - headers:
             - type: Exact
@@ -54,6 +95,7 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai
+    # A Model-specific rule, routing to the OpenAI backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
     - matches:
         - headers:
             - type: Exact
@@ -93,6 +135,20 @@ spec:
     name: aws-credentials
     kind: BackendSecurityPolicy
     group: aigateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: ollama
+spec:
+  timeouts:
+    request: 5m
+  schema:
+    name: OpenAI
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -135,6 +191,17 @@ spec:
     - fqdn:
         hostname: bedrock-runtime.us-east-1.amazonaws.com
         port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: ollama
+spec:
+  endpoints:
+    - fqdn:
+        hostname: localhost
+        # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network
+        port: 11434
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
