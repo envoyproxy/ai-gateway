@@ -60,15 +60,23 @@ func TestWithTestUpstream(t *testing.T) {
 				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
 				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
 			},
+			{
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-model-name", Value: "some-model1"},
+					{Name: "x-model-name", Value: "some-model2"},
+					{Name: "x-model-name", Value: "some-model3"},
+				},
+			},
 		},
 	})
 
 	expectedModels := openai.ModelList{
 		Object: "list",
 		Data: []openai.Model{
-			{ID: "openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			{ID: "aws-bedrock", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			{ID: "azure-openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model1", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model2", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway"},
 		},
 	}
 

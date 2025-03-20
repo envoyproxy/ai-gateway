@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -56,7 +55,7 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 					Headers: []filterapi.HeaderMatch{
 						{
-							Name:  aigv1a1.AIModelHeaderKey,
+							Name:  "x-model-name",
 							Value: "llama3.3333",
 						},
 					},
@@ -67,7 +66,7 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 					Headers: []filterapi.HeaderMatch{
 						{
-							Name:  aigv1a1.AIModelHeaderKey,
+							Name:  "x-model-name",
 							Value: "gpt4.4444",
 						},
 						{

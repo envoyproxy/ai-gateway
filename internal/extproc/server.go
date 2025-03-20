@@ -23,7 +23,6 @@ import (
 	"google.golang.org/grpc/status"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
@@ -81,7 +80,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 			// If not set, we assume it's an exact match.
 			//
 			// Also, we only care about the AIModel header to declare models.
-			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || h.Name != aigv1a1.AIModelHeaderKey {
+			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
 				continue
 			}
 			declaredModels = append(declaredModels, h.Value)
