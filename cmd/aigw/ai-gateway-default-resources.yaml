@@ -5,7 +5,7 @@
 #
 #
 # This is the default configuration run by `aigw run` command. You can customize this file to
-# suit your needs. `aigw run --path <path-to-your-config>` will run the configuration at <path-to-your-config>.
+# suit your needs. `aigw run <path/to/your/config.yaml>` will run the configuration at the specified path.
 #
 # This routes three backends:
 #
