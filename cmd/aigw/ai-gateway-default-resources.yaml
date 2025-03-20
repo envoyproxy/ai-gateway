@@ -141,8 +141,6 @@ kind: AIServiceBackend
 metadata:
   name: ollama
 spec:
-  timeouts:
-    request: 5m
   schema:
     name: OpenAI
   backendRef:
