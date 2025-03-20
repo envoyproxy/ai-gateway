@@ -478,10 +478,9 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 					return fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubValue, err)
 				}
 				continue
-			} else {
-				runCtx.stderrLogger.Warn("Target file does not exist. Skipping substitution",
-					"path", p, "key", k, "value", fileSubValue)
 			}
+			runCtx.stderrLogger.Warn("Target file does not exist. Skipping substitution",
+				"path", p, "key", k, "value", fileSubValue)
 		}
 		runCtx.stderrLogger.Info("Writing secret", "path", p)
 		err = os.WriteFile(p, v, 0o600)
