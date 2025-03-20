@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"io"
 	"log/slog"
 	"slices"
@@ -78,7 +79,9 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		for _, h := range r.Headers {
 			// If explicitly set to something that is not an exact match, skip.
 			// If not set, we assume it's an exact match.
-			if h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact {
+			//
+			// Also, we only care about the AIModel header to declare models.
+			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || h.Name != aigv1a1.AIModelHeaderKey {
 				continue
 			}
 			declaredModels = append(declaredModels, h.Value)

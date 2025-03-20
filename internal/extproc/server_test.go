@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"io"
 	"log/slog"
 	"testing"
@@ -55,7 +56,7 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 					Headers: []filterapi.HeaderMatch{
 						{
-							Name:  "x-model-name",
+							Name:  aigv1a1.AIModelHeaderKey,
 							Value: "llama3.3333",
 						},
 					},
@@ -66,8 +67,12 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 					Headers: []filterapi.HeaderMatch{
 						{
-							Name:  "x-model-name",
+							Name:  aigv1a1.AIModelHeaderKey,
 							Value: "gpt4.4444",
+						},
+						{
+							Name:  "some-random-header",
+							Value: "some-random-value",
 						},
 					},
 				},
@@ -94,6 +99,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
+		require.Equal(t, []string{"llama3.3333", "gpt4.4444"}, s.config.declaredModels)
 	})
 }
 
