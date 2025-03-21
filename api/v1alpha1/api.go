@@ -291,11 +291,12 @@ type AIGatewayFilterConfig struct {
 
 // AIGatewayFilterConfigType specifies the type of the filter configuration.
 //
-// +kubebuilder:validation:Enum=ExternalProcessor
+// +kubebuilder:validation:Enum=ExternalProcessor;DynamicModule
 type AIGatewayFilterConfigType string
 
 const (
 	AIGatewayFilterConfigTypeExternalProcessor AIGatewayFilterConfigType = "ExternalProcessor"
+	AIGatewayFilterConfigTypeDynamicModule     AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
 )
 
 type AIGatewayFilterConfigExternalProcessor struct {
@@ -387,7 +388,7 @@ type AIServiceBackendSpec struct {
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;Dynamic
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -410,8 +411,6 @@ const (
 	//
 	// https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs
 	APISchemaAzureOpenAI APISchema = "AzureOpenAI"
-	// APISchemaDynamic is the schema where the ai-gateway will dynamically determine the schema based on the request.
-	APISchemaDynamic APISchema = "Dynamic"
 )
 
 const (
