@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -293,7 +294,12 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			}
-			ec.Rules[i].Backends[j].DynamicLoadBalancing = c.maybeCreateDynamicLoadBalancing(backendObj)
+
+			dyn, err := c.maybeCreateDynamicLoadBalancing(ctx, backendObj)
+			if err != nil {
+				return fmt.Errorf("failed to create dynamic load balancing: %w", err)
+			}
+			ec.Rules[i].Backends[j].DynamicLoadBalancing = dyn
 			ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 			ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 
@@ -710,11 +716,38 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	}
 }
 
-func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(aiServiceBackend *aigv1a1.AIServiceBackend) *filterapi.DynamicLoadBalancing {
-	if ref := aiServiceBackend.Spec.BackendRef; ref.Kind != nil && string(*ref.Kind) != "InferenceService" {
-		return nil
+func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(ctx context.Context, aiServiceBackend *aigv1a1.AIServiceBackend) (*filterapi.DynamicLoadBalancing, error) {
+	ref := aiServiceBackend.Spec.BackendRef
+	if ref.Kind != nil && string(*ref.Kind) != "InferenceService" {
+		return nil, nil
 	}
+
+	// Find the referenced InferencePool.
+	ns := ptr.Deref(ref.Namespace, gwapiv1.Namespace(aiServiceBackend.Namespace))
+	var pool v1alpha2.InferencePool
+	if err := c.client.Get(ctx, client.ObjectKey{Name: string(ref.Name), Namespace: string(ns)}, &pool); err != nil {
+		return nil, fmt.Errorf("failed to get InferencePool %s: %w", ref.Name, err)
+	}
+
+	// Gather the models that belong to the pool.
+	var models v1alpha2.InferenceModelList
+	if err := c.client.List(ctx, &models, client.MatchingFields{
+		k8sClientIndexInferencePoolToReferencingInferenceModel: fmt.Sprintf("%s.%s", pool.Name, pool.Namespace),
+	}); err != nil {
+		return nil, fmt.Errorf("failed to list InferenceModels: %w", err)
+	}
+
+	// Gather the AIServiceBackend from the pool.Spec.Selector.
+	var backends aigv1a1.AIServiceBackendList
+	labels := make(client.MatchingLabels, len(pool.Spec.Selector))
+	for k, v := range pool.Spec.Selector {
+		labels[string(k)] = string(v)
+	}
+	if err := c.client.List(ctx, &backends, labels); err != nil {
+		return nil, fmt.Errorf("failed to list AIServiceBackends: %w", err)
+	}
+
 	// TODO: do some real work like getting InferencePool and corresponding InferenceModels as well as
 	// 	get the target external endpoints and services from the InferenceService.Selector.
-	return &filterapi.DynamicLoadBalancing{}
+	return &filterapi.DynamicLoadBalancing{}, nil
 }
