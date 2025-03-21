@@ -68,7 +68,7 @@ func TestGetExpirationSecretAnnotation(t *testing.T) {
 
 	_, err := GetExpirationSecretAnnotation(secret)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing expiration time annotation")
+	require.Contains(t, err.Error(), "missing rotators/expiration-time annotation")
 
 	secret.Annotations = map[string]string{
 		ExpirationTimeAnnotationKey: "invalid",
@@ -90,7 +90,7 @@ func TestUpdateAndGetExpirationSecretAnnotation(t *testing.T) {
 	secret := &corev1.Secret{}
 	_, err := GetExpirationSecretAnnotation(secret)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing expiration time annotation")
+	require.Contains(t, err.Error(), "missing rotators/expiration-time annotation")
 
 	timeNow := time.Now()
 	updateExpirationSecretAnnotation(secret, timeNow)

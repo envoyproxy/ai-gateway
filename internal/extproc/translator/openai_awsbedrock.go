@@ -245,7 +245,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) (*awsbedrock.Message, error) {
 	var bedrockMessage *awsbedrock.Message
 	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
-	if v, ok := openAiMessage.Content.Value.(string); ok {
+	if v, ok := openAiMessage.Content.Value.(string); ok && len(v) > 0 {
 		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: &v})
 	} else if content, ok := openAiMessage.Content.Value.(openai.ChatCompletionAssistantMessageParamContent); ok {
 		if content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {

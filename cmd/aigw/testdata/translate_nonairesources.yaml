@@ -1,0 +1,26 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: something
+spec:
+  selector:
+    app: something
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: something
+type: Opaque
+stringData:
+  something: foo

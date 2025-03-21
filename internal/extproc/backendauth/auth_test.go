@@ -27,6 +27,10 @@ aws_secret_access_key = test
 	err = os.WriteFile(apiKeyFile, []byte("TEST"), 0o600)
 	require.NoError(t, err)
 
+	azureFile := t.TempDir() + "/azuretest"
+	err = os.WriteFile(azureFile, []byte("some-access-token"), 0o600)
+	require.NoError(t, err)
+
 	for _, tt := range []struct {
 		name   string
 		config *filterapi.BackendAuth
@@ -41,6 +45,12 @@ aws_secret_access_key = test
 			name: "APIKey",
 			config: &filterapi.BackendAuth{
 				APIKey: &filterapi.APIKeyAuth{Filename: apiKeyFile},
+			},
+		},
+		{
+			name: "AzureAuth",
+			config: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{Filename: azureFile},
 			},
 		},
 	} {

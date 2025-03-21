@@ -293,126 +293,135 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 }
 
 func Test_newHTTPRoute(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexes(t)
-	s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
-	httpRoute := &gwapiv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
-		Spec:       gwapiv1.HTTPRouteSpec{},
-	}
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
-					},
-				},
-			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
-				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
-				},
-				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "orange", Weight: 100},
-						{Name: "apple", Weight: 100},
-						{Name: "pineapple", Weight: 100},
-					},
-				},
-				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
-				},
-			},
-		},
-	}
-	var (
-		timeout1 gwapiv1.Duration = "30s"
-		timeout2 gwapiv1.Duration = "60s"
-		timeout3 gwapiv1.Duration = "90s"
-	)
-	for _, backend := range []*aigv1a1.AIServiceBackend{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"},
-			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"},
-			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns1"},
-			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns1"},
-			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
-				Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
-			},
-		},
-	} {
-		err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
-		require.NoError(t, err)
-	}
-	err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
-	require.NoError(t, err)
+	for _, ns := range []string{"", "ns1"} {
+		t.Run(fmt.Sprintf("namespace-%s", ns), func(t *testing.T) {
+			var refNs *gwapiv1.Namespace
+			if ns != "" {
+				refNs = ptr.To(gwapiv1.Namespace(ns))
+			}
 
-	expRules := []gwapiv1.HTTPRouteRule{
-		{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "apple.ns1"}}},
-			},
-			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
-			Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
-		},
-		{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "orange.ns1"}}},
-			},
-			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
-			Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
-		},
-		{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "pineapple.ns1"}}},
-			},
-			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
-			Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
-		},
-		{
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "foo.ns1"}}},
-			},
-			BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns1")}}}},
-			Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
-		},
-	}
-	require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
-	for i, r := range httpRoute.Spec.Rules {
-		t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-			if i == 4 {
-				require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
-				require.NotNil(t, r.Matches[0].Path)
-				require.Equal(t, "/", *r.Matches[0].Path.Value)
-			} else {
-				require.Equal(t, expRules[i].Matches, r.Matches)
-				require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
-				require.Equal(t, expRules[i].Timeouts, r.Timeouts)
-				// Each rule should have a host rewrite filter by default.
-				require.Len(t, r.Filters, 1)
-				require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-				require.NotNil(t, r.Filters[0].ExtensionRef)
-				require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
+			httpRoute := &gwapiv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
+				Spec:       gwapiv1.HTTPRouteSpec{},
+			}
+			aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+						{
+							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+								Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
+							},
+						},
+					},
+					Rules: []aigv1a1.AIGatewayRouteRule{
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
+						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								{Name: "orange", Weight: 100},
+								{Name: "apple", Weight: 100},
+								{Name: "pineapple", Weight: 100},
+							},
+						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
+						},
+					},
+				},
+			}
+			var (
+				timeout1 gwapiv1.Duration = "30s"
+				timeout2 gwapiv1.Duration = "60s"
+				timeout3 gwapiv1.Duration = "90s"
+			)
+			for _, backend := range []*aigv1a1.AIServiceBackend{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: ns},
+					Spec: aigv1a1.AIServiceBackendSpec{
+						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs},
+						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: ns},
+					Spec: aigv1a1.AIServiceBackendSpec{
+						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs},
+						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: ns},
+					Spec: aigv1a1.AIServiceBackendSpec{
+						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs},
+						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: ns},
+					Spec: aigv1a1.AIServiceBackendSpec{
+						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs},
+						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+					},
+				},
+			} {
+				err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
+				require.NoError(t, err)
+			}
+			err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
+			require.NoError(t, err)
+
+			expRules := []gwapiv1.HTTPRouteRule{
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "apple." + ns}}},
+					},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+				},
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "orange." + ns}}},
+					},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
+				},
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "pineapple." + ns}}},
+					},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
+				},
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "foo." + ns}}},
+					},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+				},
+			}
+			require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
+			for i, r := range httpRoute.Spec.Rules {
+				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
+					if i == 4 {
+						require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
+						require.NotNil(t, r.Matches[0].Path)
+						require.Equal(t, "/", *r.Matches[0].Path.Value)
+					} else {
+						require.Equal(t, expRules[i].Matches, r.Matches)
+						require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+						require.Equal(t, expRules[i].Timeouts, r.Timeouts)
+						// Each rule should have a host rewrite filter by default.
+						require.Len(t, r.Filters, 1)
+						require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+						require.NotNil(t, r.Filters[0].ExtensionRef)
+						require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
+					}
+				})
 			}
 		})
 	}
@@ -459,6 +468,17 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-4", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+					ClientID:        "some-client-id",
+					TenantID:        "some-tenant-id",
+					ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
 	} {
 		err := fakeClient.Create(t.Context(), bsp, &client.CreateOptions{})
 		require.NoError(t, err)
@@ -500,6 +520,17 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend5", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-3"},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "dragon", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name:    aigv1a1.APISchemaAzureOpenAI,
+					Version: "version1",
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend6", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-4"},
 			},
 		},
 	} {
@@ -549,6 +580,14 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}}},
+							},
+						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								{Name: "dragon", Weight: 1},
+							},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}}},
 							},
 						},
 					},
@@ -616,6 +655,19 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 						}}},
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}},
 					},
+					{
+						Backends: []filterapi.Backend{{
+							Name:   "dragon.ns",
+							Weight: 1,
+							Auth: &filterapi.BackendAuth{
+								AzureAuth: &filterapi.AzureAuth{
+									Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+								},
+							},
+							Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+						}},
+						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}},
+					},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{
 					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
@@ -660,6 +712,27 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-2", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					Region:            "us-east-1",
+					OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-3", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+					ClientID:        "some-client-id",
+					TenantID:        "some-tenant-id",
+					ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp, &client.CreateOptions{}))
 	}
@@ -686,6 +759,17 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "dog", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name:    aigv1a1.APISchemaAzureOpenAI,
+					Version: "version1",
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
 			},
 		},
 	} {
@@ -806,6 +890,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-2"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-3"}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "aws-oidc-name"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "some-secret-policy-4"}},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), secret, &client.CreateOptions{}))
 	}
@@ -852,6 +937,17 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "some-other-backend-security-policy-4", Namespace: "ns"},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+					ClientID:        "some-client-id",
+					TenantID:        "some-tenant-id",
+					ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp, &client.CreateOptions{}))
 	}
@@ -887,6 +983,17 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "aws-oidc-name"},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "dragon", Namespace: "ns"},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name:    aigv1a1.APISchemaAzureOpenAI,
+					Version: "version1",
+				},
+				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend5", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-4"},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), backend, &client.CreateOptions{}))
 		require.NotNil(t, c)
@@ -920,6 +1027,14 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-3"}}},
 					},
 				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "dragon", Weight: 1},
+					},
+					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-4"}}},
+					},
+				},
 			},
 		},
 	}
@@ -947,8 +1062,8 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	updatedSpec, err := c.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 4)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 4)
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	// API Key.
 	require.Equal(t, "some-secret-policy-1", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-1", updatedSpec.Volumes[1].Name)
@@ -964,6 +1079,11 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Volumes[3].Name)
 	require.Equal(t, "rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].Name)
 	require.Equal(t, "/etc/backend_security_policy/rule2-backref0-aws-oidc-name", updatedSpec.Containers[0].VolumeMounts[3].MountPath)
+	// Azure Credentials.
+	require.Equal(t, rotators.GetBSPSecretName("some-other-backend-security-policy-4"), updatedSpec.Volumes[4].VolumeSource.Secret.SecretName)
+	require.Equal(t, "rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Volumes[4].Name)
+	require.Equal(t, "rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Containers[0].VolumeMounts[4].Name)
+	require.Equal(t, "/etc/backend_security_policy/rule3-backref0-some-other-backend-security-policy-4", updatedSpec.Containers[0].VolumeMounts[4].MountPath)
 
 	require.NoError(t, fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"}}, &client.DeleteOptions{}))
 
@@ -985,8 +1105,8 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	updatedSpec, err = c.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 4)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 4)
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)

@@ -110,7 +110,7 @@ func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
 			err = json.Unmarshal(newBody, &openAIError)
 			require.NoError(t, err)
 			if !cmp.Equal(openAIError, tt.output) {
-				t.Errorf("ConvertAWSBedrockErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
+				t.Errorf("ConvertOpenAIErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
 			}
 		})
 	}

@@ -17,6 +17,8 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -34,12 +36,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-// translateFn is the function signature for the translate command for decoupling and testing.
-type translateFn func(cmd cmdTranslate, stdout, stderr io.Writer) error
-
-// translate implements the translateFn command. This function reads the input files, collects the AI Gateway custom resources,
+// translate implements subCmd[cmdTranslate]. This function reads the input files, collects the AI Gateway custom resources,
 // translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
-func translate(cmd cmdTranslate, output, stderr io.Writer) error {
+func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 	if !cmd.Debug {
 		stderrLogger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
@@ -49,14 +48,40 @@ func translate(cmd cmdTranslate, output, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, err := collectCustomResourceObjects(yaml, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	err = translateCustomResourceObjects(aigwRoutes, aigwBackends, backendSecurityPolicies, output, stderrLogger)
+	httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
+	}
+
+	// Emit the translated objects.
+	for _, httpRoute := range httpRoutes.Items {
+		mustWriteObj(&httpRoute.TypeMeta, &httpRoute, output)
+	}
+	for _, extensionPolicy := range extensionPolicies.Items {
+		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
+	}
+	for _, filter := range httpRouteFilter.Items {
+		mustWriteObj(&filter.TypeMeta, &filter, output)
+	}
+	for _, configMap := range configMaps.Items {
+		mustWriteObj(&configMap.TypeMeta, &configMap, output)
+	}
+	for _, secret := range secrets.Items {
+		mustWriteObj(&secret.TypeMeta, &secret, output)
+	}
+	for _, secret := range originalSecrets {
+		mustWriteObj(nil, secret, output)
+	}
+	for _, deployment := range deployments.Items {
+		mustWriteObj(&deployment.TypeMeta, &deployment, output)
+	}
+	for _, service := range services.Items {
+		mustWriteObj(&service.TypeMeta, &service, output)
 	}
 	return nil
 }
@@ -75,14 +100,20 @@ func readYamlsAsString(paths []string) (string, error) {
 	return buf.String(), nil
 }
 
-// collectCustomResourceObjects reads the YAML input and collects the AI Gateway custom resources.
-func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
+// collectObjects reads the YAML input and collects target resources. Currently, this will collect
+// AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and Secret resources. Other resources
+// will be written back to the output writer.
+//
+// If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
+func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	secrets []*corev1.Secret,
 	err error,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
+	exists := make(map[string]struct{})
 	for {
 		var rawObj runtime.RawExtension
 		err = decoder.Decode(&rawObj)
@@ -104,6 +135,14 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 			err = fmt.Errorf("error decoding unstructured object: %w", err)
 			return
 		}
+		// Deduplicate objects, skipping if already seen.
+		key := fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName())
+		if _, ok := exists[key]; !ok {
+			exists[key] = struct{}{}
+		} else {
+			logger.Info("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
+			continue
+		}
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
 			mustExtractAndAppend(obj, &aigwRoutes)
@@ -111,24 +150,33 @@ func collectCustomResourceObjects(yamlInput string, logger *slog.Logger) (
 			mustExtractAndAppend(obj, &aigwBackends)
 		case "BackendSecurityPolicy":
 			mustExtractAndAppend(obj, &backendSecurityPolicies)
+		case "Secret":
+			mustExtractAndAppend(obj, &secrets)
 		default:
 			// Now you can inspect or manipulate the CRD.
-			logger.Info("Skipping non-AIGateway object", "kind", obj.GetKind(), "name", obj.GetName())
+			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
+			mustWriteObj(nil, obj, out)
 		}
 	}
 }
 
 // translateCustomResourceObjects translates the AI Gateway custom resources to Envoy Gateway and Kubernetes objects.
-//
-// The resulting objects are written to the output writer.
 func translateCustomResourceObjects(
+	ctx context.Context,
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	output io.Writer,
 	logger *slog.Logger,
-) error {
-	ctx := context.Background() // It's ok to use the raw Background context as this is synchronous code in a CLI.
+) (
+	httpRoutes gwapiv1.HTTPRouteList,
+	extensionPolicies egv1a1.EnvoyExtensionPolicyList,
+	httpRouteFilter egv1a1.HTTPRouteFilterList,
+	configMaps *corev1.ConfigMapList,
+	secrets *corev1.SecretList,
+	deployments *appsv1.DeploymentList,
+	services *corev1.ServiceList,
+	err error,
+) {
 	builder := fake.NewClientBuilder().
 		WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
@@ -163,61 +211,42 @@ func translateCustomResourceObjects(
 	}
 
 	// Now you can retrieve the translated objects from the fake client.
-	var httpRoutes gwapiv1.HTTPRouteList
-	err := fakeClient.List(ctx, &httpRoutes)
+	err = fakeClient.List(ctx, &httpRoutes)
 	if err != nil {
-		return fmt.Errorf("error listing HTTPRoutes: %w", err)
+		err = fmt.Errorf("error listing HTTPRoutes: %w", err)
+		return
 	}
-	var extensionPolicies egv1a1.EnvoyExtensionPolicyList
 	err = fakeClient.List(ctx, &extensionPolicies)
 	if err != nil {
-		return fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
+		err = fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
+		return
 	}
-	var httpRouteFilter egv1a1.HTTPRouteFilterList
 	err = fakeClient.List(ctx, &httpRouteFilter)
 	if err != nil {
-		return fmt.Errorf("error listing HTTPRouteFilters: %w", err)
+		err = fmt.Errorf("error listing HTTPRouteFilters: %w", err)
+		return
 	}
-	configMaps, err := fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
+	configMaps, err = fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("error listing ConfigMaps: %w", err)
+		err = fmt.Errorf("error listing ConfigMaps: %w", err)
+		return
 	}
-	secrets, err := fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
+	secrets, err = fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("error listing Secrets: %w", err)
+		err = fmt.Errorf("error listing Secrets: %w", err)
+		return
 	}
-	deployments, err := fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	deployments, err = fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("error listing Deployments: %w", err)
+		err = fmt.Errorf("error listing Deployments: %w", err)
+		return
 	}
-	services, err := fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	services, err = fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("error listing Services: %w", err)
+		err = fmt.Errorf("error listing Services: %w", err)
+		return
 	}
-
-	// Emit the translated objects.
-	for _, httpRoute := range httpRoutes.Items {
-		mustWriteObj(&httpRoute.TypeMeta, &httpRoute, output)
-	}
-	for _, extensionPolicy := range extensionPolicies.Items {
-		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
-	}
-	for _, filter := range httpRouteFilter.Items {
-		mustWriteObj(&filter.TypeMeta, &filter, output)
-	}
-	for _, configMap := range configMaps.Items {
-		mustWriteObj(&configMap.TypeMeta, &configMap, output)
-	}
-	for _, secret := range secrets.Items {
-		mustWriteObj(&secret.TypeMeta, &secret, output)
-	}
-	for _, deployment := range deployments.Items {
-		mustWriteObj(&deployment.TypeMeta, &deployment, output)
-	}
-	for _, service := range services.Items {
-		mustWriteObj(&service.TypeMeta, &service, output)
-	}
-	return nil
+	return
 }
 
 // mustExtractAndAppend extracts the object from the unstructured object and appends it to the slice.
@@ -253,11 +282,7 @@ func mustCreateAndReconcile(
 	}
 }
 
-// mustWriteObj writes the object to the writer, panicking on error.
-//
-// This sets the kind and API version of the object to the values in the TypeMeta as it is not set from the fake client.
-func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
-	_, _ = w.Write([]byte("---\n"))
+func mustSetGroupVersionKind(typedMeta *metav1.TypeMeta, obj client.Object) {
 	// https://github.com/kubernetes-sigs/controller-runtime/issues/1517#issuecomment-844703142
 	gvks, unversioned, err := controller.Scheme.ObjectKinds(obj)
 	if err != nil {
@@ -267,6 +292,16 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 		panic(fmt.Errorf("expected exactly one GVK, got %d", len(gvks)))
 	}
 	typedMeta.SetGroupVersionKind(gvks[0])
+}
+
+// mustWriteObj writes the object to the writer, panicking on error.
+//
+// This sets the kind and API version of the object to the values in the TypeMeta as it is not set from the fake client.
+func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
+	_, _ = w.Write([]byte("---\n"))
+	if typedMeta != nil {
+		mustSetGroupVersionKind(typedMeta, obj)
+	}
 	// Ignore ManagedFields as they are not relevant to the user.
 	obj.SetManagedFields(nil)
 	// Ignore ResourceVersion as it is not relevant to the user.

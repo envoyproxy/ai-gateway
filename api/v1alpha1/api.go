@@ -366,7 +366,7 @@ type AIServiceBackendSpec struct {
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -385,6 +385,10 @@ const (
 	//
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
 	APISchemaAWSBedrock APISchema = "AWSBedrock"
+	// APISchemaAzureOpenAI APISchemaAzure is the Azure OpenAI schema.
+	//
+	// https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs
+	APISchemaAzureOpenAI APISchema = "AzureOpenAI"
 )
 
 const (
@@ -476,7 +480,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
-	// The key of secret should be "azure_access_token".
+	// The key of secret should be "client-secret".
 	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
 }
 

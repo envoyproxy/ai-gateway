@@ -55,6 +55,11 @@ func TestChatCompletion_SelectTranslator(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, c.translator)
 	})
+	t.Run("supported azure openai", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
 }
 
 func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {

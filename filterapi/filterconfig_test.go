@@ -67,8 +67,17 @@ rules:
     value: llama3.3333
 - backends:
   - name: openai
+    weight: 1
     schema:
       name: OpenAI
+  - name: azureopenai
+    weight: 5
+    schema:
+      name: AzureOpenAI
+      version: 2024-10-21
+    auth:
+      azure:
+        filename: azure.txt
   headers:
   - name: x-ai-eg-model
     value: gpt4.4444
@@ -126,7 +135,17 @@ rules:
 					{
 						Name:   "openai",
 						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-						Weight: 0,
+						Weight: 1,
+					},
+					{
+						Name:   "azureopenai",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-10-21"},
+						Weight: 5,
+						Auth: &filterapi.BackendAuth{
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: "azure.txt",
+							},
+						},
 					},
 				},
 			},

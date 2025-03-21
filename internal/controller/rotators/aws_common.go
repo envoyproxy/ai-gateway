@@ -33,10 +33,10 @@ import (
 
 // Common constants for AWS operations.
 const (
-	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
-	awsCredentialsKey = "credentials"
 	// awsSessionNameFormat is the format string for AWS session names.
 	awsSessionNameFormat = "ai-gateway-%s"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	awsCredentialsKey = "credentials"
 )
 
 // defaultAWSConfig returns an AWS config with adaptive retry mode enabled.
