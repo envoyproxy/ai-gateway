@@ -61,7 +61,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	}
 
 	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
-	crds = append(crds, requireThirdPartyCRDDownloaded(t, "inference_extension.yaml", infExtURL))
+	crds = append(crds, requireThirdPartyCRDDownloaded(t, "inference_extension_for_tests.yaml", infExtURL))
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
 	cfg, err = env.Start()
