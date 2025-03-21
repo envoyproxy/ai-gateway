@@ -65,7 +65,7 @@ func TestRun(t *testing.T) {
 
 	// This is the health checking to see the extproc is working as expected.
 	require.Eventually(t, func() bool {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:8888/v1/chat/completions",
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:1975/v1/chat/completions",
 			strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestRun(t *testing.T) {
 		},
 	} {
 		t.Run(tc.testName, func(t *testing.T) {
-			client := openai.NewClient(option.WithBaseURL("http://0.0.0.0:8888" + "/v1/"))
+			client := openai.NewClient(option.WithBaseURL("http://localhost:1975" + "/v1/"))
 			cc.MaybeSkip(t, tc.required)
 			require.Eventually(t, func() bool {
 				chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{

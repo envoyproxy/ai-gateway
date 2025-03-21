@@ -18,9 +18,9 @@
 # The special header `aigw-backend-selector` is used to select the backend regardless of the model.
 # For example, -H `aigw-backend-selector: openai` will route to the OpenAI backend, etc.
 #
-# The endpoint is http://localhost:8888:
+# The endpoint is http://localhost:1975:
 #
-# curl -H "aigw-backend-selector: ollama" -H "Content-Type: application/json" -XPOST http://localhost:8888/v1/chat/completions -d '{"model": "aaaaa","messages": [{"role": "user", "content": "Say this is a test! ... well, just say i am good"}],"temperature": 0.7}'
+# curl -H "aigw-backend-selector: ollama" -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions -d '{"model": "aaaaa","messages": [{"role": "user", "content": "Say this is a test! ... well, just say i am good"}],"temperature": 0.7}'
 
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -38,7 +38,7 @@ spec:
   listeners:
     - name: http
       protocol: HTTP
-      port: 8888
+      port: 1975
   infrastructure:
     parametersRef:
       group: gateway.envoyproxy.io
