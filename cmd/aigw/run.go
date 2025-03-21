@@ -17,7 +17,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
@@ -155,11 +154,6 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
 	stderrLogger.Info("Envoy Gateway output", "output", egOut.String())
-	// Even after the context is done, the goroutine managing the Envoy process might be still trying to shut it down.
-	// Give it some time to do so, otherwise the process might become an orphan. This is the limitation of the current
-	// API of func-e library that is used by Envoy Gateway to run the Envoy process.
-	// TODO: actually fix the library and the EG accordingly.
-	time.Sleep(5 * time.Second)
 	return nil
 }
 
@@ -187,7 +181,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
-			// TODO: this is a TODO. We can make it work by generalizing the rotation logic.
+			// TODO: We can make it work by generalizing the rotation logic.
 			return fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
