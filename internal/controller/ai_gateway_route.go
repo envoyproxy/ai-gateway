@@ -653,12 +653,19 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
 			if isInferencePoolRef(backendRef) {
-				// TODO: list all referenced AIServiceBackends and handle all bsp.
-				pool, referencedAIServiceBackends, err := c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+				_, referencedAIServiceBackends, err := c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
 					return nil, fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
 				}
-				_, _ = pool, referencedAIServiceBackends // TODO:
+				for k, backend := range referencedAIServiceBackends {
+					volumeName := backendSecurityPolicyForInferencePoolVolumeName(i, j, k, string(backend.Spec.BackendSecurityPolicyRef.Name))
+					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace, string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
+					if err != nil {
+						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
+					}
+					spec.Volumes = append(spec.Volumes, volume)
+					container.VolumeMounts = append(container.VolumeMounts, volumeMount)
+				}
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
@@ -666,45 +673,59 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 				}
 
 				if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-					backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
-					if err != nil {
-						return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
-					}
-
-					var secretName string
-					switch backendSecurityPolicy.Spec.Type {
-					case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-						secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
-					case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-						if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
-							secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
-						} else {
-							secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-						}
-					case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-					default:
-						return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
-					}
-
 					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					spec.Volumes = append(spec.Volumes, corev1.Volume{
-						Name: volumeName,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-						},
-					})
-
-					container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-						Name:      volumeName,
-						MountPath: backendSecurityMountPath(volumeName),
-						ReadOnly:  true,
-					})
+					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, volumeName,
+						aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+					if err != nil {
+						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
+					}
+					spec.Volumes = append(spec.Volumes, volume)
+					container.VolumeMounts = append(container.VolumeMounts, volumeMount)
 				}
 			}
 		}
 	}
 	return spec, nil
+}
+
+func (c *AIGatewayRouteController) backendSecurityPolicyVolumes(ctx context.Context, bspNamespace, bspName, volumeName string) (
+	volume corev1.Volume, volumeMount corev1.VolumeMount, err error,
+) {
+	backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, bspNamespace, bspName)
+	if err != nil {
+		err = fmt.Errorf("failed to get backend security policy %s: %w", bspName, err)
+		return
+	}
+
+	var secretName string
+	switch backendSecurityPolicy.Spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+		secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
+			secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
+		} else {
+			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+	default:
+		err = fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
+		return
+	}
+
+	volume = corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+		},
+	}
+	volumeMount = corev1.VolumeMount{
+		Name:      volumeName,
+		MountPath: backendSecurityMountPath(volumeName),
+		ReadOnly:  true,
+	}
+	return
 }
 
 func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {

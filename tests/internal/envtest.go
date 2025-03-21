@@ -50,11 +50,13 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	const (
 		egURLBase    = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.3.0/charts/gateway-helm/crds/generated/"
 		gwAPIURLBase = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/"
+		infExtURL    = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
 	)
 	for _, url := range []string{
 		egURLBase + "gateway.envoyproxy.io_envoyextensionpolicies.yaml",
 		egURLBase + "gateway.envoyproxy.io_httproutefilters.yaml",
 		gwAPIURLBase + "gateway.networking.k8s.io_httproutes.yaml",
+		infExtURL,
 	} {
 		path := filepath.Base(url) + "_for_tests.yaml"
 		crds = append(crds, requireThirdPartyCRDDownloaded(t, path, url))
