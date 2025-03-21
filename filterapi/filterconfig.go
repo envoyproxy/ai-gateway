@@ -174,8 +174,8 @@ type Backend struct {
 type DynamicLoadBalancing struct {
 	// Models that can be served by this backend. If not matched, the request is not routed to this backend.
 	Models []DynamicLoadBalancingModel `json:"models"`
-	// Endpoints can be either ip:port or hostname:port.
-	Endpoints []DynamicLoadBalancingEndpoint `json:"endpoints"`
+	// Backends can be either ip:port or hostname:port.
+	Backends []DynamicLoadBalancingBackend `json:"endpoints"`
 }
 
 type DynamicLoadBalancingModel struct {
@@ -184,15 +184,14 @@ type DynamicLoadBalancingModel struct {
 	// TODO: Criticality?
 }
 
-type DynamicLoadBalancingEndpoint struct {
-	// HostName is the hostname of the endpoint.
-	HostName string `json:"hostName,omitempty"`
+type DynamicLoadBalancingBackend struct {
+	Backend
+	// Hostname is the hostname of this backend.
+	Hostname string `json:"hostName,omitempty"`
 	// IP is the IP address of the endpoint.
 	IP string `json:"ip,omitempty"`
 	// Port is the port of the endpoint.
 	Port int `json:"port"`
-	// TODO: metrics, like for example, either concrete metrics or an endpoint to fetch the metrics
-	//	to do the intelligent routing.
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.

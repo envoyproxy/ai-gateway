@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/infext"
 	"io"
 	"log/slog"
 
@@ -57,6 +58,10 @@ type chatCompletionProcessor struct {
 	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
+	// dynamicLB is not nil if the originally selected backend has dynamic load balancing.
+	// TODO: this is not currently used but can be used to do a failover to the whole another backend as per the
+	// the comment in https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926.
+	dynamicLB *filterapi.DynamicLoadBalancing
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -120,6 +125,15 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
+
+	var endpointIpPortPair string
+	if dyn := b.DynamicLoadBalancing; dyn != nil {
+		b, endpointIpPortPair, err = infext.SelectEndpoint(dyn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to select endpoint: %w", err)
+		}
+	}
+
 	c.logger.Info("Selected backend", "backend", b.Name, "schema", b.Schema)
 	c.metrics.SetBackend(*b)
 
@@ -136,11 +150,9 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
-	if b.DynamicLoadBalancing != nil {
-		// 1. Do the backend selection.
-		// 2. Set the dynamic routing metadata, including the fallback ips into the dynamic metadata as in
-		// https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445 which will become implementable
-		// with a new LB policy by Yan.
+	if endpointIpPortPair != "" {
+		// TODO: set the endpoint IP and port in the header or whatever is needed.
+		_ = endpointIpPortPair
 	} else {
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
@@ -177,6 +189,10 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, he
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
+	// TODO: check the status code and use the dynamic load balancing to retry the request per the comment in
+	// 	https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926
+	_ = c.dynamicLB
+
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
