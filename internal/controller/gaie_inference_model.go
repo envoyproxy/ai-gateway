@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwaieav1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 )
 
 func NewInferenceModelController(client client.Client, kube kubernetes.Interface,
@@ -29,7 +29,7 @@ func NewInferenceModelController(client client.Client, kube kubernetes.Interface
 	}
 }
 
-// InferenceModelController implements reconcile.TypedReconciler for gwaieav1a2.InferenceModel.
+// InferenceModelController implements reconcile.TypedReconciler for gwaiev1a2.InferenceModel.
 type InferenceModelController struct {
 	client              client.Client
 	kubeClient          kubernetes.Interface
@@ -37,9 +37,9 @@ type InferenceModelController struct {
 	syncInferencePoolFn syncInferencePoolFn
 }
 
-// Reconcile implements the reconcile.Reconciler for gwaieav1a2.InferenceModel.
+// Reconcile implements the reconcile.Reconciler for gwaiev1a2.InferenceModel.
 func (c *InferenceModelController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var inferenceModel gwaieav1a2.InferenceModel
+	var inferenceModel gwaiev1a2.InferenceModel
 	if err := c.client.Get(ctx, req.NamespacedName, &inferenceModel); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("Deleting Inference Model",
@@ -48,23 +48,34 @@ func (c *InferenceModelController) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, err
 	}
-
-	poolRef := inferenceModel.Spec.PoolRef
-	if poolRef.Kind != "InferencePool" {
-		return ctrl.Result{}, fmt.Errorf("unexpected poolRef.kind %s", poolRef.Kind)
+	if err := c.sync(ctx, &inferenceModel); err != nil {
+		// TODO: status update.
+		return ctrl.Result{}, fmt.Errorf("failed to sync InferenceModel: %w", err)
 	}
-	inferencePoolName := inferenceModel.Spec.PoolRef.Name
-	var inferencePool gwaieav1a2.InferencePool
+	// TODO: status update.
+	return ctrl.Result{}, nil
+}
+
+func (c *InferenceModelController) sync(ctx context.Context, im *gwaiev1a2.InferenceModel) error {
+	poolRef := im.Spec.PoolRef
+	if poolRef.Kind != "InferencePool" {
+		return fmt.Errorf("unexpected poolRef.kind %s", poolRef.Kind)
+	}
+	inferencePoolName := im.Spec.PoolRef.Name
+	var inferencePool gwaiev1a2.InferencePool
 	if err := c.client.Get(ctx, types.NamespacedName{
-		Namespace: req.Namespace, Name: string(inferencePoolName),
+		Namespace: im.Namespace, Name: string(inferencePoolName),
 	}, &inferencePool,
 	); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("InferencePool not found.",
-				"namespace", req.Namespace, "name", req.Name)
-			return ctrl.Result{}, nil
+				"namespace", im.Namespace, "name", im.Name)
+			return nil
 		}
-		return ctrl.Result{}, err
+		return err
 	}
-	return ctrl.Result{}, c.syncInferencePoolFn(ctx, &inferencePool)
+	if err := c.syncInferencePoolFn(ctx, &inferencePool); err != nil {
+		return fmt.Errorf("failed to sync InferencePool: %w", err)
+	}
+	return nil
 }

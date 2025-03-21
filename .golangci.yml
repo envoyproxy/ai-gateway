@@ -52,7 +52,7 @@ linters-settings:
       - pkg: github.com/envoyproxy/ai-gateway/api/v1alpha1
         alias: aigv1a1
       - pkg: sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2
-        alias: gwaieav1a2
+        alias: gwaiev1a2
       # kubernetes api
       - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
         alias: metav1
