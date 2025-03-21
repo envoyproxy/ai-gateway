@@ -659,7 +659,8 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 				}
 				for k, backend := range referencedAIServiceBackends {
 					volumeName := backendSecurityPolicyForInferencePoolVolumeName(i, j, k, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace, string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
+					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
+						string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
 					if err != nil {
 						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
 					}
@@ -674,8 +675,8 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 
 				if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
 					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, volumeName,
-						aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
+						string(backendSecurityPolicyRef.Name), volumeName)
 					if err != nil {
 						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
 					}
