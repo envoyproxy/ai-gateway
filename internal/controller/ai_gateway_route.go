@@ -7,8 +7,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
+	"sort"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -285,62 +287,38 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 		rule := &spec.Rules[i]
 		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
-			backend := &rule.BackendRefs[j]
-			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
-			ec.Rules[i].Backends[j].Name = key
-			ec.Rules[i].Backends[j].Weight = backend.Weight
-			var backendObj *aigv1a1.AIServiceBackend
-			backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backend.Name)
-			if err != nil {
-				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
-			}
-
-			ec.Rules[i].Backends[j].DynamicLoadBalancing, err = c.maybeCreateDynamicLoadBalancing(ctx, backendObj)
-			if err != nil {
-				return fmt.Errorf("failed to create dynamic load balancing: %w", err)
-			}
-			ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-			ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
-
-			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-				volumeName := backendSecurityPolicyVolumeName(
-					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
-				)
-				var backendSecurityPolicy *aigv1a1.BackendSecurityPolicy
-				backendSecurityPolicy, err = c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+			backendRef := &rule.BackendRefs[j]
+			ecBackendConfig := &ec.Rules[i].Backends[j]
+			key := fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+			ecBackendConfig.Name = key
+			ecBackendConfig.Weight = backendRef.Weight
+			if isInferencePoolRef(backendRef) {
+				var pool *gwaiev1a2.InferencePool
+				var referencedAIServiceBackends []aigv1a1.AIServiceBackend
+				pool, referencedAIServiceBackends, err = c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
-					return fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
+					return fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
 				}
-
-				switch backendSecurityPolicy.Spec.Type {
-				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), apiKey)},
+				ecBackendConfig.DynamicLoadBalancing, err = c.createDynamicLoadBalancing(ctx, i, j, pool, referencedAIServiceBackends)
+				if err != nil {
+					return fmt.Errorf("failed to create dynamic load balancing: %w", err)
+				}
+			} else {
+				var backendObj *aigv1a1.AIServiceBackend
+				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+				if err != nil {
+					return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
+				}
+				ecBackendConfig.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
+				ecBackendConfig.Schema.Version = backendObj.Spec.APISchema.Version
+				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
+					volumeName := backendSecurityPolicyVolumeName(
+						i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
+					)
+					ecBackendConfig.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
+					if err != nil {
+						return fmt.Errorf("failed to create backend auth: %w", err)
 					}
-				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-					if backendSecurityPolicy.Spec.AWSCredentials == nil {
-						return fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-					}
-					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
-						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), awsCredentialsKey),
-								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
-							},
-						}
-					}
-				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-					if backendSecurityPolicy.Spec.AzureCredentials == nil {
-						return fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-					}
-					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{
-							Filename: path.Join(backendSecurityMountPath(volumeName), azureAccessTokenKey),
-						},
-					}
-				default:
-					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
-						backendSecurityPolicy.Name)
 				}
 			}
 		}
@@ -405,6 +383,44 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 		return fmt.Errorf("failed to update configmap %s: %w", configMap.Name, err)
 	}
 	return nil
+}
+
+func (c *AIGatewayRouteController) bspToFilterAPIAuth(ctx context.Context, namespace, bspName, volumeName string) (*filterapi.BackendAuth, error) {
+	backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, namespace, bspName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspName, err)
+	}
+	switch backendSecurityPolicy.Spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+		return &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), apiKey)},
+		}, nil
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		if backendSecurityPolicy.Spec.AWSCredentials == nil {
+			return nil, fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
+		}
+		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
+			return &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					CredentialFileName: path.Join(backendSecurityMountPath(volumeName), awsCredentialsKey),
+					Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
+				},
+			}, nil
+		}
+		return nil, nil
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		if backendSecurityPolicy.Spec.AzureCredentials == nil {
+			return nil, fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
+		}
+		return &filterapi.BackendAuth{
+			AzureAuth: &filterapi.AzureAuth{
+				Filename: path.Join(backendSecurityMountPath(volumeName), azureAccessTokenKey),
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
+			backendSecurityPolicy.Name)
+	}
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
@@ -636,46 +652,55 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 		rule := &aiGatewayRoute.Spec.Rules[i]
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
-			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
-			}
-
-			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-				backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+			if isInferencePoolRef(backendRef) {
+				// TODO: list all referenced AIServiceBackends and handle all bsp.
+				pool, referencedAIServiceBackends, err := c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
-					return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
+					return nil, fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
+				}
+				_, _ = pool, referencedAIServiceBackends // TODO:
+			} else {
+				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
 				}
 
-				var secretName string
-				switch backendSecurityPolicy.Spec.Type {
-				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
-					secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
-				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
-						secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
-					} else {
-						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+				if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
+					backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, aiGatewayRoute.Namespace, string(backendSecurityPolicyRef.Name))
+					if err != nil {
+						return nil, fmt.Errorf("failed to get backend security policy %s: %w", backendSecurityPolicyRef.Name, err)
 					}
-				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-					secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-				default:
-					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
+
+					var secretName string
+					switch backendSecurityPolicy.Spec.Type {
+					case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+						secretName = string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
+					case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+						if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
+							secretName = string(backendSecurityPolicy.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
+						} else {
+							secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+						}
+					case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+					default:
+						return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
+					}
+
+					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
+					spec.Volumes = append(spec.Volumes, corev1.Volume{
+						Name: volumeName,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+						},
+					})
+
+					container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+						Name:      volumeName,
+						MountPath: backendSecurityMountPath(volumeName),
+						ReadOnly:  true,
+					})
 				}
-
-				volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
-				spec.Volumes = append(spec.Volumes, corev1.Volume{
-					Name: volumeName,
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-					},
-				})
-
-				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-					Name:      volumeName,
-					MountPath: backendSecurityMountPath(volumeName),
-					ReadOnly:  true,
-				})
 			}
 		}
 	}
@@ -698,6 +723,11 @@ func (c *AIGatewayRouteController) backendSecurityPolicy(ctx context.Context, na
 	return backendSecurityPolicy, nil
 }
 
+func backendSecurityPolicyForInferencePoolVolumeName(ruleIndex, backendRefIndex, inPoolIndex int, name string) string {
+	// Note: do not use "." as it's not allowed in the volume name.
+	return fmt.Sprintf("rule%d-backref%d-inpool%d-%s", ruleIndex, backendRefIndex, inPoolIndex, name)
+}
+
 func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string) string {
 	// Note: do not use "." as it's not allowed in the volume name.
 	return fmt.Sprintf("rule%d-backref%d-%s", ruleIndex, backendRefIndex, name)
@@ -715,17 +745,91 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	}
 }
 
-func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(ctx context.Context, aiServiceBackend *aigv1a1.AIServiceBackend) (*filterapi.DynamicLoadBalancing, error) {
-	ref := aiServiceBackend.Spec.BackendRef
-	if ref.Kind == nil || string(*ref.Kind) != "InferencePool" {
-		return nil, nil
+func (c *AIGatewayRouteController) getPoolAndReferencedAIServiceBackends(ctx context.Context, inferencePoolNamespace, inferencePoolName string) (
+	*gwaiev1a2.InferencePool, []aigv1a1.AIServiceBackend, error,
+) {
+	// Find the referenced InferencePool.
+	var pool gwaiev1a2.InferencePool
+	if err := c.client.Get(ctx, client.ObjectKey{Name: inferencePoolName, Namespace: inferencePoolNamespace}, &pool); err != nil {
+		return nil, nil, fmt.Errorf("failed to get InferencePool %s: %w", inferencePoolName, err)
 	}
 
-	// Find the referenced InferencePool.
-	ns := ptr.Deref(ref.Namespace, gwapiv1.Namespace(aiServiceBackend.Namespace))
-	var pool gwaiev1a2.InferencePool
-	if err := c.client.Get(ctx, client.ObjectKey{Name: string(ref.Name), Namespace: string(ns)}, &pool); err != nil {
-		return nil, fmt.Errorf("failed to get InferencePool %s: %w", ref.Name, err)
+	// Gather the AIServiceBackend from the pool.Spec.Selector.
+	labels := make(client.MatchingLabels, len(pool.Spec.Selector))
+	for k, v := range pool.Spec.Selector {
+		labels[string(k)] = string(v)
+	}
+	var aiServiceBackends aigv1a1.AIServiceBackendList
+	if err := c.client.List(ctx, &aiServiceBackends, labels); err != nil {
+		return nil, nil, fmt.Errorf("failed to list AIServiceBackends: %w", err)
+	}
+	sort.Slice(aiServiceBackends.Items, func(i, j int) bool {
+		return aiServiceBackends.Items[i].Name < aiServiceBackends.Items[j].Name
+	})
+	return &pool, aiServiceBackends.Items, nil
+}
+
+func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Context,
+	ruleIndex, backendRefIndex int,
+	pool *gwaiev1a2.InferencePool,
+	referencedAIServiceBackends []aigv1a1.AIServiceBackend,
+) (*filterapi.DynamicLoadBalancing, error) {
+	ret := &filterapi.DynamicLoadBalancing{Backends: make([]filterapi.DynamicLoadBalancingBackend, len(referencedAIServiceBackends))}
+	var err error
+	for i, b := range referencedAIServiceBackends {
+		sp := b.Spec
+		dynB := filterapi.DynamicLoadBalancingBackend{
+			Port: pool.Spec.TargetPortNumber,
+			Backend: filterapi.Backend{
+				Name: b.Name,
+				Schema: filterapi.VersionedAPISchema{
+					Name:    filterapi.APISchemaName(b.Spec.APISchema.Name),
+					Version: b.Spec.APISchema.Version,
+				},
+			},
+		}
+		if bspRef := b.Spec.BackendSecurityPolicyRef; bspRef != nil {
+			volumeName := backendSecurityPolicyForInferencePoolVolumeName(
+				ruleIndex, backendRefIndex, i, string(bspRef.Name))
+			dynB.Backend.Auth, err = c.bspToFilterAPIAuth(ctx, pool.Namespace, string(bspRef.Name), volumeName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create backend auth: %w", err)
+			}
+		}
+		clientObjectKey := client.ObjectKey{Name: string(sp.BackendRef.Name), Namespace: pool.Namespace}
+		if sp.BackendRef.Namespace != nil {
+			clientObjectKey.Namespace = string(*sp.BackendRef.Namespace)
+		}
+		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
+		case "InferencePool":
+			return nil, errors.New("nested InferencePool is not supported")
+		case "Service":
+			return nil, errors.New("TODO: support Service backend in DynamicLoadBalancing")
+		case "Backend":
+			var backend egv1a1.Backend
+			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {
+				return nil, fmt.Errorf("failed to get Backend %s: %w", sp.BackendRef.Name, err)
+			}
+			for _, ep := range backend.Spec.Endpoints {
+				switch {
+				case ep.IP != nil:
+					if ep.IP.Port != pool.Spec.TargetPortNumber {
+						return nil, fmt.Errorf("port mismatch: InferecePool %s has port %d, but Backend %s has port %d",
+							pool.Name, pool.Spec.TargetPortNumber, backend.Name, ep.IP.Port)
+					}
+					dynB.IPs = append(dynB.IPs, ep.IP.Address)
+				case ep.FQDN != nil:
+					if ep.FQDN.Port != pool.Spec.TargetPortNumber {
+						return nil, fmt.Errorf("port mismatch: InferecePool %s has port %d, but Backend %s has port %d",
+							pool.Name, pool.Spec.TargetPortNumber, backend.Name, ep.FQDN.Port)
+					}
+					dynB.Hostnames = append(dynB.Hostnames, ep.FQDN.Hostname)
+				default:
+					return nil, fmt.Errorf("invalid backend endpoint: %v", ep)
+				}
+			}
+		}
+		ret.Backends[i] = dynB
 	}
 
 	// Gather the models that belong to the pool.
@@ -735,18 +839,21 @@ func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(ctx context.C
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list InferenceModels: %w", err)
 	}
-
-	// Gather the AIServiceBackend from the pool.Spec.Selector.
-	var backends aigv1a1.AIServiceBackendList
-	labels := make(client.MatchingLabels, len(pool.Spec.Selector))
-	for k, v := range pool.Spec.Selector {
-		labels[string(k)] = string(v)
+	for _, model := range models.Items {
+		ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: model.Name})
+		for _, targetModel := range model.Spec.TargetModels {
+			var weight *int
+			if targetModel.Weight != nil {
+				_weight := int(*targetModel.Weight)
+				weight = &_weight
+			}
+			ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: targetModel.Name, Weight: weight})
+		}
 	}
-	if err := c.client.List(ctx, &backends, labels); err != nil {
-		return nil, fmt.Errorf("failed to list AIServiceBackends: %w", err)
-	}
+	return ret, nil
+}
 
-	// TODO: do some real work like getting InferencePool and corresponding InferenceModels as well as
-	// 	get the target external endpoints and services from the InferenceService.Selector.
-	return &filterapi.DynamicLoadBalancing{}, nil
+// isInferencePoolRef returns true if AIGatewayRouteRuleBackendRef references an InferencePool reference.
+func isInferencePoolRef(ref *aigv1a1.AIGatewayRouteRuleBackendRef) bool {
+	return ref.Kind != nil && *ref.Kind == aigv1a1.AIGatewayRouteRuleBackendRefInferencePool
 }

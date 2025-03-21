@@ -161,6 +161,8 @@ type Backend struct {
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
 	// Weight is the weight of the backend in the routing decision.
+	//
+	// When DynamicLoadBalancing is specified, the weight is ignored.
 	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
@@ -172,7 +174,7 @@ type Backend struct {
 
 // DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
 type DynamicLoadBalancing struct {
-	// Models that can be served by this backend. If not matched, the request is not routed to this backend.
+	// Models that can be served by this backend. If not matched, the 404 is returned to the client.
 	Models []DynamicLoadBalancingModel `json:"models"`
 	// Backends can be either ip:port or hostname:port.
 	Backends []DynamicLoadBalancingBackend `json:"endpoints"`
@@ -180,18 +182,19 @@ type DynamicLoadBalancing struct {
 
 type DynamicLoadBalancingModel struct {
 	// Name is the name of the model.
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Weight *int   `json:"weight"`
 	// TODO: Criticality?
 }
 
 type DynamicLoadBalancingBackend struct {
 	Backend
-	// Hostname is the hostname of this backend.
-	Hostname string `json:"hostName,omitempty"`
+	// Hostnames is the hostname of this backend.
+	Hostnames []string `json:"hostName,omitempty"`
 	// IP is the IP address of the endpoint.
-	IP string `json:"ip,omitempty"`
+	IPs []string `json:"ip,omitempty"`
 	// Port is the port of the endpoint.
-	Port int `json:"port"`
+	Port int32 `json:"port"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.

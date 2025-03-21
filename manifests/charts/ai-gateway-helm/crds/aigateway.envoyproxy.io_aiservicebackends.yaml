@@ -60,10 +60,7 @@ spec:
                 description: |-
                   BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 
-                  A backend can be of either k8s Service, Backend resource of Envoy Gateway, or InferencePool in Gateway API Inference Extension.
-
-                  When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-                  that can serve the same model sets that the InferencePool binds.
+                  A backend can be of either k8s Service, or Backend resource of Envoy Gateway.
 
                   This is required to be set.
                 properties:
