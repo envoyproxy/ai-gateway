@@ -541,6 +541,7 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
 
 AIServiceBackendSpec details the AIServiceBackend configuration.
 
+
 ##### Fields
 
 
@@ -554,7 +555,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendRef"
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
-  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend can be of either k8s Service or Backend resource of Envoy Gateway.<br />This is required to be set."
+  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend can be of either k8s Service, Backend resource of Envoy Gateway, or InferencePool in Gateway API Inference Extension.<br />When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)<br />that can serve the same model sets that the InferencePool binds.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](#localobjectreference)"
@@ -617,6 +618,11 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaAzureOpenAI APISchemaAzure is the Azure OpenAI schema.<br />https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs<br />"
+/><ApiField
+  name="Dynamic"
+  type="enum"
+  required="false"
+  description="APISchemaDynamic is the schema where the ai-gateway will dynamically determine the schema based on the request.<br />"
 />
 #### AWSCredentialsFile
 

@@ -1,19 +1,27 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package controller
 
 import (
 	"context"
 	"fmt"
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwaieav1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 func NewInferencePoolController(client client.Client, kube kubernetes.Interface,
-	logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn) *InferencePoolController {
+	logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn,
+) *InferencePoolController {
 	return &InferencePoolController{
 		client:              client,
 		kubeClient:          kube,

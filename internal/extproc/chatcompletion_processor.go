@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/infext"
 	"io"
 	"log/slog"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/infext"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -126,9 +126,9 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
-	var endpointIpPortPair string
+	var endpointIPPortPair string
 	if dyn := b.DynamicLoadBalancing; dyn != nil {
-		b, endpointIpPortPair, err = infext.SelectEndpoint(dyn)
+		b, endpointIPPortPair, err = infext.SelectEndpoint(dyn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select endpoint: %w", err)
 		}
@@ -150,9 +150,9 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
-	if endpointIpPortPair != "" {
+	if endpointIPPortPair != "" {
 		// TODO: set the endpoint IP and port in the header or whatever is needed.
-		_ = endpointIpPortPair
+		_ = endpointIPPortPair
 	} else {
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},

@@ -322,6 +322,8 @@ type AIServiceBackendList struct {
 }
 
 // AIServiceBackendSpec details the AIServiceBackend configuration.
+//
+// TODO: add a CEL validation to check if BackendRef is the reference to the InferencePool, APISchema.Name must be "Dynamic".
 type AIServiceBackendSpec struct {
 	// APISchema specifies the API schema of the output format of requests from
 	// Envoy that this AIServiceBackend can accept as incoming requests.
@@ -335,6 +337,9 @@ type AIServiceBackendSpec struct {
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend can be of either k8s Service, Backend resource of Envoy Gateway, or InferencePool in Gateway API Inference Extension.
+	//
+	// When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
+	// that can serve the same model sets that the InferencePool binds.
 	//
 	// This is required to be set.
 	//
@@ -366,7 +371,7 @@ type AIServiceBackendSpec struct {
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;Dynamic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -389,6 +394,8 @@ const (
 	//
 	// https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs
 	APISchemaAzureOpenAI APISchema = "AzureOpenAI"
+	// APISchemaDynamic is the schema where the ai-gateway will dynamically determine the schema based on the request.
+	APISchemaDynamic APISchema = "Dynamic"
 )
 
 const (

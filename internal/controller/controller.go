@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	gwaieav1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -25,6 +24,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	gwaieav1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 

@@ -1,8 +1,14 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package controller
 
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -50,7 +56,8 @@ func (c *InferenceModelController) Reconcile(ctx context.Context, req ctrl.Reque
 	inferencePoolName := inferenceModel.Spec.PoolRef.Name
 	var inferencePool gwaieav1a2.InferencePool
 	if err := c.client.Get(ctx, types.NamespacedName{
-		Namespace: req.Namespace, Name: string(inferencePoolName)}, &inferencePool,
+		Namespace: req.Namespace, Name: string(inferencePoolName),
+	}, &inferencePool,
 	); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("InferencePool not found.",
