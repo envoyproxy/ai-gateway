@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -24,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -295,11 +295,10 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			}
 
-			dyn, err := c.maybeCreateDynamicLoadBalancing(ctx, backendObj)
+			ec.Rules[i].Backends[j].DynamicLoadBalancing, err = c.maybeCreateDynamicLoadBalancing(ctx, backendObj)
 			if err != nil {
 				return fmt.Errorf("failed to create dynamic load balancing: %w", err)
 			}
-			ec.Rules[i].Backends[j].DynamicLoadBalancing = dyn
 			ec.Rules[i].Backends[j].Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 			ec.Rules[i].Backends[j].Schema.Version = backendObj.Spec.APISchema.Version
 
@@ -718,19 +717,19 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 
 func (c *AIGatewayRouteController) maybeCreateDynamicLoadBalancing(ctx context.Context, aiServiceBackend *aigv1a1.AIServiceBackend) (*filterapi.DynamicLoadBalancing, error) {
 	ref := aiServiceBackend.Spec.BackendRef
-	if ref.Kind != nil && string(*ref.Kind) != "InferenceService" {
+	if ref.Kind == nil || string(*ref.Kind) != "InferencePool" {
 		return nil, nil
 	}
 
 	// Find the referenced InferencePool.
 	ns := ptr.Deref(ref.Namespace, gwapiv1.Namespace(aiServiceBackend.Namespace))
-	var pool v1alpha2.InferencePool
+	var pool gwaiev1a2.InferencePool
 	if err := c.client.Get(ctx, client.ObjectKey{Name: string(ref.Name), Namespace: string(ns)}, &pool); err != nil {
 		return nil, fmt.Errorf("failed to get InferencePool %s: %w", ref.Name, err)
 	}
 
 	// Gather the models that belong to the pool.
-	var models v1alpha2.InferenceModelList
+	var models gwaiev1a2.InferenceModelList
 	if err := c.client.List(ctx, &models, client.MatchingFields{
 		k8sClientIndexInferencePoolToReferencingInferenceModel: fmt.Sprintf("%s.%s", pool.Name, pool.Namespace),
 	}); err != nil {
