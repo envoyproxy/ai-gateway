@@ -103,7 +103,7 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai
-    # A Model-specific rule, routing to the OpenAI backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
+    # A Model-specific rule, routing to the AWS Bedrock backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
     - matches:
         - headers:
             - type: Exact
