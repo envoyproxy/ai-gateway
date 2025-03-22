@@ -5,6 +5,20 @@ description: Release Notes for Envoy AI Gateway
 
 # Release Notes
 ---
+## v0.1.4
+**Date:** 2025-03-20
+
+Fixes case of empty content body from assistant content resulting in aws validation errors.
+
+## Overview
+
+This patch release `v0.1.4` introduces fix to aws validation error when assistant content is empty.
+
+## Commits
+
+- translator: skip adding content if assistant content string is empty (https://github.com/envoyproxy/ai-gateway/pull/508)
+
+---
 ## v0.1.3
 **Date:** 2025-03-14
 

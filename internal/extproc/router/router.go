@@ -32,14 +32,16 @@ func New(config *filterapi.Config, newCustomFn x.NewCustomRouterFn) (x.Router, e
 // Calculate implements [x.Router.Calculate].
 func (r *router) Calculate(headers map[string]string) (backend *filterapi.Backend, err error) {
 	var rule *filterapi.RouteRule
+outer:
 	for i := range r.rules {
 		_rule := &r.rules[i]
-		for _, hdr := range _rule.Headers {
+		for j := range _rule.Headers {
+			hdr := &_rule.Headers[j]
 			v, ok := headers[string(hdr.Name)]
 			// Currently, we only do the exact matching.
 			if ok && v == hdr.Value {
 				rule = _rule
-				break
+				break outer
 			}
 		}
 	}

@@ -48,7 +48,7 @@ The **roadmap is community-driven**, and we'd love for **more contributors** to 
 ## Join the Movement
 
 Want to be part of the journey? Here's how you can get involved:
-- **Download & Try Envoy AI Gateway** → [GitHub Repo](https://github.com/envoyproxy/ai-gateway/releases/tag/v0.1.3)
+- **Download & Try Envoy AI Gateway** → [GitHub Repo](https://github.com/envoyproxy/ai-gateway/releases/tag/v0.1.4)
 - **Join the Conversation** → [Attend our community meetings](https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0#heading=h.6nxfjwmrm5g6) (Mellow might show up too\!)
 - **Join us on Slack** → [Register for Envoy Slack](https://communityinviter.com/apps/envoyproxy/envoy?email=test) and join \#envoy-ai-gateway
 - **Contribute** → Raise issues, suggest improvements, and submit PRs on GitHub
