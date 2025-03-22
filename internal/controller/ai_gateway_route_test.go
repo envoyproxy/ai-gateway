@@ -140,7 +140,9 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	dep := &appsv1.DeploymentSpec{
 		Template: corev1.PodTemplateSpec{
 			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{}},
+				Containers: []corev1.Container{{
+					Image: "placeholderExtProc",
+				}},
 			},
 		},
 	}
