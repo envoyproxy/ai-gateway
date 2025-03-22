@@ -35,8 +35,9 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug bool   `help:"Enable debug logging emitted to stderr."`
-		Path  string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration." type:"path"`
+		Debug       bool   `help:"Enable debug logging emitted to stderr."`
+		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
+		ShowDefault bool   `help:"Show the default configuration, and exit."`
 	}
 )
 
@@ -82,7 +83,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		if err != nil {
 			log.Fatalf("Error translating: %v", err)
 		}
-	case "run":
+	case "run", "run <path>":
 		err = rf(ctx, c.Run, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)

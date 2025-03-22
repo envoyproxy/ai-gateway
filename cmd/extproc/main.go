@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,5 +23,7 @@ func main() {
 		<-signalsChan
 		cancel()
 	}()
-	mainlib.Main(ctx, os.Args[1:], os.Stderr)
+	if err := mainlib.Main(ctx, os.Args[1:], os.Stderr); err != nil {
+		log.Fatalf("error: %v", err)
+	}
 }

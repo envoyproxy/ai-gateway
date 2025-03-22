@@ -127,7 +127,7 @@ check: precommit
 # This runs the editorconfig-checker on the codebase.
 editorconfig:
 	@echo "running editorconfig-checker"
-	@go tool editorconfig-checker -exclude cmd/aigw/certs
+	@go tool editorconfig-checker
 
 # This runs the unit tests for the codebase.
 .PHONY: test
