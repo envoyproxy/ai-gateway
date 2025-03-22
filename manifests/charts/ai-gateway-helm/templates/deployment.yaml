@@ -43,7 +43,9 @@ spec:
             - -logLevel={{ .Values.controller.logLevel }}
             - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
+            {{- end }}
           livenessProbe:
             grpc:
               port: 1063

@@ -27,6 +27,10 @@ controller:
     # If not set and create is true, a name is generated using the fullname template
     name: ""
 
+  # Enable leader election mechanism for protecting against split brain if multiple operator pods/replicas are started.
+  leaderElection:
+    enabled: true
+
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller
