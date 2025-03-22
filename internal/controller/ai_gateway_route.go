@@ -180,6 +180,7 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 }
 
 func (c *AIGatewayRouteController) applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
+	d.Template.Spec.Containers[0].Image = c.extProcImage
 	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
 		d.Replicas = nil
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
@@ -191,7 +192,6 @@ func (c *AIGatewayRouteController) applyExtProcDeploymentConfigUpdate(d *appsv1.
 	} else {
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
 	}
-	d.Template.Spec.Containers[0].Image = c.extProcImage
 	d.Replicas = extProc.Replicas
 }
 

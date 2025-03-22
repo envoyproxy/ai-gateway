@@ -165,7 +165,9 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	dep := &appsv1.DeploymentSpec{
 		Template: corev1.PodTemplateSpec{
 			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{}},
+				Containers: []corev1.Container{{
+					Image: "placeholderExtProc",
+				}},
 			},
 		},
 	}
@@ -173,10 +175,13 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(scheme).Build(), extProcImage: extProcImage}
 	t.Run("not panic", func(_ *testing.T) {
 		c.applyExtProcDeploymentConfigUpdate(dep, nil)
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 		})
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 	})
 	t.Run("update", func(t *testing.T) {
 		req := corev1.ResourceRequirements{
