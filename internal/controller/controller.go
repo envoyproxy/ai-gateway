@@ -120,15 +120,15 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
-	inferencePoolC := NewInferencePoolController(c,
+	inferencePoolC := newInferencePoolController(c,
 		kubernetes.NewForConfigOrDie(config), logger.WithName("inference-pool"),
-		backendSecurityPolicyC.syncAIServiceBackend)
+		routeC.syncAIGatewayRoute)
 	if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
 		Complete(inferencePoolC); err != nil {
 		return fmt.Errorf("failed to create controller for InferencePool: %w", err)
 	}
 
-	inferenceModelC := NewInferenceModelController(c,
+	inferenceModelC := newInferenceModelController(c,
 		kubernetes.NewForConfigOrDie(config), logger.WithName("inference-model"),
 		inferencePoolC.syncInferencePool)
 	if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferenceModel{}).
@@ -175,7 +175,7 @@ const (
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 	// k8sClientIndexInferencePoolToReferencingAIServiceBackend is the index name that maps from an InferencePool to the AIServiceBackend
 	// that references it.
-	k8sClientIndexInferencePoolToReferencingAIServiceBackend = "InferencePoolToReferencingAIServiceBackend"
+	k8sClientIndexInferencePoolToReferencingAIGateawyRoute = "InferencePoolToReferencingAIGatewayRoute"
 	// k8sClientIndexInferencePoolToReferencingInferenceModel is the index name that maps from an InferencePool to the InferenceModel
 	// that references it.
 	k8sClientIndexInferencePoolToReferencingInferenceModel = "InferencePoolToReferencingInferenceModel"
@@ -188,15 +188,15 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
-		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFuncForBackendPolicyRef)
-	if err != nil {
-		return fmt.Errorf("failed to index field for BackendPolicyRef to AIServiceBackend: %w", err)
-	}
-	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
-		k8sClientIndexInferencePoolToReferencingAIServiceBackend, aiServiceBackendIndexFuncForInferencePool)
+	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
+		k8sClientIndexInferencePoolToReferencingAIGateawyRoute, aiGatewayRouteIndexFuncForInferencePool)
 	if err != nil {
 		return fmt.Errorf("failed to index field for InferencePool to AIServiceBackend: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
+		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for BackendPolicyRef to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
@@ -223,24 +223,25 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 	return ret
 }
 
-func aiServiceBackendIndexFuncForBackendPolicyRef(o client.Object) []string {
-	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
+func aiGatewayRouteIndexFuncForInferencePool(o client.Object) []string {
+	aiServiceBackend := o.(*aigv1a1.AIGatewayRoute)
 	var ret []string
-	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
+	for _, r := range aiServiceBackend.Spec.Rules {
+		for _, backend := range r.BackendRefs {
+			if backend.Kind != nil && *backend.Kind == aigv1a1.AIGatewayRouteRuleBackendRefInferencePool {
+				ns := o.GetNamespace()
+				ret = append(ret, fmt.Sprintf("%s.%s", backend.Name, ns))
+			}
+		}
 	}
 	return ret
 }
 
-func aiServiceBackendIndexFuncForInferencePool(o client.Object) []string {
-	aiServiceBackendRef := o.(*aigv1a1.AIServiceBackend).Spec.BackendRef
+func aiServiceBackendIndexFunc(o client.Object) []string {
+	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
 	var ret []string
-	if aiServiceBackendRef.Kind != nil && *aiServiceBackendRef.Kind == "InferencePool" {
-		ns := o.GetNamespace()
-		if aiServiceBackendRef.Namespace != nil {
-			ns = string(*aiServiceBackendRef.Namespace)
-		}
-		ret = append(ret, fmt.Sprintf("%s.%s", aiServiceBackendRef.Name, ns))
+	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
 	}
 	return ret
 }

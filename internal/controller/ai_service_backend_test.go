@@ -142,11 +142,7 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "four", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{
-					Name:      "my-inference-pool",
-					Kind:      ptr.To(gwapiv1.Kind("InferencePool")),
-					Namespace: ptr.To[gwapiv1.Namespace]("foonamespace"),
-				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
 	} {
@@ -168,10 +164,4 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-3.ns"}))
 	require.Len(t, aiServiceBackend.Items, 1)
 	require.Equal(t, "three", aiServiceBackend.Items[0].Name)
-
-	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIServiceBackend: "my-inference-pool.foonamespace"}))
-	require.Len(t, aiServiceBackend.Items, 1)
-	require.Equal(t, "four", aiServiceBackend.Items[0].Name)
-	require.Equal(t, "ns", aiServiceBackend.Items[0].Namespace)
 }

@@ -45,6 +45,8 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend1", Weight: 1},
 						{Name: "backend2", Weight: 1},
+						{Name: "inference-pool1", Weight: 1, Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
+						{Name: "inference-pool2", Weight: 1, Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
 					},
 				},
 			},
@@ -61,6 +63,18 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 
 	err = c.List(t.Context(), &aiGatewayRoutes,
 		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
+	require.NoError(t, err)
+	require.Len(t, aiGatewayRoutes.Items, 1)
+	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
+
+	err = c.List(t.Context(), &aiGatewayRoutes,
+		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGateawyRoute: "inference-pool1.default"})
+	require.NoError(t, err)
+	require.Len(t, aiGatewayRoutes.Items, 1)
+	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
+
+	err = c.List(t.Context(), &aiGatewayRoutes,
+		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGateawyRoute: "inference-pool2.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)

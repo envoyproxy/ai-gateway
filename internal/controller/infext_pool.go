@@ -19,27 +19,27 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-func NewInferencePoolController(client client.Client, kube kubernetes.Interface,
-	logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn,
-) *InferencePoolController {
-	return &InferencePoolController{
-		client:              client,
-		kubeClient:          kube,
-		logger:              logger,
-		synServiceBackendFn: syncAIServiceBackend,
+func newInferencePoolController(client client.Client, kube kubernetes.Interface,
+	logger logr.Logger, syncAIGatewayRouteFn syncAIGatewayRouteFn,
+) *inferencePoolController {
+	return &inferencePoolController{
+		client:               client,
+		kubeClient:           kube,
+		logger:               logger,
+		syncAIGatewayRouteFn: syncAIGatewayRouteFn,
 	}
 }
 
-// InferencePoolController implements reconcile.TypedReconciler for gwaiev1a2.InferencePool.
-type InferencePoolController struct {
-	client              client.Client
-	kubeClient          kubernetes.Interface
-	logger              logr.Logger
-	synServiceBackendFn syncAIServiceBackendFn
+// inferencePoolController implements reconcile.TypedReconciler for gwaiev1a2.InferencePool.
+type inferencePoolController struct {
+	client               client.Client
+	kubeClient           kubernetes.Interface
+	logger               logr.Logger
+	syncAIGatewayRouteFn syncAIGatewayRouteFn
 }
 
 // Reconcile implements the reconcile.Reconciler for gwaiev1a2.InferencePool.
-func (c *InferencePoolController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (c *inferencePoolController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var inferencePool gwaiev1a2.InferencePool
 	if err := c.client.Get(ctx, req.NamespacedName, &inferencePool); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -57,18 +57,18 @@ func (c *InferencePoolController) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
-func (c *InferencePoolController) syncInferencePool(ctx context.Context, inferencePool *gwaiev1a2.InferencePool) error {
-	var aisbs aigv1a1.AIServiceBackendList
+func (c *inferencePoolController) syncInferencePool(ctx context.Context, inferencePool *gwaiev1a2.InferencePool) error {
+	var aisbs aigv1a1.AIGatewayRouteList
 	if err := c.client.List(ctx, &aisbs,
 		client.MatchingFields{
-			k8sClientIndexInferencePoolToReferencingAIServiceBackend: fmt.Sprintf(
+			k8sClientIndexInferencePoolToReferencingAIGateawyRoute: fmt.Sprintf(
 				"%s.%s", inferencePool.Name, inferencePool.Namespace),
 		}); err != nil {
 		return fmt.Errorf("failed to list AIServiceBackends: %w", err)
 	}
 	for i := range aisbs.Items {
 		aisb := &aisbs.Items[i]
-		if err := c.synServiceBackendFn(ctx, aisb); err != nil {
+		if err := c.syncAIGatewayRouteFn(ctx, aisb); err != nil {
 			return fmt.Errorf("failed to sync AIServiceBackend: %w", err)
 		}
 	}

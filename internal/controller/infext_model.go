@@ -18,10 +18,10 @@ import (
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 )
 
-func NewInferenceModelController(client client.Client, kube kubernetes.Interface,
+func newInferenceModelController(client client.Client, kube kubernetes.Interface,
 	logger logr.Logger, syncAIServiceBackend syncInferencePoolFn,
-) *InferenceModelController {
-	return &InferenceModelController{
+) *inferenceModelController {
+	return &inferenceModelController{
 		client:              client,
 		kubeClient:          kube,
 		logger:              logger,
@@ -29,8 +29,8 @@ func NewInferenceModelController(client client.Client, kube kubernetes.Interface
 	}
 }
 
-// InferenceModelController implements reconcile.TypedReconciler for gwaiev1a2.InferenceModel.
-type InferenceModelController struct {
+// inferenceModelController implements reconcile.TypedReconciler for gwaiev1a2.InferenceModel.
+type inferenceModelController struct {
 	client              client.Client
 	kubeClient          kubernetes.Interface
 	logger              logr.Logger
@@ -38,7 +38,7 @@ type InferenceModelController struct {
 }
 
 // Reconcile implements the reconcile.Reconciler for gwaiev1a2.InferenceModel.
-func (c *InferenceModelController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (c *inferenceModelController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var inferenceModel gwaiev1a2.InferenceModel
 	if err := c.client.Get(ctx, req.NamespacedName, &inferenceModel); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -56,7 +56,7 @@ func (c *InferenceModelController) Reconcile(ctx context.Context, req ctrl.Reque
 	return ctrl.Result{}, nil
 }
 
-func (c *InferenceModelController) sync(ctx context.Context, im *gwaiev1a2.InferenceModel) error {
+func (c *inferenceModelController) sync(ctx context.Context, im *gwaiev1a2.InferenceModel) error {
 	poolRef := im.Spec.PoolRef
 	if poolRef.Kind != "InferencePool" {
 		return fmt.Errorf("unexpected poolRef.kind %s", poolRef.Kind)
