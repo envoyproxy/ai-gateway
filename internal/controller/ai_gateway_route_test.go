@@ -150,10 +150,13 @@ func Test_applyExtProcDeploymentConfigUpdate(t *testing.T) {
 	c := &AIGatewayRouteController{client: fake.NewClientBuilder().WithScheme(Scheme).Build(), extProcImage: extProcImage}
 	t.Run("not panic", func(_ *testing.T) {
 		c.applyExtProcDeploymentConfigUpdate(dep, nil)
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{})
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 		c.applyExtProcDeploymentConfigUpdate(dep, &aigv1a1.AIGatewayFilterConfig{
 			ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{},
 		})
+		require.Equal(t, dep.Template.Spec.Containers[0].Image, extProcImage)
 	})
 	t.Run("update", func(t *testing.T) {
 		req := corev1.ResourceRequirements{
