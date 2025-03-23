@@ -68,6 +68,6 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 		proxyFunc := innerTransport.Proxy
 		proxyURL, err := proxyFunc(req)
 		require.NoError(t, err)
-		require.Equal(t, mockProxyURL, proxyURL.String())
+		require.Equal(t, "http://localhost:8888", proxyURL.String())
 	})
 }
