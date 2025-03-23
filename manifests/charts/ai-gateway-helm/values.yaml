@@ -46,6 +46,9 @@ controller:
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_STS_PROXY_URL
   #    value: some-proxy-placeholder
+  # Azure authentication request will be configured to use AI_GATEWAY_AZURE_PROXY_URL proxy if set.
+  #  - key: AI_GATEWAY_AZURE_PROXY_URL
+  #    value: some-proxy-placeholder
   podEnv: {}
   # Example of volumes
   #  - mountPath: /placeholder/path
