@@ -10,6 +10,7 @@ metadata:
   labels:
     {{- include "ai-gateway-helm.labels" . | nindent 4 }}
 spec:
+  replicas: {{ .Values.controller.replicaCount }}
   selector:
     matchLabels:
       {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 6 }}
@@ -42,6 +43,9 @@ spec:
             - -logLevel={{ .Values.controller.logLevel }}
             - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            {{- if .Values.controller.leaderElection.enabled }}
+            - --enableLeaderElection=true
+            {{- end }}
           livenessProbe:
             grpc:
               port: 1063

@@ -9,4 +9,3 @@
 ./go.mod
 ./go.sum
 ./tests/e2e/logs
-*for_tests.yaml

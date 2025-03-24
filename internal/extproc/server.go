@@ -78,7 +78,9 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		for _, h := range r.Headers {
 			// If explicitly set to something that is not an exact match, skip.
 			// If not set, we assume it's an exact match.
-			if h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact {
+			//
+			// Also, we only care about the AIModel header to declare models.
+			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
 				continue
 			}
 			declaredModels = append(declaredModels, h.Value)

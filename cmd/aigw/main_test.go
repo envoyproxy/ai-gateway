@@ -10,6 +10,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -115,15 +116,36 @@ Flags:
 Run the AI Gateway locally for given configuration.
 
 Arguments:
-  [<path>]    Path to the AI Gateway configuration yaml file. Optional. When
-              this is not given, aigw runs the default configuration.
+  [<path>]    Path to the AI Gateway configuration yaml file. Optional.
+              When this is not given, aigw runs the default configuration.
+              Use --show-default to check the default configuration's behavior
 
 Flags:
-  -h, --help     Show context-sensitive help.
+  -h, --help            Show context-sensitive help.
 
-      --debug    Enable debug logging emitted to stderr.
+      --debug           Enable debug logging emitted to stderr.
+      --show-default    Show the default configuration, and exit.
 `,
 			expPanicCode: ptr.To(0),
+		},
+		{
+			name: "run show default",
+			args: []string{"run", "--show-default"},
+			rf: func(_ context.Context, c cmdRun, _, _ io.Writer) error {
+				require.True(t, c.ShowDefault)
+				return nil
+			},
+		},
+		{
+			name: "run with path",
+			args: []string{"run", "./path"},
+			rf: func(_ context.Context, c cmdRun, _, _ io.Writer) error {
+				abs, err := filepath.Abs("./path")
+				require.NoError(t, err)
+				require.Equal(t, abs, c.Path)
+				require.False(t, c.ShowDefault)
+				return nil
+			},
 		},
 	}
 	for _, tt := range tests {

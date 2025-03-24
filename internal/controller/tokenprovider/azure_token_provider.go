@@ -7,7 +7,11 @@ package tokenprovider
 
 import (
 	"context"
+	"net/http"
+	"net/url"
+	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
@@ -20,7 +24,8 @@ type azureTokenProvider struct {
 
 // NewAzureTokenProvider creates a new TokenProvider with the given tenant ID, client ID, client secret, and token request options.
 func NewAzureTokenProvider(tenantID, clientID, clientSecret string, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
-	credential, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, nil)
+	clientOptions := GetClientSecretCredentialOptions()
+	credential, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -34,4 +39,20 @@ func (a *azureTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) 
 		return TokenExpiry{}, err
 	}
 	return TokenExpiry{Token: azureToken.Token, ExpiresAt: azureToken.ExpiresOn}, nil
+}
+
+func GetClientSecretCredentialOptions() *azidentity.ClientSecretCredentialOptions {
+	if azureProxyURL := os.Getenv("AI_GATEWAY_AZURE_PROXY_URL"); azureProxyURL != "" {
+		proxyURL, err := url.Parse(azureProxyURL)
+		if err == nil {
+			customTransport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			customHTTPClient := &http.Client{Transport: customTransport}
+			return &azidentity.ClientSecretCredentialOptions{
+				ClientOptions: azcore.ClientOptions{
+					Transport: customHTTPClient,
+				},
+			}
+		}
+	}
+	return nil
 }

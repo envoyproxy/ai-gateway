@@ -1,0 +1,271 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+#
+#
+# This is the default configuration run by `aigw run` command. You can customize this file to
+# suit your needs. `aigw run <path/to/your/config.yaml>` will run the configuration at the specified path.
+#
+# This routes requests to three backends:
+#
+# * OpenAI: The API key is expected to be provided via the OPENAI_API_KEY environment variable.
+# * AWS Bedrock (ue-east-1): The AWS credentials are expected to be provided via the conventional ~/.aws/credentials file.
+# * ollama: The ollama service is expected to be running on localhost:11434 which is the default as per # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network.
+#
+# TODO: add more backends.
+#
+# The special header `aigw-backend-selector` can be used to select the backend regardless of the model.
+# For example, -H `aigw-backend-selector: openai` will route to the OpenAI backend, etc.
+# Alternatively, AI Gateway will extract "model" from the request body and can be used to route to the backend when the special header is not present.
+# The default configuration routes to the OpenAI backend if the model is `gpt-4o-mini` and to the AWS Bedrock backend if the model is `us.meta.llama3-2-1b-instruct-v1:0`.
+#
+# To modify the routing rules, you can add more rules to the `rules` field in the `AIGatewayRoute` resource.
+#
+# The endpoint is http://localhost:1975:
+#
+#   curl -H "aigw-backend-selector: ollama" -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions -d '{"model": "aaaaa","messages": [{"role": "user", "content": "Say this is a test! ... well, just say i am good"}],"temperature": 0.7}'
+#
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aigw-run
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aigw-run
+spec:
+  gatewayClassName: aigw-run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 1975
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway
+spec:
+  logging:
+    level:
+      default: error
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: aigw-run
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Special rule to unconditionally route to the OpenAI backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: openai
+      backendRefs:
+        - name: openai
+    # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: aws
+      backendRefs:
+        - name: aws
+    # Special rule to unconditionally route to the ollama backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: ollama
+      backendRefs:
+        - name: ollama
+    # A Model-specific rule, routing to the OpenAI backend if the model is gpt-4o-mini.
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: openai
+    # A Model-specific rule, routing to the AWS Bedrock backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: us.meta.llama3-2-1b-instruct-v1:0
+      backendRefs:
+        - name: aws
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: openai
+spec:
+  timeouts:
+    request: 3m
+  schema:
+    name: OpenAI
+  backendRef:
+    name: openai
+    kind: Backend
+    group: gateway.envoyproxy.io
+  backendSecurityPolicyRef:
+    name: openai-apikey
+    kind: BackendSecurityPolicy
+    group: aigateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: aws
+spec:
+  timeouts:
+    request: 3m
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: aws
+    kind: Backend
+    group: gateway.envoyproxy.io
+  backendSecurityPolicyRef:
+    name: aws-credentials
+    kind: BackendSecurityPolicy
+    group: aigateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: ollama
+spec:
+  timeouts:
+    request: 3m
+  schema:
+    name: OpenAI
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: openai-apikey
+spec:
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: openai-apikey
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: aws-credentials
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    credentialsFile:
+      secretRef:
+        name: aws-credentials
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openai
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: ollama
+spec:
+  endpoints:
+    - ip:
+        address: 0.0.0.0
+        # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network
+        port: 11434
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: openai-tls
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: openai
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.openai.com
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: aws-tls
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: aws
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openai-apikey
+  annotations:
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable OPENAI_API_KEY.
+    substitution.aigw.run/env/apiKey: OPENAI_API_KEY
+type: Opaque
+stringData:
+  # This will be replaced with the environment variable OPENAI_API_KEY.
+  apiKey: NOT_A_REAL_OPENAI_API_KEY
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+  annotations:
+    # This will tell the CLI to symlink the file used via the credentials field
+    # to the file at ~/.aws/credentials.
+    substitution.aigw.run/file/credentials: ~/.aws/credentials
+type: Opaque
+stringData:
+  # This will be symlinked to ~/.aws/credentials.
+  credentials: |
+    [default]
+    aws_access_key_id = NOT_A_REAL_AWS_CREDENTIALS
+    aws_secret_access_key = NOT_A_REAL_AWS_CREDENTIALS
