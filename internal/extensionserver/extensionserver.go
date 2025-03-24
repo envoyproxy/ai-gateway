@@ -91,9 +91,13 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 			return nil, nil
 		}
 	}
+
 	req.VirtualHost.Routes = append(req.VirtualHost.Routes, &routev3.Route{
 		Name: originalDstClusterName,
 		Match: &routev3.RouteMatch{
+			PathSpecifier: &routev3.RouteMatch_Prefix{
+				Prefix: "/",
+			},
 			Headers: []*routev3.HeaderMatcher{
 				{
 					Name: "x-ai-eg-use-original-dst",
@@ -105,6 +109,10 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 				},
 			},
 		},
+		Action: &routev3.Route_Route{
+			Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: originalDstClusterName}},
+		},
+		TypedPerFilterConfig: req.VirtualHost.Routes[0].TypedPerFilterConfig,
 	})
 	s.log.Info("Added original_dst route to the virtual host", "virtual_host", req.VirtualHost.Name)
 	return &pb.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
