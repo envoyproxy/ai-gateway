@@ -368,7 +368,7 @@ metadata:
 spec:
   endpoints:
   - ip:
-      address: 0.0.0.0
+      address: 127.0.0.1
       port: %d`, port))
 	require.Contains(t, out, `apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy

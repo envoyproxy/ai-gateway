@@ -49,6 +49,9 @@ const (
 )
 
 type runCmdContext struct {
+	// isDebug true if the original `agw run` command is run with debug mode. Using this to
+	// set the log level of the external process currently. TODO: maybe simply expose the external process log level
+	// at the command line, but that's an implementation detail, so I would rather not right now.
 	isDebug bool
 	// envoyGatewayResourcesOut is the output file for the envoy gateway resources.
 	envoyGatewayResourcesOut io.Writer
@@ -193,8 +196,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 
 	// We don't need special logic for HTTPRouteFilter, so write them now.
 	for _, hrf := range httpRouteFilter.Items {
-		hrf.SetOwnerReferences(nil) // We don't need owner references.
-		mustWriteObj(&hrf.TypeMeta, &hrf, runCtx.envoyGatewayResourcesOut)
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
 	}
 	// Also HTTPRoutes.
 	for _, hr := range httpRoutes.Items {
@@ -237,7 +239,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	return nil
 }
 
-// mustWriteExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
+// writeExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
 // modified policy to the output file, and returns the working directory, the port the external process is supposed to
 // listen on, and the filter configuration.
 func (runCtx *runCmdContext) writeExtensionPolicy(
@@ -266,7 +268,8 @@ func (runCtx *runCmdContext) writeExtensionPolicy(
 		},
 		Spec: egv1a1.BackendSpec{
 			Endpoints: []egv1a1.BackendEndpoint{
-				{IP: &egv1a1.IPEndpoint{Address: "0.0.0.0", Port: port}}, // nolint:gosec
+				// We run the external process on the host network, so use the localhost.
+				{IP: &egv1a1.IPEndpoint{Address: "127.0.0.1", Port: port}}, // nolint:gosec
 			},
 		},
 	}
@@ -447,34 +450,35 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 	}
 	for k, v := range allData {
 		p := filepath.Join(dir, k)
-		envSubKey := substitutionEnvAnnotationPrefix + k
-		fileSubKey := substitutionFileAnnotationPrefix + k
-		if envSubValue, ok := s.Annotations[envSubKey]; ok {
+		envSubKeyAnnotation := substitutionEnvAnnotationPrefix + k
+		fileSubKeyAnnotation := substitutionFileAnnotationPrefix + k
+		if envSubKey, ok := s.Annotations[envSubKeyAnnotation]; ok {
 			// If this is an environment variable, substitute it.
-			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubValue)
-			envVal := os.Getenv(envSubValue)
+			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubKey)
+			envVal := os.Getenv(envSubKey)
 			if envVal == "" {
 				runCtx.stderrLogger.Warn("Missing environment variable, skipping substitution",
-					"key", k, "value", envSubValue)
+					"annotation_key", envSubKey, "env_key", k, "env_substitution_key", envSubKey)
 			} else {
 				v = []byte(envVal)
 			}
-		} else if fileSubValue, ok := s.Annotations[fileSubKey]; ok {
-			fileSubValue = maybeResolveHome(fileSubValue)
+		} else if fileSubKey, ok := s.Annotations[fileSubKeyAnnotation]; ok {
+			fileSubPath := maybeResolveHome(fileSubKey)
 			// Check the target file exists.
-			if _, err = os.Stat(fileSubValue); err == nil {
+			if _, err = os.Stat(fileSubKey); err == nil {
 				// Create a symlink to the file inside the dir pointing to the file in the annotation.
-				runCtx.stderrLogger.Info("Creating symlink", "path", p, "key", k, "value", fileSubValue)
-				err = os.Symlink(fileSubValue, p)
+				runCtx.stderrLogger.Info("Creating symlink",
+					"annotation_key", fileSubKeyAnnotation, "file_substitution_path", k, "file_substitution_target_path", fileSubKey)
+				err = os.Symlink(fileSubPath, p)
 				// If it's exist, then the credentials are already referenced by other resources, so we can ignore the error.
 				if err != nil && !os.IsExist(err) {
 					// This might be a user error, so return the error.
-					return fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubValue, err)
+					return fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubPath, err)
 				}
 				continue
 			}
 			runCtx.stderrLogger.Warn("Target file does not exist. Skipping substitution",
-				"path", p, "key", k, "value", fileSubValue)
+				"annotation_key", fileSubKeyAnnotation, "file_substitution_path", k, "file_substitution_target_path", fileSubKey)
 		}
 		runCtx.stderrLogger.Info("Writing secret", "path", p)
 		err = os.WriteFile(p, v, 0o600)
