@@ -87,12 +87,13 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	// https://github.com/envoyproxy/gateway/blob/779c0a6bbdf7dacbf25a730140a112f99c239f0e/internal/infrastructure/host/infra.go#L22-L23
 	//
 	// TODO: maybe make it skip if the certs are already there, but not sure if it's worth the complexity.
+	certGenOut := &bytes.Buffer{}
 	certGen := root.GetRootCommand()
-	certGen.SetOut(io.Discard)
-	certGen.SetErr(io.Discard)
+	certGen.SetOut(certGenOut)
+	certGen.SetErr(certGenOut)
 	certGen.SetArgs([]string{"certgen", "--local"})
 	if err := certGen.ExecuteContext(ctx); err != nil {
-		return fmt.Errorf("failed to execute certgen: %w", err)
+		return fmt.Errorf("failed to execute certgen: %w: %s", err, certGenOut.String())
 	}
 
 	tmpdir := os.TempDir()
