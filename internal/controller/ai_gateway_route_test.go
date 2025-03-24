@@ -1253,5 +1253,43 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 }
 
 func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
-	t.Skip("TODO")
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	s := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), logr.Discard(), uuid2.NewUUID, "foo", "debug")
+
+	t.Run("models", func(t *testing.T) {
+		inferencePool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{Name: "models-only-pool", Namespace: "default"},
+			Spec: gwaiev1a2.InferencePoolSpec{
+				Selector:         map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{"inference-pool-target": "yeah"},
+				TargetPortNumber: 1234,
+			},
+		}
+
+		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
+			ObjectMeta: metav1.ObjectMeta{Name: "model1", Namespace: "default"},
+			Spec: gwaiev1a2.InferenceModelSpec{
+				PoolRef: gwaiev1a2.PoolObjectReference{Name: "models-only-pool"},
+			},
+		}, &client.CreateOptions{}))
+
+		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
+			ObjectMeta: metav1.ObjectMeta{Name: "model2", Namespace: "default"},
+			Spec: gwaiev1a2.InferenceModelSpec{
+				PoolRef: gwaiev1a2.PoolObjectReference{Name: "models-only-pool"},
+				TargetModels: []gwaiev1a2.TargetModel{
+					{Name: "model3"},
+					{Name: "model4", Weight: ptr.To(int32(1))},
+				},
+			},
+		}, &client.CreateOptions{}))
+
+		dyn, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, nil)
+		require.NoError(t, err)
+		require.Equal(t, []filterapi.DynamicLoadBalancingModel{
+			{Name: "model1"},
+			{Name: "model2"},
+			{Name: "model3"},
+			{Name: "model4", Weight: ptr.To(1)},
+		}, dyn.Models)
+	})
 }
