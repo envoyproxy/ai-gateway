@@ -824,7 +824,7 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 		if sp.BackendRef.Namespace != nil {
 			clientObjectKey.Namespace = string(*sp.BackendRef.Namespace)
 		}
-		// TODO: check sp.BackendRef.Group?
+		// TODO: better check sp.BackendRef.Group as well?
 		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
 		case "Service": // TODO: we should reconcile Service objects to update the section created below when the Service changes.
 			var svc *corev1.Service
@@ -849,7 +849,7 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 		case "Backend": // TODO: we should reconcile Backend objects to update the section created below when the Backend changes.
 			var backend egv1a1.Backend
 			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {
-				return nil, fmt.Errorf("failed to get Backend %s: %w", sp.BackendRef.Name, err)
+				return nil, fmt.Errorf("failed to get Backend '%s': %w", clientObjectKey.String(), err)
 			}
 			for _, ep := range backend.Spec.Endpoints {
 				switch {

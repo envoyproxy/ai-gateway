@@ -1257,12 +1257,12 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 	fakeKube := fake2.NewClientset()
 	s := NewAIGatewayRouteController(fakeClient, fakeKube, logr.Discard(), uuid2.NewUUID, "foo", "debug")
 
+	inferencePool := &gwaiev1a2.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "mypool", Namespace: "default"},
+		Spec:       gwaiev1a2.InferencePoolSpec{TargetPortNumber: 1234},
+	}
 	t.Run("k8s svc", func(t *testing.T) {
-		inferencePool := &gwaiev1a2.InferencePool{
-			ObjectMeta: metav1.ObjectMeta{Name: "models-only-pool", Namespace: "default"},
-			Spec:       gwaiev1a2.InferencePoolSpec{TargetPortNumber: 1234},
-		}
-		t.Run("svc not found", func(t *testing.T) {
+		t.Run("not found", func(t *testing.T) {
 			_, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
@@ -1272,7 +1272,7 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 			}})
 			require.ErrorContains(t, err, "failed to get Service 'some-random-ns/bar': services \"bar\" not found")
 		})
-		t.Run("svc port not match", func(t *testing.T) {
+		t.Run("port not match", func(t *testing.T) {
 			_, err := fakeKube.CoreV1().Services("default").Create(t.Context(), &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{Name: "different-port", Namespace: "default"},
 				Spec: corev1.ServiceSpec{
@@ -1320,23 +1320,71 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 		})
 	})
 
+	t.Run("eg backend", func(t *testing.T) {
+		t.Run("not found", func(t *testing.T) {
+			_, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
+					Name:      "bar",
+					Namespace: ptr.To[gwapiv1.Namespace]("some-random-ns"),
+					Kind:      ptr.To[gwapiv1.Kind]("Backend"),
+				}},
+			}})
+			require.ErrorContains(t, err, "failed to get Backend 'some-random-ns/bar': backends.gateway.envoyproxy.io \"bar\" not found")
+		})
+		t.Run("IP.Port not match", func(t *testing.T) {
+			require.NoError(t, fakeClient.Create(t.Context(), &egv1a1.Backend{
+				ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default"},
+				Spec: egv1a1.BackendSpec{
+					Endpoints: []egv1a1.BackendEndpoint{
+						{IP: &egv1a1.IPEndpoint{Port: 11111}},
+					},
+				},
+			}, &client.CreateOptions{}))
+			_, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
+					Name: "bar",
+					Kind: ptr.To[gwapiv1.Kind]("Backend"),
+				}},
+			}})
+			require.ErrorContains(t, err, "port mismatch: InferecePool mypool has port 1234, but Backend bar has port 11111")
+		})
+		t.Run("FQDN.Port not match", func(t *testing.T) {
+			require.NoError(t, fakeClient.Create(t.Context(), &egv1a1.Backend{
+				ObjectMeta: metav1.ObjectMeta{Name: "fqdnport", Namespace: "default"},
+				Spec: egv1a1.BackendSpec{
+					Endpoints: []egv1a1.BackendEndpoint{{FQDN: &egv1a1.FQDNEndpoint{Port: 11111}}},
+				},
+			}, &client.CreateOptions{}))
+			_, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
+					Name: "fqdnport",
+					Kind: ptr.To[gwapiv1.Kind]("Backend"),
+				}},
+			}})
+			require.ErrorContains(t, err, "port mismatch: InferecePool mypool has port 1234, but Backend fqdnport has port 11111")
+		})
+	})
+
 	t.Run("models", func(t *testing.T) {
 		inferencePool := &gwaiev1a2.InferencePool{
-			ObjectMeta: metav1.ObjectMeta{Name: "models-only-pool", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "mypool", Namespace: "default"},
 			Spec:       gwaiev1a2.InferencePoolSpec{TargetPortNumber: 1234},
 		}
 
 		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
 			ObjectMeta: metav1.ObjectMeta{Name: "model1", Namespace: "default"},
 			Spec: gwaiev1a2.InferenceModelSpec{
-				PoolRef: gwaiev1a2.PoolObjectReference{Name: "models-only-pool"},
+				PoolRef: gwaiev1a2.PoolObjectReference{Name: "mypool"},
 			},
 		}, &client.CreateOptions{}))
 
 		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
 			ObjectMeta: metav1.ObjectMeta{Name: "model2", Namespace: "default"},
 			Spec: gwaiev1a2.InferenceModelSpec{
-				PoolRef: gwaiev1a2.PoolObjectReference{Name: "models-only-pool"},
+				PoolRef: gwaiev1a2.PoolObjectReference{Name: "mypool"},
 				TargetModels: []gwaiev1a2.TargetModel{
 					{Name: "model3"},
 					{Name: "model4", Weight: ptr.To(int32(1))},
