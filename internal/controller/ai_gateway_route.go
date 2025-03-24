@@ -826,11 +826,11 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 		}
 		// TODO: check sp.BackendRef.Group?
 		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
-		case "Service":
+		case "Service": // TODO: we should reconcile Service objects to update the section created below when the Service changes.
 			var svc *corev1.Service
 			svc, err = c.kube.CoreV1().Services(clientObjectKey.Namespace).Get(ctx, clientObjectKey.Name, metav1.GetOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to get Service %s: %w", sp.BackendRef.Name, err)
+				return nil, fmt.Errorf("failed to get Service '%s': %w", clientObjectKey.String(), err)
 			}
 			hasTargetPort := false
 			for _, p := range svc.Spec.Ports {
@@ -846,7 +846,7 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 			//
 			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor.
 			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace))
-		case "Backend":
+		case "Backend": // TODO: we should reconcile Backend objects to update the section created below when the Backend changes.
 			var backend egv1a1.Backend
 			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {
 				return nil, fmt.Errorf("failed to get Backend %s: %w", sp.BackendRef.Name, err)

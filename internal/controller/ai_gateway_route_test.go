@@ -1254,15 +1254,76 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 
 func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	s := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), logr.Discard(), uuid2.NewUUID, "foo", "debug")
+	fakeKube := fake2.NewClientset()
+	s := NewAIGatewayRouteController(fakeClient, fakeKube, logr.Discard(), uuid2.NewUUID, "foo", "debug")
+
+	t.Run("k8s svc", func(t *testing.T) {
+		inferencePool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{Name: "models-only-pool", Namespace: "default"},
+			Spec:       gwaiev1a2.InferencePoolSpec{TargetPortNumber: 1234},
+		}
+		t.Run("svc not found", func(t *testing.T) {
+			_, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
+					Name:      "bar",
+					Namespace: ptr.To[gwapiv1.Namespace]("some-random-ns"),
+				}},
+			}})
+			require.ErrorContains(t, err, "failed to get Service 'some-random-ns/bar': services \"bar\" not found")
+		})
+		t.Run("svc port not match", func(t *testing.T) {
+			_, err := fakeKube.CoreV1().Services("default").Create(t.Context(), &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{Name: "different-port", Namespace: "default"},
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{{Port: 12345}},
+				},
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
+			_, err = s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec:       aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{Name: "different-port"}},
+			}})
+			require.ErrorContains(t, err, "port 1234 not found in Service different-port")
+		})
+		t.Run("ok", func(t *testing.T) {
+			_, err := fakeKube.CoreV1().Services("default").Create(t.Context(), &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{Name: "okbackend", Namespace: "default"},
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{{Port: 1234}},
+				},
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy", Namespace: "default"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+					APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy", Namespace: ptr.To[gwapiv1.Namespace]("default")},
+					},
+				},
+			}))
+			dyn, err := s.createDynamicLoadBalancing(t.Context(), 555, 999, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "okbackend", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{
+					BackendRef:               gwapiv1.BackendObjectReference{Name: "okbackend"},
+					BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy"},
+				},
+			}})
+			require.NoError(t, err)
+			require.Len(t, dyn.Backends, 1)
+			require.Equal(t, "okbackend", dyn.Backends[0].Name)
+			require.Equal(t, []string{"okbackend.default.svc"}, dyn.Backends[0].Hostnames)
+			require.Equal(t, &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{
+				Filename: "/etc/backend_security_policy/rule555-backref999-inpool0-some-backend-security-policy/apiKey",
+			}}, dyn.Backends[0].Auth)
+		})
+	})
 
 	t.Run("models", func(t *testing.T) {
 		inferencePool := &gwaiev1a2.InferencePool{
 			ObjectMeta: metav1.ObjectMeta{Name: "models-only-pool", Namespace: "default"},
-			Spec: gwaiev1a2.InferencePoolSpec{
-				Selector:         map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{"inference-pool-target": "yeah"},
-				TargetPortNumber: 1234,
-			},
+			Spec:       gwaiev1a2.InferencePoolSpec{TargetPortNumber: 1234},
 		}
 
 		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
