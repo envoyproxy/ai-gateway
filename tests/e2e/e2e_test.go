@@ -81,6 +81,11 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	if err := installInferenceExtensionCRD(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
 	if err := initAIGateway(ctx); err != nil {
 		cancel()
 		panic(err)
@@ -157,6 +162,11 @@ func cleanupKindCluster(testsFailed bool) {
 	}
 }
 
+func installInferenceExtensionCRD(ctx context.Context) (err error) {
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
+	return kubectlApplyManifest(ctx, infExtURL)
+}
+
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
 func initEnvoyGateway(ctx context.Context) (err error) {
@@ -201,6 +211,7 @@ func initAIGateway(ctx context.Context) (err error) {
 	}()
 	initLog("\tHelm Install")
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
+		"--set", "controller.enableInferenceExtension=true",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout

@@ -43,6 +43,7 @@ spec:
             - -logLevel={{ .Values.controller.logLevel }}
             - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            - --enableInferenceExtension={{ .Values.controller.enableInferenceExtension }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
             {{- end }}
