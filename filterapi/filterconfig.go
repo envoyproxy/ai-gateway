@@ -156,7 +156,7 @@ type RouteRule struct {
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
-	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
+	// matching the header key specified in the [filterapi.Config.BackendRoutingHeaderKey].
 	Name string `json:"name"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
@@ -165,10 +165,13 @@ type Backend struct {
 	// When DynamicLoadBalancing is specified, the weight is ignored.
 	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
-	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 	Auth *BackendAuth `json:"auth,omitempty"`
 	// DynamicLoadBalancing is the dynamic backend configuration which forces the AI filter to
-	// route the request to the specified endpoints (ip:port) instead of the cluster.
+	// route the request to a specific endpoint (ip:port) instead of the normal cluster routing.
+	//
+	// When this is specified, the AI Gateway filter assume that the ORIGINAL_DST cluster is configured
+	// to route the request to an endpoint from `x-ai-eg-original-dst` header. Also, to route the requests
+	// to the ORIGINAL_DST cluster, the AI Gateway filter sets the `x-ai-eg-use-original-dst` header to "true".
 	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicBackend,omitempty"`
 }
 

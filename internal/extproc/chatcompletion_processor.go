@@ -24,7 +24,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/infext"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -126,9 +125,10 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
-	var endpointIPPortPair string
+	var headers []*corev3.HeaderValueOption
 	if dyn := b.DynamicLoadBalancing; dyn != nil {
-		b, endpointIPPortPair, err = infext.SelectEndpoint(dyn)
+		lb := c.config.dynamicLoadBalancers[dyn] // If it's not found, that should be a BUG.
+		b, headers, err = lb.SelectChatCompletionEndpoint(model, c.metrics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select endpoint: %w", err)
 		}
@@ -150,17 +150,17 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
 	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
-	if endpointIPPortPair != "" {
-		// TODO: set the endpoint IP and port in the header or whatever is needed.
-		_ = endpointIPPortPair
+	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
+	})
+	if b.DynamicLoadBalancing != nil {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
 	} else {
+		// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-		}, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
 		})
 	}
-
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)

@@ -28,14 +28,16 @@ type mockReceiver struct {
 	cfg       *filterapi.Config
 	mux       sync.Mutex
 	loadCount atomic.Int32
+	dnsServer string
 }
 
 // LoadConfig implements ConfigReceiver.
-func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) error {
+func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config, dnsServer string) error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg
 	m.loadCount.Add(1)
+	m.dnsServer = dnsServer
 	return nil
 }
 
@@ -82,7 +84,7 @@ func TestStartConfigWatcher(t *testing.T) {
 
 	const tickInterval = time.Millisecond * 100
 	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
+	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval, "1.1.1.1")
 	require.NoError(t, err)
 
 	defaultCfg, _ := filterapi.MustLoadDefaultConfig()

@@ -78,7 +78,7 @@ func TestServer_LoadConfig(t *testing.T) {
 			},
 		}
 		s, _ := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(t.Context(), config)
+		err := s.LoadConfig(t.Context(), config, "1.1.1.1")
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)

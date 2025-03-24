@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/envoyproxy/ai-gateway/internal/infext"
 )
 
 // Server is the implementation of the EnvoyGatewayExtensionServer interface.
@@ -42,10 +44,6 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 const (
-	// OriginalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
-	OriginalDstHeaderName = "x-ai-eg-original-dst"
-	// OriginalDstEnablingHeaderName is the header name that will be used to enable the original destination cluster when set to "true".
-	OriginalDstEnablingHeaderName = "x-ai-eg-use-original-dst"
 	// originalDstClusterName is the global name of the original destination cluster.
 	originalDstClusterName = "original_destination_cluster"
 )
@@ -78,7 +76,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
 		LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
 			OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
-				UseHttpHeader: true, HttpHeaderName: OriginalDstHeaderName,
+				UseHttpHeader: true, HttpHeaderName: infext.OriginalDstHeaderName,
 			},
 		},
 		ConnectTimeout:  &durationpb.Duration{Seconds: 60},
@@ -129,7 +127,7 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostV
 			},
 			Headers: []*routev3.HeaderMatcher{
 				{
-					Name: OriginalDstEnablingHeaderName,
+					Name: infext.OriginalDstEnablingHeaderName,
 					HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
 						StringMatch: &matcherv3.StringMatcher{
 							MatchPattern: &matcherv3.StringMatcher_Exact{Exact: "true"},

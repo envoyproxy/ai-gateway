@@ -15,10 +15,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
@@ -124,7 +126,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
-	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
+	dnsServer, err := dnsServerEndpoint()
+	if err != nil {
+		return fmt.Errorf("failed to get DNS server: %w", err)
+	}
+
+	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5, dnsServer); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
@@ -195,4 +202,20 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 	}()
 
 	return server, meter
+}
+
+// dnsServerEndpoint returns the DNS server endpoint. Defaults to the system DNS server
+// if the DNS_SERVER environment variable is not set.
+func dnsServerEndpoint() (string, error) {
+	if v := os.Getenv("DNS_SERVER"); v != "" {
+		return v, nil
+	}
+	config, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	if err != nil {
+		return "", fmt.Errorf("failed to read /etc/resolv.conf: %w", err)
+	}
+	if len(config.Servers) == 0 {
+		return "", errors.New("no DNS servers found at /etc/resolv.conf")
+	}
+	return config.Servers[0] + ":" + config.Port, nil
 }

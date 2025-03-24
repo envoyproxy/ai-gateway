@@ -20,7 +20,7 @@ import (
 // This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(ctx context.Context, config *filterapi.Config) error
+	LoadConfig(ctx context.Context, config *filterapi.Config, dnsServer string) error
 }
 
 type configWatcher struct {
@@ -30,12 +30,16 @@ type configWatcher struct {
 	l               *slog.Logger
 	current         string
 	usingDefaultCfg bool
+	// hasDynamicLB is true if the current configuration has at least one backend with dynamic load balancing.
+	// We need to force a reload of the configuration regardless of the file modification time.
+	hasDynamicLB bool
+	dnsServer    string
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
 // Periodically checks the file for changes and calls the Receiver's UpdateConfig method.
-func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration) error {
-	cw := &configWatcher{rcv: rcv, l: l, path: path}
+func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration, dnsServer string) error {
+	cw := &configWatcher{rcv: rcv, l: l, path: path, dnsServer: dnsServer}
 
 	if err := cw.loadConfig(ctx); err != nil {
 		return fmt.Errorf("failed to load initial config: %w", err)
@@ -90,7 +94,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.usingDefaultCfg = true
 	} else {
 		cw.usingDefaultCfg = false
-		if stat.ModTime().Sub(cw.lastMod) <= 0 {
+		if stat.ModTime().Sub(cw.lastMod) <= 0 && !cw.hasDynamicLB {
 			return nil
 		}
 		cw.l.Info("loading a new config", slog.String("path", cw.path))
@@ -109,7 +113,20 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.diff(previous, cw.current)
 	}
 
-	return cw.rcv.LoadConfig(ctx, cfg)
+	if err = cw.rcv.LoadConfig(ctx, cfg, cw.dnsServer); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	cw.hasDynamicLB = false
+	for _, rule := range cfg.Rules {
+		for _, backend := range rule.Backends {
+			if backend.DynamicLoadBalancing != nil {
+				cw.hasDynamicLB = true
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (cw *configWatcher) diff(oldConfig, newConfig string) {
