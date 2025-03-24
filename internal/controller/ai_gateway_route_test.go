@@ -1366,6 +1366,29 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 			}})
 			require.ErrorContains(t, err, "port mismatch: InferecePool mypool has port 1234, but Backend fqdnport has port 11111")
 		})
+		t.Run("ok", func(t *testing.T) {
+			require.NoError(t, fakeClient.Create(t.Context(), &egv1a1.Backend{
+				ObjectMeta: metav1.ObjectMeta{Name: "okbackend", Namespace: "default"},
+				Spec: egv1a1.BackendSpec{
+					Endpoints: []egv1a1.BackendEndpoint{
+						{FQDN: &egv1a1.FQDNEndpoint{Port: 1234, Hostname: "cat.com"}},
+						{IP: &egv1a1.IPEndpoint{Port: 1234, Address: "1.1.1.1"}},
+					},
+				},
+			}, &client.CreateOptions{}))
+			dyn, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, []aigv1a1.AIServiceBackend{{
+				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+				Spec: aigv1a1.AIServiceBackendSpec{BackendRef: gwapiv1.BackendObjectReference{
+					Name: "okbackend",
+					Kind: ptr.To[gwapiv1.Kind]("Backend"),
+				}},
+			}})
+			require.NoError(t, err)
+			require.Len(t, dyn.Backends, 1)
+			require.Equal(t, "foo", dyn.Backends[0].Name)
+			require.Equal(t, []string{"cat.com"}, dyn.Backends[0].Hostnames)
+			require.Equal(t, []string{"1.1.1.1"}, dyn.Backends[0].IPs)
+		})
 	})
 
 	t.Run("models", func(t *testing.T) {
