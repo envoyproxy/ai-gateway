@@ -513,7 +513,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
-	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
+	require.NoError(t, controller.ApplyIndexing(t.Context(), true, mgr.GetFieldIndexer().IndexField))
 
 	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), syncAIServiceBackend.Sync)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
@@ -645,7 +645,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
-	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
+	require.NoError(t, controller.ApplyIndexing(t.Context(), true, mgr.GetFieldIndexer().IndexField))
 
 	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), syncAIGatewayRoute.Sync)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
@@ -778,7 +778,7 @@ func TestSecretController(t *testing.T) {
 
 	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
 	require.NoError(t, err)
-	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
+	require.NoError(t, controller.ApplyIndexing(t.Context(), true, mgr.GetFieldIndexer().IndexField))
 
 	go func() { require.NoError(t, mgr.Start(t.Context())) }()
 
