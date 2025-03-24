@@ -19,16 +19,23 @@ import (
 )
 
 // DynamicLoadBalancer is the interface for the dynamic load balancer.
+//
+// This must be concurrency-safe as it will be shared across multiple requests/goroutines.
 type DynamicLoadBalancer interface {
 	// SelectChatCompletionEndpoint selects an endpoint from the given load balancer to serve the chat completion request.
 	//
-	// This returns the selected backend and the headers to be added to the request.
+	// The selection result is reflected in the headers to be added to the request, returned as a slice of HeaderValueOption.
+	//
+	// This also returns the selected backend filterapi.Backend to perform per-Backend level operations such rate limiting.
 	SelectChatCompletionEndpoint(model string, _ x.ChatCompletionMetrics) (
 		selected *filterapi.Backend, headers []*corev3.HeaderValueOption, err error,
 	)
 }
 
 // NewDynamicLoadBalancer returns a new implementation of the DynamicLoadBalancer interface.
+//
+// This is called asynchronously by the config watcher, not on the hot path. The returned DynamicLoadBalancer
+// will be reused for multiple requests/goroutines.
 func NewDynamicLoadBalancer(ctx context.Context, dnsServer string, dyn *filterapi.DynamicLoadBalancing) (DynamicLoadBalancer, error) {
 	ret := &dynamicLoadBalancer{
 		models: make(map[string]filterapi.DynamicLoadBalancingModel, len(dyn.Models)),
@@ -58,9 +65,10 @@ func NewDynamicLoadBalancer(ctx context.Context, dnsServer string, dyn *filterap
 			for _, answer := range response.Answer {
 				if aRecord, ok := answer.(*dns.A); ok {
 					ret.endpoints = append(ret.endpoints, endpoint{
-						ip:      aRecord.A.String(),
-						port:    b.Port,
-						backend: &b.Backend,
+						ip:       aRecord.A.String(),
+						port:     b.Port,
+						backend:  &b.Backend,
+						hostname: hostname,
 					})
 				}
 			}
@@ -80,8 +88,11 @@ type dynamicLoadBalancer struct {
 
 // endpoint represents an endpoint, a pair of IP and port, which belongs to a backend.
 type endpoint struct {
-	ip      string
-	port    int32
+	ip   string
+	port int32
+	// hostname is the hostname used to resolve the IP address. Can be empty if the IP is not resolved from a hostname.
+	hostname string
+	// backend is the backend that this ip:port pair belongs to.
 	backend *filterapi.Backend
 }
 
@@ -114,6 +125,15 @@ func (dlb *dynamicLoadBalancer) SelectChatCompletionEndpoint(model string, _ x.C
 				RawValue: []byte(fmt.Sprintf("%s:%d", ep.ip, ep.port)),
 			},
 		},
+	}
+	if ep.hostname != "" {
+		// Set host header if the IP is resolved from a hostname.
+		headers = append(headers, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{
+				Key:      "host",
+				RawValue: []byte(ep.hostname),
+			},
+		})
 	}
 	return
 }
