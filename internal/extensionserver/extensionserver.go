@@ -50,9 +50,14 @@ const (
 //
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
 func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateModifyRequest) (*pb.PostTranslateModifyResponse, error) {
-	clusters := make([]*clusterv3.Cluster, len(req.Clusters), len(req.Clusters)+1)
-	copy(clusters, req.Clusters)
-	clusters = append(clusters, &clusterv3.Cluster{
+	for _, cluster := range req.Clusters {
+		if cluster.Name == originalDstClusterName {
+			// The cluster already exists, no need to add it again.
+			s.log.Info("original_dst cluster already exists in the list of clusters")
+			return nil, nil
+		}
+	}
+	req.Clusters = append(req.Clusters, &clusterv3.Cluster{
 		Name:                 originalDstClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
 		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
@@ -65,9 +70,10 @@ func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateMod
 		DnsLookupFamily: clusterv3.Cluster_V4_ONLY,
 	})
 	response := &pb.PostTranslateModifyResponse{
-		Clusters: clusters,
+		Clusters: req.Clusters,
 		Secrets:  req.Secrets,
 	}
+	s.log.Info("Added original_dst cluster to the list of clusters")
 	return response, nil
 }
 
@@ -80,7 +86,8 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 	}
 	for _, route := range req.VirtualHost.Routes {
 		if route.Name == originalDstClusterName {
-			// The route already exists, no need to add it again
+			// The route already exists, no need to add it again.
+			s.log.Info("original_dst route already exists in the virtual host", "virtual_host", req.VirtualHost.Name)
 			return nil, nil
 		}
 	}
@@ -99,5 +106,6 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 			},
 		},
 	})
+	s.log.Info("Added original_dst route to the virtual host", "virtual_host", req.VirtualHost.Name)
 	return &pb.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
 }

@@ -60,10 +60,14 @@ func TestMain(m *testing.M) {
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
 	// failures.
 
+	run := false
 	defer func() {
 		// If the setup or some tests panic, try to collect the cluster logs
 		if r := recover(); r != nil {
 			cleanupKindCluster(true)
+		}
+		if !run {
+			panic("BUG: no tests were run. This is likely a bug during the setup")
 		}
 	}()
 
@@ -88,6 +92,7 @@ func TestMain(m *testing.M) {
 	}
 
 	code := m.Run()
+	run = true
 	cancel()
 
 	cleanupKindCluster(code != 0)
