@@ -50,7 +50,7 @@ data:
       service:
         # The service that is hosting the extension server
         fqdn:
-          hostname: ai-gateway-controller.ai-gateway-system.svc.cluster.local
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
           port: 1063
     rateLimit:
       backend:
