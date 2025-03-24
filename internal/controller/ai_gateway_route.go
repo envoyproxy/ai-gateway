@@ -7,7 +7,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path"
 	"sort"
@@ -825,9 +824,28 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 		if sp.BackendRef.Namespace != nil {
 			clientObjectKey.Namespace = string(*sp.BackendRef.Namespace)
 		}
+		// TODO: check sp.BackendRef.Group?
 		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
 		case "Service":
-			return nil, errors.New("TODO: support Service backend in DynamicLoadBalancing")
+			var svc *corev1.Service
+			svc, err = c.kube.CoreV1().Services(clientObjectKey.Namespace).Get(ctx, clientObjectKey.Name, metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get Service %s: %w", sp.BackendRef.Name, err)
+			}
+			hasTargetPort := false
+			for _, p := range svc.Spec.Ports {
+				if p.Port == pool.Spec.TargetPortNumber {
+					hasTargetPort = true
+					break
+				}
+			}
+			if !hasTargetPort {
+				return nil, fmt.Errorf("port %d not found in Service %s", pool.Spec.TargetPortNumber, sp.BackendRef.Name)
+			}
+			// TODO: at the moment, we assume that all target services are local, i.e. no externalName, etc.
+			//
+			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor.
+			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace))
 		case "Backend":
 			var backend egv1a1.Backend
 			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {

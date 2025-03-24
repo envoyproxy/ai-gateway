@@ -1251,3 +1251,7 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	require.Equal(t, "ok", updatedRoute.Status.Conditions[0].Message)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
+
+func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
+	t.Skip("TODO")
+}

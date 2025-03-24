@@ -163,7 +163,7 @@ type Backend struct {
 	// Weight is the weight of the backend in the routing decision.
 	//
 	// When DynamicLoadBalancing is specified, the weight is ignored.
-	Weight int `json:"weight"`
+	Weight int `json:"weight,omitempty"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 	Auth *BackendAuth `json:"auth,omitempty"`
@@ -175,21 +175,29 @@ type Backend struct {
 // DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
 type DynamicLoadBalancing struct {
 	// Models that can be served by this backend. If not matched, the 404 is returned to the client.
-	Models []DynamicLoadBalancingModel `json:"models"`
+	//
+	// If multiple models are provided, the request is routed to the backend based on the weights, criticality, etc.
+	Models []DynamicLoadBalancingModel `json:"models,omitempty"`
 	// Backends can be either ip:port or hostname:port.
-	Backends []DynamicLoadBalancingBackend `json:"endpoints"`
+	Backends []DynamicLoadBalancingBackend `json:"endpoints,omitempty"`
 }
 
+// DynamicLoadBalancingModel corresponds to InferenceModel in the Inference Extension.
 type DynamicLoadBalancingModel struct {
 	// Name is the name of the model.
-	Name   string `json:"name"`
-	Weight *int   `json:"weight"`
+	Name string `json:"name"`
+	// Weight is the weight of the model in the routing decision when multiple models are provided.
+	Weight *int `json:"weight,omitempty"`
 	// TODO: Criticality?
 }
 
+// DynamicLoadBalancingBackend corresponds to a single AIServiceBackend that is selected by the
+// InferencePool. It is basically a wrapper of Backend with additional information to do
+// the IP address level dynamic load balancing.
 type DynamicLoadBalancingBackend struct {
 	Backend
-	// Hostnames is the hostname of this backend.
+	// Hostnames is the hostname of this backend. The filter will resolve the hostname to the IP address
+	// asynchronously and use the resolved IP address to route the request.
 	Hostnames []string `json:"hostName,omitempty"`
 	// IP is the IP address of the endpoint.
 	IPs []string `json:"ip,omitempty"`
