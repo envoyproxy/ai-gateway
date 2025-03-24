@@ -87,7 +87,7 @@ spec:
               value: aws
       backendRefs:
         - name: aws
-    # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
+    # Special rule to unconditionally route to the ollama backend regardless of the model.
     - matches:
         - headers:
             - type: Exact
