@@ -7,6 +7,8 @@ package tokenprovider
 
 import (
 	"context"
+	"net/http"
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -39,5 +41,33 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 		_, err = provider.GetToken(context.Background())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "Tenant 'invalidtenantid' not found. Check to make sure you have the correct tenant ID and are signing into the correct cloud.")
+	})
+
+	t.Run("azure proxy url", func(t *testing.T) {
+		// Set environment variable for the test
+		mockProxyURL := "http://localhost:8888"
+		os.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
+		defer os.Unsetenv("AI_GATEWAY_AZURE_PROXY_URL")
+
+		opts := GetClientSecretCredentialOptions()
+
+		require.NotNil(t, opts)
+		require.NotNil(t, opts.ClientOptions.Transport)
+
+		// Assert that the transport has a proxy set
+		transport, ok := opts.ClientOptions.Transport.(*http.Client)
+		require.True(t, ok)
+		require.NotNil(t, transport.Transport)
+
+		// Check the proxy URL (optional, deeper inspection)
+		innerTransport, ok := transport.Transport.(*http.Transport)
+		require.True(t, ok)
+		require.NotNil(t, innerTransport.Proxy)
+
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		proxyFunc := innerTransport.Proxy
+		proxyURL, err := proxyFunc(req)
+		require.NoError(t, err)
+		require.Equal(t, "http://localhost:8888", proxyURL.String())
 	})
 }
