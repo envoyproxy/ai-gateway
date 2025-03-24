@@ -202,7 +202,7 @@ func ApplyIndexing(ctx context.Context, enableInfExt bool, indexer func(ctx cont
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendPolicyRef to AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)

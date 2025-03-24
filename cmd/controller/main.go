@@ -117,7 +117,7 @@ func main() {
 
 	// Start the extension server running alongside the controller.
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(setupLog)
+	extSrv := extensionserver.New(ctrl.Log)
 	extension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {

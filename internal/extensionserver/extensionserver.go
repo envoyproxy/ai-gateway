@@ -42,8 +42,12 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 const (
+	// OriginalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
+	OriginalDstHeaderName = "x-ai-eg-original-dst"
+	// OriginalDstEnablingHeaderName is the header name that will be used to enable the original destination cluster when set to "true".
+	OriginalDstEnablingHeaderName = "x-ai-eg-use-original-dst"
+	// originalDstClusterName is the global name of the original destination cluster.
 	originalDstClusterName = "original_destination_cluster"
-	originalDstHeaderName  = "x-ai-eg-original-dst"
 )
 
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config.
@@ -57,22 +61,30 @@ func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateMod
 			return nil, nil
 		}
 	}
+	// Append the following cluster to the list of clusters:
+	//  cluster:
+	//   '@type': type.googleapis.com/envoy.config.cluster.v3.Cluster
+	//   connectTimeout: 60s
+	//   dnsLookupFamily: V4_ONLY
+	//   lbPolicy: CLUSTER_PROVIDED
+	//   name: original_destination_cluster
+	//   originalDstLbConfig:
+	//     httpHeaderName: x-ai-eg-original-dst
+	//     useHttpHeader: true
+	//   type: ORIGINAL_DST
 	req.Clusters = append(req.Clusters, &clusterv3.Cluster{
 		Name:                 originalDstClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
 		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
 		LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
 			OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
-				UseHttpHeader: true, HttpHeaderName: originalDstHeaderName,
+				UseHttpHeader: true, HttpHeaderName: OriginalDstHeaderName,
 			},
 		},
 		ConnectTimeout:  &durationpb.Duration{Seconds: 60},
 		DnsLookupFamily: clusterv3.Cluster_V4_ONLY,
 	})
-	response := &pb.PostTranslateModifyResponse{
-		Clusters: req.Clusters,
-		Secrets:  req.Secrets,
-	}
+	response := &pb.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
 	s.log.Info("Added original_dst cluster to the list of clusters")
 	return response, nil
 }
@@ -81,7 +93,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateMod
 //
 // Currently, this adds a route that matches on the x-use-original-dst header to the virtual host.
 func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHostModifyRequest) (*pb.PostVirtualHostModifyResponse, error) {
-	if req.VirtualHost == nil {
+	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
 		return nil, nil
 	}
 	for _, route := range req.VirtualHost.Routes {
@@ -92,6 +104,23 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 		}
 	}
 
+	// Append the following route to the list of routes:
+	//    match:
+	//     headers:
+	//     - name: x-ai-eg-use-original-dst
+	//       stringMatch:
+	//         exact: "true"
+	//     prefix: /
+	//    name: original_destination_cluster
+	//    route:
+	//      cluster: original_destination_cluster
+	//    typedPerFilterConfig:
+	//      envoy.filters.http.ext_proc/envoyextensionpolicy/default/ai-eg-route-extproc-translation-testupstream/extproc/0:
+	//        '@type': type.googleapis.com/envoy.config.route.v3.FilterConfig
+	//        config: {}
+	//
+	// where typedPerFilterConfig will be the same as the other existing routes having the mandatory extproc
+	// as well as the optional rate limit per-route configuration.
 	req.VirtualHost.Routes = append(req.VirtualHost.Routes, &routev3.Route{
 		Name: originalDstClusterName,
 		Match: &routev3.RouteMatch{
@@ -100,7 +129,7 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 			},
 			Headers: []*routev3.HeaderMatcher{
 				{
-					Name: "x-ai-eg-use-original-dst",
+					Name: OriginalDstEnablingHeaderName,
 					HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
 						StringMatch: &matcherv3.StringMatcher{
 							MatchPattern: &matcherv3.StringMatcher_Exact{Exact: "true"},
