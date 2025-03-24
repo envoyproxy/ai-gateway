@@ -181,7 +181,6 @@ func Test_getSecretNameAndNamespace(t *testing.T) {
 func Test_inferenceModelIndexFunc(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
-	// Create a InferenceModel.
 	for _, inf := range []*gwaiev1a2.InferenceModel{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "mymodel", Namespace: "default"},

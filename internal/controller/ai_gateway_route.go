@@ -767,6 +767,9 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	}
 }
 
+// getPoolAndReferencedAIServiceBackends returns the InferencePool and the referenced AIServiceBackends via its selector.
+//
+// The returned AIServiceBackends are sorted by name for the deterministic behavior.
 func (c *AIGatewayRouteController) getPoolAndReferencedAIServiceBackends(ctx context.Context, inferencePoolNamespace, inferencePoolName string) (
 	*gwaiev1a2.InferencePool, []aigv1a1.AIServiceBackend, error,
 ) {
@@ -823,8 +826,6 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 			clientObjectKey.Namespace = string(*sp.BackendRef.Namespace)
 		}
 		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
-		case "InferencePool":
-			return nil, errors.New("nested InferencePool is not supported")
 		case "Service":
 			return nil, errors.New("TODO: support Service backend in DynamicLoadBalancing")
 		case "Backend":
