@@ -179,7 +179,7 @@ type DynamicLoadBalancing struct {
 	// If multiple models are provided, the request is routed to the backend based on the weights, criticality, etc.
 	Models []DynamicLoadBalancingModel `json:"models,omitempty"`
 	// Backends can be either ip:port or hostname:port.
-	Backends []DynamicLoadBalancingBackend `json:"endpoints,omitempty"`
+	Backends []DynamicLoadBalancingBackend `json:"backends,omitempty"`
 }
 
 // DynamicLoadBalancingModel corresponds to InferenceModel in the Inference Extension.
