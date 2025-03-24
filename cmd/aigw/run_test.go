@@ -27,6 +27,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -179,14 +180,20 @@ func TestRunCmdContext_writeExtensionPolicy(t *testing.T) {
 			},
 		},
 	}
+	fakeClientSet := fake2.NewClientset()
 	runCtx := &runCmdContext{
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
-		cm: map[string]*corev1.ConfigMap{
-			"foo-namespace-myextproc": {
-				Data: map[string]string{
-					"extproc-config.yaml": `
+		fakeClientSet:            fakeClientSet,
+	}
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myextproc",
+			Namespace: "foo-namespace",
+		},
+		Data: map[string]string{
+			"extproc-config.yaml": `
 metadataNamespace: io.envoy.ai_gateway
 modelNameHeaderKey: x-ai-eg-model
 rules:
@@ -226,86 +233,90 @@ schema:
 selectedBackendHeaderKey: x-ai-eg-selected-backend
 uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 `,
+		},
+	}
+	secrets := []*corev1.Secret{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "envoy-ai-gateway-basic-openai-apikey",
+				Namespace: "foo-namespace",
+				Annotations: map[string]string{
+					substitutionEnvAnnotationPrefix + "envSubstTarget":    "FOO",
+					substitutionEnvAnnotationPrefix + "nonExistEnvTarget": "dog",
 				},
+			},
+			Data: map[string][]byte{
+				"apiKey":            []byte("my-api-key"),
+				"envSubstTarget":    []byte("NO"),
+				"nonExistEnvTarget": []byte("cat"),
 			},
 		},
-		sm: map[string]*corev1.Secret{
-			"foo-namespace-envoy-ai-gateway-basic-openai-apikey": {
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						substitutionEnvAnnotationPrefix + "envSubstTarget":    "FOO",
-						substitutionEnvAnnotationPrefix + "nonExistEnvTarget": "dog",
-					},
-				},
-				Data: map[string][]byte{
-					"apiKey":            []byte("my-api-key"),
-					"envSubstTarget":    []byte("NO"),
-					"nonExistEnvTarget": []byte("cat"),
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "envoy-ai-gateway-basic-aws-credentials",
+				Namespace: "foo-namespace",
+				Annotations: map[string]string{
+					substitutionFileAnnotationPrefix + "fileSubstTarget":    tmpFilePath,
+					substitutionFileAnnotationPrefix + "nonExistFileTarget": "non-exist",
 				},
 			},
-			"foo-namespace-envoy-ai-gateway-basic-aws-credentials": {
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						substitutionFileAnnotationPrefix + "fileSubstTarget":    tmpFilePath,
-						substitutionFileAnnotationPrefix + "nonExistFileTarget": "non-exist",
-					},
-				},
-				StringData: map[string]string{
-					"credentials":        "my-aws-credentials",
-					"fileSubstTarget":    "NO",
-					"nonExistFileTarget": "dog",
-				},
+			StringData: map[string]string{
+				"credentials":        "my-aws-credentials",
+				"fileSubstTarget":    "NO",
+				"nonExistFileTarget": "dog",
 			},
 		},
-		dm: map[string]*appsv1.Deployment{
-			"foo-namespace-myextproc": {
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
+	}
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myextproc",
+			Namespace: "foo-namespace",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							VolumeMounts: []corev1.VolumeMount{
 								{
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											MountPath: "/etc/ai-gateway/extproc",
-											Name:      "config",
-										},
-										{
-											MountPath: "/etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-											Name:      "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-										},
-										{
-											MountPath: "/etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-											Name:      "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-										},
+									MountPath: "/etc/ai-gateway/extproc",
+									Name:      "config",
+								},
+								{
+									MountPath: "/etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
+									Name:      "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
+								},
+								{
+									MountPath: "/etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
+									Name:      "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "foo-namespace-myextproc",
 									},
 								},
 							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "config",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "foo-namespace-myextproc",
-											},
-										},
-									},
+						},
+						{
+							Name: "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: "envoy-ai-gateway-basic-openai-apikey",
 								},
-								{
-									Name: "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "envoy-ai-gateway-basic-openai-apikey",
-										},
-									},
-								},
-								{
-									Name: "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "envoy-ai-gateway-basic-aws-credentials",
-										},
-									},
+							},
+						},
+						{
+							Name: "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: "envoy-ai-gateway-basic-aws-credentials",
 								},
 							},
 						},
@@ -314,6 +325,15 @@ uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 			},
 		},
 	}
+
+	_, err := fakeClientSet.CoreV1().ConfigMaps("foo-namespace").Create(context.Background(), configMap, metav1.CreateOptions{})
+	require.NoError(t, err)
+	for _, secret := range secrets {
+		_, err = fakeClientSet.CoreV1().Secrets("foo-namespace").Create(context.Background(), secret, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+	_, err = fakeClientSet.AppsV1().Deployments("foo-namespace").Create(context.Background(), deployment, metav1.CreateOptions{})
+	require.NoError(t, err)
 
 	wd, port, filterConfig, err := runCtx.writeExtensionPolicy(extP)
 	require.NoError(t, err)
