@@ -42,13 +42,11 @@ data:
       enableBackend: true
     extensionManager:
       hooks:
-        # The type of hooks that should be invoked
         xdsTranslator:
           post:
             - VirtualHost
             - Translation
       service:
-        # The service that is hosting the extension server
         fqdn:
           hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
           port: 1063
