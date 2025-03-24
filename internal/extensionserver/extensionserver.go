@@ -8,7 +8,7 @@ package extensionserver
 import (
 	"context"
 
-	pb "github.com/envoyproxy/gateway/proto/extension"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
@@ -21,7 +21,7 @@ import (
 
 // Server is the implementation of the EnvoyGatewayExtensionServer interface.
 type Server struct {
-	pb.UnimplementedEnvoyGatewayExtensionServer
+	egextension.UnimplementedEnvoyGatewayExtensionServer
 	log logr.Logger
 }
 
@@ -53,7 +53,7 @@ const (
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config.
 //
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
-func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateModifyRequest) (*pb.PostTranslateModifyResponse, error) {
+func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	for _, cluster := range req.Clusters {
 		if cluster.Name == originalDstClusterName {
 			// The cluster already exists, no need to add it again.
@@ -84,7 +84,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateMod
 		ConnectTimeout:  &durationpb.Duration{Seconds: 60},
 		DnsLookupFamily: clusterv3.Cluster_V4_ONLY,
 	})
-	response := &pb.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
+	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
 	s.log.Info("Added original_dst cluster to the list of clusters")
 	return response, nil
 }
@@ -92,7 +92,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *pb.PostTranslateMod
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
 //
 // Currently, this adds a route that matches on the x-use-original-dst header to the virtual host.
-func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHostModifyRequest) (*pb.PostVirtualHostModifyResponse, error) {
+func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
 	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
 		return nil, nil
 	}
@@ -144,5 +144,5 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *pb.PostVirtualHos
 		TypedPerFilterConfig: req.VirtualHost.Routes[0].TypedPerFilterConfig,
 	})
 	s.log.Info("Added original_dst route to the virtual host", "virtual_host", req.VirtualHost.Name)
-	return &pb.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
+	return &egextension.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
 }

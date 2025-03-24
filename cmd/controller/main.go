@@ -12,7 +12,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/envoyproxy/gateway/proto/extension"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -118,7 +118,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	s := grpc.NewServer()
 	extSrv := extensionserver.New(ctrl.Log)
-	extension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
+	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
 		<-ctx.Done()

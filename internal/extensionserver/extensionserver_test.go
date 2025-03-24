@@ -8,7 +8,7 @@ package extensionserver
 import (
 	"testing"
 
-	pb "github.com/envoyproxy/gateway/proto/extension"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	"github.com/go-logr/logr"
@@ -39,7 +39,7 @@ func TestWatch(t *testing.T) {
 func TestServerPostTranslateModify(t *testing.T) {
 	t.Run("existing", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostTranslateModify(t.Context(), &pb.PostTranslateModifyRequest{
+		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{
 				{Name: originalDstClusterName},
 			},
@@ -49,7 +49,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 	})
 	t.Run("not existing", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostTranslateModify(t.Context(), &pb.PostTranslateModifyRequest{
+		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{
 				{Name: "foo"},
 			},
@@ -65,13 +65,13 @@ func TestServerPostTranslateModify(t *testing.T) {
 func TestServerPostVirtualHostModify(t *testing.T) {
 	t.Run("nil virtual host", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &pb.PostVirtualHostModifyRequest{})
+		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{})
 		require.Nil(t, res)
 		require.NoError(t, err)
 	})
 	t.Run("zero routes", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &pb.PostVirtualHostModifyRequest{
+		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
 			VirtualHost: &routev3.VirtualHost{},
 		})
 		require.Nil(t, res)
@@ -79,7 +79,7 @@ func TestServerPostVirtualHostModify(t *testing.T) {
 	})
 	t.Run("existing route", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &pb.PostVirtualHostModifyRequest{
+		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
 			VirtualHost: &routev3.VirtualHost{
 				Routes: []*routev3.Route{{Name: originalDstClusterName}},
 			},
@@ -89,7 +89,7 @@ func TestServerPostVirtualHostModify(t *testing.T) {
 	})
 	t.Run("not existing route", func(t *testing.T) {
 		s := New(logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &pb.PostVirtualHostModifyRequest{
+		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
 			VirtualHost: &routev3.VirtualHost{
 				Routes: []*routev3.Route{{Name: "foo"}},
 			},
