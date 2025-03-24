@@ -163,7 +163,7 @@ type Backend struct {
 	// Weight is the weight of the backend in the routing decision.
 	//
 	// When DynamicLoadBalancing is specified, the weight is ignored.
-	Weight int `json:"weight,omitempty"`
+	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 	Auth *BackendAuth `json:"auth,omitempty"`
