@@ -8,7 +8,9 @@ package dynlb
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
+	"os"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/miekg/dns"
@@ -18,16 +20,30 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/infext"
 )
 
+var dnsServerEndpoint = func() string {
+	if v := os.Getenv("DNS_SERVER"); v != "" {
+		return v
+	}
+	config, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	if err != nil {
+		log.Fatalf("failed to read /etc/resolv.conf: %v", err)
+	}
+	if len(config.Servers) == 0 {
+		log.Fatal("no DNS servers found at /etc/resolv.conf")
+	}
+	return config.Servers[0] + ":" + config.Port
+}()
+
 // DynamicLoadBalancer is the interface for the dynamic load balancer.
 //
 // This must be concurrency-safe as it will be shared across multiple requests/goroutines.
 type DynamicLoadBalancer interface {
-	// SelectChatCompletionEndpoint selects an endpoint from the given load balancer to serve the chat completion request.
+	// SelectChatCompletionsEndpoint selects an endpoint from the given load balancer to serve the chat completion request.
 	//
 	// The selection result is reflected in the headers to be added to the request, returned as a slice of HeaderValueOption.
 	//
 	// This also returns the selected backend filterapi.Backend to perform per-Backend level operations such rate limiting.
-	SelectChatCompletionEndpoint(model string, _ x.ChatCompletionMetrics) (
+	SelectChatCompletionsEndpoint(model string, _ x.ChatCompletionMetrics) (
 		selected *filterapi.Backend, headers []*corev3.HeaderValueOption, err error,
 	)
 }
@@ -36,7 +52,12 @@ type DynamicLoadBalancer interface {
 //
 // This is called asynchronously by the config watcher, not on the hot path. The returned DynamicLoadBalancer
 // will be reused for multiple requests/goroutines.
-func NewDynamicLoadBalancer(ctx context.Context, dnsServer string, dyn *filterapi.DynamicLoadBalancing) (DynamicLoadBalancer, error) {
+func NewDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing) (DynamicLoadBalancer, error) {
+	return newDynamicLoadBalancer(ctx, dyn, dnsServerEndpoint)
+}
+
+// newDynamicLoadBalancer is the actual implementation of NewDynamicLoadBalancer but decoupled for testing purposes.
+func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing, dnsServer string) (DynamicLoadBalancer, error) {
 	ret := &dynamicLoadBalancer{
 		models: make(map[string]filterapi.DynamicLoadBalancingModel, len(dyn.Models)),
 	}
@@ -80,7 +101,7 @@ func NewDynamicLoadBalancer(ctx context.Context, dnsServer string, dyn *filterap
 	return ret, nil
 }
 
-// dynamicLoadBalancer implements the DynamicLoadBalancer interface.
+// dynamicLoadBalancer implements DynamicLoadBalancer.
 type dynamicLoadBalancer struct {
 	models    map[string]filterapi.DynamicLoadBalancingModel
 	endpoints []endpoint
@@ -96,12 +117,11 @@ type endpoint struct {
 	backend *filterapi.Backend
 }
 
-// SelectChatCompletionEndpoint selects an endpoint from the given load balancer.
-// This returns the selected backend and the headers to be added to the request.
+// SelectChatCompletionsEndpoint implements [DynamicLoadBalancer.SelectChatCompletionsEndpoint].
 //
 // TODO: expand x.ChatCompletionMetrics to add getter methods to be able to make a decision based on the metrics.
 // TODO: this might need to return dynamic metadata instead of headers.
-func (dlb *dynamicLoadBalancer) SelectChatCompletionEndpoint(model string, _ x.ChatCompletionMetrics) (
+func (dlb *dynamicLoadBalancer) SelectChatCompletionsEndpoint(model string, _ x.ChatCompletionMetrics) (
 	selected *filterapi.Backend, headers []*corev3.HeaderValueOption, err error,
 ) {
 	m, ok := dlb.models[model]

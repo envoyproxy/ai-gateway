@@ -128,7 +128,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	var headers []*corev3.HeaderValueOption
 	if dyn := b.DynamicLoadBalancing; dyn != nil {
 		lb := c.config.dynamicLoadBalancers[dyn] // If it's not found, that should be a BUG.
-		b, headers, err = lb.SelectChatCompletionEndpoint(model, c.metrics)
+		b, headers, err = lb.SelectChatCompletionsEndpoint(model, c.metrics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select endpoint: %w", err)
 		}

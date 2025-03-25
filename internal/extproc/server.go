@@ -53,7 +53,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 }
 
 // LoadConfig updates the configuration of the external processor.
-func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config, dnsServer string) error {
+func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
 	rt, err := router.New(config, x.NewCustomRouter)
 	if err != nil {
 		return fmt.Errorf("cannot create router: %w", err)
@@ -73,7 +73,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config, dnsSe
 				}
 			}
 			if b.DynamicLoadBalancing != nil {
-				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, dnsServer, b.DynamicLoadBalancing)
+				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, b.DynamicLoadBalancing)
 				if err != nil {
 					return fmt.Errorf("cannot create dynamic load balancer: %w", err)
 				}

@@ -20,7 +20,7 @@ import (
 // This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(ctx context.Context, config *filterapi.Config, dnsServer string) error
+	LoadConfig(ctx context.Context, config *filterapi.Config) error
 }
 
 type configWatcher struct {
@@ -33,13 +33,12 @@ type configWatcher struct {
 	// hasDynamicLB is true if the current configuration has at least one backend with dynamic load balancing.
 	// We need to force a reload of the configuration regardless of the file modification time.
 	hasDynamicLB bool
-	dnsServer    string
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
 // Periodically checks the file for changes and calls the Receiver's UpdateConfig method.
-func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration, dnsServer string) error {
-	cw := &configWatcher{rcv: rcv, l: l, path: path, dnsServer: dnsServer}
+func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration) error {
+	cw := &configWatcher{rcv: rcv, l: l, path: path}
 
 	if err := cw.loadConfig(ctx); err != nil {
 		return fmt.Errorf("failed to load initial config: %w", err)
@@ -113,7 +112,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.diff(previous, cw.current)
 	}
 
-	if err = cw.rcv.LoadConfig(ctx, cfg, cw.dnsServer); err != nil {
+	if err = cw.rcv.LoadConfig(ctx, cfg); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 

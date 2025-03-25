@@ -30,7 +30,7 @@ func TestDefaultConfig(t *testing.T) {
 		ModelNameHeaderKey:       "x-ai-eg-model",
 	}, cfg)
 
-	err = server.LoadConfig(t.Context(), cfg, "1.1.1.1")
+	err = server.LoadConfig(t.Context(), cfg)
 	require.NoError(t, err)
 }
 
