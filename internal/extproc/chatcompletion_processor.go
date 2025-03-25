@@ -121,13 +121,17 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 				},
 			}, nil
 		}
-
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
 
 	var headers []*corev3.HeaderValueOption
-	if dyn := b.DynamicLoadBalancing; dyn != nil {
-		lb := c.config.dynamicLoadBalancers[dyn] // If it's not found, that should be a BUG.
+	c.dynamicLB = b.DynamicLoadBalancing
+	if c.dynamicLB != nil {
+		lb, ok := c.config.dynamicLoadBalancers[c.dynamicLB]
+		if !ok {
+			// If it's not found, that should be a BUG.
+			panic("BUG: failed to find dynamic load balancer")
+		}
 		b, headers, err = lb.SelectChatCompletionsEndpoint(model, c.metrics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select endpoint: %w", err)
@@ -153,7 +157,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
 	})
-	if b.DynamicLoadBalancing != nil {
+	if c.dynamicLB != nil {
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
 	} else {
 		// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.

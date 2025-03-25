@@ -117,13 +117,14 @@ type mockRouter struct {
 	expHeaders            map[string]string
 	retBackendName        string
 	retVersionedAPISchema filterapi.VersionedAPISchema
+	retBackendDynamicLB   *filterapi.DynamicLoadBalancing
 	retErr                error
 }
 
 // Calculate implements [router.Router.Calculate].
 func (m mockRouter) Calculate(headers map[string]string) (*filterapi.Backend, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	b := &filterapi.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema}
+	b := &filterapi.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema, DynamicLoadBalancing: m.retBackendDynamicLB}
 	return b, m.retErr
 }
 
@@ -239,3 +240,16 @@ func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count in
 }
 
 var _ x.ChatCompletionMetrics = &mockChatCompletionMetrics{}
+
+// mockDynamicLB implements dynlb.DynamicLoadBalancer for testing.
+type mockDynamicLB struct {
+	backedName string
+	headers    []*corev3.HeaderValueOption
+}
+
+// SelectChatCompletionsEndpoint implements dynlb.DynamicLoadBalancer.
+func (m *mockDynamicLB) SelectChatCompletionsEndpoint(string, x.ChatCompletionMetrics) (
+	selected *filterapi.Backend, headers []*corev3.HeaderValueOption, err error,
+) {
+	return &filterapi.Backend{Name: m.backedName}, m.headers, nil
+}
