@@ -845,7 +845,7 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 			// TODO: at the moment, we assume that all target services are local, i.e. no externalName, etc.
 			//
 			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor since
-			// this is the reconciliation of routine happening when AIServiceBackend (or its transitive referencing resources)
+			// this is the reconciliation subroutine happening when AIServiceBackend (or its transitive referencing resources)
 			// changes.
 			//
 			// This means that if the service is headless, the external processor will resolve the Pod IPs, otherwise
