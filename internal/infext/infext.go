@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package infext provides the shared constructs that need to coordinate between the control plane and the data plane
+// Package infext provides the shared constructs needed to coordinate between the control plane and the data plane
 // in order to implement the Inference Extension API.
 package infext
 

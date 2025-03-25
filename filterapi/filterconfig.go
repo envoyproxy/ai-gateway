@@ -201,9 +201,9 @@ type DynamicLoadBalancingBackend struct {
 	Backend
 	// Hostnames is the hostname of this backend. The filter will resolve the hostname to the IP address
 	// asynchronously and use the resolved IP address to route the request.
-	Hostnames []string `json:"hostName,omitempty"`
+	Hostnames []string `json:"hostNames,omitempty"`
 	// IP is the IP address of the endpoint.
-	IPs []string `json:"ip,omitempty"`
+	IPs []string `json:"ips,omitempty"`
 	// Port is the port of the endpoint.
 	Port int32 `json:"port"`
 }
