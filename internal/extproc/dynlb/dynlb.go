@@ -3,6 +3,8 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
+// Package dynlb provides the dynamic load balancer implementation that selects a specific ip:port pair based on
+// the model name and the metrics.
 package dynlb
 
 import (
