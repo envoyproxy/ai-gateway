@@ -24,7 +24,7 @@ import (
 )
 
 var dnsServerEndpoint = func() string {
-	if v := os.Getenv("DNS_SERVER"); v != "" {
+	if v := os.Getenv("DNS_SERVER_ADDR"); v != "" {
 		return v
 	}
 	config, err := dns.ClientConfigFromFile("/etc/resolv.conf")
@@ -60,15 +60,15 @@ func NewDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 	return newDynamicLoadBalancer(ctx, dyn, dnsServerEndpoint)
 }
 
-// newDynamicLoadBalancer is the actual implementation of NewDynamicLoadBalancer but decoupled for testing purposes.
-func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing, dnsServer string) (DynamicLoadBalancer, error) {
+// dynamicLoadBalancer implements NewDynamicLoadBalancer but decoupled for testing.
+func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing, dnsServerAddr string) (DynamicLoadBalancer, error) {
 	ret := &dynamicLoadBalancer{
 		models: make(map[string]filterapi.DynamicLoadBalancingModel, len(dyn.Models)),
 	}
 
 	// TODO: maybe reuse the client for multiple queries.
 	client := dns.Client{}
-	conn, err := client.Dial(dnsServer)
+	conn, err := client.Dial(dnsServerAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial DNS server: %w", err)
 	}
@@ -84,12 +84,13 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 		// Resolves all hostnames to IP addresses.
 		for _, hostname := range b.Hostnames {
 			// Append a dot if the hostname is not fully qualified.
-			if !strings.HasSuffix(hostname, ".") {
-				hostname += "."
+			fqdn := hostname
+			if !strings.HasSuffix(fqdn, ".") {
+				fqdn += "."
 			}
 			msg := new(dns.Msg)
 			// TODO: add support for TypeAAAA for IPv6.
-			msg.SetQuestion(hostname, dns.TypeA)
+			msg.SetQuestion(fqdn, dns.TypeA)
 			response, _, err := client.ExchangeWithConnContext(ctx, msg, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to query DNS server: %w", err)
