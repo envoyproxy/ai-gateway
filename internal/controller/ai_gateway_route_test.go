@@ -286,8 +286,8 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		require.Equal(t, "apple.ns1", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "orange.ns1", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
-		// Defaulting to the first backend.
-		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
+		// Defaulting to the empty path, which shouldn't reach in practice.
+		require.Empty(t, updatedHTTPRoute.Spec.Rules[2].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
 	})
 
@@ -414,7 +414,7 @@ func Test_newHTTPRoute(t *testing.T) {
 			for i, r := range httpRoute.Spec.Rules {
 				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
 					if i == 4 {
-						require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
+						require.Empty(t, r.BackendRefs)
 						require.NotNil(t, r.Matches[0].Path)
 						require.Equal(t, "/", *r.Matches[0].Path.Value)
 					} else {

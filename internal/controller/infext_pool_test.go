@@ -50,7 +50,13 @@ func TestInferencePoolControllerReconcile(t *testing.T) {
 			Name:      "inference-pool",
 			Namespace: "default",
 		},
-		Spec: gwaiev1a2.InferencePoolSpec{},
+		Spec: gwaiev1a2.InferencePoolSpec{
+			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+				ExtensionRef: &gwaiev1a2.Extension{
+					ExtensionReference: gwaiev1a2.ExtensionReference{Name: "envoy-ai-gateway"},
+				},
+			},
+		},
 	}))
 
 	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIGatewayRoute]()

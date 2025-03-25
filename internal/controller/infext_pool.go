@@ -49,6 +49,11 @@ func (c *inferencePoolController) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{}, err
 	}
+	if ref := inferencePool.Spec.ExtensionRef; ref == nil || ref.Name != "envoy-ai-gateway" {
+		c.logger.Info("Skipping InferencePool with extensionRef.Name not equal to 'envoy-ai-gateway'",
+			"namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, nil
+	}
 	if err := c.syncInferencePool(ctx, &inferencePool); err != nil {
 		// TODO: status update.
 		return ctrl.Result{}, fmt.Errorf("failed to sync InferencePool: %w", err)

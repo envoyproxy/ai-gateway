@@ -424,47 +424,53 @@ func (c *AIGatewayRouteController) bspToFilterAPIAuth(ctx context.Context, names
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	var backends []*aigv1a1.AIServiceBackend
 	dedup := make(map[string]struct{})
+	rewriteFilters := []gwapiv1.HTTPRouteFilter{{
+		Type: gwapiv1.HTTPRouteFilterExtensionRef,
+		ExtensionRef: &gwapiv1.LocalObjectReference{
+			Group: "gateway.envoyproxy.io",
+			Kind:  "HTTPRouteFilter",
+			Name:  hostRewriteHTTPFilterName,
+		},
+	}}
+	var rules []gwapiv1.HTTPRouteRule
 	for _, rule := range aiGatewayRoute.Spec.Rules {
-		for _, br := range rule.BackendRefs {
+		for i := range rule.BackendRefs {
+			br := &rule.BackendRefs[i]
 			key := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
 			if _, ok := dedup[key]; ok {
 				continue
 			}
 			dedup[key] = struct{}{}
-			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
-			if err != nil {
-				return fmt.Errorf("AIServiceBackend %s not found", key)
-			}
-			backends = append(backends, backend)
-		}
-	}
 
-	rewriteFilters := []gwapiv1.HTTPRouteFilter{
-		{
-			Type: gwapiv1.HTTPRouteFilterExtensionRef,
-			ExtensionRef: &gwapiv1.LocalObjectReference{
-				Group: "gateway.envoyproxy.io",
-				Kind:  "HTTPRouteFilter",
-				Name:  hostRewriteHTTPFilterName,
-			},
-		},
-	}
-	rules := make([]gwapiv1.HTTPRouteRule, len(backends))
-	for i, b := range backends {
-		key := fmt.Sprintf("%s.%s", b.Name, b.Namespace)
-		rule := gwapiv1.HTTPRouteRule{
-			BackendRefs: []gwapiv1.HTTPBackendRef{
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef}},
-			},
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
-			},
-			Filters:  rewriteFilters,
-			Timeouts: b.Spec.Timeouts,
+			var backendRefs []gwapiv1.HTTPBackendRef
+			var timeouts *gwapiv1.HTTPRouteTimeouts
+			if isInferencePoolRef(br) {
+				// When the target is InferencePool, we don't need the HTTPRoute level setting, but
+				// will route to ORIGINAL_DST, so we don't need to set the backendRefs.
+
+				// TODO: make the timeout configurable. One way is to move the timeout setting from
+				// 	AIServiceBackend to AIGatewayRouteBackendRef.
+				timeouts = &gwapiv1.HTTPRouteTimeouts{Request: ptr.To[gwapiv1.Duration]("30s")}
+			} else {
+				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
+				if err != nil {
+					return fmt.Errorf("AIServiceBackend %s not found", key)
+				}
+				backendRefs = []gwapiv1.HTTPBackendRef{
+					{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backend.Spec.BackendRef}},
+				}
+				timeouts = backend.Spec.Timeouts
+			}
+			rules = append(rules, gwapiv1.HTTPRouteRule{
+				BackendRefs: backendRefs,
+				Matches: []gwapiv1.HTTPRouteMatch{
+					{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
+				},
+				Filters:  rewriteFilters,
+				Timeouts: timeouts,
+			})
 		}
-		rules[i] = rule
 	}
 
 	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend
@@ -478,10 +484,6 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	if len(rules) > 0 {
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
-			BackendRefs: []gwapiv1.HTTPBackendRef{
-				// It can be any valid backend reference because it will not be used.
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
-			},
 		})
 	}
 
