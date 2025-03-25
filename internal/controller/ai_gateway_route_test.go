@@ -336,6 +336,12 @@ func Test_newHTTPRoute(t *testing.T) {
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
 						},
+						{
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{
+								Name: "pool",
+								Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool),
+							}},
+						},
 					},
 				},
 			}
@@ -409,11 +415,17 @@ func Test_newHTTPRoute(t *testing.T) {
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "pool." + ns}}},
+					},
+					Timeouts: inferencePoolDefaultTimeout,
+				},
 			}
-			require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
+			require.Len(t, httpRoute.Spec.Rules, 6) // 5 backends + 1 for the default rule.
 			for i, r := range httpRoute.Spec.Rules {
 				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-					if i == 4 {
+					if i == 5 {
 						require.Empty(t, r.BackendRefs)
 						require.NotNil(t, r.Matches[0].Path)
 						require.Equal(t, "/", *r.Matches[0].Path.Value)

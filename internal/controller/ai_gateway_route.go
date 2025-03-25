@@ -422,6 +422,8 @@ func (c *AIGatewayRouteController) bspToFilterAPIAuth(ctx context.Context, names
 	}
 }
 
+var inferencePoolDefaultTimeout = &gwapiv1.HTTPRouteTimeouts{Request: ptr.To[gwapiv1.Duration]("30s")}
+
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	dedup := make(map[string]struct{})
@@ -451,7 +453,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 				// TODO: make the timeout configurable. One way is to move the timeout setting from
 				// 	AIServiceBackend to AIGatewayRouteBackendRef.
-				timeouts = &gwapiv1.HTTPRouteTimeouts{Request: ptr.To[gwapiv1.Duration]("30s")}
+				timeouts = inferencePoolDefaultTimeout
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 				if err != nil {
@@ -658,15 +660,18 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 				if err != nil {
 					return nil, fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
 				}
-				for k, backend := range referencedAIServiceBackends {
-					volumeName := backendSecurityPolicyForInferencePoolVolumeName(i, j, k, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
-						string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
-					if err != nil {
-						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
+				for k := range referencedAIServiceBackends {
+					backend := &referencedAIServiceBackends[k]
+					if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
+						volumeName := backendSecurityPolicyForInferencePoolVolumeName(i, j, k, string(backend.Spec.BackendSecurityPolicyRef.Name))
+						volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
+							string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
+						if err != nil {
+							return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
+						}
+						spec.Volumes = append(spec.Volumes, volume)
+						container.VolumeMounts = append(container.VolumeMounts, volumeMount)
 					}
-					spec.Volumes = append(spec.Volumes, volume)
-					container.VolumeMounts = append(container.VolumeMounts, volumeMount)
 				}
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
