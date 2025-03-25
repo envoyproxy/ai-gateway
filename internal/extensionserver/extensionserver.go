@@ -61,7 +61,6 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 	// Append the following cluster to the list of clusters:
 	//   name: original_destination_cluster
 	//   connectTimeout: 60s
-	//   dnsLookupFamily: V4_ONLY
 	//   lbPolicy: CLUSTER_PROVIDED
 	//   originalDstLbConfig:
 	//     httpHeaderName: x-ai-eg-original-dst
@@ -76,8 +75,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 				UseHttpHeader: true, HttpHeaderName: originalDstHeaderName,
 			},
 		},
-		ConnectTimeout:  &durationpb.Duration{Seconds: 60},
-		DnsLookupFamily: clusterv3.Cluster_V4_ONLY,
+		ConnectTimeout: &durationpb.Duration{Seconds: 60},
 	})
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
 	s.log.Info("Added original_dst cluster to the list of clusters")

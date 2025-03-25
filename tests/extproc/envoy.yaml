@@ -215,7 +215,6 @@ static_resources:
     - name: original_destination_cluster
       connectTimeout: 30s
       type: ORIGINAL_DST
-      dnsLookupFamily: V4_ONLY
       lbPolicy: CLUSTER_PROVIDED
       originalDstLbConfig:
         httpHeaderName: x-ai-eg-original-dst
