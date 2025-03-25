@@ -850,7 +850,10 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 			//
 			// This means that if the service is headless, the external processor will resolve the Pod IPs, otherwise
 			// the static cluster IP.
-			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace))
+			//
+			// TODO: we assume that the cluster domain is "cluster.local" which is the default in Kubernetes.
+			// 	Read /etc/resolv.conf and use the search domain to add the suffix instead of hardcoding it.
+			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace))
 		case "Backend": // TODO: we should reconcile Backend objects to update the section created below when the Backend changes.
 			var backend egv1a1.Backend
 			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {

@@ -59,9 +59,11 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 			cw.l.Info("stop watching the config file", slog.String("path", cw.path))
 			return
 		case <-ticker.C:
-			if err := cw.loadConfig(ctx); err != nil {
+			perTickCtx, cancel := context.WithTimeout(ctx, tick)
+			if err := cw.loadConfig(perTickCtx); err != nil {
 				cw.l.Error("failed to update config", slog.String("error", err.Error()))
 			}
+			cancel()
 		}
 	}
 }

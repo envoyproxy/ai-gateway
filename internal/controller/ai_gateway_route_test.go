@@ -1313,7 +1313,7 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, dyn.Backends, 1)
 			require.Equal(t, "okbackend", dyn.Backends[0].Name)
-			require.Equal(t, []string{"okbackend.default.svc"}, dyn.Backends[0].Hostnames)
+			require.Equal(t, []string{"okbackend.default.svc.cluster.local"}, dyn.Backends[0].Hostnames)
 			require.Equal(t, &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{
 				Filename: "/etc/backend_security_policy/rule555-backref999-inpool0-some-backend-security-policy/apiKey",
 			}}, dyn.Backends[0].Auth)

@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/miekg/dns"
@@ -35,6 +36,7 @@ var dnsServerEndpoint = func() string {
 }()
 
 // DynamicLoadBalancer is the interface for the dynamic load balancer.
+// This corresponds to the dynamicLoadBalancing field in the filter config.
 //
 // This must be concurrency-safe as it will be shared across multiple requests/goroutines.
 type DynamicLoadBalancer interface {
@@ -62,6 +64,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 		models: make(map[string]filterapi.DynamicLoadBalancingModel, len(dyn.Models)),
 	}
 
+	// TODO: maybe reuse the client for multiple queries.
 	client := dns.Client{}
 	conn, err := client.Dial(dnsServer)
 	if err != nil {
@@ -78,7 +81,12 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 		}
 		// Resolves all hostnames to IP addresses.
 		for _, hostname := range b.Hostnames {
+			// Append a dot if the hostname is not fully qualified.
+			if !strings.HasSuffix(hostname, ".") {
+				hostname += "."
+			}
 			msg := new(dns.Msg)
+			// TODO: add support for TypeAAAA for IPv6.
 			msg.SetQuestion(hostname, dns.TypeA)
 			response, _, err := client.ExchangeWithConnContext(ctx, msg, conn)
 			if err != nil {
