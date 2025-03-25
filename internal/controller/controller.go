@@ -179,7 +179,7 @@ const (
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
 	// k8sClientIndexInferencePoolToReferencingAIServiceBackend is the index name that maps from an InferencePool to the AIServiceBackend
 	// that references it.
-	k8sClientIndexInferencePoolToReferencingAIGateawyRoute = "InferencePoolToReferencingAIGatewayRoute"
+	k8sClientIndexInferencePoolToReferencingAIGatewayRoute = "InferencePoolToReferencingAIGatewayRoute"
 	// k8sClientIndexInferencePoolToReferencingInferenceModel is the index name that maps from an InferencePool to the InferenceModel
 	// that references it.
 	k8sClientIndexInferencePoolToReferencingInferenceModel = "InferencePoolToReferencingInferenceModel"
@@ -194,7 +194,7 @@ func ApplyIndexing(ctx context.Context, enableInfExt bool, indexer func(ctx cont
 	}
 	if enableInfExt {
 		err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
-			k8sClientIndexInferencePoolToReferencingAIGateawyRoute, aiGatewayRouteIndexFuncForInferencePool)
+			k8sClientIndexInferencePoolToReferencingAIGatewayRoute, aiGatewayRouteIndexFuncForInferencePool)
 		if err != nil {
 			return fmt.Errorf("failed to index field for InferencePool to AIServiceBackend: %w", err)
 		}

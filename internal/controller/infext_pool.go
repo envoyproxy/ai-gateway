@@ -61,7 +61,7 @@ func (c *inferencePoolController) syncInferencePool(ctx context.Context, inferen
 	var aisbs aigv1a1.AIGatewayRouteList
 	if err := c.client.List(ctx, &aisbs,
 		client.MatchingFields{
-			k8sClientIndexInferencePoolToReferencingAIGateawyRoute: fmt.Sprintf(
+			k8sClientIndexInferencePoolToReferencingAIGatewayRoute: fmt.Sprintf(
 				"%s.%s", inferencePool.Name, inferencePool.Namespace),
 		}); err != nil {
 		return fmt.Errorf("failed to list AIServiceBackends: %w", err)

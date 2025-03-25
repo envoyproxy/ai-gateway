@@ -68,13 +68,13 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
 
 	err = c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGateawyRoute: "inference-pool1.default"})
+		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGatewayRoute: "inference-pool1.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
 
 	err = c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGateawyRoute: "inference-pool2.default"})
+		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGatewayRoute: "inference-pool2.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
