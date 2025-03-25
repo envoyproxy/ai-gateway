@@ -11,14 +11,11 @@ import (
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
-
-	"github.com/envoyproxy/ai-gateway/internal/infext"
 )
 
 // Server is the implementation of the EnvoyGatewayExtensionServer interface.
@@ -44,6 +41,8 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 const (
+	// originalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
+	originalDstHeaderName = "x-ai-eg-original-dst"
 	// originalDstClusterName is the global name of the original destination cluster.
 	originalDstClusterName = "original_destination_cluster"
 )
@@ -76,7 +75,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
 		LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
 			OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
-				UseHttpHeader: true, HttpHeaderName: infext.OriginalDstHeaderName,
+				UseHttpHeader: true, HttpHeaderName: originalDstHeaderName,
 			},
 		},
 		ConnectTimeout:  &durationpb.Duration{Seconds: 60},
@@ -89,7 +88,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
 //
-// Currently, this adds a route that matches on the x-use-original-dst header to the virtual host.
+// Currently, this adds a route that matches on the presence of OriginalDstHeaderName header to the ORIGINAL_DST cluster.
 func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
 	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
 		return nil, nil
@@ -105,9 +104,9 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostV
 	// Append the following route to the list of routes:
 	//    match:
 	//     headers:
-	//     - name: x-ai-eg-use-original-dst
-	//       stringMatch:
-	//         exact: "true"
+	//     - name: x-ai-eg-original-dst
+	//       presentMatch:
+	//         presentMatch: true
 	//     prefix: /
 	//    name: original_destination_cluster
 	//    route:
@@ -126,14 +125,7 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostV
 				Prefix: "/",
 			},
 			Headers: []*routev3.HeaderMatcher{
-				{
-					Name: infext.OriginalDstEnablingHeaderName,
-					HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
-						StringMatch: &matcherv3.StringMatcher{
-							MatchPattern: &matcherv3.StringMatcher_Exact{Exact: "true"},
-						},
-					},
-				},
+				{Name: originalDstHeaderName, HeaderMatchSpecifier: &routev3.HeaderMatcher_PresentMatch{PresentMatch: true}},
 			},
 		},
 		Action: &routev3.Route_Route{

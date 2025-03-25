@@ -170,8 +170,7 @@ type Backend struct {
 	// route the request to a specific endpoint (ip:port) instead of the normal cluster routing.
 	//
 	// When this is specified, the AI Gateway filter assume that the ORIGINAL_DST cluster is configured
-	// to route the request to an endpoint from `x-ai-eg-original-dst` header. Also, to route the requests
-	// to the ORIGINAL_DST cluster, the AI Gateway filter sets the `x-ai-eg-use-original-dst` header to "true".
+	// to route the request to an endpoint from `x-ai-eg-original-dst` header.
 	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicLoadBalancing,omitempty"`
 }
 

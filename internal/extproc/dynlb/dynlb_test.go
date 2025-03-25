@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/infext"
 )
 
 func Test_newDynamicLoadBalancer(t *testing.T) {
@@ -114,31 +113,26 @@ func Test_newDynamicLoadBalancer(t *testing.T) {
 	}
 	require.ElementsMatch(t, []endpoint{
 		{
-			ip:      "1.2.3.4",
-			port:    8080,
+			ipPort:  []byte("1.2.3.4:8080"),
 			backend: &f.Backends[0].Backend,
 		},
 		{
-			ip:       "1.1.1.1",
-			port:     9999,
+			ipPort:   []byte("1.1.1.1:9999"),
 			hostname: "foo.io",
 			backend:  &f.Backends[1].Backend,
 		},
 		{
-			ip:       "2.2.2.2",
-			port:     9999,
+			ipPort:   []byte("2.2.2.2:9999"),
 			hostname: "example.com",
 			backend:  &f.Backends[1].Backend,
 		},
 		{
-			ip:       "3.3.3.3",
-			port:     4444,
+			ipPort:   []byte("3.3.3.3:4444"),
 			hostname: "something.io",
 			backend:  &f.Backends[2].Backend,
 		},
 		{
-			ip:       "4.4.4.4",
-			port:     4444,
+			ipPort:   []byte("4.4.4.4:4444"),
 			hostname: "something.io",
 			backend:  &f.Backends[2].Backend,
 		},
@@ -149,7 +143,7 @@ func TestDynamicLoadBalancingSelectChatCompletionsEndpoint(t *testing.T) {
 	// TODO: currently this is mostly for test coverage, need to add more tests as we add more features.
 	dlb := &dynamicLoadBalancer{
 		endpoints: []endpoint{
-			{ip: "1.1.1.1", port: 8080, backend: &filterapi.Backend{Name: "foo"}, hostname: "foo.io"},
+			{ipPort: []byte("1.1.1.1:8080"), backend: &filterapi.Backend{Name: "foo"}, hostname: "foo.io"},
 		},
 		models: map[string]filterapi.DynamicLoadBalancingModel{"foo": {}},
 	}
@@ -161,12 +155,11 @@ func TestDynamicLoadBalancingSelectChatCompletionsEndpoint(t *testing.T) {
 		backend, headers, err := dlb.SelectChatCompletionsEndpoint("foo", nil)
 		require.NoError(t, err)
 		require.Equal(t, &filterapi.Backend{Name: "foo"}, backend)
-		require.Len(t, headers, 3)
+		require.Len(t, headers, 2)
 		for _, h := range []*corev3.HeaderValueOption{
-			enableOriginalDst,
 			{
 				Header: &corev3.HeaderValue{
-					Key:      infext.OriginalDstHeaderName,
+					Key:      originalDstHeaderName,
 					RawValue: []byte("1.1.1.1:8080"),
 				},
 			},

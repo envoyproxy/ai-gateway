@@ -20,8 +20,10 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
-	"github.com/envoyproxy/ai-gateway/internal/infext"
 )
+
+// originalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
+const originalDstHeaderName = "x-ai-eg-original-dst"
 
 var dnsServerEndpoint = func() string {
 	if v := os.Getenv("DNS_SERVER_ADDR"); v != "" {
@@ -76,8 +78,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 	for _, b := range dyn.Backends {
 		for _, ip := range b.IPs {
 			ret.endpoints = append(ret.endpoints, endpoint{
-				ip:      ip,
-				port:    b.Port,
+				ipPort:  []byte(fmt.Sprintf("%s:%d", ip, b.Port)),
 				backend: &b.Backend,
 			})
 		}
@@ -102,8 +103,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 			for _, answer := range response.Answer {
 				if aRecord, ok := answer.(*dns.A); ok {
 					ret.endpoints = append(ret.endpoints, endpoint{
-						ip:       aRecord.A.String(),
-						port:     b.Port,
+						ipPort:   []byte(fmt.Sprintf("%s:%d", aRecord.A.String(), b.Port)),
 						backend:  &b.Backend,
 						hostname: hostname,
 					})
@@ -125,8 +125,7 @@ type dynamicLoadBalancer struct {
 
 // endpoint represents an endpoint, a pair of IP and port, which belongs to a backend.
 type endpoint struct {
-	ip   string
-	port int32
+	ipPort []byte
 	// hostname is the hostname used to resolve the IP address. Can be empty if the IP is not resolved from a hostname.
 	hostname string
 	// backend is the backend that this ip:port pair belongs to.
@@ -154,13 +153,7 @@ func (dlb *dynamicLoadBalancer) SelectChatCompletionsEndpoint(model string, _ x.
 
 	selected = ep.backend
 	headers = []*corev3.HeaderValueOption{
-		enableOriginalDst,
-		{
-			Header: &corev3.HeaderValue{
-				Key:      infext.OriginalDstHeaderName,
-				RawValue: []byte(fmt.Sprintf("%s:%d", ep.ip, ep.port)),
-			},
-		},
+		{Header: &corev3.HeaderValue{Key: originalDstHeaderName, RawValue: ep.ipPort}},
 	}
 	if ep.hostname != "" {
 		// Set host header if the IP is resolved from a hostname.
@@ -172,11 +165,4 @@ func (dlb *dynamicLoadBalancer) SelectChatCompletionsEndpoint(model string, _ x.
 		})
 	}
 	return
-}
-
-// enableOriginalDst is a static header that enables the original destination cluster.
-//
-// See the comment on the infext.OriginalDstEnablingHeaderName.
-var enableOriginalDst = &corev3.HeaderValueOption{
-	Header: &corev3.HeaderValue{Key: infext.OriginalDstEnablingHeaderName, RawValue: []byte("true")},
 }
