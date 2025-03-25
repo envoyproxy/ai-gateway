@@ -75,6 +75,7 @@ func Test_newDynamicLoadBalancer(t *testing.T) {
 func TestDynamicLoadBalancingSelectChatCompletionsEndpoint(t *testing.T) {
 	// TODO: currently this is mostly for test coverage, need to add more tests as we add more features.
 	dlb := &dynamicLoadBalancer{
+		logger: slog.Default(),
 		endpoints: []endpoint{
 			{ipPort: []byte("1.1.1.1:8080"), backend: &filterapi.Backend{Name: "foo"}, hostname: "foo.io"},
 		},
