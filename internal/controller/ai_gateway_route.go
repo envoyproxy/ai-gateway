@@ -844,7 +844,12 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 			}
 			// TODO: at the moment, we assume that all target services are local, i.e. no externalName, etc.
 			//
-			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor.
+			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor since
+			// this is the reconciliation of routine happening when AIServiceBackend (or its transitive referencing resources)
+			// changes.
+			//
+			// This means that if the service is headless, the external processor will resolve the Pod IPs, otherwise
+			// the static cluster IP.
 			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace))
 		case "Backend": // TODO: we should reconcile Backend objects to update the section created below when the Backend changes.
 			var backend egv1a1.Backend

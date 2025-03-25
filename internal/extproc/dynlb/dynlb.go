@@ -63,6 +63,11 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 	}
 
 	client := dns.Client{}
+	conn, err := client.Dial(dnsServer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial DNS server: %w", err)
+	}
+	defer conn.Close()
 	for _, b := range dyn.Backends {
 		for _, ip := range b.IPs {
 			ret.endpoints = append(ret.endpoints, endpoint{
@@ -75,7 +80,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 		for _, hostname := range b.Hostnames {
 			msg := new(dns.Msg)
 			msg.SetQuestion(hostname, dns.TypeA)
-			response, _, err := client.ExchangeContext(ctx, msg, dnsServer)
+			response, _, err := client.ExchangeWithConnContext(ctx, msg, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to query DNS server: %w", err)
 			}
