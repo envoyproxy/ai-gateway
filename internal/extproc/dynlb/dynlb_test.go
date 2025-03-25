@@ -6,85 +6,18 @@
 package dynlb
 
 import (
-	"net"
+	"log/slog"
 	"testing"
-	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func Test_newDynamicLoadBalancer(t *testing.T) {
-	mux := dns.NewServeMux()
-	mux.HandleFunc(".", func(w dns.ResponseWriter, r *dns.Msg) {
-		msg := dns.Msg{}
-		msg.SetReply(r)
-		msg.Authoritative = true
-		for _, q := range r.Question {
-			var ips []string
-			switch q.Qtype {
-			case dns.TypeA:
-				switch q.Name {
-				case "foo.io.":
-					ips = append(ips, "1.1.1.1")
-				case "example.com.":
-					ips = append(ips, "2.2.2.2")
-				default:
-					ips = append(ips, "3.3.3.3")
-					ips = append(ips, "4.4.4.4")
-				}
-			default:
-				t.Fatalf("Unsupported query type: %v", q.Qtype)
-			}
-			for _, ip := range ips {
-				rr, err := dns.NewRR(q.Name + " A " + ip)
-				require.NoError(t, err)
-				msg.Answer = append(msg.Answer, rr)
-			}
-		}
-		require.NoError(t, w.WriteMsg(&msg))
-	})
-	p, err := net.ListenPacket("udp", "0.0.0.0:")
-	require.NoError(t, err)
-	addr := p.LocalAddr().String()
-	server := &dns.Server{PacketConn: p, Handler: mux}
-	go func() {
-		require.NoError(t, server.ActivateAndServe())
-	}()
-	defer func() {
-		require.NoError(t, server.ShutdownContext(t.Context()))
-	}()
-
-	// Wait for the server to start.
-	require.Eventually(t, func() bool {
-		client := dns.Client{Net: "udp"}
-		msg := new(dns.Msg)
-		msg.SetQuestion("example.com.", dns.TypeA)
-		var response *dns.Msg
-		response, _, err = client.ExchangeContext(t.Context(), msg, addr)
-		if err != nil {
-			t.Logf("Failed to exchange DNS message: %v", err)
-			return false
-		}
-		if response.Rcode != dns.RcodeSuccess {
-			t.Logf("DNS query failed: %s", dns.RcodeToString[response.Rcode])
-			return false
-		}
-		for _, answer := range response.Answer {
-			if aRecord, ok := answer.(*dns.A); ok {
-				if aRecord.A.String() == "2.2.2.2" {
-					return true
-				}
-			}
-			t.Logf("Unexpected answer: %v", answer)
-		}
-		t.Logf("No A record found")
-		return false
-	}, 5*time.Second, 100*time.Millisecond)
-
+	addr := internaltesting.RequireNewTestDNSServer(t)
 	f := &filterapi.DynamicLoadBalancing{
 		Backends: []filterapi.DynamicLoadBalancingBackend{
 			{
@@ -103,7 +36,7 @@ func Test_newDynamicLoadBalancer(t *testing.T) {
 		Models: []filterapi.DynamicLoadBalancingModel{},
 	}
 
-	_dlb, err := newDynamicLoadBalancer(t.Context(), f, addr)
+	_dlb, err := newDynamicLoadBalancer(t.Context(), slog.Default(), f, addr)
 	require.NoError(t, err)
 	dlb, ok := _dlb.(*dynamicLoadBalancer)
 	require.True(t, ok)

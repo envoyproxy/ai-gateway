@@ -59,12 +59,10 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		}
 	}
 	// Append the following cluster to the list of clusters:
-	//  cluster:
-	//   '@type': type.googleapis.com/envoy.config.cluster.v3.Cluster
+	//   name: original_destination_cluster
 	//   connectTimeout: 60s
 	//   dnsLookupFamily: V4_ONLY
 	//   lbPolicy: CLUSTER_PROVIDED
-	//   name: original_destination_cluster
 	//   originalDstLbConfig:
 	//     httpHeaderName: x-ai-eg-original-dst
 	//     useHttpHeader: true
@@ -105,8 +103,7 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostV
 	//    match:
 	//     headers:
 	//     - name: x-ai-eg-original-dst
-	//       presentMatch:
-	//         presentMatch: true
+	//       presentMatch: true
 	//     prefix: /
 	//    name: original_destination_cluster
 	//    route:

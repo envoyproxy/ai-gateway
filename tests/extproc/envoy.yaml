@@ -96,6 +96,14 @@ static_resources:
                                   exact: testupstream
                           route:
                             cluster: testupstream
+                        - match:
+                            headers:
+                              - name: x-ai-eg-original-dst
+                                presentMatch: true
+                            prefix: /
+                          name: original_destination_cluster
+                          route:
+                            cluster: original_destination_cluster
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
@@ -204,6 +212,14 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+    - name: original_destination_cluster
+      connectTimeout: 30s
+      type: ORIGINAL_DST
+      dnsLookupFamily: V4_ONLY
+      lbPolicy: CLUSTER_PROVIDED
+      originalDstLbConfig:
+        httpHeaderName: x-ai-eg-original-dst
+        useHttpHeader: true
 
 overload_manager:
   refresh_interval: 0.25s

@@ -188,7 +188,7 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 	}
 
 	go func() {
-		logger.Info("Starting metrics server", "address", addr)
+		logger.Info("starting metrics server", "address", addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Metrics server failed", "error", err)
 		}

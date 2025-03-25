@@ -73,7 +73,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 				}
 			}
 			if b.DynamicLoadBalancing != nil {
-				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, b.DynamicLoadBalancing)
+				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, s.logger, b.DynamicLoadBalancing)
 				if err != nil {
 					return fmt.Errorf("cannot create dynamic load balancer: %w", err)
 				}

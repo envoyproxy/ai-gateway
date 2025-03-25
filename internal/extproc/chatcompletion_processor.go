@@ -138,7 +138,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		}
 	}
 
-	c.logger.Info("Selected backend", "backend", b.Name, "schema", b.Schema)
+	c.logger.Info("selected backend", "backend", b.Name, "schema", b.Schema)
 	c.metrics.SetBackend(*b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {

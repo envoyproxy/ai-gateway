@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
@@ -58,13 +59,14 @@ type DynamicLoadBalancer interface {
 //
 // This is called asynchronously by the config watcher, not on the hot path. The returned DynamicLoadBalancer
 // will be reused for multiple requests/goroutines.
-func NewDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing) (DynamicLoadBalancer, error) {
-	return newDynamicLoadBalancer(ctx, dyn, dnsServerEndpoint)
+func NewDynamicLoadBalancer(ctx context.Context, logger *slog.Logger, dyn *filterapi.DynamicLoadBalancing) (DynamicLoadBalancer, error) {
+	return newDynamicLoadBalancer(ctx, logger, dyn, dnsServerEndpoint)
 }
 
 // dynamicLoadBalancer implements NewDynamicLoadBalancer but decoupled for testing.
-func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalancing, dnsServerAddr string) (DynamicLoadBalancer, error) {
+func newDynamicLoadBalancer(ctx context.Context, logger *slog.Logger, dyn *filterapi.DynamicLoadBalancing, dnsServerAddr string) (DynamicLoadBalancer, error) {
 	ret := &dynamicLoadBalancer{
+		logger: logger,
 		models: make(map[string]filterapi.DynamicLoadBalancingModel, len(dyn.Models)),
 	}
 
@@ -82,6 +84,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 				backend: &b.Backend,
 			})
 		}
+		logger.Info("resolving hostnames to IP addresses", slog.String("hostnames", strings.Join(b.Hostnames, ",")))
 		// Resolves all hostnames to IP addresses.
 		for _, hostname := range b.Hostnames {
 			// Append a dot if the hostname is not fully qualified.
@@ -102,6 +105,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 
 			for _, answer := range response.Answer {
 				if aRecord, ok := answer.(*dns.A); ok {
+					logger.Info("resolved IP address", slog.String("hostname", hostname), slog.String("ip", aRecord.A.String()))
 					ret.endpoints = append(ret.endpoints, endpoint{
 						ipPort:   []byte(fmt.Sprintf("%s:%d", aRecord.A.String(), b.Port)),
 						backend:  &b.Backend,
@@ -119,6 +123,7 @@ func newDynamicLoadBalancer(ctx context.Context, dyn *filterapi.DynamicLoadBalan
 
 // dynamicLoadBalancer implements DynamicLoadBalancer.
 type dynamicLoadBalancer struct {
+	logger    *slog.Logger
 	models    map[string]filterapi.DynamicLoadBalancingModel
 	endpoints []endpoint
 }
@@ -150,6 +155,7 @@ func (dlb *dynamicLoadBalancer) SelectChatCompletionsEndpoint(model string, _ x.
 	// Pick random backend for now. TODO: use the metrics to make a decision as commented above.
 	// TODO: Use non blocking rand (if it's really random).
 	ep := dlb.endpoints[rand.Intn(len(dlb.endpoints))] // nolint:gosec
+	dlb.logger.Info("selected endpoint", slog.String("endpoint", string(ep.ipPort)))
 
 	selected = ep.backend
 	headers = []*corev3.HeaderValueOption{
