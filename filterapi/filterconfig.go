@@ -172,7 +172,7 @@ type Backend struct {
 	// When this is specified, the AI Gateway filter assume that the ORIGINAL_DST cluster is configured
 	// to route the request to an endpoint from `x-ai-eg-original-dst` header. Also, to route the requests
 	// to the ORIGINAL_DST cluster, the AI Gateway filter sets the `x-ai-eg-use-original-dst` header to "true".
-	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicBackend,omitempty"`
+	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicLoadBalancing,omitempty"`
 }
 
 // DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
