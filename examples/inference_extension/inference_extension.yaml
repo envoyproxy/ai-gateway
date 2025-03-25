@@ -41,7 +41,7 @@ spec:
               name: x-target-inference-extension
               value: "yes"
       backendRefs:
-        - name: inference-extension-example-pool # The name of the InferencePool that binds to the backend.
+        - name: inference-extension-example-pool  # The name of the InferencePool that binds to the backend.
           # Explicitly specify the kind of the backend to be InferenceExtension.
           kind: InferencePool
 ---
