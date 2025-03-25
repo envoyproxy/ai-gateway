@@ -16,7 +16,7 @@ tests/e2e/logs
 # Files and directories to ignore in the site directory
 # dependencies
 site/node_modules
-
+.tool-versions
 # production
 site/build
 

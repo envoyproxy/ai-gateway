@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -301,8 +302,10 @@ func TestAWS_GetPreRotationTime(t *testing.T) {
 		backendSecurityPolicyName:      policyName,
 	}
 
-	preRotateTime, _ := awsOidcRotator.GetPreRotationTime(t.Context())
-	require.Equal(t, 0, preRotateTime.Minute())
+	preRotateTime, err := awsOidcRotator.GetPreRotationTime(t.Context())
+	require.Error(t, err)
+	require.True(t, apierrors.IsNotFound(err))
+	require.True(t, preRotateTime.IsZero())
 
 	createTestAwsSecret(t, fakeClient, policyName, oldAwsAccessKey, oldAwsSecretKey, oldAwsSessionToken, awsProfileName, awsRegion)
 	require.Equal(t, 0, preRotateTime.Minute())
