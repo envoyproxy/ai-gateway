@@ -4,7 +4,7 @@ title: "Envoy AI Gateway CLI"
 sidebar_position: 3
 ---
 
-# aigw: Envoy AI Gateway CLI
+# Envoy AI Gateway CLI (aigw)
 
 The Envoy AI Gateway CLI, `aigw`, is a command-line interface that provides a set of useful tools for using the gateway.
 

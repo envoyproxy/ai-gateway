@@ -1,6 +1,6 @@
 ---
 id: aigwinstall
-title: Install aigw
+title: Installation
 sidebar_position: 2
 ---
 
