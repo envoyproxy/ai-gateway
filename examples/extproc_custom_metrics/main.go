@@ -61,7 +61,7 @@ func (m *myCustomChatCompletionMetrics) SetModel(model string) {
 	m.logger.Info("SetModel", "model", model)
 }
 
-func (m *myCustomChatCompletionMetrics) SetBackend(backend filterapi.Backend) {
+func (m *myCustomChatCompletionMetrics) SetBackend(backend *filterapi.Backend) {
 	m.logger.Info("SetBackend", "backend", backend.Name)
 }
 

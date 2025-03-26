@@ -187,7 +187,7 @@ func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.reques
 func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
 
 // SetBackend implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) SetBackend(backend filterapi.Backend) { m.backend = backend.Name }
+func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32, _ ...attribute.KeyValue) {

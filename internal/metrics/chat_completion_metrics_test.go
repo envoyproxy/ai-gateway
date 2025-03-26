@@ -64,7 +64,7 @@ func TestRecordTokenUsage(t *testing.T) {
 	)
 
 	pm.SetModel("test-model")
-	pm.SetBackend(filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, 15, extra)
 
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
@@ -97,7 +97,7 @@ func TestRecordTokenLatency(t *testing.T) {
 
 	pm.StartRequest(nil)
 	pm.SetModel("test-model")
-	pm.SetBackend(filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
+	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 	// Test first token.
 	time.Sleep(10 * time.Millisecond)
@@ -141,7 +141,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 
 	pm.StartRequest(nil)
 	pm.SetModel("test-model")
-	pm.SetBackend(filterapi.Backend{Name: "custom"})
+	pm.SetBackend(&filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordRequestCompletion(t.Context(), true, extra)
