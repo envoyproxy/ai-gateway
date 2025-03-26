@@ -59,7 +59,7 @@ type ChatCompletionMetrics interface {
 	SetModel(model string)
 	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
 	// after parsing the request body to determine the model and invoke the routing logic.
-	SetBackend(backend filterapi.Backend)
+	SetBackend(backend *filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
 	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
