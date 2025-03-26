@@ -11,6 +11,16 @@ To install the `aigw` CLI, run the following command (This may take a while):
 go install github.com/envoyproxy/ai-gateway/cmd/aigw@main
 ```
 
+:::tip
+`go install` command install a binary in the `$(go env GOPATH)/bin` directory.
+Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
+
+For example, you can add the following line to your shell profile (e.g., `~/.bashrc`, `~/.zshrc`, etc.):
+```sh
+export PATH=$PATH:$(go env GOPATH)/bin
+```
+:::
+
 Now, you can check if the installation was successful by running the following command:
 
 ```sh
