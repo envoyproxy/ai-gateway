@@ -1019,6 +1019,18 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-other-backend-security-policy-4"},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "no-security-policy", Namespace: "ns",
+				Labels: map[string]string{"inference-pool-target:": "yeah"},
+			},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaAWSBedrock,
+				},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), backend, &client.CreateOptions{}))
 		require.NotNil(t, c)
@@ -1144,10 +1156,10 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool0-some-other-backend-security-policy-1",
 		},
 		{
-			name:       "InfernecePool.Ref[1]",
+			name:       "InfernecePool.Ref[2]",
 			secretName: "some-secret-policy-3",
-			volumeName: "rule4-backref0-inpool1-some-other-backend-security-policy-aws",
-			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool1-some-other-backend-security-policy-aws",
+			volumeName: "rule4-backref0-inpool2-some-other-backend-security-policy-aws",
+			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool2-some-other-backend-security-policy-aws",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
