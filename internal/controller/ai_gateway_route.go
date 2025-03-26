@@ -31,6 +31,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -439,17 +440,21 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for i := range rule.BackendRefs {
 			br := &rule.BackendRefs[i]
-			key := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if _, ok := dedup[key]; ok {
+			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
+			if _, ok := dedup[dstName]; ok {
 				continue
 			}
-			dedup[key] = struct{}{}
+			dedup[dstName] = struct{}{}
 
 			var backendRefs []gwapiv1.HTTPBackendRef
 			var timeouts *gwapiv1.HTTPRouteTimeouts
 			if isInferencePoolRef(br) {
 				// When the target is InferencePool, we don't need the HTTPRoute level setting, but
 				// will route to ORIGINAL_DST, so we don't need to set the backendRefs.
+				//
+				// However, to properly route to the ORIGINAL_DST, we use the constant OriginalDstClusterName
+				// as the selected backend name.
+				dstName = extensionserver.OriginalDstClusterName
 
 				// TODO: make the timeout configurable. One way is to move the timeout setting from
 				// 	AIServiceBackend to AIGatewayRouteBackendRef.
@@ -457,7 +462,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 				if err != nil {
-					return fmt.Errorf("AIServiceBackend %s not found", key)
+					return fmt.Errorf("AIServiceBackend %s not found", dstName)
 				}
 				backendRefs = []gwapiv1.HTTPBackendRef{
 					{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backend.Spec.BackendRef}},
@@ -467,7 +472,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			rules = append(rules, gwapiv1.HTTPRouteRule{
 				BackendRefs: backendRefs,
 				Matches: []gwapiv1.HTTPRouteMatch{
-					{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
+					{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: dstName}}},
 				},
 				Filters:  rewriteFilters,
 				Timeouts: timeouts,

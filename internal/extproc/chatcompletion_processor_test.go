@@ -373,13 +373,18 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 
 						// Check the model and backend headers are set in headerMut.
 						hdrs := headerMut.SetHeaders
-						require.Len(t, hdrs, 2)
-						require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
-						require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
 						if tc.dynlb != nil {
-							require.Equal(t, "foo", hdrs[1].Header.Key)
-							require.Equal(t, "bar", hdrs[1].Header.Value)
+							require.Len(t, hdrs, 3)
+							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
+							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
+							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
+							require.Equal(t, "original_destination_cluster", string(hdrs[1].Header.RawValue))
+							require.Equal(t, "foo", hdrs[2].Header.Key)
+							require.Equal(t, "bar", hdrs[2].Header.Value)
 						} else {
+							require.Len(t, hdrs, 2)
+							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
+							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
 							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
 							require.Equal(t, "some-backend", string(hdrs[1].Header.RawValue))
 						}

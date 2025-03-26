@@ -43,8 +43,8 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 const (
 	// originalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
 	originalDstHeaderName = "x-ai-eg-original-dst"
-	// originalDstClusterName is the global name of the original destination cluster.
-	originalDstClusterName = "original_destination_cluster"
+	// OriginalDstClusterName is the global name of the original destination cluster.
+	OriginalDstClusterName = "original_destination_cluster"
 )
 
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config.
@@ -52,7 +52,7 @@ const (
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
 func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	for _, cluster := range req.Clusters {
-		if cluster.Name == originalDstClusterName {
+		if cluster.Name == OriginalDstClusterName {
 			// The cluster already exists, no need to add it again.
 			s.log.Info("original_dst cluster already exists in the list of clusters")
 			return nil, nil
@@ -67,7 +67,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 	//     useHttpHeader: true
 	//   type: ORIGINAL_DST
 	req.Clusters = append(req.Clusters, &clusterv3.Cluster{
-		Name:                 originalDstClusterName,
+		Name:                 OriginalDstClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
 		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
 		LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
@@ -84,54 +84,25 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
 //
-// Currently, this adds a route that matches on the presence of OriginalDstHeaderName header to the ORIGINAL_DST cluster.
+// Currently, this replaces the route that has "x-ai-eg-selected-backend" pointing to "original_destination_cluster" to route to the original destination cluster.
 func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
 	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
 		return nil, nil
 	}
 	for _, route := range req.VirtualHost.Routes {
-		if route.Name == originalDstClusterName {
-			// The route already exists, no need to add it again.
-			s.log.Info("original_dst route already exists in the virtual host", "virtual_host", req.VirtualHost.Name)
-			return nil, nil
+		for _, h := range route.Match.Headers {
+			if h.Name != "x-ai-eg-selected-backend" {
+				continue
+			}
+			matcher, ok := h.HeaderMatchSpecifier.(*routev3.HeaderMatcher_StringMatch)
+			if !ok || matcher.StringMatch.GetExact() != OriginalDstClusterName {
+				s.log.Info("unexpected header value", "header", h)
+				continue
+			}
+			route.Action = &routev3.Route_Route{
+				Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: OriginalDstClusterName}},
+			}
 		}
 	}
-
-	// Append the following route to the list of routes:
-	//    match:
-	//     headers:
-	//     - name: x-ai-eg-original-dst
-	//       presentMatch: true
-	//     prefix: /
-	//    name: original_destination_cluster
-	//    route:
-	//      cluster: original_destination_cluster
-	//    typedPerFilterConfig:
-	//      envoy.filters.http.ext_proc/envoyextensionpolicy/default/ai-eg-route-extproc-translation-testupstream/extproc/0:
-	//        '@type': type.googleapis.com/envoy.config.route.v3.FilterConfig
-	//        config: {}
-	//
-	// where typedPerFilterConfig will be the same as the other existing routes having the mandatory extproc
-	// as well as the optional rate limit per-route configuration.
-	req.VirtualHost.Routes = append(req.VirtualHost.Routes, &routev3.Route{
-		Name: originalDstClusterName,
-		Match: &routev3.RouteMatch{
-			PathSpecifier: &routev3.RouteMatch_Prefix{
-				Prefix: "/",
-			},
-			Headers: []*routev3.HeaderMatcher{
-				{Name: originalDstHeaderName, HeaderMatchSpecifier: &routev3.HeaderMatcher_PresentMatch{PresentMatch: true}},
-			},
-		},
-		Action: &routev3.Route_Route{
-			Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: originalDstClusterName}},
-		},
-		TypedPerFilterConfig: req.VirtualHost.Routes[0].TypedPerFilterConfig,
-	})
-	// Put the original_dst route at the beginning of the list of routes to ensure that the
-	// default "unreachable" route is the last one, otherwise the original_dst route will never be matched.
-	l := len(req.VirtualHost.Routes) - 1
-	req.VirtualHost.Routes[0], req.VirtualHost.Routes[l] = req.VirtualHost.Routes[l], req.VirtualHost.Routes[0]
-	s.log.Info("Added original_dst route to the virtual host", "virtual_host", req.VirtualHost.Name)
 	return &egextension.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
 }

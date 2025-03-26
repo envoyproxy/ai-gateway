@@ -126,6 +126,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 
 	var headers []*corev3.HeaderValueOption
 	c.dynamicLB = b.DynamicLoadBalancing
+	selectedBackendHeaderValue := b.Name
 	if c.dynamicLB != nil {
 		lb, ok := c.config.dynamicLoadBalancers[c.dynamicLB]
 		if !ok {
@@ -136,6 +137,11 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		if err != nil {
 			return nil, fmt.Errorf("failed to select endpoint: %w", err)
 		}
+		// The selected backend is the dynamic load balancer name.
+		// TODO: we should make this constant as a part of the filterapi package.
+		//  However, that will likely to change after https://github.com/envoyproxy/envoy/pull/38757
+		// 	so for now, we keep it as an inline string.
+		selectedBackendHeaderValue = "original_destination_cluster"
 	}
 
 	c.logger.Info("selected backend", "backend", b.Name, "schema", b.Schema)
@@ -153,18 +159,15 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
-	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+		// Set the model name to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
+	}, &corev3.HeaderValueOption{
+		// Also set the selected backend to the request header with the key `x-ai-eg-selected-backend`.
+		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(selectedBackendHeaderValue)},
 	})
-	if c.dynamicLB != nil {
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
-	} else {
-		// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
-		})
-	}
+	headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
+	// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)

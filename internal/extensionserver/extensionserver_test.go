@@ -11,6 +11,7 @@ import (
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		s := New(logr.Discard())
 		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{
-				{Name: originalDstClusterName},
+				{Name: OriginalDstClusterName},
 			},
 		})
 		require.Nil(t, res)
@@ -58,7 +59,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, res.Clusters, 2)
 		require.Equal(t, "foo", res.Clusters[0].Name)
-		require.Equal(t, originalDstClusterName, res.Clusters[1].Name)
+		require.Equal(t, OriginalDstClusterName, res.Clusters[1].Name)
 	})
 }
 
@@ -77,28 +78,34 @@ func TestServerPostVirtualHostModify(t *testing.T) {
 		require.Nil(t, res)
 		require.NoError(t, err)
 	})
-	t.Run("existing route", func(t *testing.T) {
+	t.Run("route", func(t *testing.T) {
 		s := New(logr.Discard())
 		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
 			VirtualHost: &routev3.VirtualHost{
-				Routes: []*routev3.Route{{Name: originalDstClusterName}},
-			},
-		})
-		require.Nil(t, res)
-		require.NoError(t, err)
-	})
-	t.Run("not existing route", func(t *testing.T) {
-		s := New(logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
-			VirtualHost: &routev3.VirtualHost{
-				Routes: []*routev3.Route{{Name: "foo"}},
+				Routes: []*routev3.Route{
+					{Name: "foo", Match: &routev3.RouteMatch{
+						Headers: []*routev3.HeaderMatcher{
+							{
+								Name: "x-ai-eg-selected-backend",
+								HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
+									StringMatch: &matcherv3.StringMatcher{
+										MatchPattern: &matcherv3.StringMatcher_Exact{
+											Exact: OriginalDstClusterName,
+										},
+									},
+								},
+							},
+						},
+					}},
+				},
 			},
 		})
 		require.NotNil(t, res)
 		require.NoError(t, err)
-		require.Len(t, res.VirtualHost.Routes, 2)
 		// Original route should be first per the code comment.
-		require.Equal(t, originalDstClusterName, res.VirtualHost.Routes[0].Name)
-		require.Equal(t, "foo", res.VirtualHost.Routes[1].Name)
+		require.Equal(t, "foo", res.VirtualHost.Routes[0].Name)
+		// Ensure that the action has been updated.
+		require.Equal(t, OriginalDstClusterName, res.VirtualHost.Routes[0].Action.(*routev3.Route_Route).
+			Route.ClusterSpecifier.(*routev3.RouteAction_Cluster).Cluster)
 	})
 }
