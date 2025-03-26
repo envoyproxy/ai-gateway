@@ -12,7 +12,7 @@ go install github.com/envoyproxy/ai-gateway/cmd/aigw@main
 ```
 
 :::tip
-`go install` command install a binary in the `$(go env GOPATH)/bin` directory.
+`go install` command installs a binary in the `$(go env GOPATH)/bin` directory.
 Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
 
 For example, you can add the following line to your shell profile (e.g., `~/.bashrc`, `~/.zshrc`, etc.):
