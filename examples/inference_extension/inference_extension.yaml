@@ -50,7 +50,7 @@ kind: InferencePool
 metadata:
   name: inference-extension-example-pool
 spec:
-  targetPortNumber: 80
+  targetPortNumber: 8080
   selector:
     # Select multiple AIServiceBackend objects to bind to the InferencePool.
     app: my-backend
@@ -82,7 +82,7 @@ spec:
   schema:
     name: OpenAI
   backendRef:
-    name: testupstream
+    name: inference-extension-example-testupstream
     kind: Service
     port: 8080
 ---

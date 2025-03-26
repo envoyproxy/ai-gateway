@@ -1410,16 +1410,18 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 		}
 
 		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
-			ObjectMeta: metav1.ObjectMeta{Name: "model1", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 			Spec: gwaiev1a2.InferenceModelSpec{
-				PoolRef: gwaiev1a2.PoolObjectReference{Name: "mypool"},
+				ModelName: "model1",
+				PoolRef:   gwaiev1a2.PoolObjectReference{Name: "mypool"},
 			},
 		}, &client.CreateOptions{}))
 
 		require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferenceModel{
-			ObjectMeta: metav1.ObjectMeta{Name: "model2", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default"},
 			Spec: gwaiev1a2.InferenceModelSpec{
-				PoolRef: gwaiev1a2.PoolObjectReference{Name: "mypool"},
+				ModelName: "model2",
+				PoolRef:   gwaiev1a2.PoolObjectReference{Name: "mypool"},
 				TargetModels: []gwaiev1a2.TargetModel{
 					{Name: "model3"},
 					{Name: "model4", Weight: ptr.To(int32(1))},
@@ -1429,7 +1431,7 @@ func TestAIGatewayRouteController_createDynamicLoadBalancing(t *testing.T) {
 
 		dyn, err := s.createDynamicLoadBalancing(t.Context(), 0, 0, inferencePool, nil)
 		require.NoError(t, err)
-		require.Equal(t, []filterapi.DynamicLoadBalancingModel{
+		require.ElementsMatch(t, []filterapi.DynamicLoadBalancingModel{
 			{Name: "model1"},
 			{Name: "model2"},
 			{Name: "model3"},

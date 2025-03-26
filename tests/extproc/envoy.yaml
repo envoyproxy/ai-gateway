@@ -104,6 +104,11 @@ static_resources:
                           name: original_destination_cluster
                           route:
                             cluster: original_destination_cluster
+                        - directResponse:
+                            status: 500
+                          match:
+                            prefix: /
+                          name: unreachable
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:

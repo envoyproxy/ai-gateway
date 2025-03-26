@@ -485,6 +485,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	// the actual routing at all.
 	if len(rules) > 0 {
 		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Name:    ptr.To[gwapiv1.SectionName]("unreachable"),
 			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
 		})
 	}
@@ -896,7 +897,7 @@ func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Contex
 		return nil, fmt.Errorf("failed to list InferenceModels: %w", err)
 	}
 	for _, model := range models.Items {
-		ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: model.Name})
+		ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: model.Spec.ModelName})
 		for _, targetModel := range model.Spec.TargetModels {
 			var weight *int
 			if targetModel.Weight != nil {

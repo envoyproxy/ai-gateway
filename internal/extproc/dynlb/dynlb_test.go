@@ -89,18 +89,12 @@ func TestDynamicLoadBalancingSelectChatCompletionsEndpoint(t *testing.T) {
 		backend, headers, err := dlb.SelectChatCompletionsEndpoint("foo", nil)
 		require.NoError(t, err)
 		require.Equal(t, &filterapi.Backend{Name: "foo"}, backend)
-		require.Len(t, headers, 2)
+		require.Len(t, headers, 1)
 		for _, h := range []*corev3.HeaderValueOption{
 			{
 				Header: &corev3.HeaderValue{
 					Key:      originalDstHeaderName,
 					RawValue: []byte("1.1.1.1:8080"),
-				},
-			},
-			{
-				Header: &corev3.HeaderValue{
-					Key:      "host",
-					RawValue: []byte("foo.io"),
 				},
 			},
 		} {

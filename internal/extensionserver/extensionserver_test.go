@@ -97,7 +97,8 @@ func TestServerPostVirtualHostModify(t *testing.T) {
 		require.NotNil(t, res)
 		require.NoError(t, err)
 		require.Len(t, res.VirtualHost.Routes, 2)
-		require.Equal(t, "foo", res.VirtualHost.Routes[0].Name)
-		require.Equal(t, originalDstClusterName, res.VirtualHost.Routes[1].Name)
+		// Original route should be first per the code comment.
+		require.Equal(t, originalDstClusterName, res.VirtualHost.Routes[0].Name)
+		require.Equal(t, "foo", res.VirtualHost.Routes[1].Name)
 	})
 }

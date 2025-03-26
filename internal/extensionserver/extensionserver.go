@@ -128,6 +128,10 @@ func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostV
 		},
 		TypedPerFilterConfig: req.VirtualHost.Routes[0].TypedPerFilterConfig,
 	})
+	// Put the original_dst route at the beginning of the list of routes to ensure that the
+	// default "unreachable" route is the last one, otherwise the original_dst route will never be matched.
+	l := len(req.VirtualHost.Routes) - 1
+	req.VirtualHost.Routes[0], req.VirtualHost.Routes[l] = req.VirtualHost.Routes[l], req.VirtualHost.Routes[0]
 	s.log.Info("Added original_dst route to the virtual host", "virtual_host", req.VirtualHost.Name)
 	return &egextension.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
 }

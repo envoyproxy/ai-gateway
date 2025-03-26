@@ -161,14 +161,11 @@ func (dlb *dynamicLoadBalancer) SelectChatCompletionsEndpoint(model string, _ x.
 	headers = []*corev3.HeaderValueOption{
 		{Header: &corev3.HeaderValue{Key: originalDstHeaderName, RawValue: ep.ipPort}},
 	}
-	if ep.hostname != "" {
-		// Set host header if the IP is resolved from a hostname.
-		headers = append(headers, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{
-				Key:      "host",
-				RawValue: []byte(ep.hostname),
-			},
-		})
+	if hn := ep.hostname; hn != "" {
+		// TODO: Set host header if the IP is resolved from a hostname. Without this, it is likely that we cannot
+		// 	route the requests to external services that reject requests with the mismatching host header.
+		// 	Currently, EG API doesn't support allow us to set mutation_rules.
+		_ = hn
 	}
 	return
 }
