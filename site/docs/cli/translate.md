@@ -1,7 +1,7 @@
 ---
 id: aigtranslate
 title: aigw translate
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # `aigw translate`
