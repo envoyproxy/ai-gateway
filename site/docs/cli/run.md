@@ -10,7 +10,7 @@ sidebar_position: 2
 
 This command runs the Envoy AI Gateway locally as a standalone proxy with a given configuration file without any dependencies such as docker or Kubernetes.
 Since the project is primarily focused on the Kubernetes environment, this command is useful for testing the configuration locally before deploying it to a Kubernetes cluster.
-Not only does it help in testing the configuration, but it is also useful to in a local development environment of the AI applications in an AI provider agnostic way.
+Not only does it help in testing the configuration, but it is also useful in a local development environment of the provider-agnostic AI applications.
 
 ## Default Proxy
 
