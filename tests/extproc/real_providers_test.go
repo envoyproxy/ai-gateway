@@ -10,10 +10,8 @@ package extproc
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -25,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
@@ -34,7 +33,7 @@ func TestWithRealProviders(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
-	cc := requireNewCredentialsContext(t)
+	cc := internaltesting.RequireNewCredentialsContext(t)
 
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
@@ -49,14 +48,14 @@ func TestWithRealProviders(t *testing.T) {
 		Rules: []filterapi.RouteRule{
 			{
 				Backends: []filterapi.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-					APIKey: &filterapi.APIKeyAuth{Filename: cc.openAIAPIKeyFilePath},
+					APIKey: &filterapi.APIKeyAuth{Filename: cc.OpenAIAPIKeyFilePath},
 				}}},
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
 				Backends: []filterapi.Backend{
 					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-						CredentialFileName: cc.awsFilePath,
+						CredentialFileName: cc.AWSFilePath,
 						Region:             "us-east-1",
 					}}},
 				},
@@ -68,7 +67,7 @@ func TestWithRealProviders(t *testing.T) {
 			{
 				Backends: []filterapi.Backend{
 					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{Filename: cc.azureAccessTokenFilePath},
+						AzureAuth: &filterapi.AzureAuth{Filename: cc.AzureAccessTokenFilePath},
 					}},
 				},
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
@@ -81,12 +80,12 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("health-checking", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
-			{name: "azure-openai", modelName: "o1", required: requiredCredentialAzure},
+			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
-				cc.maybeSkip(t, tc.required)
+				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -115,7 +114,7 @@ func TestWithRealProviders(t *testing.T) {
 	// If the used token is set correctly in the metadata, it should be logged in the access log.
 
 	t.Run("check-used-token-metadata-access-log", func(t *testing.T) {
-		cc.maybeSkip(t, requiredCredentialOpenAI|requiredCredentialAWS)
+		cc.MaybeSkip(t, internaltesting.RequiredCredentialOpenAI|internaltesting.RequiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
 		require.Eventually(t, func() bool {
 			accessLog, err := os.ReadFile(accessLogPath)
@@ -151,11 +150,11 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: requiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: requiredCredentialAWS},
+			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				cc.maybeSkip(t, tc.required)
+				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					stream := client.Chat.Completions.NewStreaming(t.Context(), openai.ChatCompletionNewParams{
 						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -202,10 +201,10 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("Bedrock uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: requiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
-				cc.maybeSkip(t, tc.required)
+				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					// Step 1: Initial tool call request
 					question := "What is the weather in New York City?"
@@ -316,84 +315,5 @@ func TestWithRealProviders(t *testing.T) {
 type realProvidersTestCase struct {
 	name      string
 	modelName string
-	required  requiredCredential
-}
-
-type requiredCredential byte
-
-const (
-	requiredCredentialOpenAI requiredCredential = 1 << iota
-	requiredCredentialAWS
-	requiredCredentialAzure
-)
-
-// credentialsContext holds the context for the credentials used in the tests.
-type credentialsContext struct {
-	openAIValid              bool
-	awsValid                 bool
-	azureValid               bool
-	openAIAPIKeyFilePath     string
-	awsFilePath              string
-	azureAccessTokenFilePath string
-}
-
-// maybeSkip skips the test if the required credentials are not set.
-func (c credentialsContext) maybeSkip(t *testing.T, required requiredCredential) {
-	if required&requiredCredentialOpenAI != 0 && !c.openAIValid {
-		t.Skip("skipping test as OpenAI API key is not set in TEST_OPENAI_API_KEY")
-	}
-	if required&requiredCredentialAWS != 0 && !c.awsValid {
-		t.Skip("skipping test as AWS credentials are not set in TEST_AWS_ACCESS_KEY_ID and TEST_AWS_SECRET_ACCESS_KEY")
-	}
-	if required&requiredCredentialAzure != 0 && !c.azureValid {
-		t.Skip("skipping test as Azure credentials are not set in TEST_AZURE_ACCESS_TOKEN")
-	}
-}
-
-// requireNewCredentialsContext creates a new credential context for the tests from the environment variables.
-func requireNewCredentialsContext(t *testing.T) (ctx credentialsContext) {
-	// Set up credential file for OpenAI.
-	openAIAPIKey := os.Getenv("TEST_OPENAI_API_KEY")
-
-	openAIAPIKeyFilePath := t.TempDir() + "/open-ai-api-key"
-	openaiFile, err := os.Create(openAIAPIKeyFilePath)
-	require.NoError(t, err)
-	_, err = openaiFile.WriteString(cmp.Or(openAIAPIKey, "dummy-openai-api-key"))
-	require.NoError(t, err)
-
-	// Set up credential file for Azure.
-	azureAccessToken := os.Getenv("TEST_AZURE_ACCESS_TOKEN")
-	azureAccessTokenFilePath := t.TempDir() + "/azureAccessToken"
-	azureFile, err := os.Create(azureAccessTokenFilePath)
-	require.NoError(t, err)
-	_, err = azureFile.WriteString(cmp.Or(azureAccessToken, "dummy-azure-access-token"))
-	require.NoError(t, err)
-
-	// Set up credential file for AWS.
-	awsAccessKeyID := os.Getenv("TEST_AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey := os.Getenv("TEST_AWS_SECRET_ACCESS_KEY")
-	awsSessionToken := os.Getenv("TEST_AWS_SESSION_TOKEN")
-	var awsCredentialsBody string
-	if awsSessionToken != "" {
-		awsCredentialsBody = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_SESSION_TOKEN=%s\n",
-			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"), awsSessionToken)
-	} else {
-		awsCredentialsBody = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n",
-			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"))
-	}
-	awsFilePath := t.TempDir() + "/aws-credential-file"
-	awsFile, err := os.Create(awsFilePath)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, awsFile.Close()) }()
-	_, err = awsFile.WriteString(awsCredentialsBody)
-	require.NoError(t, err)
-
-	return credentialsContext{
-		openAIValid:              openAIAPIKey != "",
-		awsValid:                 awsAccessKeyID != "" && awsSecretAccessKey != "",
-		azureValid:               azureAccessToken != "",
-		openAIAPIKeyFilePath:     openAIAPIKeyFilePath,
-		awsFilePath:              awsFilePath,
-		azureAccessTokenFilePath: azureAccessTokenFilePath,
-	}
+	required  internaltesting.RequiredCredential
 }

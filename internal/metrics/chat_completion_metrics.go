@@ -56,7 +56,7 @@ func (c *chatCompletion) SetModel(model string) {
 
 // SetBackend sets the name of the backend to be reported in the metrics according to:
 // https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/#gen-ai-system
-func (c *chatCompletion) SetBackend(backend filterapi.Backend) {
+func (c *chatCompletion) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
 		c.backend = genaiSystemOpenAI

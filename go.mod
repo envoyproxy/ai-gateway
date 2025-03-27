@@ -3,7 +3,7 @@ module github.com/envoyproxy/ai-gateway
 go 1.24.1
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.14.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.17.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
 	github.com/alecthomas/kong v1.8.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17
 	github.com/coreos/go-oidc/v3 v3.13.0
-	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250318185001-4143f5c8eb2d
+	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250324155735-cbfbaa7cf9d1
 	github.com/envoyproxy/go-control-plane/envoy v1.32.5-0.20250303232259-0c5cb90447bb
 	github.com/go-logr/logr v1.4.2
 	github.com/google/cel-go v0.22.1
@@ -28,7 +28,7 @@ require (
 	golang.org/x/exp v0.0.0-20250228200357-dead58393ab7
 	golang.org/x/oauth2 v0.28.0
 	google.golang.org/grpc v1.71.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.32.3
 	k8s.io/apiextensions-apiserver v0.32.3
 	k8s.io/apimachinery v0.33.0-beta.0
@@ -115,7 +115,7 @@ require (
 	github.com/ckaznocha/intrange v0.3.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
-	github.com/containerd/containerd v1.7.25 // indirect
+	github.com/containerd/containerd v1.7.27 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
@@ -357,7 +357,7 @@ require (
 	github.com/tdakkota/asciicheck v0.4.0 // indirect
 	github.com/telepresenceio/watchable v0.0.0-20220726211108-9bb86f92afa7 // indirect
 	github.com/tetafro/godot v1.4.20 // indirect
-	github.com/tetratelabs/func-e v1.1.5-0.20240822223546-c85a098d5bf0 // indirect
+	github.com/tetratelabs/func-e v1.1.5-0.20250320201954-b46a029a6395 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -431,11 +431,11 @@ require (
 	helm.sh/helm/v3 v3.17.2 // indirect
 	honnef.co/go/tools v0.6.0 // indirect
 	k8s.io/apiserver v0.32.3 // indirect
-	k8s.io/cli-runtime v0.32.2 // indirect
+	k8s.io/cli-runtime v0.32.3 // indirect
 	k8s.io/component-base v0.32.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250304201544-e5f78fe3ede9 // indirect
-	k8s.io/kubectl v0.32.2 // indirect
+	k8s.io/kubectl v0.32.3 // indirect
 	mvdan.cc/gofumpt v0.7.0 // indirect
 	mvdan.cc/unparam v0.0.0-20240528143540-8a5130ca722f // indirect
 	oras.land/oras-go v1.2.6 // indirect
