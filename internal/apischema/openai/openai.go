@@ -411,7 +411,7 @@ type ChatCompletionResponseFormat struct {
 type ChatCompletionResponseFormatJSONSchema struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Schema      any    `json:"schema"`
+	Schema      any    `json:"schema"` // See detail in https://github.com/openai/openai-go/blob/28c93a9fa58bb622b5d23b3262af7d4fdd2ebde9/shared/shared.go#L519C6-L519C30
 	Strict      bool   `json:"strict"`
 }
 
