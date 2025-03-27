@@ -13,12 +13,13 @@ import (
 
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {
-		extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags([]string{})
+		extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, enableInfExt, err := parseAndValidateFlags([]string{})
 		require.Equal(t, "info", extProcLogLevel)
 		require.Equal(t, "docker.io/envoyproxy/ai-gateway-extproc:latest", extProcImage)
 		require.True(t, enableLeaderElection)
 		require.Equal(t, "info", logLevel.String())
 		require.Equal(t, ":1063", extensionServerPort)
+		require.False(t, enableInfExt)
 		require.NoError(t, err)
 	})
 	t.Run("all flags", func(t *testing.T) {
@@ -36,13 +37,15 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
+					tc.dash + "enableInferenceExtension=true",
 				}
-				extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags(args)
+				extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, enableInfExt, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", extProcLogLevel)
 				require.Equal(t, "example.com/extproc:latest", extProcImage)
 				require.False(t, enableLeaderElection)
 				require.Equal(t, "debug", logLevel.String())
 				require.Equal(t, ":8080", extensionServerPort)
+				require.True(t, enableInfExt)
 				require.NoError(t, err)
 			})
 		}
@@ -66,7 +69,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				_, _, _, _, _, err := parseAndValidateFlags(tc.flags)
+				_, _, _, _, _, _, err := parseAndValidateFlags(tc.flags)
 				require.ErrorContains(t, err, tc.expErr)
 			})
 		}

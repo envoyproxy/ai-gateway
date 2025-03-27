@@ -183,7 +183,7 @@ func translateCustomResourceObjects(
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
-	_ = controller.ApplyIndexing(ctx, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	_ = controller.ApplyIndexing(ctx, true, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	}) // Error should never happen.

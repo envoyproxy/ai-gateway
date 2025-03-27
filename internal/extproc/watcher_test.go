@@ -162,6 +162,8 @@ rules:
 	}, 1*time.Second, tickInterval)
 	require.NotEqual(t, firstCfg, rcv.getConfig())
 
+	secondConfig := rcv.getConfig()
+
 	// Verify the buffer contains the updated loading.
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "loading a new config")
@@ -175,6 +177,36 @@ rules:
 	// Wait for a couple ticks to verify config is not reloaded if file does not change.
 	time.Sleep(2 * tickInterval)
 	require.Equal(t, int32(3), rcv.loadCount.Load())
+
+	// Change it to the dynamic load balancing config.
+	cfg = `
+schema:
+  name: OpenAI
+selectedBackendHeaderKey: x-ai-eg-selected-backend
+modelNameHeaderKey: x-model-name
+rules:
+- backends:
+  - name: openai
+    dynamicLoadBalancing: {} # This should force the reload regardless of the config change.
+    schema:
+      name: OpenAI
+  headers:
+  - name: x-model-name
+    value: gpt4.4444
+`
+	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
+
+	// Verify the config has been updated.
+	require.Eventually(t, func() bool {
+		return rcv.getConfig() != secondConfig
+	}, 1*time.Second, tickInterval)
+	require.NotEqual(t, firstCfg, rcv.getConfig())
+	require.Equal(t, int32(4), rcv.loadCount.Load())
+
+	// Then waits for the 10 counts of the config to be loaded.
+	require.Eventually(t, func() bool {
+		return rcv.loadCount.Load() == 10
+	}, 5*time.Second, tickInterval)
 }
 
 func TestDiff(t *testing.T) {

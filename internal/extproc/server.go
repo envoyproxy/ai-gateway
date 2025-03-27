@@ -26,6 +26,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -61,6 +62,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	var (
 		backendAuthHandlers = make(map[string]backendauth.Handler)
 		declaredModels      []string
+		dynamicLBs          = make(map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer)
 	)
 	for _, r := range config.Rules {
 		for _, b := range r.Backends {
@@ -68,6 +70,12 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 				backendAuthHandlers[b.Name], err = backendauth.NewHandler(ctx, b.Auth)
 				if err != nil {
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
+				}
+			}
+			if b.DynamicLoadBalancing != nil {
+				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, s.logger, b.DynamicLoadBalancing)
+				if err != nil {
+					return fmt.Errorf("cannot create dynamic load balancer: %w", err)
 				}
 			}
 		}
@@ -110,6 +118,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		metadataNamespace:        config.MetadataNamespace,
 		requestCosts:             costs,
 		declaredModels:           declaredModels,
+		dynamicLoadBalancers:     dynamicLBs,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

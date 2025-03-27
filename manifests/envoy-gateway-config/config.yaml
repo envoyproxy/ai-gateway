@@ -40,6 +40,16 @@ data:
     extensionApis:
       enableEnvoyPatchPolicy: true
       enableBackend: true
+    extensionManager:
+      hooks:
+        xdsTranslator:
+          post:
+            - VirtualHost
+            - Translation
+      service:
+        fqdn:
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          port: 1063
     rateLimit:
       backend:
         type: Redis

@@ -300,6 +300,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AIGatewayFilterConfigType](#aigatewayfilterconfigtype)
 - [AIGatewayRouteRule](#aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
+- [AIGatewayRouteRuleBackendRefKind](#aigatewayrouterulebackendrefkind)
 - [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
 - [AIGatewayRouteSpec](#aigatewayroutespec)
 - [AIGatewayRouteStatus](#aigatewayroutestatus)
@@ -429,13 +430,19 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 **Appears in:**
 - [AIGatewayRouteRule](#aigatewayrouterule)
 
-AIGatewayRouteRuleBackendRef is a reference to a AIServiceBackend with a weight.
+AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 
 ##### Fields
 
 
 
 <ApiField
+  name="kind"
+  type="[AIGatewayRouteRuleBackendRefKind](#aigatewayrouterulebackendrefkind)"
+  required="true"
+  defaultValue="AIServiceBackend"
+  description="Kind is the kind of the backend, which is either `AIServiceBackend` or `InferencePool` in Gateway API Inference Extension.<br />When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)<br />that can serve the same model sets that the InferencePool binds.<br />Default is AIServiceBackend."
+/><ApiField
   name="name"
   type="string"
   required="true"
@@ -449,6 +456,30 @@ AIGatewayRouteRuleBackendRef is a reference to a AIServiceBackend with a weight.
 />
 
 
+#### AIGatewayRouteRuleBackendRefKind
+
+**Underlying type:** string
+
+**Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
+
+AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="AIServiceBackend"
+  type="enum"
+  required="false"
+  description="AIGatewayRouteRuleBackendRefAIServiceBackend is the kind of the AIServiceBackend.<br />"
+/><ApiField
+  name="InferencePool"
+  type="enum"
+  required="false"
+  description="AIGatewayRouteRuleBackendRefInferencePool is the kind of the InferencePool in the Gateway API Inference Extension.<br />https://github.com/kubernetes-sigs/gateway-api-inference-extension<br />"
+/>
 #### AIGatewayRouteRuleMatch
 
 

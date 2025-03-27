@@ -30,6 +30,9 @@ type configWatcher struct {
 	l               *slog.Logger
 	current         string
 	usingDefaultCfg bool
+	// hasDynamicLB is true if the current configuration has at least one backend with dynamic load balancing.
+	// We need to force a reload of the configuration regardless of the file modification time.
+	hasDynamicLB bool
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
@@ -56,9 +59,11 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 			cw.l.Info("stop watching the config file", slog.String("path", cw.path))
 			return
 		case <-ticker.C:
-			if err := cw.loadConfig(ctx); err != nil {
+			perTickCtx, cancel := context.WithTimeout(ctx, tick)
+			if err := cw.loadConfig(perTickCtx); err != nil {
 				cw.l.Error("failed to update config", slog.String("error", err.Error()))
 			}
+			cancel()
 		}
 	}
 }
@@ -90,7 +95,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.usingDefaultCfg = true
 	} else {
 		cw.usingDefaultCfg = false
-		if stat.ModTime().Sub(cw.lastMod) <= 0 {
+		if stat.ModTime().Sub(cw.lastMod) <= 0 && !cw.hasDynamicLB {
 			return nil
 		}
 		cw.l.Info("loading a new config", slog.String("path", cw.path))
@@ -109,7 +114,20 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.diff(previous, cw.current)
 	}
 
-	return cw.rcv.LoadConfig(ctx, cfg)
+	if err = cw.rcv.LoadConfig(ctx, cfg); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	cw.hasDynamicLB = false
+	for _, rule := range cfg.Rules {
+		for _, backend := range rule.Backends {
+			if backend.DynamicLoadBalancing != nil {
+				cw.hasDynamicLB = true
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (cw *configWatcher) diff(oldConfig, newConfig string) {

@@ -12,7 +12,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/envoyproxy/gateway/proto/extension"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -31,6 +31,7 @@ func parseAndValidateFlags(args []string) (
 	enableLeaderElection bool,
 	logLevel zapcore.Level,
 	extensionServerPort string,
+	enableInfExt bool,
 	err error,
 ) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
@@ -60,6 +61,11 @@ func parseAndValidateFlags(args []string) (
 		":1063",
 		"gRPC port for the extension server",
 	)
+	enableInfExtPtr := fs.Bool(
+		"enableInferenceExtension",
+		false,
+		"Enable the Gateway Inference Extetension. When enabling this, the CRDs for the InferenceModel and InferencePool must be installed prior to starting the controller.",
+	)
 
 	if err = fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -77,7 +83,7 @@ func parseAndValidateFlags(args []string) (
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
 		return
 	}
-	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, nil
+	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, *enableInfExtPtr, nil
 }
 
 func main() {
@@ -88,6 +94,7 @@ func main() {
 		flagEnableLeaderElection,
 		zapLogLevel,
 		flagExtensionServerPort,
+		enableInfExt,
 		err := parseAndValidateFlags(os.Args[1:])
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
@@ -110,8 +117,8 @@ func main() {
 
 	// Start the extension server running alongside the controller.
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(setupLog)
-	extension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
+	extSrv := extensionserver.New(ctrl.Log)
+	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
 		<-ctx.Done()
@@ -128,6 +135,7 @@ func main() {
 		ExtProcImage:         flagExtProcImage,
 		ExtProcLogLevel:      flagExtProcLogLevel,
 		EnableLeaderElection: flagEnableLeaderElection,
+		EnableInfExt:         enableInfExt,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
