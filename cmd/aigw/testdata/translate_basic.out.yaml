@@ -178,6 +178,10 @@ spec:
   strategy: {}
   template:
     metadata:
+      annotations:
+        "prometheus.io/path": "/metrics"
+        "prometheus.io/port": "9190"
+        "prometheus.io/scrape": "true"
       labels:
         app: ai-eg-route-extproc-envoy-ai-gateway-basic
         app.kubernetes.io/managed-by: envoy-ai-gateway
@@ -194,6 +198,8 @@ spec:
           ports:
             - containerPort: 1063
               name: grpc
+            - containerPort: 9190
+              name: metrics
           resources: {}
           volumeMounts:
             - mountPath: /etc/ai-gateway/extproc

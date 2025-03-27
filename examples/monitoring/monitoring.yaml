@@ -101,20 +101,20 @@ spec:
     spec:
       serviceAccountName: prometheus
       containers:
-        - name: prometheus
-          image: prom/prometheus:v2.47.0
-          args:
-            - "--config.file=/etc/prometheus/prometheus.yml"
-          volumeMounts:
-            - name: prometheus-config
-              mountPath: /etc/prometheus/
-          ports:
-            - containerPort: 9090
-              name: web
-      volumes:
+      - name: prometheus
+        image: prom/prometheus:v2.47.0
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        volumeMounts:
         - name: prometheus-config
-          configMap:
-            name: prometheus-config
+          mountPath: /etc/prometheus/
+        ports:
+        - containerPort: 9090
+          name: web
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
 ---
 apiVersion: v1
 kind: Service
@@ -125,7 +125,7 @@ spec:
   selector:
     app: prometheus
   ports:
-    - protocol: TCP
-      port: 9090
-      targetPort: 9090
-      name: web
+  - protocol: TCP
+    port: 9090
+    targetPort: 9090
+    name: web
