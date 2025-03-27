@@ -54,7 +54,7 @@ curl http://localhost:9090/api/v1/query --data-urlencode \
 
 and then you would get the response like this, assuming you have made some requests with the model `gpt-4o-mini`:
 
-```
+```json lines
 {
   "metric": {
     "gen_ai_request_model": "gpt-4o-mini",
