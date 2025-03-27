@@ -14,10 +14,10 @@ Currently, it collects metrics and exports them to Prometheus for monitoring in 
 Not all metrics are supported yet, but the Envoy AI Gateway will continue to add more metrics in the future.
 
 For example, the Envoy AI Gateway collects metrics such as:
-* [**gen_aiclienttokenusage**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiclienttokenusage): Number of tokens processed. The label `gen_ai_token_type` can be used to differentiate between input, output, and total tokens.
-* [**gen_aiserverrequestduration**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiserverrequestduration): Measured from the start of the received request headers in the Envoy AI Gateway filter to the end of the processed response body processing.
-* [**gen_aiservertime_to_first_token**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token): Measured from the start of the received request headers in the Envoy AI Gateway filter to the receiving of the first token in the response body handling.
-* [**gen_aiservertime_per_output_token**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_per_output_token): The latency between consecutive tokens, if supported, or by chunks/tokens otherwise.
+* [**`gen_ai.client.token.usage`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiclienttokenusage): Number of tokens processed. The label `gen_ai_token_type` can be used to differentiate between input, output, and total tokens.
+* [**`gen_ai.server.request.duration`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiserverrequestduration): Measured from the start of the received request headers in the Envoy AI Gateway filter to the end of the processed response body processing.
+* [**`gen_ai.server.time_to_first_token`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token): Measured from the start of the received request headers in the Envoy AI Gateway filter to the receiving of the first token in the response body handling.
+* [**`gen_ai.server.time_per_output_token`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_per_output_token): The latency between consecutive tokens, if supported, or by chunks/tokens otherwise.
 
 Each metric comes with some default labels such as `gen_ai_request_model` that contains the model name, etc.
 
@@ -49,7 +49,7 @@ Alternatively, you can make the following requests to see the raw metrics:
 ```shell
 curl http://localhost:9090/api/v1/query --data-urlencode \
   'query=sum(gen_ai_client_token_usage_sum{app = "ai-eg-route-extproc-envoy-ai-gateway-basic"}) by (gen_ai_request_model, gen_ai_token_type)' \
-    | jq '.data.result[]
+    | jq '.data.result[]'
 ```
 
 and then you would get the response like this, assuming you have made some requests with the model `gpt-4o-mini`:
