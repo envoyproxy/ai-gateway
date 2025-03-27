@@ -32,7 +32,6 @@ func Test_Examples_InferenceExtension(t *testing.T) {
 		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
 		req.Header.Set("x-target-inference-extension", "yes")
-		req.Header.Set("x-ai-eg-original-dst", "1.1.1.1")
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
