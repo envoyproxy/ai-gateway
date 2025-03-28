@@ -11,9 +11,7 @@ This guide will help you configure Envoy AI Gateway to work with Azure OpenAI's 
 
 There are two ways to do the [Azure OpenAI authentication](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#authentication): Microsoft Entra ID and API Key.
 
-We will Microsoft Entra ID to authenticate an application to use the Azure OpenAI service, you can obtain an access token using the OAuth 2.0 client credentials grant flow. It involves registering the application in Microsoft Entra ID (formerly Azure Active Directory), configuring the appropriate permissions, and acquiring a token from the Microsoft identity platform. The access token is then used to authorize API requests to the Azure OpenAI endpoint. 
-
-For detailed steps, refer to the official [Microsoft documentation](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token).
+We will Microsoft Entra ID to authenticate an application to use the Azure OpenAI service, you can obtain an access token using the OAuth 2.0 client credentials grant flow. It involves registering the application in Microsoft Entra ID (formerly Azure Active Directory), configuring the appropriate permissions, and acquiring a token from the Microsoft identity platform. The access token is then used to authorize API requests to the Azure OpenAI endpoint. For detailed steps, refer to the official [Microsoft documentation](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token).
 
 API Key authentication is not supported yet.
 
