@@ -14,6 +14,7 @@ Currently, Envoy AI Gateway supports the following providers:
 
 - [OpenAI](./openai.md) - Connect to OpenAI's GPT models
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
+- [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
 
 ## Before You Begin
 
@@ -52,3 +53,4 @@ When configuring AI providers, keep these security considerations in mind:
 Choose your provider to get started:
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)
+- [Connect Azure OpenAI](./azure-openai.md)

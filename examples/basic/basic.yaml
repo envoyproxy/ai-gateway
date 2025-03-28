@@ -99,7 +99,7 @@ metadata:
 spec:
   schema:
     name: AzureOpenAI
-    version: 2025-02-01-preview
+    version: 2025-01-01-preview
   backendRef:
     name: envoy-ai-gateway-basic-azure
     kind: Backend

@@ -62,7 +62,7 @@ kubectl wait pods --timeout=2m \
   --for=condition=Ready
 ```
 
-### 4. Test the Configuration
+### 3. Test the Configuration
 
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
