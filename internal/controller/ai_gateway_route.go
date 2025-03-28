@@ -509,6 +509,12 @@ func (c *AIGatewayRouteController) annotateExtProcPods(ctx context.Context, aiGa
 	return nil
 }
 
+var extProcPrometheusAnnotations = map[string]string{
+	"prometheus.io/scrape": "true",
+	"prometheus.io/port":   "9190",
+	"prometheus.io/path":   "/metrics",
+}
+
 // syncExtProcDeployment syncs the external processor's Deployment and Service.
 func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	name := extProcName(aiGatewayRoute)
@@ -526,14 +532,17 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: labels},
 					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: extProcPrometheusAnnotations},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
 									Name:            name,
 									Image:           c.extProcImage,
 									ImagePullPolicy: c.extProcImagePullPolicy,
-									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
+									Ports: []corev1.ContainerPort{
+										{Name: "grpc", ContainerPort: 1063},
+										{Name: "metrics", ContainerPort: 9190},
+									},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
 										"-logLevel", c.extProcLogLevel,

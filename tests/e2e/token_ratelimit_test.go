@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,12 +32,12 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	requireWaitForPodReady(t, egNamespace, egSelector)
 
+	const modelName = "rate-limit-funky-model"
 	makeRequest := func(usedID string, input, output, total int, expStatus int) {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 		defer fwd.kill()
 
-		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"gpt-4o-mini"}`)
-
+		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
 		const fakeResponseBodyTemplate = `{"choices":[{"message":{"content":"This is a test.","role":"assistant"}}],"stopReason":null,"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d}}`
 		fakeResponseBody := fmt.Sprintf(fakeResponseBodyTemplate, input, output, total)
 
@@ -98,4 +99,48 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	makeRequest(usedID, 3, 0, 0, 200)
 	// Any request with the same user ID should be rejected.
 	makeRequest(usedID, 0, 0, 0, 429)
+
+	require.Eventually(t, func() bool {
+		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
+		defer fwd.kill()
+		const query = `sum(gen_ai_client_token_usage_sum{app = "ai-eg-route-extproc-envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("Failed to query Prometheus: %v", err)
+			return false
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
+		if resp.StatusCode != http.StatusOK {
+			t.Logf("Failed to query Prometheus: status=%s", resp.Status)
+			return false
+		}
+		type prometheusResponse struct {
+			Status string `json:"status"`
+			Data   struct {
+				ResultType string `json:"resultType"`
+				Result     []struct {
+					Metric map[string]string `json:"metric"`
+					Value  []interface{}     `json:"value"`
+				}
+			}
+		}
+		var pr prometheusResponse
+		require.NoError(t, json.Unmarshal(body, &pr))
+		require.Equal(t, "success", pr.Status)
+		require.Equal(t, "vector", pr.Data.ResultType)
+		var actualTypes []string
+		for _, result := range pr.Data.Result {
+			require.Equal(t, modelName, result.Metric["gen_ai_request_model"])
+			typ := result.Metric["gen_ai_token_type"]
+			actualTypes = append(actualTypes, typ)
+			t.Logf("Type: %s, Value: %v", typ, result.Value)
+		}
+		// We should see input, output, and total token types.
+		require.ElementsMatch(t, []string{"input", "output", "total"}, actualTypes)
+		return true
+	}, 20*time.Second, 1*time.Second)
 }
