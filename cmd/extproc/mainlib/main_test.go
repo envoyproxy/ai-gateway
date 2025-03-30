@@ -6,7 +6,9 @@
 package mainlib
 
 import (
+	"io"
 	"log/slog"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -103,4 +105,20 @@ func TestListenAddress(t *testing.T) {
 			assert.Equal(t, tt.wantAddress, address)
 		})
 	}
+}
+
+func TestStartMetricsServer(t *testing.T) {
+	s, m := startMetricsServer("127.0.0.1:", slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
+
+	require.NotNil(t, s)
+	require.NotNil(t, m)
+
+	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
+
+	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil)
+	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil, "OK")
+
+	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil)
+	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, "target_info{")
 }

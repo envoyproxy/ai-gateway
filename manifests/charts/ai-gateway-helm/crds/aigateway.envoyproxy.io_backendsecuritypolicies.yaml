@@ -525,6 +525,23 @@ spec:
                                         maximum: 4294967295
                                         minimum: 0
                                         type: integer
+                                      perEndpoint:
+                                        description: PerEndpoint defines Circuit Breakers
+                                          that will apply per-endpoint for an upstream
+                                          cluster
+                                        properties:
+                                          maxConnections:
+                                            default: 1024
+                                            description: MaxConnections configures
+                                              the maximum number of connections that
+                                              Envoy will establish per-endpoint to
+                                              the referenced backend defined within
+                                              a xRoute rule.
+                                            format: int64
+                                            maximum: 4294967295
+                                            minimum: 0
+                                            type: integer
+                                        type: object
                                     type: object
                                   connection:
                                     description: Connection includes backend connection
@@ -566,6 +583,17 @@ spec:
                                         description: |-
                                           DNSRefreshRate specifies the rate at which DNS records should be refreshed.
                                           Defaults to 30 seconds.
+                                        type: string
+                                      lookupFamily:
+                                        description: |-
+                                          LookupFamily determines how Envoy would resolve DNS for Routes where the backend is specified as a fully qualified domain name (FQDN).
+                                          If set, this configuration overrides other defaults.
+                                        enum:
+                                        - IPv4
+                                        - IPv6
+                                        - IPv4Preferred
+                                        - IPv6Preferred
+                                        - IPv4AndIPv6
                                         type: string
                                       respectDnsTtl:
                                         description: |-
@@ -799,6 +827,16 @@ spec:
                                             if the Health Checker type is GRPC.
                                           rule: 'has(self.grpc) ? self.type == ''GRPC''
                                             : true'
+                                      panicThreshold:
+                                        description: |-
+                                          When number of unhealthy endpoints for a backend reaches this threshold
+                                          Envoy will disregard health status and balance across all endpoints.
+                                          It's designed to prevent a situation in which host failures cascade throughout the cluster
+                                          as load increases. If not set, the default value is 50%. To disable panic mode, set value to `0`.
+                                        format: int32
+                                        maximum: 100
+                                        minimum: 0
+                                        type: integer
                                       passive:
                                         description: Passive passive check configuration
                                         properties:
@@ -1266,7 +1304,7 @@ spec:
                     description: |-
                       ClientSecretRef is the reference to the secret containing the Azure client secret.
                       ai-gateway must be given the permission to read this secret.
-                      The key of secret should be "azure_access_token".
+                      The key of secret should be "client-secret".
                     properties:
                       group:
                         default: ""

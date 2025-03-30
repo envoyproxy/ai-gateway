@@ -69,6 +69,10 @@ func TestServer_LoadConfig(t *testing.T) {
 							Name:  "x-model-name",
 							Value: "gpt4.4444",
 						},
+						{
+							Name:  "some-random-header",
+							Value: "some-random-value",
+						},
 					},
 				},
 			},
@@ -94,6 +98,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
+		require.Equal(t, []string{"llama3.3333", "gpt4.4444"}, s.config.declaredModels)
 	})
 }
 
@@ -380,6 +385,17 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")}},
 	}, originalMutation.GetSetHeaders())
 	require.Contains(t, buf.String(), "filtering sensitive header")
+
+	t.Run("do nothing for immediate response", func(t *testing.T) {
+		resp := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{},
+			},
+		}
+		filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
+		require.NotNil(t, filtered)
+		require.Equal(t, resp, filtered)
+	})
 }
 
 func Test_headersToMap(t *testing.T) {

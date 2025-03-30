@@ -153,7 +153,35 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						Value: ChatCompletionAssistantMessageParam{
 							Role:    ChatMessageRoleAssistant,
-							Content: ChatCompletionAssistantMessageParamContent{Text: ptr.To("you are a helpful assistant")},
+							Content: StringOrAssistantRoleContentUnion{Value: ChatCompletionAssistantMessageParamContent{Text: ptr.To("you are a helpful assistant")}},
+						},
+						Type: ChatMessageRoleAssistant,
+					},
+				},
+			},
+		},
+		{
+			name: "assistant message string",
+			in: []byte(`{"model": "gpu-o4",
+                        "messages": [
+                         {"role": "assistant", "content": "you are a helpful assistant"},
+                         {"role": "assistant", "content": "{'text': 'you are a helpful assistant'}"}
+						 ]}
+`),
+			out: &ChatCompletionRequest{
+				Model: "gpu-o4",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Value: ChatCompletionAssistantMessageParam{
+							Role:    ChatMessageRoleAssistant,
+							Content: StringOrAssistantRoleContentUnion{Value: "you are a helpful assistant"},
+						},
+						Type: ChatMessageRoleAssistant,
+					},
+					{
+						Value: ChatCompletionAssistantMessageParam{
+							Role:    ChatMessageRoleAssistant,
+							Content: StringOrAssistantRoleContentUnion{Value: "{'text': 'you are a helpful assistant'}"},
 						},
 						Type: ChatMessageRoleAssistant,
 					},
@@ -224,6 +252,39 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			in: []byte(`{"model": "gpu-o4",
                         "messages": [{"role": "some-funky", "content": [{"text": "what do you see in this image", "type": "text"}]}]}`),
 			expErr: "unknown ChatCompletionMessageParam type: some-funky",
+		},
+		{
+			name: "response_format",
+			in:   []byte(`{ "model": "azure.gpt-4o", "messages": [ { "role": "user", "content": "Tell me a story" } ], "response_format": { "type": "json_schema", "json_schema": { "name": "math_response", "schema": { "type": "object", "properties": { "step": "test_step" }, "required": [ "steps"], "additionalProperties": false }, "strict": true } } }`),
+			out: &ChatCompletionRequest{
+				Model: "azure.gpt-4o",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Value: ChatCompletionUserMessageParam{
+							Role: ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{
+								Value: "Tell me a story",
+							},
+						},
+						Type: ChatMessageRoleUser,
+					},
+				},
+				ResponseFormat: &ChatCompletionResponseFormat{
+					Type: "json_schema",
+					JSONSchema: &ChatCompletionResponseFormatJSONSchema{
+						Name:   "math_response",
+						Strict: true,
+						Schema: map[string]interface{}{
+							"additionalProperties": false,
+							"type":                 "object",
+							"properties": map[string]interface{}{
+								"step": "test_step",
+							},
+							"required": []interface{}{"steps"},
+						},
+					},
+				},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

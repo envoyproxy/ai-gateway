@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -54,14 +56,27 @@ func TestWithTestUpstream(t *testing.T) {
 				Backends: []filterapi.Backend{{Name: "testupstream", Schema: awsBedrockSchema}},
 				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
 			},
+			{
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
+				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
+			},
+			{
+				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-model-name", Value: "some-model1"},
+					{Name: "x-model-name", Value: "some-model2"},
+					{Name: "x-model-name", Value: "some-model3"},
+				},
+			},
 		},
 	})
 
 	expectedModels := openai.ModelList{
 		Object: "list",
 		Data: []openai.Model{
-			{ID: "openai", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			{ID: "aws-bedrock", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model1", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model2", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway"},
 		},
 	}
 
@@ -129,6 +144,17 @@ func TestWithTestUpstream(t *testing.T) {
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
 			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "azure-openai - /v1/chat/completions",
+			backend:         "azure-openai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/openai/deployments/something/chat/completions",
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
@@ -233,15 +259,15 @@ data: [DONE]
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
-				req.Header.Set("x-response-status", tc.responseStatus)
+				req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
 				if tc.responseType != "" {
-					req.Header.Set("testupstream.ResponseTypeKey", tc.responseType)
+					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
 				}
 				if tc.responseHeaders != "" {
-					req.Header.Set("x-response-headers", base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
+					req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
 				}
 				if tc.expRequestBody != "" {
-					req.Header.Set("x-expected-request-body", base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+					req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
 				}
 
 				resp, err := http.DefaultClient.Do(req)
@@ -272,6 +298,81 @@ data: [DONE]
 			}, 10*time.Second, 500*time.Millisecond)
 		})
 	}
+
+	t.Run("stream non blocking", func(t *testing.T) {
+		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
+		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
+		client := openaigo.NewClient(
+			option.WithBaseURL(listenerAddress+"/v1/"),
+			option.WithHeader("x-test-backend", "openai"),
+			option.WithHeader(testupstreamlib.ResponseTypeKey, "sse"),
+			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
+				base64.StdEncoding.EncodeToString([]byte(
+					`
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[],"usage":{"prompt_tokens":25,"completion_tokens":61,"total_tokens":86,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+				))),
+		)
+
+		// NewStreaming below will block until the first event is received, so take the time before calling it.
+		start := time.Now()
+		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
+			Messages: openaigo.F([]openaigo.ChatCompletionMessageParamUnion{
+				openaigo.UserMessage("Say this is a test"),
+			}),
+			Model: openaigo.F("something"),
+		})
+		defer func() {
+			_ = stream.Close()
+		}()
+
+		asserted := false
+		for stream.Next() {
+			chunk := stream.Current()
+			if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
+				continue
+			}
+			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
+			// Check each event is received less than a second after the previous one.
+			require.Less(t, time.Since(start), time.Second)
+			start = time.Now()
+			asserted = true
+		}
+		require.True(t, asserted)
+		require.NoError(t, stream.Err())
+	})
+	t.Run("metrics", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, "http://localhost:9190/metrics", nil)
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), `gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway",otel_scope_version="",le="0.01"} 1`)
+	})
 }
 
 func checkModelsIgnoringTimestamps(want openai.ModelList) func(t require.TestingT, body []byte) {

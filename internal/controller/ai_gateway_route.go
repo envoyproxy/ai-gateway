@@ -17,13 +17,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
@@ -44,6 +42,12 @@ const (
 	//
 	//	secret with backendSecurityPolicy auth instead of mounting new secret files to the external proc.
 	mountedExtProcSecretPath = "/etc/backend_security_policy" // #nosec G101
+	// apiKey is the key to store OpenAI API key.
+	apiKey = "apiKey"
+	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	awsCredentialsKey = "credentials"
+	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	azureAccessTokenKey = "azureAccessToken"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].
@@ -59,11 +63,15 @@ type AIGatewayRouteController struct {
 	extProcImage           string
 	extProcImagePullPolicy corev1.PullPolicy
 	extProcLogLevel        string
+	// uidFn is a function that returns a unique identifier for the external process.
+	// Configured as a field to allow the deterministic generation of the UID for testing.
+	uidFn func() types.UID
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	uidFn func() types.UID,
 	extProcImage, extProcLogLevel string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
@@ -73,13 +81,13 @@ func NewAIGatewayRouteController(
 		extProcImage:           extProcImage,
 		extProcImagePullPolicy: corev1.PullIfNotPresent,
 		extProcLogLevel:        extProcLogLevel,
+		uidFn:                  uidFn,
 	}
 }
 
 // Reconcile implements [reconcile.TypedReconciler].
 func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
+	c.logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
 
 	var aiGatewayRoute aigv1a1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &aiGatewayRoute); err != nil {
@@ -116,7 +124,10 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 
 	pm := egv1a1.BufferedExtProcBodyProcessingMode
 	port := gwapiv1.PortNumber(1063)
-	objNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
+	var objNsPtr *gwapiv1.Namespace
+	if aiGatewayRoute.Namespace != "" {
+		objNsPtr = ptr.To(gwapiv1.Namespace(aiGatewayRoute.Namespace))
+	}
 	extPolicy := &egv1a1.EnvoyExtensionPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace},
 		Spec: egv1a1.EnvoyExtensionPolicySpec{
@@ -130,7 +141,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name:      gwapiv1.ObjectName(extProcName(aiGatewayRoute)),
-						Namespace: &objNs,
+						Namespace: objNsPtr,
 						Port:      &port,
 					},
 				}}},
@@ -153,7 +164,8 @@ func extProcName(route *aigv1a1.AIGatewayRoute) string {
 	return fmt.Sprintf("ai-eg-route-extproc-%s", route.Name)
 }
 
-func applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
+func (c *AIGatewayRouteController) applyExtProcDeploymentConfigUpdate(d *appsv1.DeploymentSpec, filterConfig *aigv1a1.AIGatewayFilterConfig) {
+	d.Template.Spec.Containers[0].Image = c.extProcImage
 	if filterConfig == nil || filterConfig.ExternalProcessor == nil {
 		d.Replicas = nil
 		d.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
@@ -238,8 +250,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Update the extproc configmap.
-	uuid := string(uuid2.NewUUID())
-	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uuid); err != nil {
+	uid := string(c.uidFn())
+	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uid); err != nil {
 		return fmt.Errorf("failed to update extproc configmap: %w", err)
 	}
 
@@ -250,7 +262,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Annotate all pods with the new config.
-	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uuid)
+	err = c.annotateExtProcPods(ctx, aiGatewayRoute, uid)
 	if err != nil {
 		return fmt.Errorf("failed to annotate extproc pods: %w", err)
 	}
@@ -297,7 +309,7 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				switch backendSecurityPolicy.Spec.Type {
 				case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), "/apiKey")},
+						APIKey: &filterapi.APIKeyAuth{Filename: path.Join(backendSecurityMountPath(volumeName), apiKey)},
 					}
 				case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 					if backendSecurityPolicy.Spec.AWSCredentials == nil {
@@ -306,10 +318,19 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 					if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
 						ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
 							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), "/credentials"),
+								CredentialFileName: path.Join(backendSecurityMountPath(volumeName), awsCredentialsKey),
 								Region:             backendSecurityPolicy.Spec.AWSCredentials.Region,
 							},
 						}
+					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					if backendSecurityPolicy.Spec.AzureCredentials == nil {
+						return fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
+					}
+					ec.Rules[i].Backends[j].Auth = &filterapi.BackendAuth{
+						AzureAuth: &filterapi.AzureAuth{
+							Filename: path.Join(backendSecurityMountPath(volumeName), azureAccessTokenKey),
+						},
 					}
 				default:
 					return fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
@@ -450,9 +471,13 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
 	for i, egRef := range targetRefs {
 		egName := egRef.Name
+		var namespace *gwapiv1.Namespace
+		if egNs != "" {
+			namespace = ptr.To(egNs)
+		}
 		parentRefs[i] = gwapiv1.ParentReference{
 			Name:      egName,
-			Namespace: &egNs,
+			Namespace: namespace,
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
@@ -484,6 +509,12 @@ func (c *AIGatewayRouteController) annotateExtProcPods(ctx context.Context, aiGa
 	return nil
 }
 
+var extProcPrometheusAnnotations = map[string]string{
+	"prometheus.io/scrape": "true",
+	"prometheus.io/port":   "9190",
+	"prometheus.io/path":   "/metrics",
+}
+
 // syncExtProcDeployment syncs the external processor's Deployment and Service.
 func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	name := extProcName(aiGatewayRoute)
@@ -501,14 +532,17 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: labels},
 					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: extProcPrometheusAnnotations},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
 									Name:            name,
 									Image:           c.extProcImage,
 									ImagePullPolicy: c.extProcImagePullPolicy,
-									Ports:           []corev1.ContainerPort{{Name: "grpc", ContainerPort: 1063}},
+									Ports: []corev1.ContainerPort{
+										{Name: "grpc", ContainerPort: 1063},
+										{Name: "metrics", ContainerPort: 9190},
+									},
 									Args: []string{
 										"-configPath", "/etc/ai-gateway/extproc/" + expProcConfigFileName,
 										"-logLevel", c.extProcLogLevel,
@@ -544,7 +578,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 			if err == nil {
 				deployment.Spec.Template.Spec = *updatedSpec
 			}
-			applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+			c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 			_, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create deployment: %w", err)
@@ -559,7 +593,7 @@ func (c *AIGatewayRouteController) syncExtProcDeployment(ctx context.Context, ai
 		if err == nil {
 			deployment.Spec.Template.Spec = *updatedSpec
 		}
-		applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
+		c.applyExtProcDeploymentConfigUpdate(&deployment.Spec, aiGatewayRoute.Spec.FilterConfig)
 		if _, err = c.kube.AppsV1().Deployments(aiGatewayRoute.Namespace).Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update deployment: %w", err)
 		}
@@ -626,6 +660,8 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 					} else {
 						secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 					}
+				case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+					secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 				default:
 					return nil, fmt.Errorf("backend security policy %s is not supported", backendSecurityPolicy.Spec.Type)
 				}

@@ -78,7 +78,9 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		for _, h := range r.Headers {
 			// If explicitly set to something that is not an exact match, skip.
 			// If not set, we assume it's an exact match.
-			if h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact {
+			//
+			// Also, we only care about the AIModel header to declare models.
+			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
 				continue
 			}
 			declaredModels = append(declaredModels, h.Value)
@@ -276,7 +278,11 @@ func filterSensitiveBodyForLogging(resp *extprocv3.ProcessingResponse, logger *s
 	if resp == nil {
 		return &extprocv3.ProcessingResponse{}
 	}
-	original := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	original, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	if !ok {
+		// Meaning this is the immediate response, that doesn't need to be filtered.
+		return resp
+	}
 	originalHeaderMutation := original.RequestBody.Response.GetHeaderMutation()
 	redactedHeaderMutation := &extprocv3.HeaderMutation{
 		RemoveHeaders: originalHeaderMutation.GetRemoveHeaders(),

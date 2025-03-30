@@ -5,6 +5,25 @@
 
 package main
 
-import "github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-func main() { mainlib.Main() }
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+)
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	signalsChan := make(chan os.Signal, 1)
+	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-signalsChan
+		cancel()
+	}()
+	if err := mainlib.Main(ctx, os.Args[1:], os.Stderr); err != nil {
+		log.Fatalf("error: %v", err)
+	}
+}

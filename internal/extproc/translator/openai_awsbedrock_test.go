@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
-	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
@@ -83,8 +82,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						Value: openai.ChatCompletionAssistantMessageParam{
-							Content: openai.ChatCompletionAssistantMessageParamContent{
-								Text: ptr.To("I dunno"),
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: openai.ChatCompletionAssistantMessageParamContent{
+									Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+									Text: ptr.To("I dunno"),
+								},
 							},
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
@@ -95,6 +97,20 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 									},
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},
+							},
+						}, Type: openai.ChatMessageRoleAssistant,
+					},
+					{
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: "I also dunno",
+							},
+						}, Type: openai.ChatMessageRoleAssistant,
+					},
+					{
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: "",
 							},
 						}, Type: openai.ChatMessageRoleAssistant,
 					},
@@ -164,6 +180,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								},
 							},
 						},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("I also dunno"),
+							},
+						},
+					},
+					{
+						Role:    openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{},
 					},
 				},
 			},
@@ -683,18 +711,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, mode, err := o.RequestBody(&originalReq)
+			hm, bm, err := o.RequestBody(&originalReq)
 			var expPath string
+			require.Equal(t, tt.input.Stream, o.stream)
 			if tt.input.Stream {
 				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
-				require.True(t, o.stream)
-				require.NotNil(t, mode)
-				require.Equal(t, extprocv3http.ProcessingMode_STREAMED, mode.ResponseBodyMode)
-				require.Equal(t, extprocv3http.ProcessingMode_SEND, mode.ResponseHeaderMode)
 			} else {
 				expPath = fmt.Sprintf("/model/%s/converse", tt.input.Model)
-				require.False(t, o.stream)
-				require.Nil(t, mode)
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hm)

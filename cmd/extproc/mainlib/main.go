@@ -10,20 +10,26 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
-	"os"
-	"os/signal"
+	"net/http"
 	"strings"
-	"syscall"
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -32,9 +38,10 @@ type extProcFlags struct {
 	configPath  string     // path to the configuration file.
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
+	metricsAddr string     // HTTP address for the metrics server.
 }
 
-// parseAndValidateFlags parses and validates the flas passed to the external processor.
+// parseAndValidateFlags parses and validates the flags passed to the external processor.
 func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	var (
 		flags extProcFlags
@@ -51,13 +58,14 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.extProcAddr,
 		"extProcAddr",
 		":1063",
-		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock",
+		"gRPC address for the external processor. For example, :1063 or unix:///tmp/ext_proc.sock.",
 	)
 	logLevelPtr := fs.String(
 		"logLevel",
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
+	fs.StringVar(&flags.metricsAddr, "metricsAddr", ":9190", "HTTP address for the metrics server.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -75,13 +83,25 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 
 // Main is a main function for the external processor exposed
 // for allowing users to build their own external processor.
-func Main() {
-	flags, err := parseAndValidateFlags(os.Args[1:])
+//
+// * ctx is the context for the external processor.
+// * args are the command line arguments passed to the external processor without the program name.
+// * stderr is the writer to use for standard error where the external processor will output logs.
+//
+// This returns an error if the external processor fails to start, or nil otherwise. When the `ctx` is canceled,
+// the function will return nil.
+func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
+	defer func() {
+		if errors.Is(err, context.Canceled) {
+			err = nil
+		}
+	}()
+	flags, err := parseAndValidateFlags(args)
 	if err != nil {
-		log.Fatalf("failed to parse and validate extProcFlags: %v", err)
+		return fmt.Errorf("failed to parse and validate extProcFlags: %w", err)
 	}
 
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: flags.logLevel}))
+	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
 
 	l.Info("starting external processor",
 		slog.String("version", version.Version),
@@ -89,38 +109,41 @@ func Main() {
 		slog.String("configPath", flags.configPath),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	signalsChan := make(chan os.Signal, 1)
-	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-signalsChan
-		cancel()
-	}()
-
 	lis, err := net.Listen(listenAddress(flags.extProcAddr))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
+
+	metricsServer, meter := startMetricsServer(flags.metricsAddr, l)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
-		log.Fatalf("failed to create external processor server: %v", err)
+		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register("/v1/chat/completions", extproc.NewChatCompletionProcessor)
+	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
-		log.Fatalf("failed to start config watcher: %v", err)
+		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
 	s := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
+
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown metrics server gracefully", "error", err)
+		}
 	}()
-	_ = s.Serve(lis)
+
+	return s.Serve(lis)
 }
 
 // listenAddress returns the network and address for the given address flag.
@@ -129,4 +152,47 @@ func listenAddress(addrFlag string) (string, string) {
 		return "unix", strings.TrimPrefix(addrFlag, "unix://")
 	}
 	return "tcp", addrFlag
+}
+
+// startMetricsServer starts the HTTP server for Prometheus metrics.
+func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.Meter) {
+	registry := prometheus.NewRegistry()
+	exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
+	if err != nil {
+		log.Fatal("failed to create metrics exporter")
+	}
+	provider := metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
+	meter := provider.Meter("envoyproxy/ai-gateway")
+
+	// Create a new HTTP server for metrics.
+	mux := http.NewServeMux()
+
+	// Register the metrics handler.
+	mux.Handle("/metrics", promhttp.HandlerFor(
+		registry,
+		promhttp.HandlerOpts{
+			EnableOpenMetrics: true,
+		},
+	))
+
+	// Add a simple health check endpoint.
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	})
+
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		logger.Info("Starting metrics server", "address", addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Metrics server failed", "error", err)
+		}
+	}()
+
+	return server, meter
 }

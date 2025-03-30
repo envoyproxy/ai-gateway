@@ -46,6 +46,14 @@ func TestRouter_Calculate(t *testing.T) {
 		Rules: []filterapi.RouteRule{
 			{
 				Backends: []filterapi.Backend{
+					{Name: "cat", Schema: outSchema},
+				},
+				Headers: []filterapi.HeaderMatch{
+					{Name: "x-some-random-non-model-header", Value: "dog"},
+				},
+			},
+			{
+				Backends: []filterapi.Backend{
 					{Name: "foo", Schema: outSchema, Weight: 1},
 					{Name: "bar", Schema: outSchema, Weight: 3},
 				},
@@ -113,6 +121,12 @@ func TestRouter_Calculate(t *testing.T) {
 		require.Greater(t, chosenNames["foo"], 200)
 	})
 
+	t.Run("first match win", func(t *testing.T) {
+		b, err := r.Calculate(map[string]string{"x-some-random-non-model-header": "dog", "x-model-name": "llama3.3333"})
+		require.NoError(t, err)
+		require.Equal(t, "cat", b.Name)
+	})
+
 	t.Run("concurrent access", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1000)
@@ -148,23 +162,91 @@ func TestRouter_selectBackendFromRule(t *testing.T) {
 	require.True(t, ok)
 
 	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	type expectedSelectionsWithMaxDelta map[string]struct {
+		expectedSelections int
+		maxDelta           float64
+	}
 
-	rule := &filterapi.RouteRule{
-		Backends: []filterapi.Backend{
-			{Name: "foo", Schema: outSchema, Weight: 1},
-			{Name: "bar", Schema: outSchema, Weight: 3},
+	tests := []struct {
+		name                           string
+		rule                           *filterapi.RouteRule
+		expectedSelectionsWithMaxDelta expectedSelectionsWithMaxDelta
+	}{
+		{
+			name: "single backend should always choose that backend",
+			rule: &filterapi.RouteRule{
+				Backends: []filterapi.Backend{
+					{
+						Name:   "foo",
+						Schema: outSchema,
+					},
+				},
+			},
+			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
+				"foo": {
+					expectedSelections: 1000,
+					maxDelta:           0,
+				},
+			},
+		},
+		{
+			name: "multiple backends without weights should choose one randomly",
+			rule: &filterapi.RouteRule{
+				Backends: []filterapi.Backend{
+					{Name: "foo", Schema: outSchema},
+					{Name: "bar", Schema: outSchema},
+					{Name: "baz", Schema: outSchema},
+				},
+			},
+			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
+				"foo": {
+					expectedSelections: 333,
+					maxDelta:           100,
+				},
+				"bar": {
+					expectedSelections: 333,
+					maxDelta:           100,
+				},
+				"baz": {
+					expectedSelections: 333,
+					maxDelta:           100,
+				},
+			},
+		},
+		{
+			name: "multiple backends with weights should choose based on weights",
+			rule: &filterapi.RouteRule{
+				Backends: []filterapi.Backend{
+					{Name: "foo", Schema: outSchema, Weight: 1},
+					{Name: "bar", Schema: outSchema, Weight: 3},
+				},
+			},
+			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
+				"foo": {
+					expectedSelections: 250,
+					maxDelta:           100,
+				},
+				"bar": {
+					expectedSelections: 750,
+					maxDelta:           100,
+				},
+			},
 		},
 	}
 
-	chosenNames := make(map[string]int)
-	for i := 0; i < 1000; i++ {
-		b := r.selectBackendFromRule(rule)
-		chosenNames[b.Name]++
-	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			chosenNames := make(map[string]int)
+			for i := 0; i < 1000; i++ {
+				b := r.selectBackendFromRule(test.rule)
+				chosenNames[b.Name]++
+			}
 
-	require.Greater(t, chosenNames["bar"], chosenNames["foo"])
-	require.Greater(t, chosenNames["bar"], 700)
-	require.Greater(t, chosenNames["foo"], 200)
+			for backendName, expectedSelectionsWithMaxDelta := range test.expectedSelectionsWithMaxDelta {
+				require.InDelta(t, expectedSelectionsWithMaxDelta.expectedSelections, chosenNames[backendName], expectedSelectionsWithMaxDelta.maxDelta)
+			}
+		})
+	}
 }
 
 func TestRouter_selectBackendFromRule_negativeWeight(t *testing.T) {
