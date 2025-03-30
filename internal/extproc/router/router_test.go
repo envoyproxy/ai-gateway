@@ -166,3 +166,20 @@ func TestRouter_selectBackendFromRule(t *testing.T) {
 	require.Greater(t, chosenNames["bar"], 700)
 	require.Greater(t, chosenNames["foo"], 200)
 }
+
+func TestRouter_selectBackendFromRule_negativeWeight(t *testing.T) {
+	_r, err := New(&filterapi.Config{}, nil)
+	require.NoError(t, err)
+	r, ok := _r.(*router)
+	require.True(t, ok)
+
+	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+
+	rule := &filterapi.RouteRule{
+		Backends: []filterapi.Backend{
+			{Name: "foo", Schema: outSchema, Weight: -1},
+		},
+	}
+	b := r.selectBackendFromRule(rule)
+	require.Equal(t, "foo", b.Name)
+}
