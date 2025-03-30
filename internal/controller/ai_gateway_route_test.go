@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -241,21 +242,26 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 	require.NotNil(t, s)
 
-	for _, backend := range []*aigv1a1.AIServiceBackend{
+	backends := []*aigv1a1.AIServiceBackend{
 		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
-	} {
+	}
+	for _, backend := range backends {
 		err := fakeClient.Create(t.Context(), backend, &client.CreateOptions{})
 		require.NoError(t, err)
 	}
-
 	t.Run("existing", func(t *testing.T) {
+		fakeUID1 := types.UID("fake-uid-1234")
+		fakeUID2 := types.UID("fake-uid-5678")
 		route := &aigv1a1.AIGatewayRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "route1", Namespace: "ns1",
+				UID: fakeUID1,
+			},
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
@@ -267,29 +273,95 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		}
 		err := fakeClient.Create(t.Context(), route, &client.CreateOptions{})
 		require.NoError(t, err)
-		httpRoute := &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1", Labels: map[string]string{managedByLabel: "envoy-ai-gateway"}},
-			Spec:       gwapiv1.HTTPRouteSpec{},
+		// create 3 HTTPRoutes.
+		// HTTPRoute apple belongs to AIGatewayRoute with fakeUID1.
+		// HTTPRoute foo belongs to AIGatewayRoute with fakeUID1 but not in the AIServiceBackends anymore.
+		// HTTPRoute bar belongs to both AIGatewayRoute fakeUID1 and fakeUID2 but not in fakeUID1 AIServiceBackends anymore.
+		for _, httpRoute := range []*gwapiv1.HTTPRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "apple-route1", Namespace: "ns1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "aigateway.envoyproxy.io/v1alpha1",
+							Kind:       "AIGatewayRoute",
+							UID:        fakeUID1,
+						},
+					},
+				},
+				Spec: gwapiv1.HTTPRouteSpec{},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "foo-route1", Namespace: "ns1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "aigateway.envoyproxy.io/v1alpha1",
+							Kind:       "AIGatewayRoute",
+							UID:        fakeUID1,
+						},
+					},
+				},
+				Spec: gwapiv1.HTTPRouteSpec{},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "bar-route2", Namespace: "ns1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "aigateway.envoyproxy.io/v1alpha1",
+							Kind:       "AIGatewayRoute",
+							UID:        fakeUID2,
+						},
+					},
+				},
+				Spec: gwapiv1.HTTPRouteSpec{},
+			},
+		} {
+			err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
+			require.NoError(t, err)
 		}
-		err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
-		require.NoError(t, err)
 
-		// Then sync, which should update the HTTPRoute.
+		// Then sync, which should create/update/clean-up the HTTPRoutes.
 		require.NoError(t, s.syncAIGatewayRoute(t.Context(), route))
-		var updatedHTTPRoute gwapiv1.HTTPRoute
-		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
+		var updatedHTTPRouteList gwapiv1.HTTPRouteList
+		err = fakeClient.List(t.Context(), &updatedHTTPRouteList, &client.ListOptions{Namespace: "ns1"})
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 3) // 2 backends + 1 for the default rule.
-		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "apple.ns1", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
-		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "orange.ns1", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
-		// Defaulting to the first backend.
-		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
-	})
+		// 1 existing HTTPRoute apple + 1 existing HTTPRout bar + 1 new HTTRoute orange
+		require.Len(t, updatedHTTPRouteList.Items, 3)
+		httpRoutesBelongToFakeUID1 := make([]*gwapiv1.HTTPRoute, 0)
+		httpRoutesNotBelongToFakeUID1 := make([]*gwapiv1.HTTPRoute, 0)
+		for _, httpRoute := range updatedHTTPRouteList.Items {
+			ownByFakeUID1 := false
+			for _, owner := range httpRoute.OwnerReferences {
+				if owner.UID == fakeUID1 {
+					ownByFakeUID1 = true
+					httpRoutesBelongToFakeUID1 = append(httpRoutesBelongToFakeUID1, &httpRoute)
+				}
+			}
+			if !ownByFakeUID1 {
+				httpRoutesNotBelongToFakeUID1 = append(httpRoutesNotBelongToFakeUID1, &httpRoute)
+			}
+		}
+		require.Len(t, httpRoutesBelongToFakeUID1, 2)
+		require.Len(t, httpRoutesNotBelongToFakeUID1, 1)
 
+		sort.Slice(httpRoutesBelongToFakeUID1, func(i, j int) bool {
+			return httpRoutesBelongToFakeUID1[i].Name < httpRoutesBelongToFakeUID1[j].Name
+		})
+		for i, updatedHTTPRoute := range httpRoutesBelongToFakeUID1 {
+			require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 backend + 1 for the default rule.
+			require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
+			require.Equal(t, string(backends[i].Spec.BackendRef.Name), string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
+			require.Equal(t, fmt.Sprintf("%s.%s", backends[i].Name, backends[i].Namespace), updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
+			// Defaulting to the first backend.
+			require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
+			require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
+		}
+		// Check fakeUID is removed from HTTPRoute bar's owner references
+		require.Len(t, httpRoutesNotBelongToFakeUID1[0].OwnerReferences, 1)
+		require.Equal(t, httpRoutesNotBelongToFakeUID1[0].OwnerReferences[0].UID, fakeUID2)
+	})
 	// Check the namespace has the default host rewrite filter.
 	var f egv1a1.HTTPRouteFilter
 	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
@@ -307,10 +379,7 @@ func Test_newHTTPRoute(t *testing.T) {
 
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
-			httpRoute := &gwapiv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
-				Spec:       gwapiv1.HTTPRouteSpec{},
-			}
+
 			aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
 				Spec: aigv1a1.AIGatewayRouteSpec{
@@ -343,7 +412,8 @@ func Test_newHTTPRoute(t *testing.T) {
 				timeout2 gwapiv1.Duration = "60s"
 				timeout3 gwapiv1.Duration = "90s"
 			)
-			for _, backend := range []*aigv1a1.AIServiceBackend{
+
+			backends := []*aigv1a1.AIServiceBackend{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: ns},
 					Spec: aigv1a1.AIServiceBackendSpec{
@@ -372,36 +442,45 @@ func Test_newHTTPRoute(t *testing.T) {
 						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 					},
 				},
-			} {
+			}
+
+			httpRoutes := make(map[string]*gwapiv1.HTTPRoute)
+			for _, backend := range backends {
 				err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
 				require.NoError(t, err)
+				httpRouteName := fmt.Sprintf("%s-%s", backend.Name, aiGatewayRoute.Name)
+				httpRoute := &gwapiv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{Name: httpRouteName, Namespace: ns},
+					Spec:       gwapiv1.HTTPRouteSpec{},
+				}
+				err = s.newHTTPRoute(httpRoute, backend, backends[0], aiGatewayRoute)
+				require.NoError(t, err)
+				httpRoutes[httpRouteName] = httpRoute
 			}
-			err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
-			require.NoError(t, err)
 
-			expRules := []gwapiv1.HTTPRouteRule{
-				{
+			expRules := map[string]gwapiv1.HTTPRouteRule{
+				"apple-route1": {
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "apple." + ns}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
-				{
+				"orange-route1": {
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "orange." + ns}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
 				},
-				{
+				"pineapple-route1": {
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "pineapple." + ns}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
 				},
-				{
+				"foo-route1": {
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "foo." + ns}}},
 					},
@@ -409,24 +488,29 @@ func Test_newHTTPRoute(t *testing.T) {
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
 			}
-			require.Len(t, httpRoute.Spec.Rules, 5) // 4 backends + 1 for the default rule.
-			for i, r := range httpRoute.Spec.Rules {
-				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-					if i == 4 {
-						require.Equal(t, expRules[0].BackendRefs, r.BackendRefs)
-						require.NotNil(t, r.Matches[0].Path)
-						require.Equal(t, "/", *r.Matches[0].Path.Value)
-					} else {
-						require.Equal(t, expRules[i].Matches, r.Matches)
-						require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
-						require.Equal(t, expRules[i].Timeouts, r.Timeouts)
-						// Each rule should have a host rewrite filter by default.
-						require.Len(t, r.Filters, 1)
-						require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-						require.NotNil(t, r.Filters[0].ExtensionRef)
-						require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
-					}
-				})
+			require.Len(t, httpRoutes, 4) // 4 backends.
+			for name, h := range httpRoutes {
+				expRule, ok := expRules[name]
+				require.True(t, ok)
+				require.Len(t, h.Spec.Rules, 2) // 1 backend + 1 default rule.
+				for i, rule := range h.Spec.Rules {
+					t.Run(fmt.Sprintf("%s-rule-%d", name, i), func(t *testing.T) {
+						if i == 1 {
+							require.Equal(t, expRules["apple-route1"].BackendRefs, rule.BackendRefs)
+							require.NotNil(t, rule.Matches[0].Path)
+							require.Equal(t, "/", *rule.Matches[0].Path.Value)
+						} else {
+							require.Equal(t, expRule.Matches, rule.Matches)
+							require.Equal(t, expRule.BackendRefs, rule.BackendRefs)
+							require.Equal(t, expRule.Timeouts, rule.Timeouts)
+							// Each rule should have a host rewrite filter by default.
+							require.Len(t, rule.Filters, 1)
+							require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, rule.Filters[0].Type)
+							require.NotNil(t, rule.Filters[0].ExtensionRef)
+							require.Equal(t, hostRewriteHTTPFilterName, string(rule.Filters[0].ExtensionRef.Name))
+						}
+					})
+				}
 			}
 		})
 	}

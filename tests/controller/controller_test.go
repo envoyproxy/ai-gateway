@@ -207,24 +207,29 @@ func TestStartControllers(t *testing.T) {
 	for _, route := range []string{"route1", "route2"} {
 		t.Run("verify http route "+route, func(t *testing.T) {
 			require.Eventually(t, func() bool {
-				var httpRoute gwapiv1.HTTPRoute
-				err := c.Get(ctx, client.ObjectKey{Name: route, Namespace: "default"}, &httpRoute)
+				var httpRouteList gwapiv1.HTTPRouteList
+				err := c.List(ctx, &httpRouteList, client.InNamespace("default"))
 				if err != nil {
-					t.Logf("failed to get http route %s: %v", route, err)
+					t.Logf("failed to list http routes %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 3) // 2 for backends, 1 for the default backend.
-				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
-				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
-				require.Equal(t, "backend1.default", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
-				require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
-				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
-				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
-
-				// Check all rule has the host rewrite filter except for the last rule.
-				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
+				httpRoutes := make([]gwapiv1.HTTPRoute, 0)
+				for _, httpRoute := range httpRouteList.Items {
+					for _, owner := range httpRoute.OwnerReferences {
+						if owner.Name == route {
+							httpRoutes = append(httpRoutes, httpRoute)
+						}
+					}
+				}
+				require.Len(t, httpRoutes, 2)
+				backendHeaderMatchVals := []string{"backend1.default", "backend2.default"}
+				for i, httpRoute := range httpRoutes {
+					require.Len(t, httpRoute.Spec.Rules, 2) // 1 for backends, 1 for the default backend.
+					rule := httpRoute.Spec.Rules[0]
+					require.Len(t, rule.Matches, 1)
+					require.Len(t, rule.Matches[0].Headers, 1)
+					require.Equal(t, "x-ai-eg-selected-backend", string(rule.Matches[0].Headers[0].Name))
+					require.Equal(t, backendHeaderMatchVals[i], rule.Matches[0].Headers[0].Value)
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
 					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
@@ -273,12 +278,13 @@ func TestStartControllers(t *testing.T) {
 		}, 30*time.Second, 200*time.Millisecond)
 
 		// When the HTTPRoute resource is deleted, the controller should recreate it.
-		err = c.Delete(ctx, &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: routeName, Namespace: routeNamespace}})
+		httpRouteName := "backend1-route1"
+		err = c.Delete(ctx, &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: httpRouteName, Namespace: routeNamespace}})
 		require.NoError(t, err)
 		// Verify that the HTTPRoute resource is recreated.
 		require.Eventually(t, func() bool {
 			var httpRoute gwapiv1.HTTPRoute
-			err = c.Get(ctx, client.ObjectKey{Name: routeName, Namespace: routeNamespace}, &httpRoute)
+			err = c.Get(ctx, client.ObjectKey{Name: httpRouteName, Namespace: routeNamespace}, &httpRoute)
 			if err != nil {
 				t.Logf("failed to get http route %s: %v", routeName, err)
 				return false
