@@ -11,20 +11,22 @@ This guide will help you configure Envoy AI Gateway to work with Azure OpenAI's 
 
 There are two ways to do the [Azure OpenAI authentication](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#authentication): Microsoft Entra ID and API Key.
 
-We will Microsoft Entra ID to authenticate an application to use the Azure OpenAI service, you can obtain an access token using the OAuth 2.0 client credentials grant flow. It involves registering the application in Microsoft Entra ID (formerly Azure Active Directory), configuring the appropriate permissions, and acquiring a token from the Microsoft identity platform. The access token is then used to authorize API requests to the Azure OpenAI endpoint. For detailed steps, refer to the official [Microsoft documentation](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token).
+We will use Microsoft Entra ID to authenticate an application to use the Azure OpenAI service. You can obtain an access token using the OAuth 2.0 client credentials grant flow. This process involves registering the application in Microsoft Entra ID (formerly Azure Active Directory), configuring the appropriate permissions, and acquiring a token from the Microsoft identity platform. The access token is then used as proof of authorization in API requests to the Azure OpenAI endpoint. 
+
+For detailed steps, refer to the official [Microsoft documentation](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token).
 
 API Key authentication is not supported yet.
 
 ## Prerequisites
 
-Before you being, you'll nee:
+Before you begin, you'll need:
 - Azure credentials with access to OpenAI service.
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
 
 ## Azure Credential Setup
 1. An Azure account with OpenAI service access enabled
-2. Your Azure tenant ID, client ID and client secret key
+2. Your Azure tenant ID, client ID, and client secret key
 3. Enabled model access to "GPT-4o"
 
 ## Configuration Steps
@@ -38,15 +40,14 @@ Edit the `basic.yaml` file to replace these placeholder values:
 - `AZURE_CLIENT_SECRET`: Your Azure client secret
 
 :::caution Security Note
-Make sure to keep your Azure credentials secure and never commit them to version control.
+Keep your Azure credentials secure and never commit them to version control.
 The credentials will be stored in Kubernetes secrets.
 :::
 
 
 ### 2. Apply Configuration
 
-Apply the updated configuration and wait for the Gateway pod to be ready. If you have already have a Gateway running,
-then the secret credential update will be picked up automatically in a few seconds.
+Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running, then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
 kubectl apply -f basic.yaml
