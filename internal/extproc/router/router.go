@@ -66,7 +66,7 @@ func (r *router) selectBackendFromRule(rule *filterapi.RouteRule) (backend *filt
 
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano()))) // nolint:gosec
 	// Pick a random backend if none of them have a weight.
-	if totalWeight == 0 {
+	if totalWeight <= 0 {
 		return &rule.Backends[rng.Intn(len(rule.Backends))]
 	}
 
