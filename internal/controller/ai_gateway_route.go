@@ -211,44 +211,98 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		return fmt.Errorf("failed to reconcile extension policy: %w", err)
 	}
 
-	// Check if the HTTPRoute exists.
 	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
-	var httpRoute gwapiv1.HTTPRoute
-	err = c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
-	existingRoute := err == nil
-	if apierrors.IsNotFound(err) {
-		// This means that this AIGatewayRoute is a new one.
-		httpRoute = gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      aiGatewayRoute.Name,
-				Namespace: aiGatewayRoute.Namespace,
-			},
-			Spec: gwapiv1.HTTPRouteSpec{},
-		}
-		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
-			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to get HTTPRoute: %w", err)
+	// List all HTTPRoutes in the same namespace as this aiGatewayRoute.
+	var existingHTTPRoutList gwapiv1.HTTPRouteList
+	err = c.client.List(ctx, &existingHTTPRoutList, client.InNamespace(aiGatewayRoute.Namespace))
+	if err != nil {
+		return fmt.Errorf("failed to list HTTPRoutes in %s namespace: %w", aiGatewayRoute.Namespace, err)
 	}
-
-	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err = c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
-		return fmt.Errorf("failed to construct a new HTTPRoute: %w", err)
-	}
-
-	if existingRoute {
-		c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Update(ctx, &httpRoute); err != nil {
-			return fmt.Errorf("failed to update HTTPRoute: %w", err)
-		}
-	} else {
-		c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
-		if err = c.client.Create(ctx, &httpRoute); err != nil {
-			return fmt.Errorf("failed to create HTTPRoute: %w", err)
+	// Filter HTTPRoute owned by this aiGatewayRoute.
+	existingHTTPRoutes := make(map[string]*gwapiv1.HTTPRoute)
+	for _, httpRoute := range existingHTTPRoutList.Items {
+		for _, ownerRef := range httpRoute.OwnerReferences {
+			if ownerRef.UID == aiGatewayRoute.UID {
+				existingHTTPRoutes[httpRoute.Name] = &httpRoute
+			}
 		}
 	}
+	// Find all deduplicated AIServiceBackends of this aiGatewayRoute.
+	backends := make(map[string]*aigv1a1.AIServiceBackend)
+	var defaultBackend *aigv1a1.AIServiceBackend
+	for _, rule := range aiGatewayRoute.Spec.Rules {
+		for _, br := range rule.BackendRefs {
+			// key is to match HTTPRoute's name which is <backendName>-<aiGatewayRouteName>.
+			key := fmt.Sprintf("%s-%s", br.Name, aiGatewayRoute.Name)
+			if _, ok := backends[key]; ok {
+				continue
+			}
+			var backend *aigv1a1.AIServiceBackend
+			backend, err = c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
+			if err != nil {
+				return fmt.Errorf("AIServiceBackend %s not found", key)
+			}
+			backends[key] = backend
+			// Choose default backend whose name is alphabetically smallest.
+			if defaultBackend == nil || defaultBackend.Name > backend.Name {
+				defaultBackend = backend
+			}
+		}
+	}
 
+	// The naming convention of HTTRoute is <backendName>-<aiGatewayRouteName>,
+	// It is impossible that a HTTRRoute belongs to two AIGatewayRoute.
+	deletedHTTPRoutes := make([]*gwapiv1.HTTPRoute, 0)
+	for _, httpRoute := range existingHTTPRoutes {
+		if _, ok := backends[httpRoute.Name]; !ok {
+			deletedHTTPRoutes = append(deletedHTTPRoutes, httpRoute)
+		}
+	}
+
+	// Create/Update HTTPRoute for each AIServiceBackend
+	for _, backend := range backends {
+		var httpRoute gwapiv1.HTTPRoute
+		// The naming convention of HTTRoute is <backendName>-<aiGatewayRouteName>.
+		httpRouteName := fmt.Sprintf("%s-%s", backend.Name, aiGatewayRoute.Name)
+		err = c.client.Get(ctx, client.ObjectKey{Name: httpRouteName, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
+		existingRoute := err == nil
+		if apierrors.IsNotFound(err) {
+			// This means that this AIGatewayRoute is a new one.
+			httpRoute = gwapiv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      httpRouteName,
+					Namespace: aiGatewayRoute.Namespace,
+				},
+				Spec: gwapiv1.HTTPRouteSpec{},
+			}
+			if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
+				panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute %s: %w", backend.Name, err))
+			}
+		} else if err != nil {
+			return fmt.Errorf("failed to get HTTPRoute %s: %w", httpRouteName, err)
+		}
+		// always pick the first backends as the default backend.
+		if err = c.newHTTPRoute(&httpRoute, backend, defaultBackend, aiGatewayRoute); err != nil {
+			return fmt.Errorf("failed to construct a new HTTPRoute %s: %w", httpRouteName, err)
+		}
+		if existingRoute {
+			c.logger.Info("updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			if err = c.client.Update(ctx, &httpRoute); err != nil {
+				return fmt.Errorf("failed to update HTTPRoute %s: %w", httpRouteName, err)
+			}
+		} else {
+			c.logger.Info("creating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
+			if err = c.client.Create(ctx, &httpRoute); err != nil {
+				return fmt.Errorf("failed to create HTTPRoute %s: %w", httpRouteName, err)
+			}
+		}
+	}
+	// Clean up old HTTPRoutes
+	for _, httpRoute := range deletedHTTPRoutes {
+		if err = c.client.Delete(ctx, httpRoute); err != nil {
+			return fmt.Errorf("failed to delete HTTPRoute %s: %w", httpRoute.Name, err)
+		}
+	}
 	// Update the extproc configmap.
 	uid := string(c.uidFn())
 	if err = c.reconcileExtProcConfigMap(ctx, aiGatewayRoute, uid); err != nil {
@@ -401,25 +455,13 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	return nil
 }
 
-// newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	var backends []*aigv1a1.AIServiceBackend
-	dedup := make(map[string]struct{})
-	for _, rule := range aiGatewayRoute.Spec.Rules {
-		for _, br := range rule.BackendRefs {
-			key := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if _, ok := dedup[key]; ok {
-				continue
-			}
-			dedup[key] = struct{}{}
-			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
-			if err != nil {
-				return fmt.Errorf("AIServiceBackend %s not found", key)
-			}
-			backends = append(backends, backend)
-		}
-	}
-
+// newHTTPRoute updates the HTTPRoute for each AIServiceBackend with the new AIGatewayRoute.
+func (c *AIGatewayRouteController) newHTTPRoute(
+	dst *gwapiv1.HTTPRoute,
+	backend *aigv1a1.AIServiceBackend,
+	defaultBackend *aigv1a1.AIServiceBackend,
+	aiGatewayRoute *aigv1a1.AIGatewayRoute,
+) error {
 	rewriteFilters := []gwapiv1.HTTPRouteFilter{
 		{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
@@ -430,22 +472,25 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			},
 		},
 	}
-	rules := make([]gwapiv1.HTTPRouteRule, len(backends))
-	for i, b := range backends {
-		key := fmt.Sprintf("%s.%s", b.Name, b.Namespace)
-		rule := gwapiv1.HTTPRouteRule{
+	rules := []gwapiv1.HTTPRouteRule{
+		{
 			BackendRefs: []gwapiv1.HTTPBackendRef{
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: b.Spec.BackendRef}},
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backend.Spec.BackendRef}},
 			},
 			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: key}}},
+				{
+					Headers: []gwapiv1.HTTPHeaderMatch{
+						{
+							Name:  selectedBackendHeaderKey,
+							Value: fmt.Sprintf("%s.%s", backend.Name, backend.Namespace),
+						},
+					},
+				},
 			},
 			Filters:  rewriteFilters,
-			Timeouts: b.Spec.Timeouts,
-		}
-		rules[i] = rule
+			Timeouts: backend.Spec.Timeouts,
+		},
 	}
-
 	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend
 	// before entering the filters. So, all requests would result in a 404 if there is no default route. In practice,
 	// this default route is not used because our AI Gateway filters is the one who actually calculates the route based
@@ -459,11 +504,10 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
 			BackendRefs: []gwapiv1.HTTPBackendRef{
 				// It can be any valid backend reference because it will not be used.
-				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backends[0].Spec.BackendRef}},
+				{BackendRef: gwapiv1.BackendRef{BackendObjectReference: defaultBackend.Spec.BackendRef}},
 			},
 		})
 	}
-
 	dst.Spec.Rules = rules
 
 	targetRefs := aiGatewayRoute.Spec.TargetRefs

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sort"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -53,6 +54,11 @@ func Test_translate(t *testing.T) {
 			expHTTPRoutes, expEnvoyExtensionPolicy, expHTTPRouteFilter,
 				expConfigMaps, expSecrets, expDeployments, expServices,
 				expBackends, expBackendTLSPolicy, expGatewayClass, expGateway := requireCollectTranslatedObjects(t, string(outBuf))
+
+			sort.Slice(outHTTPRoutes, func(i, j int) bool {
+				return outHTTPRoutes[i].Name < outHTTPRoutes[j].Name
+			})
+
 			assert.Equal(t, expHTTPRoutes, outHTTPRoutes)
 			assert.Equal(t, expEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
 			assert.Equal(t, expHTTPRouteFilter, outHTTPRouteFilter)
