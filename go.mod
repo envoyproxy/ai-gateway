@@ -1,6 +1,6 @@
 module github.com/envoyproxy/ai-gateway
 
-go 1.24.1
+go 1.24.2
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.17.1
