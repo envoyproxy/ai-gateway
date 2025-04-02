@@ -10,7 +10,7 @@
 # This routes requests to three backends:
 #
 # * OpenAI: The API key is expected to be provided via the OPENAI_API_KEY environment variable.
-# * AWS Bedrock (ue-east-1): The AWS credentials are expected to be provided via the conventional ~/.aws/credentials file.
+# * AWS Bedrock (us-east-1): The AWS credentials are expected to be provided via the conventional ~/.aws/credentials file.
 # * ollama: The ollama service is expected to be running on localhost:11434 which is the default as per # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network.
 #
 # TODO: add more backends.
@@ -111,6 +111,14 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: aws
+    # A Model-specific rule, routing to the Ollama backend if the model is mistral:latest.
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: mistral:latest
+      backendRefs:
+        - name: ollama
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

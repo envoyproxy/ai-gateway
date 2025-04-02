@@ -169,7 +169,7 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
 	// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
-		if err := authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
+		if err = authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 	}

@@ -96,6 +96,11 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	if err := initPrometheus(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
 	code := m.Run()
 	run = true
 	cancel()
@@ -240,6 +245,21 @@ func initTestupstream(ctx context.Context) (err error) {
 	}
 	initLog("\twaiting for deployment")
 	return kubectlWaitForDeploymentReady("default", "testupstream")
+}
+
+func initPrometheus(ctx context.Context) (err error) {
+	initLog("Installing Prometheus")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+	initLog("\tapplying manifests")
+	if err = kubectlApplyManifest(ctx, "../../examples/monitoring/monitoring.yaml"); err != nil {
+		return
+	}
+	initLog("\twaiting for deployment")
+	return kubectlWaitForDeploymentReady("monitoring", "prometheus")
 }
 
 func kubectl(ctx context.Context, args ...string) *exec.Cmd {
