@@ -196,7 +196,7 @@ func ApplyIndexing(ctx context.Context, enableInfExt bool, indexer func(ctx cont
 		err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
 			k8sClientIndexInferencePoolToReferencingAIGatewayRoute, aiGatewayRouteIndexFuncForInferencePool)
 		if err != nil {
-			return fmt.Errorf("failed to index field for InferencePool to AIServiceBackend: %w", err)
+			return fmt.Errorf("failed to index field for InferencePool to AIGatewayRoute: %w", err)
 		}
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
