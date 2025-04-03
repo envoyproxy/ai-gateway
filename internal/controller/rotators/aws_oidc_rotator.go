@@ -109,7 +109,7 @@ func (r *AWSOIDCRotator) GetPreRotationTime(ctx context.Context) (time.Time, err
 	if err != nil {
 		// return zero value for time if secret has not been created.
 		if apierrors.IsNotFound(err) {
-			return time.Time{}, nil
+			return time.Time{}, err
 		}
 		return time.Time{}, err
 	}

@@ -15,7 +15,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -91,10 +90,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 }
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {
-	c := fake.NewClientBuilder().
-		WithScheme(Scheme).
-		WithIndex(&aigv1a1.AIServiceBackend{}, k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc).
-		Build()
+	c := requireNewFakeClientWithIndexes(t)
 
 	// Create Backend Security Policies.
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{

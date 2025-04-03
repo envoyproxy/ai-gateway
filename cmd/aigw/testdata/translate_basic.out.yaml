@@ -62,13 +62,10 @@ spec:
         - headers:
             - name: x-ai-eg-selected-backend
               value: envoy-ai-gateway-basic-testupstream.default
-    - backendRefs:
-        - group: gateway.envoyproxy.io
-          kind: Backend
-          name: envoy-ai-gateway-basic-openai
-      matches:
+    - matches:
         - path:
             value: /
+      name: unreachable
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy

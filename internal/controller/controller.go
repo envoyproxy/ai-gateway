@@ -24,6 +24,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -37,6 +38,7 @@ func init() {
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
+	utilruntime.Must(gwaiev1a2.AddToScheme(Scheme))
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
@@ -53,6 +55,8 @@ type Options struct {
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
+	// EnableInfExt enables the Gateway API Inference Extension.
+	EnableInfExt bool
 }
 
 type (
@@ -65,6 +69,9 @@ type (
 	// syncBackendSecurityPolicyFn is a function that syncs a BackendSecurityPolicy. This is used to cross the controller boundary
 	// from Secret to BackendSecurityPolicy when a Secret is referenced by a BackendSecurityPolicy.
 	syncBackendSecurityPolicyFn func(context.Context, *aigv1a1.BackendSecurityPolicy) error
+	// syncInferencePoolFn is a function that syncs an InferencePool. This is used to cross the controller boundary
+	// from InferenceModel to InferencePool when an InferenceModel is referenced by an InferencePool.
+	syncInferencePoolFn func(context.Context, *gwaiev1a2.InferencePool) error
 )
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -85,7 +92,7 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
-	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {
+	if err = ApplyIndexing(ctx, options.EnableInfExt, indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
@@ -113,6 +120,24 @@ func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logg
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
+	}
+
+	if options.EnableInfExt {
+		inferencePoolC := newInferencePoolController(c,
+			kubernetes.NewForConfigOrDie(config), logger.WithName("inference-pool"),
+			routeC.syncAIGatewayRoute)
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+			Complete(inferencePoolC); err != nil {
+			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
+		}
+
+		inferenceModelC := newInferenceModelController(c,
+			kubernetes.NewForConfigOrDie(config), logger.WithName("inference-model"),
+			inferencePoolC.syncInferencePool)
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferenceModel{}).
+			Complete(inferenceModelC); err != nil {
+			return fmt.Errorf("failed to create controller for InferenceModel: %w", err)
+		}
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
@@ -152,24 +177,44 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+	// k8sClientIndexInferencePoolToReferencingAIServiceBackend is the index name that maps from an InferencePool to the AIServiceBackend
+	// that references it.
+	k8sClientIndexInferencePoolToReferencingAIGatewayRoute = "InferencePoolToReferencingAIGatewayRoute"
+	// k8sClientIndexInferencePoolToReferencingInferenceModel is the index name that maps from an InferencePool to the InferenceModel
+	// that references it.
+	k8sClientIndexInferencePoolToReferencingInferenceModel = "InferencePoolToReferencingInferenceModel"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
-func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
+func ApplyIndexing(ctx context.Context, enableInfExt bool, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
 	}
+	if enableInfExt {
+		err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
+			k8sClientIndexInferencePoolToReferencingAIGatewayRoute, aiGatewayRouteIndexFuncForInferencePool)
+		if err != nil {
+			return fmt.Errorf("failed to index field for InferencePool to AIGatewayRoute: %w", err)
+		}
+	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)
+	}
+	if enableInfExt {
+		err = indexer(ctx, &gwaiev1a2.InferenceModel{},
+			k8sClientIndexInferencePoolToReferencingInferenceModel, inferenceModelIndexFunc)
+		if err != nil {
+			return fmt.Errorf("failed to index field for InferenceModel: %w", err)
+		}
 	}
 	return nil
 }
@@ -186,6 +231,20 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 	return ret
 }
 
+func aiGatewayRouteIndexFuncForInferencePool(o client.Object) []string {
+	aiServiceBackend := o.(*aigv1a1.AIGatewayRoute)
+	var ret []string
+	for _, r := range aiServiceBackend.Spec.Rules {
+		for _, backend := range r.BackendRefs {
+			if backend.Kind != nil && *backend.Kind == aigv1a1.AIGatewayRouteRuleBackendRefInferencePool {
+				ns := o.GetNamespace()
+				ret = append(ret, fmt.Sprintf("%s.%s", backend.Name, ns))
+			}
+		}
+	}
+	return ret
+}
+
 func aiServiceBackendIndexFunc(o client.Object) []string {
 	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
 	var ret []string
@@ -193,6 +252,13 @@ func aiServiceBackendIndexFunc(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
 	}
 	return ret
+}
+
+func inferenceModelIndexFunc(o client.Object) []string {
+	inferenceModel := o.(*gwaiev1a2.InferenceModel)
+	poolRef := inferenceModel.Spec.PoolRef
+	ns := o.GetNamespace()
+	return []string{fmt.Sprintf("%s.%s", poolRef.Name, ns)}
 }
 
 func backendSecurityPolicyIndexFunc(o client.Object) []string {

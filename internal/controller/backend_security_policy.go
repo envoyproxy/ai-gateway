@@ -153,7 +153,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 	requeue := time.Minute
 	var rotationTime time.Time
 	rotationTime, err = rotator.GetPreRotationTime(ctx)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		c.logger.Error(err, "failed to get rotation time, retry in one minute")
 	} else {
 		if rotator.IsExpired(rotationTime) {

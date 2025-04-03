@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -317,49 +318,79 @@ func TestChatCompletion_ProcessRequestBody(t *testing.T) {
 				require.False(t, p.stream) // On error, stream should be false regardless of the input.
 			})
 			t.Run("ok", func(t *testing.T) {
-				someBody := bodyFromModel(t, "some-model")
-				headers := map[string]string{":path": "/foo"}
-				rt := mockRouter{
-					t: t, expHeaders: headers, retBackendName: "some-backend",
-					retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+				for _, tc := range []struct {
+					name  string
+					dynlb *mockDynamicLB
+				}{
+					{name: "no-dynlb"},
+					{name: "dynlb", dynlb: &mockDynamicLB{
+						backedName: "some-backend",
+						headers:    []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", Value: "bar"}}},
+					}},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						someBody := bodyFromModel(t, "some-model")
+						headers := map[string]string{":path": "/foo"}
+						dynLb := &filterapi.DynamicLoadBalancing{}
+						rt := mockRouter{
+							t: t, expHeaders: headers, retBackendName: "some-backend",
+							retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+						}
+						if tc.dynlb != nil {
+							rt.retBackendDynamicLB = dynLb
+						}
+						headerMut := &extprocv3.HeaderMutation{}
+						bodyMut := &extprocv3.BodyMutation{}
+
+						var expBody openai.ChatCompletionRequest
+						require.NoError(t, json.Unmarshal(someBody, &expBody))
+						mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+						mm := &mockChatCompletionMetrics{}
+						p := &chatCompletionProcessor{
+							config: &processorConfig{
+								router:                   rt,
+								selectedBackendHeaderKey: "x-ai-gateway-backend-key",
+								modelNameHeaderKey:       "x-ai-gateway-model-key",
+								dynamicLoadBalancers: map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer{
+									dynLb: tc.dynlb,
+								},
+							},
+							requestHeaders: headers,
+							logger:         slog.Default(),
+							metrics:        mm,
+							translator:     mt,
+						}
+						resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+						require.NoError(t, err)
+						require.Equal(t, mt, p.translator)
+						require.NotNil(t, resp)
+						commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
+						require.Equal(t, headerMut, commonRes.HeaderMutation)
+						require.Equal(t, bodyMut, commonRes.BodyMutation)
+
+						mm.RequireRequestNotCompleted(t)
+						mm.RequireSelected(t, "some-model", "some-backend")
+
+						// Check the model and backend headers are set in headerMut.
+						hdrs := headerMut.SetHeaders
+						if tc.dynlb != nil {
+							require.Len(t, hdrs, 3)
+							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
+							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
+							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
+							require.Equal(t, "original_destination_cluster", string(hdrs[1].Header.RawValue))
+							require.Equal(t, "foo", hdrs[2].Header.Key)
+							require.Equal(t, "bar", hdrs[2].Header.Value)
+						} else {
+							require.Len(t, hdrs, 2)
+							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
+							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
+							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
+							require.Equal(t, "some-backend", string(hdrs[1].Header.RawValue))
+						}
+						require.Equal(t, stream, p.stream)
+					})
 				}
-				headerMut := &extprocv3.HeaderMutation{}
-				bodyMut := &extprocv3.BodyMutation{}
-
-				var expBody openai.ChatCompletionRequest
-				require.NoError(t, json.Unmarshal(someBody, &expBody))
-				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
-				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					config: &processorConfig{
-						router:                   rt,
-						selectedBackendHeaderKey: "x-ai-gateway-backend-key",
-						modelNameHeaderKey:       "x-ai-gateway-model-key",
-					},
-					requestHeaders: headers,
-					logger:         slog.Default(),
-					metrics:        mm,
-					translator:     mt,
-				}
-				resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
-				require.NoError(t, err)
-				require.Equal(t, mt, p.translator)
-				require.NotNil(t, resp)
-				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
-				require.Equal(t, headerMut, commonRes.HeaderMutation)
-				require.Equal(t, bodyMut, commonRes.BodyMutation)
-
-				mm.RequireRequestNotCompleted(t)
-				mm.RequireSelected(t, "some-model", "some-backend")
-
-				// Check the model and backend headers are set in headerMut.
-				hdrs := headerMut.SetHeaders
-				require.Len(t, hdrs, 2)
-				require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
-				require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
-				require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
-				require.Equal(t, "some-backend", string(hdrs[1].Header.RawValue))
-				require.Equal(t, stream, p.stream)
 			})
 		})
 	}

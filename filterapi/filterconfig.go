@@ -156,15 +156,55 @@ type RouteRule struct {
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
 	// Name of the backend, which is the value in the final routing decision
-	// matching the header key specified in the [Config.BackendRoutingHeaderKey].
+	// matching the header key specified in the [filterapi.Config.BackendRoutingHeaderKey].
 	Name string `json:"name"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
 	// Weight is the weight of the backend in the routing decision.
+	//
+	// When DynamicLoadBalancing is specified, the weight is ignored.
 	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
-	// TODO: refactor after https://github.com/envoyproxy/ai-gateway/pull/43.
 	Auth *BackendAuth `json:"auth,omitempty"`
+	// DynamicLoadBalancing is the dynamic backend configuration which forces the AI filter to
+	// route the request to a specific endpoint (ip:port) instead of the normal cluster routing.
+	//
+	// When this is specified, the AI Gateway filter assume that the ORIGINAL_DST cluster is configured
+	// to route the request to an endpoint from `x-ai-eg-original-dst` header.
+	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicLoadBalancing,omitempty"`
+}
+
+// DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
+type DynamicLoadBalancing struct {
+	// Models that can be served by this backend. If not matched, the 404 is returned to the client.
+	//
+	// If multiple models are provided, the request is routed to the backend based on the weights, criticality, etc.
+	Models []DynamicLoadBalancingModel `json:"models,omitempty"`
+	// Backends can be either ip:port or hostname:port.
+	Backends []DynamicLoadBalancingBackend `json:"backends,omitempty"`
+}
+
+// DynamicLoadBalancingModel corresponds to InferenceModel in the Inference Extension.
+type DynamicLoadBalancingModel struct {
+	// Name is the name of the model.
+	Name string `json:"name"`
+	// Weight is the weight of the model in the routing decision when multiple models are provided.
+	Weight *int `json:"weight,omitempty"`
+	// TODO: Criticality?
+}
+
+// DynamicLoadBalancingBackend corresponds to a single AIServiceBackend that is selected by the
+// InferencePool. It is basically a wrapper of Backend with additional information to do
+// the IP address level dynamic load balancing.
+type DynamicLoadBalancingBackend struct {
+	Backend
+	// Hostnames is the hostname of this backend. The filter will resolve the hostname to the IP address
+	// asynchronously and use the resolved IP address to route the request.
+	Hostnames []string `json:"hostNames,omitempty"`
+	// IP is the IP address of the endpoint.
+	IPs []string `json:"ips,omitempty"`
+	// Port is the port of the endpoint.
+	Port int32 `json:"port"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.

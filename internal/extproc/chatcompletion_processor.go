@@ -57,6 +57,10 @@ type chatCompletionProcessor struct {
 	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
+	// dynamicLB is not nil if the originally selected backend has dynamic load balancing.
+	// TODO: this is not currently used but can be used to do a failover to the whole another backend as per the
+	// the comment in https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926.
+	dynamicLB *filterapi.DynamicLoadBalancing
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -119,7 +123,28 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 		}
 		return nil, fmt.Errorf("failed to calculate route: %w", err)
 	}
-	c.logger.Info("Selected backend", "backend", b.Name, "schema", b.Schema)
+
+	var headers []*corev3.HeaderValueOption
+	c.dynamicLB = b.DynamicLoadBalancing
+	selectedBackendHeaderValue := b.Name
+	if c.dynamicLB != nil {
+		lb, ok := c.config.dynamicLoadBalancers[c.dynamicLB]
+		if !ok {
+			// If it's not found, that should be a BUG.
+			panic("BUG: failed to find dynamic load balancer")
+		}
+		b, headers, err = lb.SelectChatCompletionsEndpoint(model, c.metrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to select endpoint: %w", err)
+		}
+		// The selected backend is the dynamic load balancer name.
+		// TODO: we should make this constant as a part of the filterapi package.
+		//  However, that will likely to change after https://github.com/envoyproxy/envoy/pull/38757
+		// 	so for now, we keep it as an inline string.
+		selectedBackendHeaderValue = "original_destination_cluster"
+	}
+
+	c.logger.Info("selected backend", "backend", b.Name, "schema", b.Schema)
 	c.metrics.SetBackend(b)
 
 	if err = c.selectTranslator(b.Schema); err != nil {
@@ -134,13 +159,15 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
-	// Set the model name to the request header with the key `x-ai-gateway-llm-model-name`.
 	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+		// Set the model name to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(b.Name)},
+		// Also set the selected backend to the request header with the key `x-ai-eg-selected-backend`.
+		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(selectedBackendHeaderValue)},
 	})
-
+	headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
+	// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
 	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
 		if err = authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
@@ -169,6 +196,10 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, he
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
+	// TODO: check the status code and use the dynamic load balancing to retry the request per the comment in
+	// 	https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926
+	_ = c.dynamicLB
+
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
