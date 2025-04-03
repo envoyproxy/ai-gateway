@@ -5,6 +5,20 @@ description: Release Notes for Envoy AI Gateway
 
 # Release Notes
 ---
+## v0.1.5
+**Date:** 2025-04-03
+
+Fixes case where ext proc image does not sync when ai-gateway route's filter config is not defined.
+
+## Overview
+
+This patch release v0.1.5 introduces a fix to syncing the ext proc image.
+
+## Commits
+
+extproc: set extProcImage before potentially returning #515
+
+---
 ## v0.1.4
 **Date:** 2025-03-20
 
