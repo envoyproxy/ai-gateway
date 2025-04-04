@@ -19,9 +19,9 @@ Before you begin, you'll need to complete the [installation](../getting-started/
 To set up the Gateway API Inference Extension, you need to run the Envoy AI Gateway with the `--enableInferenceExtension=true` flag, which can be done by setting the `controller.enableInferenceExtension` Helm chart value to `true` like this:
 
 ```
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
-  --namespace envoy-gateway-system \
+  --namespace envoy-ai-gateway-system \
   --set controller.enableInferenceExtension=true \
   --create-namespace
 ```
