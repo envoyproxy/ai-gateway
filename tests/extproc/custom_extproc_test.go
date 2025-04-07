@@ -58,10 +58,10 @@ func TestExtProcCustomRouter(t *testing.T) {
 				base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"This is a test."}}]}`)),
 			))
 		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-			Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage("Say this is a test"),
-			}),
-			Model: openai.F("something-cool"),
+			},
+			Model: "something-cool",
 		})
 		if err != nil {
 			t.Logf("error: %v", err)
@@ -117,10 +117,10 @@ func TestExtProcCustomMetrics(t *testing.T) {
 				base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"This is a test."}}]}`)),
 			))
 		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-			Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage("Say this is a test"),
-			}),
-			Model: openai.F("something-cool"),
+			},
+			Model: "something-cool",
 		})
 		if err != nil {
 			t.Logf("error: %v", err)

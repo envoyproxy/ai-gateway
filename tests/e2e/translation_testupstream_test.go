@@ -75,10 +75,10 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 					)
 
 					chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+						Messages: []openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage("Say this is a test"),
-						}),
-						Model: openai.F(tc.modelName),
+						},
+						Model: tc.modelName,
 					})
 					if err != nil {
 						t.Logf("error: %v", err)

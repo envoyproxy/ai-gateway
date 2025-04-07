@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -205,7 +204,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 								Value: []ChatCompletionContentPartTextParam{
 									{
 										Text: "you are a helpful assistant",
-										Type: string(openai.ChatCompletionContentPartTextTypeText),
+										Type: "text",
 									},
 								},
 							},
@@ -219,7 +218,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 								Value: []ChatCompletionContentPartTextParam{
 									{
 										Text: "you are a helpful dev assistant",
-										Type: string(openai.ChatCompletionContentPartTextTypeText),
+										Type: "text",
 									},
 								},
 							},

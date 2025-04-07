@@ -111,10 +111,10 @@ func TestRun(t *testing.T) {
 			cc.MaybeSkip(t, tc.required)
 			require.Eventually(t, func() bool {
 				chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-					Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+					Messages: []openai.ChatCompletionMessageParamUnion{
 						openai.UserMessage("Say this is a test"),
-					}),
-					Model: openai.F(tc.modelName),
+					},
+					Model: tc.modelName,
 				})
 				if err != nil {
 					t.Logf("error: %v", err)

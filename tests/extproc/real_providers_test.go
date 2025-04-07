@@ -88,10 +88,10 @@ func TestWithRealProviders(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+						Messages: []openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage("Say this is a test"),
-						}),
-						Model: openai.F(tc.modelName),
+						},
+						Model: tc.modelName,
 					})
 					if err != nil {
 						t.Logf("error: %v", err)
@@ -157,10 +157,10 @@ func TestWithRealProviders(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
 					stream := client.Chat.Completions.NewStreaming(t.Context(), openai.ChatCompletionNewParams{
-						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+						Messages: []openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage("Say this is a test"),
-						}),
-						Model: openai.F(tc.modelName),
+						},
+						Model: tc.modelName,
 					})
 					defer func() {
 						_ = stream.Close()
@@ -209,16 +209,15 @@ func TestWithRealProviders(t *testing.T) {
 					// Step 1: Initial tool call request
 					question := "What is the weather in New York City?"
 					params := openai.ChatCompletionNewParams{
-						Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+						Messages: []openai.ChatCompletionMessageParamUnion{
 							openai.UserMessage(question),
-						}),
-						Tools: openai.F([]openai.ChatCompletionToolParam{
+						},
+						Tools: []openai.ChatCompletionToolParam{
 							{
-								Type: openai.F(openai.ChatCompletionToolTypeFunction),
-								Function: openai.F(openai.FunctionDefinitionParam{
-									Name:        openai.String("get_weather"),
+								Function: openai.FunctionDefinitionParam{
+									Name:        "get_weather",
 									Description: openai.String("Get weather at the given location"),
-									Parameters: openai.F(openai.FunctionParameters{
+									Parameters: openai.FunctionParameters{
 										"type": "object",
 										"properties": map[string]interface{}{
 											"location": map[string]string{
@@ -226,12 +225,12 @@ func TestWithRealProviders(t *testing.T) {
 											},
 										},
 										"required": []string{"location"},
-									}),
-								}),
+									},
+								},
 							},
-						}),
+						},
 						Seed:  openai.Int(0),
-						Model: openai.F(tc.modelName),
+						Model: tc.modelName,
 					}
 					completion, err := client.Chat.Completions.New(context.Background(), params)
 					if err != nil {
@@ -245,7 +244,7 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response
-					params.Messages.Value = append(params.Messages.Value, completion.Choices[0].Message)
+					params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
 					getWeatherCalled := false
 					for _, toolCall := range toolCalls {
 						if toolCall.Function.Name == "get_weather" {
@@ -261,7 +260,7 @@ func TestWithRealProviders(t *testing.T) {
 							}
 							// Simulate getting weather data
 							weatherData := "Sunny, 25°C"
-							params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, weatherData))
+							params.Messages = append(params.Messages, openai.ToolMessage(toolCall.ID, weatherData))
 							t.Logf("Appended tool message: %v", openai.ToolMessage(toolCall.ID, weatherData)) // Debug log
 						}
 					}

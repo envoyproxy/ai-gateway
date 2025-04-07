@@ -339,10 +339,10 @@ data: [DONE]
 		// NewStreaming below will block until the first event is received, so take the time before calling it.
 		start := time.Now()
 		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
-			Messages: openaigo.F([]openaigo.ChatCompletionMessageParamUnion{
+			Messages: []openaigo.ChatCompletionMessageParamUnion{
 				openaigo.UserMessage("Say this is a test"),
-			}),
-			Model: openaigo.F("something"),
+			},
+			Model: "something",
 		})
 		defer func() {
 			_ = stream.Close()
