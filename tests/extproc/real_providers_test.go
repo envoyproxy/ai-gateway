@@ -260,8 +260,9 @@ func TestWithRealProviders(t *testing.T) {
 							}
 							// Simulate getting weather data
 							weatherData := "Sunny, 25°C"
-							params.Messages = append(params.Messages, openai.ToolMessage(toolCall.ID, weatherData))
-							t.Logf("Appended tool message: %v", openai.ToolMessage(toolCall.ID, weatherData)) // Debug log
+							toolMessage := openai.ToolMessage(weatherData, toolCall.ID)
+							params.Messages = append(params.Messages, toolMessage)
+							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log
 						}
 					}
 					if getWeatherCalled == false {
