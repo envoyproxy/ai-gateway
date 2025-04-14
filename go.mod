@@ -17,7 +17,7 @@ require (
 	github.com/google/cel-go v0.22.1
 	github.com/google/go-cmp v0.7.0
 	github.com/miekg/dns v1.1.65
-	github.com/openai/openai-go v0.1.0-beta.6
+	github.com/openai/openai-go v0.1.0-beta.9
 	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.35.0
