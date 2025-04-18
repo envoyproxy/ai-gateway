@@ -119,7 +119,11 @@ func aiGatewayRouteTargetRefs(spec *aigv1a1.AIGatewayRouteSpec) []gwapiv1a2.Loca
 	targetRefs := make([]gwapiv1a2.LocalPolicyTargetReferenceWithSectionName, len(spec.ParentRefs))
 	for i, parentRef := range spec.ParentRefs {
 		targetRefs[i] = gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: parentRef.Name},
+			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+				Name:  parentRef.Name,
+				Kind:  ptr.Deref(parentRef.Kind, "Gateway"),
+				Group: ptr.Deref(parentRef.Group, "gateway.envoyproxy.io"),
+			},
 		}
 	}
 	return targetRefs
