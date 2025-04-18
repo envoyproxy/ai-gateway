@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -111,12 +112,26 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	return reconcile.Result{}, nil
 }
 
+func aiGatewayRouteTargetRefs(spec *aigv1a1.AIGatewayRouteSpec) []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName {
+	if len(spec.TargetRefs) > 0 {
+		return spec.TargetRefs
+	}
+	targetRefs := make([]gwapiv1a2.LocalPolicyTargetReferenceWithSectionName, len(spec.ParentRefs))
+	for i, parentRef := range spec.ParentRefs {
+		targetRefs[i] = gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: parentRef.Name},
+		}
+	}
+	return targetRefs
+}
+
 // reconcileExtProcExtensionPolicy creates or updates the extension policy for the external process.
 // It only changes the target references.
 func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) (err error) {
+	targetRefs := aiGatewayRouteTargetRefs(&aiGatewayRoute.Spec)
 	var existingPolicy egv1a1.EnvoyExtensionPolicy
 	if err = c.client.Get(ctx, client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace}, &existingPolicy); err == nil {
-		existingPolicy.Spec.PolicyTargetReferences.TargetRefs = aiGatewayRoute.Spec.TargetRefs
+		existingPolicy.Spec.PolicyTargetReferences.TargetRefs = targetRefs
 		if err = c.client.Update(ctx, &existingPolicy); err != nil {
 			return fmt.Errorf("failed to update extension policy: %w", err)
 		}
@@ -134,7 +149,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 	extPolicy := &egv1a1.EnvoyExtensionPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: extProcName(aiGatewayRoute), Namespace: aiGatewayRoute.Namespace},
 		Spec: egv1a1.EnvoyExtensionPolicySpec{
-			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: aiGatewayRoute.Spec.TargetRefs},
+			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: targetRefs},
 			ExtProc: []egv1a1.ExtProc{{
 				ProcessingMode: &egv1a1.ExtProcProcessingMode{
 					AllowModeOverride: true, // Streaming completely overrides the buffered mode.
@@ -497,18 +512,17 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Rules = rules
 
-	targetRefs := aiGatewayRoute.Spec.TargetRefs
-	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
-	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
-	for i, egRef := range targetRefs {
-		egName := egRef.Name
+	parentRefs := aiGatewayRoute.Spec.ParentRefs
+	if targetRefs := aiGatewayRoute.Spec.TargetRefs; len(targetRefs) > 0 {
+		egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 		var namespace *gwapiv1.Namespace
-		if egNs != "" {
+		if egNs != "" { // This path is only for the `aigw trasnlate`.
 			namespace = ptr.To(egNs)
 		}
-		parentRefs[i] = gwapiv1.ParentReference{
-			Name:      egName,
-			Namespace: namespace,
+		parentRefs = make([]gwapiv1.ParentReference, len(targetRefs))
+		for i, egRef := range targetRefs {
+			egName := egRef.Name
+			parentRefs[i] = gwapiv1.ParentReference{Name: egName, Namespace: namespace}
 		}
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
