@@ -516,7 +516,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	if targetRefs := aiGatewayRoute.Spec.TargetRefs; len(targetRefs) > 0 {
 		egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 		var namespace *gwapiv1.Namespace
-		if egNs != "" { // This path is only for the `aigw trasnlate`.
+		if egNs != "" { // This path is only for the `aigw translate`.
 			namespace = ptr.To(egNs)
 		}
 		parentRefs = make([]gwapiv1.ParentReference, len(targetRefs))
