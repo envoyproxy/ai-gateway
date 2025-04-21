@@ -24,9 +24,11 @@ type Server struct {
 	log logr.Logger
 }
 
+const serverName = "envoy-gateway-extension-server"
+
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
 func New(logger logr.Logger) *Server {
-	logger = logger.WithName("envoy-gateway-extension-server")
+	logger = logger.WithName(serverName)
 	return &Server{log: logger}
 }
 
@@ -38,6 +40,13 @@ func (s *Server) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*gr
 // Watch implements [grpc_health_v1.HealthServer].
 func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
+}
+
+// List implements [grpc_health_v1.HealthServer].
+func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
+		serverName: {Status: grpc_health_v1.HealthCheckResponse_SERVING},
+	}}, nil
 }
 
 const (
