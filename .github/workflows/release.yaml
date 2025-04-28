@@ -19,6 +19,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           echo "HELM_CHART_VERSION=${TAG}" >> $GITHUB_ENV
+          echo "HELM_CHART_VERSION_WITHOUT_V=$(echo ${TAG#v})" >> $GITHUB_ENV
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
       # To include the helm chart in the release artifact, we build and push it here instead of the separate job.
@@ -29,7 +30,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - name: Push Helm chart
-        run: make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
+        run: |
+          make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
+          make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION_WITHOUT_V}
 
       - name: Create a release candidate
         if: ${{ contains(github.ref, '-rc') }}
