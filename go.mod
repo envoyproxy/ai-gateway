@@ -36,7 +36,7 @@ require (
 	k8s.io/client-go v0.33.0
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	sigs.k8s.io/controller-runtime v0.20.4
-	sigs.k8s.io/gateway-api v1.2.1
+	sigs.k8s.io/gateway-api v1.3.0
 	sigs.k8s.io/gateway-api-inference-extension v0.3.0
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -409,15 +409,15 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/term v0.31.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.30.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
@@ -442,7 +442,7 @@ require (
 	oras.land/oras-go v1.2.6 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20250217160221-5e8256e05002 // indirect
-	sigs.k8s.io/controller-tools v0.17.1 // indirect
+	sigs.k8s.io/controller-tools v0.17.3 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kind v0.27.0 // indirect
 	sigs.k8s.io/kubectl-validate v0.0.5-0.20241223122011-eb064d2f92d5 // indirect
@@ -450,7 +450,7 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.18.1 // indirect
 	sigs.k8s.io/mcs-api v0.1.0 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
 )
 
 tool (
