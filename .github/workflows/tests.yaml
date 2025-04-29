@@ -209,4 +209,6 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-      - run: make helm-push
+      - run: |
+          make helm-push HELM_CHART_VERSION=v0.0.0-latest
+          make helm-push HELM_CHART_VERSION=0.0.0-latest
