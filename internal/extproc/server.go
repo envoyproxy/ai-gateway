@@ -256,6 +256,13 @@ func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
+// List implements [grpc_health_v1.HealthServer].
+func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
+		"extproc": {Status: grpc_health_v1.HealthCheckResponse_SERVING},
+	}}, nil
+}
+
 // filterSensitiveHeadersForLogging filters out sensitive headers from the provided HeaderMap for logging.
 // Specifically, it redacts the value of the "authorization" header and logs this action.
 // This returns a slice of [slog.Attr] of headers, where the value of sensitive headers is redacted.

@@ -29,7 +29,7 @@ func Test_doMain(t *testing.T) {
 		{
 			name: "help",
 			args: []string{"--help"},
-			expOut: `Usage: aigw <command> [flags]
+			expOut: `Usage: aigw <command>
 
 Envoy AI Gateway CLI
 
@@ -37,7 +37,7 @@ Flags:
   -h, --help    Show context-sensitive help.
 
 Commands:
-  version [flags]
+  version
     Show version.
 
   translate <path> ... [flags]
@@ -60,7 +60,7 @@ Run "aigw <command> --help" for more information on a command.
 			name:         "version help",
 			args:         []string{"version", "--help"},
 			expPanicCode: ptr.To(0),
-			expOut: `Usage: aigw version [flags]
+			expOut: `Usage: aigw version
 
 Show version.
 
@@ -79,10 +79,12 @@ Flags:
 			},
 		},
 		{
-			name:         "translate no arg",
-			args:         []string{"translate"},
-			tf:           func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
-			expPanicCode: ptr.To(1),
+			name: "translate no arg",
+			args: []string{"translate"},
+			tf:   func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
+			// Looks like the kong library follows the "semantic exit code" as in
+			// https://github.com/square/exit?tab=readme-ov-file#about
+			expPanicCode: ptr.To(80),
 		},
 		{
 			name: "translate with help",
