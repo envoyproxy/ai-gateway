@@ -588,12 +588,12 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend can be of either k8s Service or Backend resource of Envoy Gateway.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
-  type="[LocalObjectReference](#localobjectreference)"
+  type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
   description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to."
 /><ApiField
   name="timeouts"
-  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
 />
