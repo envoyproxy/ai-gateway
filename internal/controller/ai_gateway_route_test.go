@@ -105,7 +105,7 @@ func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) 
 	err = c.client.Get(t.Context(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
 	require.NoError(t, err)
 
-	require.Equal(t, len(aiGatewayRoute.Spec.TargetRefs), len(extPolicy.Spec.TargetRefs))
+	require.Len(t, aiGatewayRoute.Spec.TargetRefs, len(extPolicy.Spec.TargetRefs))
 	for i, target := range extPolicy.Spec.TargetRefs {
 		require.Equal(t, aiGatewayRoute.Spec.TargetRefs[i].Name, target.Name)
 	}

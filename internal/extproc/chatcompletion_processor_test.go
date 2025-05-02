@@ -410,7 +410,7 @@ func TestChatCompletion_ParseBody(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		modelName, rb, err := parseOpenAIChatCompletionBody(&extprocv3.HttpBody{})
 		require.Error(t, err)
-		require.Equal(t, "", modelName)
+		require.Empty(t, modelName)
 		require.Nil(t, rb)
 	})
 }
