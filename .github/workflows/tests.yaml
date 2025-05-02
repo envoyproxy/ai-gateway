@@ -158,8 +158,8 @@ jobs:
         include:
           - name: v1.3.0
             envoy_gateway_version: v1.3.0
-          - name: latest
-            envoy_gateway_version: v0.0.0-latest
+          - name: 1.4.0-rc.2
+            envoy_gateway_version: 1.4.0-rc.2
     steps:
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request_target'
