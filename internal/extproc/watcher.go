@@ -117,16 +117,6 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	if err = cw.rcv.LoadConfig(ctx, cfg); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
-	cw.hasDynamicLB = false
-	for _, rule := range cfg.Rules {
-		for _, backend := range rule.Backends {
-			if backend.DynamicLoadBalancing != nil {
-				cw.hasDynamicLB = true
-				break
-			}
-		}
-	}
 	return nil
 }
 

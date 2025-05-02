@@ -104,10 +104,6 @@ spec:
     name: envoy-ai-gateway-basic-azure
     kind: Backend
     group: gateway.envoyproxy.io
-  backendSecurityPolicyRef:
-    name: envoy-ai-gateway-basic-azure-credentials
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -119,20 +115,6 @@ spec:
   apiKey:
     secretRef:
       name: envoy-ai-gateway-basic-openai-apikey
-      namespace: default
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: envoy-ai-gateway-basic-azure-credentials
-  namespace: default
-spec:
-  type: AzureCredentials
-  azureCredentials:
-    clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
-    tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
-    clientSecretRef:
-      name: envoy-ai-gateway-basic-azure-client-secret
       namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1

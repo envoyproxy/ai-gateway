@@ -28,7 +28,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToOpenAITranslatorV1ChatCompletion{}
-				hm, bm, err := o.RequestBody(originalReq)
+				hm, bm, err := o.RequestBody(nil, originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)

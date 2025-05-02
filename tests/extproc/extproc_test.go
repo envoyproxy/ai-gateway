@@ -11,12 +11,14 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -24,7 +26,38 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-const listenerAddress = "http://localhost:1062"
+const (
+	listenerAddress    = "http://localhost:1062"
+	eventuallyTimeout  = 60 * time.Second
+	eventuallyInterval = 4 * time.Second
+)
+
+func TestMain(m *testing.M) {
+	const fakeServerPort = 1066
+	// This is a fake server that returns a 500 error for all requests.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	httpServer := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", fakeServerPort), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	httpsServer := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", fakeServerPort+1), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && !strings.Contains(err.Error(), "Server closed") {
+			panic(fmt.Sprintf("error starting HTTP server: %v", err))
+		}
+	}()
+	go func() {
+		if err := httpsServer.ListenAndServeTLS("testdata/server.crt", "testdata/server.key"); err != nil &&
+			!strings.Contains(err.Error(), "Server closed") {
+			panic(fmt.Sprintf("error starting HTTPS server: %v", err))
+		}
+	}()
+	res := m.Run()
+	_ = httpServer.Close()
+	_ = httpsServer.Close()
+	os.Exit(res)
+}
 
 //go:embed envoy.yaml
 var envoyYamlBase string
@@ -34,6 +67,17 @@ var (
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 )
+
+var fakeBackends = []*filterapi.Backend{
+	{Name: "testupstream-openai", Schema: openAISchema},
+	{Name: "testupstream-aws", Schema: awsBedrockSchema},
+	{Name: "testupstream-azure", Schema: azureOpenAISchema},
+	// This always failing backend is configured to have AWS Bedrock schema so that
+	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
+	{Name: "always-failing-backend", Schema: awsBedrockSchema},
+}
+
+const routeSelectorHeader = "x-selected-route-name"
 
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.

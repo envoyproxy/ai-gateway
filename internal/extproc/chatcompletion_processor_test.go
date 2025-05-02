@@ -22,7 +22,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -30,18 +29,27 @@ import (
 func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("unsupported", func(t *testing.T) {
 		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: "Foo", Version: "v123"}}
-		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, nil)
+		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
 		require.ErrorContains(t, err, "unsupported API schema: Foo")
 	})
-	t.Run("supported openai", func(t *testing.T) {
+	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}}
-		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, nil)
+		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
+		require.NotNil(t, routeFilter)
+		require.IsType(t, &chatCompletionProcessorRouterFilter{}, routeFilter)
+	})
+	t.Run("supported openai / on upstream", func(t *testing.T) {
+		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}}
+		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), true)
+		require.NoError(t, err)
+		require.NotNil(t, routeFilter)
+		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, routeFilter)
 	})
 }
 
-func TestChatCompletion_SelectTranslator(t *testing.T) {
-	c := &chatCompletionProcessor{}
+func Test_chatCompletionProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
+	c := &chatCompletionProcessorUpstreamFilter{}
 	t.Run("unsupported", func(t *testing.T) {
 		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: "Bar", Version: "v123"})
 		require.ErrorContains(t, err, "unsupported API schema: backend={Bar v123}")
@@ -63,11 +71,71 @@ func TestChatCompletion_SelectTranslator(t *testing.T) {
 	})
 }
 
-func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
+	t.Run("body parser error", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{}
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
+		require.ErrorContains(t, err, "invalid character 'o' in literal null")
+	})
+	t.Run("router error", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &processorConfig{router: rt},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+		}
+		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
+		require.ErrorContains(t, err, "failed to calculate route: test error")
+	})
+	t.Run("router error 404", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &processorConfig{router: rt},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		ir := resp.GetImmediateResponse()
+		require.NotNil(t, ir)
+		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
+		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		rt := mockRouter{t: t, expHeaders: headers, retRouteName: "some-route"}
+		const modelKey = "x-ai-gateway-model-key"
+		const modelRouteKey = "x-ai-gateway-route-key"
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &processorConfig{router: rt, modelNameHeaderKey: modelKey, selectedRouteHeaderKey: modelRouteKey},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok)
+		require.NotNil(t, re)
+		require.NotNil(t, re.RequestBody)
+		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+		require.Len(t, setHeaders, 3)
+		require.Equal(t, modelKey, setHeaders[0].Header.Key)
+		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
+		require.Equal(t, modelRouteKey, setHeaders[1].Header.Key)
+		require.Equal(t, "some-route", string(setHeaders[1].Header.RawValue))
+		require.Equal(t, "x-ai-eg-original-path", setHeaders[2].Header.Key)
+		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
+	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	mm := &mockChatCompletionMetrics{}
-	p := &chatCompletionProcessor{
-		metrics: mm,
-	}
+	p := &chatCompletionProcessorUpstreamFilter{metrics: mm}
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
 	})
@@ -78,11 +146,11 @@ func TestChatCompletion_ProcessRequestHeaders(t *testing.T) {
 	mm.RequireRequestNotCompleted(t)
 }
 
-func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
+func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: make(map[string]string)}
-		p := &chatCompletionProcessor{
+		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
 		}
@@ -98,7 +166,7 @@ func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 		expHeaders := map[string]string{"foo": "bar", "dog": "cat"}
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
-		p := &chatCompletionProcessor{
+		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
 		}
@@ -116,7 +184,7 @@ func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 		expHeaders := map[string]string{":status": "200", "dog": "cat"}
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
-		p := &chatCompletionProcessor{translator: mt, metrics: mm, stream: true}
+		p := &chatCompletionProcessorUpstreamFilter{translator: mt, metrics: mm, stream: true}
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
@@ -130,7 +198,7 @@ func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 		expHeaders := map[string]string{":status": "500", "dog": "cat"}
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expHeaders: expHeaders}
-		p := &chatCompletionProcessor{translator: mt, metrics: mm, stream: true}
+		p := &chatCompletionProcessorUpstreamFilter{translator: mt, metrics: mm, stream: true}
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
@@ -139,11 +207,11 @@ func TestChatCompletion_ProcessResponseHeaders(t *testing.T) {
 	})
 }
 
-func TestChatCompletion_ProcessResponseBody(t *testing.T) {
+func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t}
-		p := &chatCompletionProcessor{
+		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
 		}
@@ -168,7 +236,7 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		celProgUint, err := llmcostcel.NewProgram("uint(9999)")
 		require.NoError(t, err)
-		p := &chatCompletionProcessor{
+		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
@@ -210,187 +278,97 @@ func TestChatCompletion_ProcessResponseBody(t *testing.T) {
 	})
 }
 
-func TestChatCompletion_ProcessRequestBody(t *testing.T) {
+func bodyFromModel(t *testing.T, model string, stream bool) []byte {
+	var openAIReq openai.ChatCompletionRequest
+	openAIReq.Model = model
+	openAIReq.Stream = stream
+	bytes, err := json.Marshal(openAIReq)
+	require.NoError(t, err)
+	return bytes
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
+	headers := map[string]string{":path": "/foo"}
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:   "some-backend",
+		Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+	}, nil, &chatCompletionProcessorRouterFilter{})
+	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
+	mm.RequireRequestFailure(t)
+	mm.RequireTokensRecorded(t, 0)
+	mm.RequireSelectedBackend(t, "some-backend")
+	require.False(t, p.stream) // On error, stream should be false regardless of the input.
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestBody(t *testing.T) {
+	const modelKey = "x-ai-gateway-model-key"
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream%v", stream), func(t *testing.T) {
-			bodyFromModel := func(t *testing.T, model string) []byte {
-				var openAIReq openai.ChatCompletionRequest
-				openAIReq.Model = model
-				openAIReq.Stream = stream
-				bytes, err := json.Marshal(openAIReq)
-				require.NoError(t, err)
-				return bytes
-			}
-			t.Run("body parser error", func(t *testing.T) {
-				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					metrics: mm,
-				}
-				_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
-				require.ErrorContains(t, err, "invalid character 'o' in literal null")
-				mm.RequireRequestFailure(t)
-				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelected(t, "", "")
-				require.False(t, p.stream) // On error, stream should be false regardless of the input.
-			})
-			t.Run("router error", func(t *testing.T) {
-				headers := map[string]string{":path": "/foo"}
-				rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
-				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					config:         &processorConfig{router: rt},
-					requestHeaders: headers,
-					logger:         slog.Default(),
-					metrics:        mm,
-				}
-				_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
-				require.ErrorContains(t, err, "failed to calculate route: test error")
-				mm.RequireRequestFailure(t)
-				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelected(t, "some-model", "")
-				require.False(t, p.stream) // On error, stream should be false regardless of the input.
-			})
-			t.Run("router error 404", func(t *testing.T) {
-				headers := map[string]string{":path": "/foo"}
-				rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
-				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					config:         &processorConfig{router: rt},
-					requestHeaders: headers,
-					logger:         slog.Default(),
-					metrics:        mm,
-				}
-				resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				ir := resp.GetImmediateResponse()
-				require.NotNil(t, ir)
-				require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
-				require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
-				mm.RequireRequestFailure(t)
-				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelected(t, "some-model", "")
-				require.False(t, p.stream) // On error, stream should be false regardless of the input.
-			})
-			t.Run("translator not found", func(t *testing.T) {
-				headers := map[string]string{":path": "/foo"}
-				rt := mockRouter{
-					t: t, expHeaders: headers, retBackendName: "some-backend",
-					retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-				}
-				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					config:         &processorConfig{router: rt},
-					requestHeaders: headers,
-					logger:         slog.Default(),
-					metrics:        mm,
-				}
-				_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model")})
-				require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
-				mm.RequireRequestFailure(t)
-				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelected(t, "some-model", "some-backend")
-				require.False(t, p.stream) // On error, stream should be false regardless of the input.
-			})
 			t.Run("translator error", func(t *testing.T) {
-				headers := map[string]string{":path": "/foo"}
-				someBody := bodyFromModel(t, "some-model")
-				rt := mockRouter{
-					t: t, expHeaders: headers, retBackendName: "some-backend",
-					retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-				}
+				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+				someBody := bodyFromModel(t, "some-model", stream)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
 				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 				mm := &mockChatCompletionMetrics{}
-				p := &chatCompletionProcessor{
-					config:         &processorConfig{router: rt},
-					requestHeaders: headers,
-					logger:         slog.Default(),
-					metrics:        mm,
-					translator:     tr,
+				p := &chatCompletionProcessorUpstreamFilter{
+					config: &processorConfig{
+						modelNameHeaderKey: modelKey,
+					},
+					requestHeaders:         headers,
+					logger:                 slog.Default(),
+					metrics:                mm,
+					translator:             tr,
+					originalRequestBodyRaw: someBody,
+					originalRequestBody:    &body,
 				}
 				_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
 				require.ErrorContains(t, err, "failed to transform request: test error")
 				mm.RequireRequestFailure(t)
 				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelected(t, "some-model", "some-backend")
+				mm.RequireSelectedModel(t, "some-model")
 				require.False(t, p.stream) // On error, stream should be false regardless of the input.
 			})
 			t.Run("ok", func(t *testing.T) {
-				for _, tc := range []struct {
-					name  string
-					dynlb *mockDynamicLB
-				}{
-					{name: "no-dynlb"},
-					{name: "dynlb", dynlb: &mockDynamicLB{
-						backedName: "some-backend",
-						headers:    []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", Value: "bar"}}},
-					}},
-				} {
-					t.Run(tc.name, func(t *testing.T) {
-						someBody := bodyFromModel(t, "some-model")
-						headers := map[string]string{":path": "/foo"}
-						dynLb := &filterapi.DynamicLoadBalancing{}
-						rt := mockRouter{
-							t: t, expHeaders: headers, retBackendName: "some-backend",
-							retVersionedAPISchema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-						}
-						if tc.dynlb != nil {
-							rt.retBackendDynamicLB = dynLb
-						}
-						headerMut := &extprocv3.HeaderMutation{}
-						bodyMut := &extprocv3.BodyMutation{}
+				someBody := bodyFromModel(t, "some-model", stream)
+				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+				headerMut := &extprocv3.HeaderMutation{}
+				bodyMut := &extprocv3.BodyMutation{}
 
-						var expBody openai.ChatCompletionRequest
-						require.NoError(t, json.Unmarshal(someBody, &expBody))
-						mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
-						mm := &mockChatCompletionMetrics{}
-						p := &chatCompletionProcessor{
-							config: &processorConfig{
-								router:                   rt,
-								selectedBackendHeaderKey: "x-ai-gateway-backend-key",
-								modelNameHeaderKey:       "x-ai-gateway-model-key",
-								dynamicLoadBalancers: map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer{
-									dynLb: tc.dynlb,
-								},
-							},
-							requestHeaders: headers,
-							logger:         slog.Default(),
-							metrics:        mm,
-							translator:     mt,
-						}
-						resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
-						require.NoError(t, err)
-						require.Equal(t, mt, p.translator)
-						require.NotNil(t, resp)
-						commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
-						require.Equal(t, headerMut, commonRes.HeaderMutation)
-						require.Equal(t, bodyMut, commonRes.BodyMutation)
-
-						mm.RequireRequestNotCompleted(t)
-						mm.RequireSelected(t, "some-model", "some-backend")
-
-						// Check the model and backend headers are set in headerMut.
-						hdrs := headerMut.SetHeaders
-						if tc.dynlb != nil {
-							require.Len(t, hdrs, 3)
-							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
-							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
-							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
-							require.Equal(t, "original_destination_cluster", string(hdrs[1].Header.RawValue))
-							require.Equal(t, "foo", hdrs[2].Header.Key)
-							require.Equal(t, "bar", hdrs[2].Header.Value)
-						} else {
-							require.Len(t, hdrs, 2)
-							require.Equal(t, "x-ai-gateway-model-key", hdrs[0].Header.Key)
-							require.Equal(t, "some-model", string(hdrs[0].Header.RawValue))
-							require.Equal(t, "x-ai-gateway-backend-key", hdrs[1].Header.Key)
-							require.Equal(t, "some-backend", string(hdrs[1].Header.RawValue))
-						}
-						require.Equal(t, stream, p.stream)
-					})
+				var expBody openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &expBody))
+				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+				mm := &mockChatCompletionMetrics{}
+				p := &chatCompletionProcessorUpstreamFilter{
+					config: &processorConfig{
+						selectedRouteHeaderKey: "x-ai-gateway-backend-key",
+						modelNameHeaderKey:     modelKey,
+					},
+					requestHeaders:         headers,
+					logger:                 slog.Default(),
+					metrics:                mm,
+					translator:             mt,
+					originalRequestBodyRaw: someBody,
+					originalRequestBody:    &expBody,
 				}
+				resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+				require.NoError(t, err)
+				require.Equal(t, mt, p.translator)
+				require.NotNil(t, resp)
+				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
+				require.Equal(t, headerMut, commonRes.HeaderMutation)
+				require.Equal(t, bodyMut, commonRes.BodyMutation)
+
+				mm.RequireRequestNotCompleted(t)
+				mm.RequireSelectedModel(t, "some-model")
+				require.Equal(t, stream, p.stream)
 			})
 		})
 	}

@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path"
@@ -31,14 +32,13 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
-	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 const (
 	managedByLabel             = "app.kubernetes.io/managed-by"
 	expProcConfigFileName      = "extproc-config.yaml"
-	selectedBackendHeaderKey   = "x-ai-eg-selected-backend"
+	selectedRouteHeaderKey     = "x-ai-eg-selected-route"
 	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
 	extProcConfigAnnotationKey = "aigateway.envoyproxy.io/extproc-config-uuid"
 	// mountedExtProcSecretPath specifies the secret file mounted on the external proc. The idea is to update the mounted.
@@ -125,7 +125,6 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 		return fmt.Errorf("failed to get extension policy: %w", err)
 	}
 
-	pm := egv1a1.BufferedExtProcBodyProcessingMode
 	port := gwapiv1.PortNumber(1063)
 	var objNsPtr *gwapiv1.Namespace
 	if aiGatewayRoute.Namespace != "" {
@@ -138,8 +137,7 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 			ExtProc: []egv1a1.ExtProc{{
 				ProcessingMode: &egv1a1.ExtProcProcessingMode{
 					AllowModeOverride: true, // Streaming completely overrides the buffered mode.
-					Request:           &egv1a1.ProcessingModeOptions{Body: &pm},
-					Response:          &egv1a1.ProcessingModeOptions{Body: &pm},
+					Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
 				},
 				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
@@ -148,9 +146,6 @@ func (c *AIGatewayRouteController) reconcileExtProcExtensionPolicy(ctx context.C
 						Port:      &port,
 					},
 				}}},
-				Metadata: &egv1a1.ExtProcMetadata{
-					WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
-				},
 			}},
 		},
 	}
@@ -272,6 +267,10 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
+func routeName(aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) filterapi.RouteRuleName {
+	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex))
+}
+
 // reconcileExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, uuid string) error {
 	ec := &filterapi.Config{UUID: uuid}
@@ -280,54 +279,56 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	ec.Schema.Name = filterapi.APISchemaName(spec.APISchema.Name)
 	ec.Schema.Version = spec.APISchema.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
-	ec.SelectedBackendHeaderKey = selectedBackendHeaderKey
+	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	ec.Rules = make([]filterapi.RouteRule, len(spec.Rules))
+	backends := map[string]*filterapi.Backend{}
 	var err error
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
-		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
-			ecBackendConfig := &ec.Rules[i].Backends[j]
 			key := fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
-			ecBackendConfig.Name = key
-			ecBackendConfig.Weight = backendRef.Weight
+			if _, ok := backends[key]; ok {
+				continue
+			}
+			b := &filterapi.Backend{Name: key}
+			backends[key] = b
 			if isInferencePoolRef(backendRef) {
-				var pool *gwaiev1a2.InferencePool
-				var referencedAIServiceBackends []aigv1a1.AIServiceBackend
-				pool, referencedAIServiceBackends, err = c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-				if err != nil {
-					return fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
-				}
-				ecBackendConfig.DynamicLoadBalancing, err = c.createDynamicLoadBalancing(ctx, i, j, pool, referencedAIServiceBackends)
-				if err != nil {
-					return fmt.Errorf("failed to create dynamic load balancing: %w", err)
-				}
+				c.logger.Info("TODO: inference pool ref not supported yet",
+					"namespace", aiGatewayRoute.Namespace, "name", backendRef.Name)
 			} else {
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
 					return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 				}
-				ecBackendConfig.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-				ecBackendConfig.Schema.Version = backendObj.Spec.APISchema.Version
+				b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
+				b.Schema.Version = backendObj.Spec.APISchema.Version
 				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 					volumeName := backendSecurityPolicyVolumeName(
 						i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
 					)
-					ecBackendConfig.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
+					b.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
 					if err != nil {
 						return fmt.Errorf("failed to create backend auth: %w", err)
 					}
 				}
 			}
 		}
+		ec.Rules[i].Name = routeName(aiGatewayRoute, i)
 		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
 		}
 	}
+	ec.Backends = make([]*filterapi.Backend, 0, len(backends))
+	for _, backend := range backends {
+		ec.Backends = append(ec.Backends, backend)
+	}
+	sort.Slice(ec.Backends, func(i, j int) bool {
+		return ec.Backends[i].Name < ec.Backends[j].Name
+	})
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
@@ -423,11 +424,8 @@ func (c *AIGatewayRouteController) bspToFilterAPIAuth(ctx context.Context, names
 	}
 }
 
-var inferencePoolDefaultTimeout = &gwapiv1.HTTPRouteTimeouts{Request: ptr.To[gwapiv1.Duration]("30s")}
-
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	dedup := make(map[string]struct{})
 	rewriteFilters := []gwapiv1.HTTPRouteFilter{{
 		Type: gwapiv1.HTTPRouteFilterExtensionRef,
 		ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -437,47 +435,41 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		},
 	}}
 	var rules []gwapiv1.HTTPRouteRule
-	for _, rule := range aiGatewayRoute.Spec.Rules {
+	for i, rule := range aiGatewayRoute.Spec.Rules {
+		routeName := routeName(aiGatewayRoute, i)
+		var backendRefs []gwapiv1.HTTPBackendRef
+		var timeouts *gwapiv1.HTTPRouteTimeouts
 		for i := range rule.BackendRefs {
 			br := &rule.BackendRefs[i]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if _, ok := dedup[dstName]; ok {
-				continue
-			}
-			dedup[dstName] = struct{}{}
-
-			var backendRefs []gwapiv1.HTTPBackendRef
-			var timeouts *gwapiv1.HTTPRouteTimeouts
 			if isInferencePoolRef(br) {
-				// When the target is InferencePool, we don't need the HTTPRoute level setting, but
-				// will route to ORIGINAL_DST, so we don't need to set the backendRefs.
-				//
-				// However, to properly route to the ORIGINAL_DST, we use the constant OriginalDstClusterName
-				// as the selected backend name.
-				dstName = extensionserver.OriginalDstClusterName
-
-				// TODO: make the timeout configurable. One way is to move the timeout setting from
-				// 	AIServiceBackend to AIGatewayRouteBackendRef.
-				timeouts = inferencePoolDefaultTimeout
+				c.logger.Info("TODO: inference pool ref not supported yet",
+					"namespace", aiGatewayRoute.Namespace, "name", br.Name)
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 				if err != nil {
 					return fmt.Errorf("AIServiceBackend %s not found", dstName)
 				}
-				backendRefs = []gwapiv1.HTTPBackendRef{
-					{BackendRef: gwapiv1.BackendRef{BackendObjectReference: backend.Spec.BackendRef}},
-				}
-				timeouts = backend.Spec.Timeouts
+				backendRefs = append(backendRefs,
+					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
+						BackendObjectReference: backend.Spec.BackendRef,
+						// TODO: change the weight's type to int32 in the API.
+						Weight: ptr.To[int32](int32(br.Weight)), // nolint:gosec
+					}},
+				)
+				// For now, if there're multiple backends with different timeouts, we just take the first one.
+				// TODO: deprecate the AIServiceBackend timeout and move it to Rule level.
+				timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 			}
-			rules = append(rules, gwapiv1.HTTPRouteRule{
-				BackendRefs: backendRefs,
-				Matches: []gwapiv1.HTTPRouteMatch{
-					{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: dstName}}},
-				},
-				Filters:  rewriteFilters,
-				Timeouts: timeouts,
-			})
 		}
+		rules = append(rules, gwapiv1.HTTPRouteRule{
+			BackendRefs: backendRefs,
+			Matches: []gwapiv1.HTTPRouteMatch{
+				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
+			},
+			Filters:  rewriteFilters,
+			Timeouts: timeouts,
+		})
 	}
 
 	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend

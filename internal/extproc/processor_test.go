@@ -17,13 +17,13 @@ func Test_passThroughProcessor(t *testing.T) { // This is mostly for coverage.
 	resp, err := p.ProcessRequestHeaders(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	_, ok := resp.Response.(*extprocv3.ProcessingResponse_ResponseHeaders)
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 	require.True(t, ok)
 
 	resp, err = p.ProcessRequestBody(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	_, ok = resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+	_, ok = resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
 	require.True(t, ok)
 
 	resp, err = p.ProcessResponseHeaders(t.Context(), nil)

@@ -21,7 +21,7 @@ import (
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {
 	cfg := &processorConfig{declaredModels: []string{"openai", "aws-bedrock"}}
-	p, err := NewModelsProcessor(cfg, nil, slog.Default())
+	p, err := NewModelsProcessor(cfg, nil, slog.Default(), false)
 	require.NoError(t, err)
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},

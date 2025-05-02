@@ -115,9 +115,19 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
+	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+		Scheme:           controller.Scheme,
+		LeaderElection:   flagEnableLeaderElection,
+		LeaderElectionID: "envoy-ai-gateway-controller",
+	})
+	if err != nil {
+		setupLog.Error(err, "failed to create manager")
+		os.Exit(1)
+	}
+
 	// Start the extension server running alongside the controller.
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(ctrl.Log)
+	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -131,7 +141,7 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
+	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
 		ExtProcImage:         flagExtProcImage,
 		ExtProcLogLevel:      flagExtProcLogLevel,
 		EnableLeaderElection: flagEnableLeaderElection,

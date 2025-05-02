@@ -15,7 +15,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -43,36 +42,37 @@ func TestWithRealProviders(t *testing.T) {
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedBackendHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:       "x-model-name",
+		SelectedRouteHeaderKey: routeSelectorHeader,
+		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterapi.Backend{{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-					APIKey: &filterapi.APIKeyAuth{Filename: cc.OpenAIAPIKeyFilePath},
-				}}},
+				Name:    "openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
 			},
 			{
-				Backends: []filterapi.Backend{
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-						CredentialFileName: cc.AWSFilePath,
-						Region:             "us-east-1",
-					}}},
-				},
+				Name: "aws-bedrock-route",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
 					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
 				},
 			},
 			{
-				Backends: []filterapi.Backend{
-					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{Filename: cc.AzureAccessTokenFilePath},
-					}},
-				},
+				Name:    "azure-openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
 			},
 		},
+		Backends: append(fakeBackends, []*filterapi.Backend{
+			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Filename: cc.OpenAIAPIKeyFilePath},
+			}},
+			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+				CredentialFileName: cc.AWSFilePath,
+				Region:             "us-east-1",
+			}}},
+			{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{Filename: cc.AzureAccessTokenFilePath},
+			}},
+		}...),
 	})
 
 	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
@@ -105,7 +105,7 @@ func TestWithRealProviders(t *testing.T) {
 						}
 					}
 					return nonEmptyCompletion
-				}, 30*time.Second, 2*time.Second)
+				}, eventuallyTimeout, eventuallyInterval)
 			})
 		}
 	})
@@ -144,7 +144,7 @@ func TestWithRealProviders(t *testing.T) {
 				return true
 			}
 			return false
-		}, 30*time.Second, 2*time.Second)
+		}, eventuallyTimeout, eventuallyInterval)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -193,13 +193,13 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("response: %+v", acc)
 					}
 					return nonEmptyCompletion
-				}, 30*time.Second, 2*time.Second)
+				}, eventuallyTimeout, eventuallyInterval)
 			})
 		}
 	})
 
 	t.Run("Bedrock uses tool in response", func(t *testing.T) {
-		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
 			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
 		} {
@@ -238,6 +238,10 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 					// Step 2: Verify tool call
+					if len(completion.Choices) == 0 {
+						t.Logf("Expected a response but got none: %+v", completion)
+						return false
+					}
 					toolCalls := completion.Choices[0].Message.ToolCalls
 					if len(toolCalls) == 0 {
 						t.Logf("Expected tool call from completion result but got none")
@@ -277,10 +281,14 @@ func TestWithRealProviders(t *testing.T) {
 					}
 
 					// Step 4: Verify that the second response is correct
+					if len(secondChatCompletion.Choices) == 0 {
+						t.Logf("Expected a response but got none: %+v", secondChatCompletion)
+						return false
+					}
 					completionResult := secondChatCompletion.Choices[0].Message.Content
 					t.Logf("content of completion response using tool: %s", secondChatCompletion.Choices[0].Message.Content)
 					return strings.Contains(completionResult, "New York City") && strings.Contains(completionResult, "sunny") && strings.Contains(completionResult, "25°C")
-				}, 60*time.Second, 4*time.Second)
+				}, eventuallyTimeout, eventuallyInterval)
 			})
 		}
 	})
@@ -292,14 +300,13 @@ func TestWithRealProviders(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 
 		var models []string
-
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			it := client.Models.ListAutoPaging(t.Context())
 			for it.Next() {
 				models = append(models, it.Current().ID)
 			}
 			assert.NoError(c, it.Err())
-		}, 30*time.Second, 2*time.Second)
+		}, eventuallyTimeout, eventuallyInterval)
 
 		require.Equal(t, []string{
 			"gpt-4o-mini",

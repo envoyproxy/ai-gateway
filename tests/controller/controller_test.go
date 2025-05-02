@@ -55,9 +55,15 @@ func TestStartControllers(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 	opts := controller.Options{ExtProcImage: "envoyproxy/ai-gateway-extproc:foo", EnableLeaderElection: false}
 
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:         controller.Scheme,
+		LeaderElection: false,
+	})
+	require.NoError(t, err)
+
 	ctx := t.Context()
 	go func() {
-		err := controller.StartControllers(ctx, cfg, defaultLogger(), opts)
+		err := controller.StartControllers(ctx, mgr, cfg, defaultLogger(), opts)
 		require.NoError(t, err)
 	}()
 
@@ -213,15 +219,11 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 3) // 2 for backends, 1 for the default backend.
+				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default backend.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
-				require.Equal(t, "backend1.default", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
-				require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
-				require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-selected-backend", string(httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name))
-				require.Equal(t, "backend2.default", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+				require.Equal(t, "x-ai-eg-selected-route", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, route+"-rule-0", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 
 				// Check all rule has the host rewrite filter except for the last rule.
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {

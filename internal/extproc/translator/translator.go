@@ -37,9 +37,11 @@ func isGoodStatusCode(code int) bool {
 // This is created per request and is not thread-safe.
 type OpenAIChatCompletionTranslator interface {
 	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
 	// 	- `body` is the request body parsed into the [openai.ChatCompletionRequest].
+	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(body *openai.ChatCompletionRequest) (
+	RequestBody(raw []byte, body *openai.ChatCompletionRequest, onRetry bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		err error,

@@ -27,6 +27,7 @@ import (
 // Since it returns an immediate response after processing the headers, the rest of the methods of the
 // Processor are not implemented. Those should never be called.
 type modelsProcessor struct {
+	passThroughProcessor
 	logger *slog.Logger
 	models openai.ModelList
 }
@@ -34,7 +35,10 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) (Processor, error) {
+func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	if isUpstreamFilter {
+		return passThroughProcessor{}, nil
+	}
 	models := openai.ModelList{
 		Object: "list",
 		Data:   make([]openai.Model, 0, len(config.declaredModels)),

@@ -324,24 +324,21 @@ func (runCtx *runCmdContext) writeExtensionPolicy(
 		dirMapping[volume.MountPath] = dir
 	}
 
-	for i := range filterCfg.Rules {
-		rule := &filterCfg.Rules[i]
-		for j := range rule.Backends {
-			be := &rule.Backends[j]
-			if auth := be.Auth; auth != nil {
-				if auth.AWSAuth != nil {
-					newDir, ok := dirMapping[path.Dir(auth.AWSAuth.CredentialFileName)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.AWSAuth.CredentialFileName)))
-					}
-					auth.AWSAuth.CredentialFileName = filepath.Join(newDir, path.Base(auth.AWSAuth.CredentialFileName))
-				} else if auth.APIKey != nil {
-					newDir, ok := dirMapping[path.Dir(auth.APIKey.Filename)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.APIKey.Filename)))
-					}
-					auth.APIKey.Filename = filepath.Join(newDir, path.Base(auth.APIKey.Filename))
+	for i := range filterCfg.Backends {
+		be := filterCfg.Backends[i]
+		if auth := be.Auth; auth != nil {
+			if auth.AWSAuth != nil {
+				newDir, ok := dirMapping[path.Dir(auth.AWSAuth.CredentialFileName)]
+				if !ok {
+					panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.AWSAuth.CredentialFileName)))
 				}
+				auth.AWSAuth.CredentialFileName = filepath.Join(newDir, path.Base(auth.AWSAuth.CredentialFileName))
+			} else if auth.APIKey != nil {
+				newDir, ok := dirMapping[path.Dir(auth.APIKey.Filename)]
+				if !ok {
+					panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.APIKey.Filename)))
+				}
+				auth.APIKey.Filename = filepath.Join(newDir, path.Base(auth.APIKey.Filename))
 			}
 		}
 	}
