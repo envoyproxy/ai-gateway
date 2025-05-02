@@ -110,8 +110,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.33
-            envoy_version: envoyproxy/envoy:v1.33-latest
+          - name: v1.34
+            envoy_version: envoyproxy/envoy:v1.34-latest
           - name: latest
             envoy_version: envoyproxy/envoy-dev:latest
     runs-on: ubuntu-latest
