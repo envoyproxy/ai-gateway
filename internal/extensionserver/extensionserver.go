@@ -17,6 +17,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/go-logr/logr"
@@ -243,13 +244,12 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		po.HttpFilters = append(po.HttpFilters, extProcFilter, last)
 	} else {
 		po.HttpFilters = append(po.HttpFilters, extProcFilter)
-		// We need the upstream_code filter.
-		//             - name: envoy.filters.http.upstream_codec
-		//              typed_config:
-		//                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+		// We always need the upstream_code filter as a last filter.
 		upstreamCodec := &httpconnectionmanagerv3.HttpFilter{}
 		upstreamCodec.Name = "envoy.filters.http.upstream_codec"
-		upstreamCodec.ConfigType = &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(upstreamCodec)}
+		upstreamCodec.ConfigType = &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+			TypedConfig: mustToAny(&upstream_codecv3.UpstreamCodec{}),
+		}
 		po.HttpFilters = append(po.HttpFilters, upstreamCodec)
 	}
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = mustToAny(po)
