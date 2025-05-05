@@ -36,40 +36,36 @@ modelNameHeaderKey: x-ai-eg-model
 //
 //	schema:
 //	  name: OpenAI
-//	selectedRouteHeaderKey: x-envoy-ai-gateway-selected-backend
+//	selectedRouteHeaderKey: x-envoy-ai-gateway-selected-route
 //	modelNameHeaderKey: x-ai-eg-model
 //	llmRequestCosts:
 //	- metadataKey: token_usage_key
 //	  type: OutputToken
+//	backends:
+//	- name: openai-backend.mynamespace
+//	  schema:
+//	    name: OpenAI
+//	- name: aws-bedrock-backend.mynamespace
+//	  schema:
+//	    name: AWSBedrock
 //	rules:
-//	- backends:
-//	  - name: kserve
-//	    weight: 1
-//	    schema:
-//	      name: OpenAI
-//	  - name: awsbedrock
-//	    weight: 10
-//	    schema:
-//	      name: AWSBedrock
+//	- name: llama3-route
 //	  headers:
 //	  - name: x-ai-eg-model
 //	    value: llama3.3333
-//	- backends:
-//	  - name: openai
-//	    schema:
-//	      name: OpenAI
+//	- name: gpt4-route
 //	  headers:
 //	  - name: x-ai-eg-model
 //	    value: gpt4.4444
 //
 // where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-ai-eg-model,
 // The model name header `x-ai-eg-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
-// the selected backend name is populated in the header `x-ai-eg-selected-route`. For example, when the model name is `llama3.3333`,
-// the request is routed to either backends `kserve` or `awsbedrock` with weights 1 and 10 respectively, and the selected
-// backend, say `awsbedrock`, is populated in the header `x-ai-eg-selected-route`.
+// the selected route name is populated in the header `x-ai-eg-selected-route`. For example, when the model name is `llama3.3333`,
+// the request is routed to a route named `llama3-route`.
 //
-// From Envoy configuration perspective, configuring the header matching based on `x-ai-eg-selected-route` is enough to route the request to the selected backend.
-// That is because the matching decision is made by the filter and the selected backend is populated in the header `x-ai-eg-selected-route`.
+// From the Envoy configuration perspective, the extproc expects there are corresponding routes in the envoy configuration as well as
+// each cluster must configure the upstream filter to talk to the experoc to perform the corresponding authn/z as well as the transformation.
+// See tests/extproc/envoy.yaml for the example configuration.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`

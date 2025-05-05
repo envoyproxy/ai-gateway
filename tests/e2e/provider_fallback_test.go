@@ -48,7 +48,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	require.NoError(t, kubectlApplyManifestStdin(t.Context(), replaced))
 
 	const fallbackManifest = "../../examples/provider_fallback/fallback.yaml"
-	// Delete the fallback configuration if it exists.'
+	// Delete the fallback configuration if it exists.
 	_ = kubectlDeleteManifest(t.Context(), fallbackManifest)
 
 	time.Sleep(5 * time.Second) // At least 5 seconds for the configuration to be propagated.
@@ -85,7 +85,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// At this point, the fallback configuration should be applied. So the request must be either
-	// successful or return a 401 error due to the secrete key not being propagated yet.
+	// successful or return a 401 error due to the secret key not being propagated yet.
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 		defer fwd.kill()
