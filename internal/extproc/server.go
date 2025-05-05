@@ -29,7 +29,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -68,7 +67,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	var (
 		backends       = make(map[string]*processorConfigBackend)
 		declaredModels []string
-		dynamicLBs     = make(map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer)
 	)
 	for _, r := range config.Rules {
 		// Collect declared models from configured header routes. These will be used to
@@ -121,7 +119,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		metadataNamespace:      config.MetadataNamespace,
 		requestCosts:           costs,
 		declaredModels:         declaredModels,
-		dynamicLoadBalancers:   dynamicLBs,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

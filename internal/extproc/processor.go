@@ -16,7 +16,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 )
 
 // processorConfig is the configuration for the processor.
@@ -29,7 +28,6 @@ type processorConfig struct {
 	metadataNamespace                          string
 	requestCosts                               []processorConfigRequestCost
 	declaredModels                             []string
-	dynamicLoadBalancers                       map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer
 	backends                                   map[string]*processorConfigBackend
 }
 
