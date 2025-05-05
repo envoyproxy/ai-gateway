@@ -7,7 +7,6 @@ package extensionserver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -118,7 +117,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	// We need to extract the namespace and name from the cluster name.
 	parts := strings.Split(cluster.Name, "/")
 	if len(parts) != 5 || parts[0] != "httproute" {
-		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster)
+		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
 		return
 	}
 	httpRouteNamespace := parts[1]
@@ -146,7 +145,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	}
 	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
 	if cluster.LoadAssignment == nil {
-		s.log.Info("LoadAssignment is nil", "cluster_name", cluster)
+		s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
 		return
 	}
 	if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
@@ -272,13 +271,8 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = anyPo
 }
 
-var marshalOpts = proto.MarshalOptions{}
-
 func toAny(msg proto.Message) (*anypb.Any, error) {
-	if msg == nil {
-		return nil, errors.New("empty message received")
-	}
-	b, err := marshalOpts.Marshal(msg)
+	b, err := proto.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}
