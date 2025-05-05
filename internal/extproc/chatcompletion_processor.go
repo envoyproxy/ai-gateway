@@ -190,6 +190,10 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.C
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
+	} else {
+		for _, h := range headerMutation.SetHeaders {
+			c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+		}
 	}
 	if h := c.handler; h != nil {
 		if err = h.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {

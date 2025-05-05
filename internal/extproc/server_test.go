@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -115,6 +117,15 @@ func TestServer_Watch(t *testing.T) {
 	err := s.Watch(nil, nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Watch is not implemented")
+}
+
+func TestServer_List(t *testing.T) {
+	s, _ := requireNewServerWithMockProcessor(t)
+
+	res, err := s.List(t.Context(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, res.Statuses["extproc"].Status)
 }
 
 func TestServer_processMsg(t *testing.T) {
@@ -233,7 +244,22 @@ func TestServer_Process(t *testing.T) {
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "some error")
 	})
+	t.Run("upstream filter", func(t *testing.T) {
+		s, p := requireNewServerWithMockProcessor(t)
 
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: "foo", Value: "bar"}}}
+		p.t = t
+		p.expHeaderMap = hm
+		req := &extprocv3.ProcessingRequest{
+			Attributes: map[string]*structpb.Struct{
+				"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{"something": {}}},
+			},
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
+		}
+		ms := &mockExternalProcessingStream{t: t, ctx: t.Context(), retRecv: req}
+		err := s.Process(ms)
+		require.ErrorContains(t, err, "missing xds.upstream_host_metadata in request")
+	})
 	t.Run("ok", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 
@@ -266,6 +292,51 @@ func TestServer_Process(t *testing.T) {
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "context deadline exceeded")
 	})
+}
+
+func TestServer_setBackend(t *testing.T) {
+	for _, tc := range []struct {
+		md     *corev3.Metadata
+		errStr string
+	}{
+		{md: &corev3.Metadata{}, errStr: "missing aigateawy.envoy.io metadata"},
+		{
+			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {}}},
+			errStr: "missing backend_name in endpoint metadata",
+		},
+		{
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+				Fields: map[string]*structpb.Value{
+					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
+				},
+			}}},
+			errStr: "unknown backend: kserve",
+		},
+		{
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+				Fields: map[string]*structpb.Value{
+					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
+				},
+			}}},
+			errStr: "no router processor found, request_id=aaaaaaaaaaaa, backend=openai",
+		},
+	} {
+		t.Run("errors/"+tc.errStr, func(t *testing.T) {
+			str, err := prototext.Marshal(tc.md)
+			require.NoError(t, err)
+			s, _ := requireNewServerWithMockProcessor(t)
+			s.config.backends = map[string]*processorConfigBackend{"openai": {}}
+			_, err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
+				Attributes: map[string]*structpb.Struct{
+					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+						"xds.upstream_host_metadata": {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
+					}},
+				},
+				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+			})
+			require.ErrorContains(t, err, tc.errStr)
+		})
+	}
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {

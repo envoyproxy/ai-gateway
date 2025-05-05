@@ -209,7 +209,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 					s.logger.Error("error processing request message", slog.String("error", err.Error()))
 					return status.Errorf(codes.Unknown, "error processing request message: %v", err)
 				}
-				if resp != nil {
+				if resp != nil { // coverage-ignore
 					// This only happens runtime.GOOS == "darwin" when the attributes are not set.
 					if err = stream.Send(resp); err != nil {
 						s.logger.Error("cannot send response", slog.String("error", err.Error()))
@@ -295,7 +295,7 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 // if the processor is an upstream filter.
 func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
-	if attributes == nil || len(attributes.Fields) == 0 {
+	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		if runtime.GOOS == "darwin" {
 			// TODO: this feels like a bug of Envoy v1.33 or earlier, not the darwin specific code.
 			//
@@ -337,14 +337,15 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 	}
 	backend, ok := s.config.backends[backendName.GetStringValue()]
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "unknown backend: %s: %v", backendName, s.config.backends)
+		return nil, status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
 	}
 
 	s.routerProcessorsPerReqIDMutex.RLock()
 	defer s.routerProcessorsPerReqIDMutex.RUnlock()
 	routerProcessor, ok := s.routerProcessorsPerReqID[reqID]
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "no router processor found for request ID: %s", reqID)
+		return nil, status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
+			reqID, backendName.GetStringValue())
 	}
 
 	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {

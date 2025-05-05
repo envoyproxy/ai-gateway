@@ -16,7 +16,6 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/google/cel-go v0.25.0
 	github.com/google/go-cmp v0.7.0
-	github.com/miekg/dns v1.1.65
 	github.com/openai/openai-go v0.1.0-beta.10
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
@@ -276,6 +275,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mgechev/revive v1.7.0 // indirect
+	github.com/miekg/dns v1.1.65 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
