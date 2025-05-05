@@ -78,7 +78,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 	var originalDstExists bool
 	for _, cluster := range req.Clusters {
 		s.maybeModifyCluster(cluster)
-		originalDstExists = cluster.Name == OriginalDstClusterName
+		originalDstExists = originalDstExists || cluster.Name == OriginalDstClusterName
 	}
 	if !originalDstExists {
 		// Append the following cluster to the list of clusters:
@@ -205,16 +205,16 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		}
 	}
 
-	c := &extprocv3http.ExternalProcessor{}
-	c.AllowModeOverride = true
-	c.RequestAttributes = []string{"xds.upstream_host_metadata"}
-	c.ProcessingMode = &extprocv3http.ProcessingMode{
+	extProcConfig := &extprocv3http.ExternalProcessor{}
+	extProcConfig.AllowModeOverride = true
+	extProcConfig.RequestAttributes = []string{"xds.upstream_host_metadata"}
+	extProcConfig.ProcessingMode = &extprocv3http.ProcessingMode{
 		RequestHeaderMode:  extprocv3http.ProcessingMode_SEND,
 		RequestBodyMode:    extprocv3http.ProcessingMode_BUFFERED,
 		ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
 		ResponseBodyMode:   extprocv3http.ProcessingMode_BUFFERED,
 	}
-	c.GrpcService = &corev3.GrpcService{
+	extProcConfig.GrpcService = &corev3.GrpcService{
 		TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
 			EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
 				ClusterName: fmt.Sprintf(
@@ -226,19 +226,14 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		},
 		Timeout: durationpb.New(30 * time.Second),
 	}
-	c.MetadataOptions = &extprocv3http.MetadataOptions{
+	extProcConfig.MetadataOptions = &extprocv3http.MetadataOptions{
 		ReceivingNamespaces: &extprocv3http.MetadataOptions_MetadataNamespaces{
 			Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
 		},
 	}
-	anyExtProc, err := toAny(c)
-	if err != nil {
-		s.log.Error(err, "failed to marshal ExternalProcessor", "cluster_name", cluster.Name)
-		return
-	}
 	extProcFilter := &httpconnectionmanagerv3.HttpFilter{
 		Name:       upstreamExtProcNameAIGateway,
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: anyExtProc},
+		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(extProcConfig)},
 	}
 
 	if len(po.HttpFilters) > 0 {
@@ -254,33 +249,22 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		//                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
 		upstreamCodec := &httpconnectionmanagerv3.HttpFilter{}
 		upstreamCodec.Name = "envoy.filters.http.upstream_codec"
-		upstreamCodec.ConfigType = &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-			TypedConfig: &anypb.Any{
-				TypeUrl: "type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec",
-				Value:   []byte{},
-			},
-		}
+		upstreamCodec.ConfigType = &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(upstreamCodec)}
 		po.HttpFilters = append(po.HttpFilters, upstreamCodec)
 	}
-
-	anyPo, err := toAny(po)
-	if err != nil {
-		s.log.Error(err, "failed to marshal HttpProtocolOptions", "cluster_name", cluster.Name)
-		return
-	}
-	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = anyPo
+	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = mustToAny(po)
 }
 
-func toAny(msg proto.Message) (*anypb.Any, error) {
+func mustToAny(msg proto.Message) *anypb.Any {
 	b, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, err
+		panic(fmt.Sprintf("BIG: failed to marshal message: %v", err))
 	}
 	const envoyAPIPrefix = "type.googleapis.com/"
 	return &anypb.Any{
 		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
 		Value:   b,
-	}, nil
+	}
 }
 
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
