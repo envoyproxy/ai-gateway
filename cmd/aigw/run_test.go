@@ -50,7 +50,7 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 }
 
 func TestRun(t *testing.T) {
-	t.Skip("TODO")
+	t.Skip("TODO: https://github.com/envoyproxy/gateway/pull/5767")
 	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
