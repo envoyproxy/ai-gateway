@@ -458,7 +458,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 					}},
 				)
 				// For now, if there're multiple backends with different timeouts, we just take the first one.
-				// TODO: deprecate the AIServiceBackend timeout and move it to Rule level.
+				// TODO: deprecate the AIServiceBackend timeout and move it to AIGatewayRoute.rules level that
+				//	matches HTTPRoute's structure: https://gateway-api.sigs.k8s.io/api-types/httproute/#timeouts-optional
 				timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 			}
 		}
