@@ -258,7 +258,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 func mustToAny(msg proto.Message) *anypb.Any {
 	b, err := proto.Marshal(msg)
 	if err != nil {
-		panic(fmt.Sprintf("BIG: failed to marshal message: %v", err))
+		panic(fmt.Sprintf("BUG: failed to marshal message: %v", err))
 	}
 	const envoyAPIPrefix = "type.googleapis.com/"
 	return &anypb.Any{
