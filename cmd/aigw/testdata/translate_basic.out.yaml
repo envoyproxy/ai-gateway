@@ -24,8 +24,6 @@ spec:
         - group: gateway.envoyproxy.io
           kind: Backend
           name: envoy-ai-gateway-basic-openai
-          # TODO: make the weight optional at the control plane API level and then remove this.
-          weight: 0
       filters:
         - extensionRef:
             group: gateway.envoyproxy.io
@@ -40,8 +38,6 @@ spec:
         - group: gateway.envoyproxy.io
           kind: Backend
           name: envoy-ai-gateway-basic-aws
-          # TODO: make the weight optional at the control plane API level and then remove this.
-          weight: 0
       filters:
         - extensionRef:
             group: gateway.envoyproxy.io
@@ -56,8 +52,6 @@ spec:
         - kind: Service
           name: envoy-ai-gateway-basic-testupstream
           port: 80
-          # TODO: make the weight optional at the control plane API level and then remove this.
-          weight: 0
       filters:
         - extensionRef:
             group: gateway.envoyproxy.io

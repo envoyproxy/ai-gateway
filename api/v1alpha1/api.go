@@ -263,7 +263,7 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=1
-	Weight int `json:"weight,omitempty"`
+	Weight *int32 `json:"weight,omitempty"`
 }
 
 type AIGatewayRouteRuleMatch struct {

@@ -256,7 +256,7 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
 					},
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
@@ -319,17 +319,17 @@ func Test_newHTTPRoute(t *testing.T) {
 					},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "orange", Weight: 100},
-								{Name: "apple", Weight: 100},
-								{Name: "pineapple", Weight: 100},
+								{Name: "orange", Weight: ptr.To[int32](100)},
+								{Name: "apple", Weight: ptr.To[int32](100)},
+								{Name: "pineapple", Weight: ptr.To[int32](100)},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 						},
 					},
 				},
@@ -558,22 +558,22 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "apple", Weight: 1},
-								{Name: "pineapple", Weight: 2},
+								{Name: "apple", Weight: ptr.To[int32](1)},
+								{Name: "pineapple", Weight: ptr.To[int32](2)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: ptr.To[int32](1)}},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "pen", Weight: 2},
+								{Name: "pen", Weight: ptr.To[int32](2)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}}},
@@ -581,7 +581,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "dog", Weight: 1},
+								{Name: "dog", Weight: ptr.To[int32](1)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}}},
@@ -589,7 +589,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "dragon", Weight: 1},
+								{Name: "dragon", Weight: ptr.To[int32](1)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}}},
@@ -807,15 +807,15 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "apple", Weight: 1},
-						{Name: "pineapple", Weight: 2},
+						{Name: "apple", Weight: ptr.To[int32](1)},
+						{Name: "pineapple", Weight: ptr.To[int32](2)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
 					},
 				},
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: ptr.To[int32](1)}},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 					},
@@ -1031,7 +1031,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "apple", Weight: 1},
+						{Name: "apple", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
@@ -1039,7 +1039,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "pineapple", Weight: 1},
+						{Name: "pineapple", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-2"}}},
@@ -1047,7 +1047,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "dog", Weight: 1},
+						{Name: "dog", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-3"}}},
@@ -1055,7 +1055,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "dragon", Weight: 1},
+						{Name: "dragon", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-4"}}},
@@ -1063,7 +1063,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "inference-pool", Weight: 1, Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
+						{Name: "inference-pool", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "whatever", Value: "yes"}}},

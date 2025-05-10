@@ -315,6 +315,7 @@ spec:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 
                               Default is 1.
+                            format: int32
                             minimum: 0
                             type: integer
                         required:

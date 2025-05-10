@@ -37,8 +37,8 @@ func TestInferencePoolControllerReconcile(t *testing.T) {
 				{
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "backend2", Weight: 1},
-						{Name: "inference-pool", Weight: 1, Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
+						{Name: "backend2", Weight: ptr.To[int32](1)},
+						{Name: "inference-pool", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
 					},
 				},
 			},

@@ -453,8 +453,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				backendRefs = append(backendRefs,
 					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
 						BackendObjectReference: backend.Spec.BackendRef,
-						// TODO: change the weight's type to int32 in the API.
-						Weight: ptr.To[int32](int32(br.Weight)), // nolint:gosec
+						Weight:                 br.Weight,
 					}},
 				)
 				// For now, if there're multiple backends with different timeouts, we just take the first one.

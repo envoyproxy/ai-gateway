@@ -111,8 +111,8 @@ func TestStartControllers(t *testing.T) {
 						{
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "backend1", Weight: 1},
-								{Name: "backend2", Weight: 1},
+								{Name: "backend1", Weight: ptr.To[int32](1)},
+								{Name: "backend2", Weight: ptr.To[int32](1)},
 							},
 						},
 					},
@@ -373,8 +373,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 				{
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "backend1", Weight: 1},
-						{Name: "backend2", Weight: 1},
+						{Name: "backend1", Weight: ptr.To[int32](1)},
+						{Name: "backend2", Weight: ptr.To[int32](1)},
 					},
 				},
 			},
