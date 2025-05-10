@@ -222,6 +222,11 @@ type AIGatewayRouteRule struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
+
+	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// +optional
+	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
@@ -377,6 +382,9 @@ type AIServiceBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
 	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
+	// AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration.
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
