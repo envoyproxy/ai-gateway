@@ -2,6 +2,10 @@ module github.com/envoyproxy/ai-gateway
 
 go 1.24.2
 
+replace (
+	github.com/envoyproxy/gateway => ../gateway
+)
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.9.0

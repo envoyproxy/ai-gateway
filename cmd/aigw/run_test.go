@@ -50,7 +50,6 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 }
 
 func TestRun(t *testing.T) {
-	t.Skip("TODO: https://github.com/envoyproxy/gateway/pull/5767")
 	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -144,7 +143,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
-	err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
+	_, err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
