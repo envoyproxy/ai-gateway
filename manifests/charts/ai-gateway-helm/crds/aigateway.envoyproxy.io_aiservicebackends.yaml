@@ -185,8 +185,11 @@ spec:
                 - name
                 type: object
               timeouts:
-                description: Timeouts defines the timeouts that can be configured
-                  for an HTTP request.
+                description: |-
+                  Timeouts defines the timeouts that can be configured for an HTTP request.
+
+                  Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
+                  AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration.
                 properties:
                   backendRequest:
                     description: |-
