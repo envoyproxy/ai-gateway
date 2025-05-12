@@ -384,7 +384,8 @@ type AIServiceBackendSpec struct {
 	// Timeouts defines the timeouts that can be configured for an HTTP request.
 	//
 	// Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
-	// AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration.
+	// AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and
+	// AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored.
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
