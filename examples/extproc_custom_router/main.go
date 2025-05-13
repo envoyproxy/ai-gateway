@@ -31,7 +31,7 @@ type myCustomRouter struct {
 }
 
 // Calculate implements [x.Router.Calculate].
-func (m *myCustomRouter) Calculate(headers map[string]string) (backend *filterapi.Backend, err error) {
+func (m *myCustomRouter) Calculate(headers map[string]string) (backend filterapi.RouteRuleName, err error) {
 	// Simply logs the headers and delegates the calculation to the default router.
 	modelName, ok := headers[m.config.ModelNameHeaderKey]
 	if !ok {

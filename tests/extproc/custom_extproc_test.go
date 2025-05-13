@@ -13,7 +13,6 @@ import (
 	"os"
 	"runtime"
 	"testing"
-	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -32,14 +31,15 @@ func TestExtProcCustomRouter(t *testing.T) {
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedBackendHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:       "x-model-name",
+		SelectedRouteHeaderKey: routeSelectorHeader,
+		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: openAISchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Name:    "testupstream-openai-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
 			},
 		},
+		Backends: fakeBackends,
 	})
 	stdoutPath := t.TempDir() + "/extproc-stdout.log"
 	f, err := os.Create(stdoutPath)
@@ -71,7 +71,7 @@ func TestExtProcCustomRouter(t *testing.T) {
 			t.Logf("choice: %s", choice.Message.Content)
 		}
 		return true
-	}, 10*time.Second, 1*time.Second)
+	}, eventuallyTimeout, eventuallyInterval)
 
 	// Check that the custom router logs the model name after the file is closed.
 	defer func() {
@@ -91,14 +91,15 @@ func TestExtProcCustomMetrics(t *testing.T) {
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedBackendHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:       "x-model-name",
+		SelectedRouteHeaderKey: routeSelectorHeader,
+		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: openAISchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Name:    "testupstream-openai-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
 			},
 		},
+		Backends: fakeBackends,
 	})
 	stdoutPath := t.TempDir() + "/extproc-stdout.log"
 	f, err := os.Create(stdoutPath)
@@ -130,7 +131,7 @@ func TestExtProcCustomMetrics(t *testing.T) {
 			t.Logf("choice: %s", choice.Message.Content)
 		}
 		return true
-	}, 10*time.Second, 1*time.Second)
+	}, eventuallyTimeout, eventuallyInterval)
 
 	// Check the custom metrics logs after the file is closed.
 	defer func() {

@@ -20,16 +20,21 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
 // This is the default configuration for the AI Gateway when <path> parameter is not given.
@@ -134,10 +139,28 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		}
 		aiGatewayResourcesYaml = string(yamlBytes)
 	}
-	err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeCleint, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return err
 	}
+
+	lis, err := net.Listen("tcp", "localhost:1061")
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+	s := grpc.NewServer()
+	extSrv := extensionserver.New(fakeCleint, ctrl.Log)
+	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
+	grpc_health_v1.RegisterHealthServer(s, extSrv)
+	go func() {
+		<-ctx.Done()
+		s.GracefulStop()
+	}()
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			stderrLogger.Error("Failed to run extension server", "error", err)
+		}
+	}()
 
 	// At this point, we have two things prepared:
 	//  1. The Envoy Gateway config in egConfigPath.
@@ -173,22 +196,22 @@ func recreateDir(path string) error {
 
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
-func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) error {
+func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, error) {
 	aigwRoutes, aigwBackends, backendSecurityPolicies, secrets, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
-		return fmt.Errorf("error collecting: %w", err)
+		return nil, fmt.Errorf("error collecting: %w", err)
 	}
 
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 			// TODO: We can make it work by generalizing the rotation logic.
-			return fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
+			return nil, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
-	_fakeClientSet, httpRoutes, extensionPolicies, httpRouteFilter, _, _, _, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, runCtx.stderrLogger)
+	fakeClient, _fakeClientSet, httpRoutes, extensionPolicies, httpRouteFilter, _, _, _, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, runCtx.stderrLogger)
 	if err != nil {
-		return fmt.Errorf("error translating: %w", err)
+		return nil, fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
@@ -204,7 +227,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	// Store the user defined secrets in the fake client set.
 	for _, s := range secrets {
 		if _, err := runCtx.fakeClientSet.CoreV1().Secrets(s.Namespace).Create(ctx, s, metav1.CreateOptions{}); err != nil {
-			return fmt.Errorf("failed to create secret %s: %w", s.Name, err)
+			return nil, fmt.Errorf("failed to create secret %s: %w", s.Name, err)
 		}
 	}
 
@@ -217,7 +240,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		}
 		wd, port, filterCfg, err := runCtx.writeExtensionPolicy(ep)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		runCtx.stderrLogger.Info("Running external process",
 			"policy", ep.Name, "port", port,
@@ -225,7 +248,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		)
 		runCtx.mustStartExtProc(ctx, wd, port, filterCfg)
 	}
-	return nil
+	return fakeClient, nil
 }
 
 // writeExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
@@ -324,24 +347,21 @@ func (runCtx *runCmdContext) writeExtensionPolicy(
 		dirMapping[volume.MountPath] = dir
 	}
 
-	for i := range filterCfg.Rules {
-		rule := &filterCfg.Rules[i]
-		for j := range rule.Backends {
-			be := &rule.Backends[j]
-			if auth := be.Auth; auth != nil {
-				if auth.AWSAuth != nil {
-					newDir, ok := dirMapping[path.Dir(auth.AWSAuth.CredentialFileName)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.AWSAuth.CredentialFileName)))
-					}
-					auth.AWSAuth.CredentialFileName = filepath.Join(newDir, path.Base(auth.AWSAuth.CredentialFileName))
-				} else if auth.APIKey != nil {
-					newDir, ok := dirMapping[path.Dir(auth.APIKey.Filename)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.APIKey.Filename)))
-					}
-					auth.APIKey.Filename = filepath.Join(newDir, path.Base(auth.APIKey.Filename))
+	for i := range filterCfg.Backends {
+		be := filterCfg.Backends[i]
+		if auth := be.Auth; auth != nil {
+			if auth.AWSAuth != nil {
+				newDir, ok := dirMapping[path.Dir(auth.AWSAuth.CredentialFileName)]
+				if !ok {
+					panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.AWSAuth.CredentialFileName)))
 				}
+				auth.AWSAuth.CredentialFileName = filepath.Join(newDir, path.Base(auth.AWSAuth.CredentialFileName))
+			} else if auth.APIKey != nil {
+				newDir, ok := dirMapping[path.Dir(auth.APIKey.Filename)]
+				if !ok {
+					panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.APIKey.Filename)))
+				}
+				auth.APIKey.Filename = filepath.Join(newDir, path.Base(auth.APIKey.Filename))
 			}
 		}
 	}

@@ -264,8 +264,19 @@ spec:
     name: OpenAI
   backendRef:
     name: envoy-ai-gateway-basic-testupstream
-    kind: Service
-    port: 80
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: envoy-ai-gateway-basic-testupstream.default.svc.cluster.local
+        port: 80
 ---
 apiVersion: apps/v1
 kind: Deployment

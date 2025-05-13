@@ -40,7 +40,7 @@ receive. And then the Gateway will route the traffic to the appropriate AIServic
 on the output schema of the AIServiceBackend while doing the other necessary jobs like
 upstream authentication, rate limit, etc.
 
-For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
   - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
     The name of these resources are `ai-eg-route-extproc-${name}`.
@@ -54,7 +54,8 @@ For Advanced Users: Envoy AI Gateway will generate the following k8s resources c
 All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
 detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
 resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
-Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
+BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 
 ##### Fields
 
@@ -414,12 +415,17 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
   required="false"
-  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute."
+  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />By configuring multiple backends, you can achieve the fallback behavior in the case of<br />the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
   type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
   required="false"
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
+/><ApiField
+  name="timeouts"
+  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  required="false"
+  description="Timeouts defines the timeouts that can be configured for an HTTP request."
 />
 
 
@@ -590,7 +596,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendRef"
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
-  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend can be of either k8s Service or Backend resource of Envoy Gateway.<br />This is required to be set."
+  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](#localobjectreference)"
@@ -600,7 +606,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="timeouts"
   type="[HTTPRouteTimeouts](#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or<br />AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and<br />AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored."
 />
 
 

@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -21,12 +23,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/prototext"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/dynlb"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -38,16 +40,19 @@ var (
 
 // Server implements the external processor server.
 type Server struct {
-	logger     *slog.Logger
-	config     *processorConfig
-	processors map[string]ProcessorFactory
+	logger                        *slog.Logger
+	config                        *processorConfig
+	processorFactories            map[string]ProcessorFactory
+	routerProcessorsPerReqID      map[string]Processor
+	routerProcessorsPerReqIDMutex sync.RWMutex
 }
 
 // NewServer creates a new external processor server.
 func NewServer(logger *slog.Logger) (*Server, error) {
 	srv := &Server{
-		logger:     logger,
-		processors: make(map[string]ProcessorFactory),
+		logger:                   logger,
+		processorFactories:       make(map[string]ProcessorFactory),
+		routerProcessorsPerReqID: make(map[string]Processor),
 	}
 	return srv, nil
 }
@@ -60,25 +65,10 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	var (
-		backendAuthHandlers = make(map[string]backendauth.Handler)
-		declaredModels      []string
-		dynamicLBs          = make(map[*filterapi.DynamicLoadBalancing]dynlb.DynamicLoadBalancer)
+		backends       = make(map[string]*processorConfigBackend)
+		declaredModels []string
 	)
 	for _, r := range config.Rules {
-		for _, b := range r.Backends {
-			if b.Auth != nil {
-				backendAuthHandlers[b.Name], err = backendauth.NewHandler(ctx, b.Auth)
-				if err != nil {
-					return fmt.Errorf("cannot create backend auth handler: %w", err)
-				}
-			}
-			if b.DynamicLoadBalancing != nil {
-				dynamicLBs[b.DynamicLoadBalancing], err = dynlb.NewDynamicLoadBalancer(ctx, s.logger, b.DynamicLoadBalancing)
-				if err != nil {
-					return fmt.Errorf("cannot create dynamic load balancer: %w", err)
-				}
-			}
-		}
 		// Collect declared models from configured header routes. These will be used to
 		// serve requests to the /v1/models endpoint.
 		// TODO(nacx): note that currently we only support exact matching in the headers. When
@@ -95,6 +85,17 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		}
 	}
 
+	for _, b := range config.Backends {
+		var h backendauth.Handler
+		if b.Auth != nil {
+			h, err = backendauth.NewHandler(ctx, b.Auth)
+			if err != nil {
+				return fmt.Errorf("cannot create backend auth handler: %w", err)
+			}
+		}
+		backends[b.Name] = &processorConfigBackend{b: b, handler: h}
+	}
+
 	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]
@@ -109,16 +110,15 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	newConfig := &processorConfig{
-		uuid:                     config.UUID,
-		schema:                   config.Schema,
-		router:                   rt,
-		selectedBackendHeaderKey: config.SelectedBackendHeaderKey,
-		modelNameHeaderKey:       config.ModelNameHeaderKey,
-		backendAuthHandlers:      backendAuthHandlers,
-		metadataNamespace:        config.MetadataNamespace,
-		requestCosts:             costs,
-		declaredModels:           declaredModels,
-		dynamicLoadBalancers:     dynamicLBs,
+		uuid:                   config.UUID,
+		schema:                 config.Schema,
+		router:                 rt,
+		selectedRouteHeaderKey: config.SelectedRouteHeaderKey,
+		modelNameHeaderKey:     config.ModelNameHeaderKey,
+		backends:               backends,
+		metadataNamespace:      config.MetadataNamespace,
+		requestCosts:           costs,
+		declaredModels:         declaredModels,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -126,19 +126,27 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 // Register a new processor for the given request path.
 func (s *Server) Register(path string, newProcessor ProcessorFactory) {
-	s.processors[path] = newProcessor
+	s.processorFactories[path] = newProcessor
 }
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently
-func (s *Server) processorForPath(requestHeaders map[string]string) (Processor, error) {
-	path := requestHeaders[":path"]
-	newProcessor, ok := s.processors[path]
+func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool) (Processor, error) {
+	pathHeader := ":path"
+	if isUpstreamFilter {
+		pathHeader = originalPathHeader
+	}
+	path := requestHeaders[pathHeader]
+	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("no processor defined for path: %v", path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger)
+	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
 }
+
+// originalPathHeader is the header used to pass the original path to the processor.
+// This is used in the upstream filter level to determine the original path of the request on retry.
+const originalPathHeader = "x-ai-eg-original-path"
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
@@ -153,6 +161,16 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	// the request by sending an immediate response. In this case, we will use the passThroughProcessor
 	// to pass the request through without any processing as there would be nothing to process from AI Gateway's perspective.
 	var p Processor = passThroughProcessor{}
+	var isUpstreamFilter bool
+	var reqID string
+	var logger *slog.Logger
+	defer func() {
+		if !isUpstreamFilter {
+			s.routerProcessorsPerReqIDMutex.Lock()
+			defer s.routerProcessorsPerReqIDMutex.Unlock()
+			delete(s.routerProcessorsPerReqID, reqID)
+		}
+	}()
 
 	for {
 		select {
@@ -175,16 +193,43 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 		// of type `ProcessingRequest_RequestHeaders`, so this will be executed only once per
 		// request, and the processor will be instantiated only once.
 		if headers := req.GetRequestHeaders().GetHeaders(); headers != nil {
-			p, err = s.processorForPath(headersToMap(headers))
+			headersMap := headersToMap(headers)
+			reqID = headersMap["x-request-id"]
+			// Assume that when attributes are set, this stream is for the upstream filter level.
+			isUpstreamFilter = req.GetAttributes() != nil
+			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {
 				s.logger.Error("cannot get processor", slog.String("error", err.Error()))
 				return status.Error(codes.NotFound, err.Error())
 			}
+			if isUpstreamFilter {
+				var resp *extprocv3.ProcessingResponse
+				resp, err = s.setBackend(ctx, p, reqID, req)
+				if err != nil {
+					s.logger.Error("error processing request message", slog.String("error", err.Error()))
+					return status.Errorf(codes.Unknown, "error processing request message: %v", err)
+				}
+				if resp != nil { // coverage-ignore
+					// This only happens runtime.GOOS == "darwin" when the attributes are not set.
+					if err = stream.Send(resp); err != nil {
+						s.logger.Error("cannot send response", slog.String("error", err.Error()))
+						return status.Errorf(codes.Unknown, "cannot send response: %v", err)
+					}
+					p = passThroughProcessor{}
+					continue
+				}
+			} else {
+				s.routerProcessorsPerReqIDMutex.Lock()
+				s.routerProcessorsPerReqID[reqID] = p
+				s.routerProcessorsPerReqIDMutex.Unlock()
+			}
+		}
+		if logger == nil {
+			logger = s.logger.With("request_id", reqID, "is_upstream_filter", isUpstreamFilter)
 		}
 
 		// At this point, p is guaranteed to be a valid processor either from the concrete processor or the passThroughProcessor.
-
-		resp, err := s.processMsg(ctx, p, req)
+		resp, err := s.processMsg(ctx, logger, p, req)
 		if err != nil {
 			s.logger.Error("error processing request message", slog.String("error", err.Error()))
 			return status.Errorf(codes.Unknown, "error processing request message: %v", err)
@@ -196,28 +241,28 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	}
 }
 
-func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers
 		// If DEBUG log level is enabled, filter sensitive headers before logging.
-		if s.logger.Enabled(ctx, slog.LevelDebug) {
+		if l.Enabled(ctx, slog.LevelDebug) {
 			filteredHdrs := filterSensitiveHeadersForLogging(requestHdrs, sensitiveHeaderKeys)
-			s.logger.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
+			l.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
 		resp, err := p.ProcessRequestHeaders(ctx, requestHdrs)
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request headers: %w", err)
 		}
-		s.logger.Debug("request headers processed", slog.Any("response", resp))
+		l.Debug("request headers processed", slog.Any("response", resp))
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
-		s.logger.Debug("request body processing", slog.Any("request", req))
+		l.Debug("request body processing", slog.Any("request", req))
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
-		// If DEBUG log level is enabled, filter sensitive body before logging.
-		if s.logger.Enabled(ctx, slog.LevelDebug) {
-			filteredBody := filterSensitiveBodyForLogging(resp, s.logger, sensitiveHeaderKeys)
-			s.logger.Debug("request body processed", slog.Any("response", filteredBody))
+		// If the DEBUG log level is enabled, filter the sensitive body before logging.
+		if l.Enabled(ctx, slog.LevelDebug) {
+			filteredBody := filterSensitiveRequestBodyForLogging(resp, l, sensitiveHeaderKeys)
+			l.Debug("request body processed", slog.Any("response", filteredBody))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request body: %w", err)
@@ -225,25 +270,88 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
 		responseHdrs := req.GetResponseHeaders().Headers
-		s.logger.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
+		l.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
 		resp, err := p.ProcessResponseHeaders(ctx, responseHdrs)
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response headers: %w", err)
 		}
-		s.logger.Debug("response headers processed", slog.Any("response", resp))
+		l.Debug("response headers processed", slog.Any("response", resp))
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		s.logger.Debug("response body processing", slog.Any("request", req))
+		l.Debug("response body processing", slog.Any("request", req))
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
-		s.logger.Debug("response body processed", slog.Any("response", resp))
+		l.Debug("response body processed", slog.Any("response", resp))
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response body: %w", err)
 		}
 		return resp, nil
 	default:
-		s.logger.Error("unknown request type", slog.Any("request", value))
+		l.Error("unknown request type", slog.Any("request", value))
 		return nil, fmt.Errorf("unknown request type: %T", value)
 	}
+}
+
+// setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
+// if the processor is an upstream filter.
+func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
+	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
+		if runtime.GOOS == "darwin" {
+			// TODO: this feels like a bug of Envoy v1.33 or earlier, not the darwin specific code.
+			//
+			// For some reason that I _suspect_ stems from macOS specific event loop peculiarities,
+			// the first request to a specific endpoint may not have the attributes set. Assuming
+			// the retry is configured, we simply do nothing and let the retry happen.
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_RequestHeaders{
+					RequestHeaders: &extprocv3.HeadersResponse{
+						Response: &extprocv3.CommonResponse{},
+					},
+				},
+			}, nil
+		}
+		// Otherwise, this is a bug of either Envoy or control plane.
+		return nil, status.Error(codes.Internal, "missing attributes in request")
+	}
+
+	// This should contain the endpoint metadata.
+	hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
+	if !ok {
+		return nil, status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
+	}
+
+	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
+	var metadata corev3.Metadata
+	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+	if err != nil {
+		panic(err)
+	}
+
+	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
+	if !ok {
+		return nil, status.Error(codes.Internal, "missing aigateawy.envoy.io metadata")
+	}
+	backendName, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
+	if !ok {
+		return nil, status.Error(codes.Internal, "missing backend_name in endpoint metadata")
+	}
+	backend, ok := s.config.backends[backendName.GetStringValue()]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
+	}
+
+	s.routerProcessorsPerReqIDMutex.RLock()
+	defer s.routerProcessorsPerReqIDMutex.RUnlock()
+	routerProcessor, ok := s.routerProcessorsPerReqID[reqID]
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
+			reqID, backendName.GetStringValue())
+	}
+
+	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot set backend: %v", err)
+	}
+	return nil, nil
 }
 
 // Check implements [grpc_health_v1.HealthServer].
@@ -254,6 +362,13 @@ func (s *Server) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*gr
 // Watch implements [grpc_health_v1.HealthServer].
 func (s *Server) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
+}
+
+// List implements [grpc_health_v1.HealthServer].
+func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
+		"extproc": {Status: grpc_health_v1.HealthCheckResponse_SERVING},
+	}}, nil
 }
 
 // filterSensitiveHeadersForLogging filters out sensitive headers from the provided HeaderMap for logging.
@@ -279,16 +394,16 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 	return filteredHeaders
 }
 
-// filterSensitiveBodyForLogging filters out sensitive information from the response body.
+// filterSensitiveRequestBodyForLogging filters out sensitive information from the response body.
 // It creates a copy of the response body to avoid modifying the original body,
 // as the API Key is needed for the request. The function returns a new
 // ProcessingResponse with the filtered body for logging.
-func filterSensitiveBodyForLogging(resp *extprocv3.ProcessingResponse, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse {
+func filterSensitiveRequestBodyForLogging(resp *extprocv3.ProcessingResponse, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse {
 	if resp == nil {
 		return &extprocv3.ProcessingResponse{}
 	}
 	original, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-	if !ok {
+	if !ok || original.RequestBody == nil {
 		// Meaning this is the immediate response, that doesn't need to be filtered.
 		return resp
 	}

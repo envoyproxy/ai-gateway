@@ -10,3 +10,4 @@
 ./go.sum
 ./tests/e2e/logs
 *_for_tests.yaml
+./tests/extproc/testdata/server.*

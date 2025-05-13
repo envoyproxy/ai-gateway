@@ -38,6 +38,5 @@ func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, 
 	headerMut.SetHeaders = append(headerMut.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte(requestHeaders["Authorization"])},
 	})
-
 	return nil
 }

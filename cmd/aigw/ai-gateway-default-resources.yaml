@@ -38,6 +38,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: aigw-run
+  namespace: default
 spec:
   gatewayClassName: aigw-run
   listeners:
@@ -54,6 +55,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: envoy-ai-gateway
+  namespace: default
 spec:
   logging:
     level:
@@ -63,6 +65,7 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
+  namespace: default
 spec:
   schema:
     name: OpenAI
@@ -79,6 +82,7 @@ spec:
               value: openai
       backendRefs:
         - name: openai
+          namespace: default
     # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
     - matches:
         - headers:
@@ -87,6 +91,7 @@ spec:
               value: aws
       backendRefs:
         - name: aws
+          namespace: default
     # Special rule to unconditionally route to the ollama backend regardless of the model.
     - matches:
         - headers:
@@ -95,6 +100,7 @@ spec:
               value: ollama
       backendRefs:
         - name: ollama
+          namespace: default
     # A Model-specific rule, routing to the OpenAI backend if the model is gpt-4o-mini.
     - matches:
         - headers:
@@ -103,6 +109,7 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai
+          namespace: default
     # A Model-specific rule, routing to the AWS Bedrock backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
     - matches:
         - headers:
@@ -111,6 +118,7 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: aws
+          namespace: default
     # A Model-specific rule, routing to the Ollama backend if the model is mistral:latest.
     - matches:
         - headers:
@@ -119,11 +127,13 @@ spec:
               value: mistral:latest
       backendRefs:
         - name: ollama
+          namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: openai
+  namespace: default
 spec:
   timeouts:
     request: 3m
@@ -133,15 +143,18 @@ spec:
     name: openai
     kind: Backend
     group: gateway.envoyproxy.io
+    namespace: default
   backendSecurityPolicyRef:
     name: openai-apikey
     kind: BackendSecurityPolicy
     group: aigateway.envoyproxy.io
+    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: aws
+  namespace: default
 spec:
   timeouts:
     request: 3m
@@ -151,15 +164,18 @@ spec:
     name: aws
     kind: Backend
     group: gateway.envoyproxy.io
+    namespace: default
   backendSecurityPolicyRef:
     name: aws-credentials
     kind: BackendSecurityPolicy
     group: aigateway.envoyproxy.io
+    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: ollama
+  namespace: default
 spec:
   timeouts:
     request: 3m
@@ -169,11 +185,13 @@ spec:
     name: ollama
     kind: Backend
     group: gateway.envoyproxy.io
+    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey
+  namespace: default
 spec:
   type: APIKey
   apiKey:
@@ -184,6 +202,7 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: aws-credentials
+  namespace: default
 spec:
   type: AWSCredentials
   awsCredentials:
@@ -196,6 +215,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: openai
+  namespace: default
 spec:
   endpoints:
     - fqdn:
@@ -206,6 +226,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: aws
+  namespace: default
 spec:
   endpoints:
     - fqdn:
@@ -216,6 +237,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: ollama
+  namespace: default
 spec:
   endpoints:
     - ip:
@@ -227,6 +249,7 @@ apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
   name: openai-tls
+  namespace: default
 spec:
   targetRefs:
     - group: 'gateway.envoyproxy.io'
@@ -240,6 +263,7 @@ apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
   name: aws-tls
+  namespace: default
 spec:
   targetRefs:
     - group: 'gateway.envoyproxy.io'
@@ -253,6 +277,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: openai-apikey
+  namespace: default
   annotations:
     # This will tell the CLI to replace the value of the apiKey field
     # with the value of the environment variable OPENAI_API_KEY.
@@ -266,6 +291,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: aws-credentials
+  namespace: default
   annotations:
     # This will tell the CLI to symlink the file used via the credentials field
     # to the file at ~/.aws/credentials.

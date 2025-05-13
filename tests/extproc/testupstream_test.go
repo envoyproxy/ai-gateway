@@ -25,7 +25,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -46,23 +45,23 @@ func TestWithTestUpstream(t *testing.T) {
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedBackendHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:       "x-model-name",
+		SelectedRouteHeaderKey: routeSelectorHeader,
+		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: openAISchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
+				Name:    "testupstream-openai-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
 			},
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: awsBedrockSchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
+				Name:    "testupstream-aws-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
 			},
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
+				Name:    "testupstream-azure-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
 			},
 			{
-				Backends: []filterapi.Backend{{Name: "testupstream", Schema: azureOpenAISchema}},
+				Name: "not-used-for-completion",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "some-model1"},
 					{Name: "x-model-name", Value: "some-model2"},
@@ -70,6 +69,7 @@ func TestWithTestUpstream(t *testing.T) {
 				},
 			},
 		},
+		Backends: fakeBackends,
 	})
 
 	expectedModels := openai.ModelList{
@@ -296,7 +296,7 @@ data: [DONE]
 				}
 
 				return true
-			}, 10*time.Second, 500*time.Millisecond)
+			}, eventuallyTimeout, eventuallyInterval)
 		})
 	}
 
@@ -373,104 +373,6 @@ data: [DONE]
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), `gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway",otel_scope_version="",le="0.01"} 1`)
-	})
-}
-
-func TestWithTestUpstreamDynamicLoadBalancing(t *testing.T) {
-	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
-	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireTestUpstream(t)
-
-	const (
-		coolModelID = "cool-model"
-		routeHeader = "x-test-backend"
-	)
-	requireWriteFilterConfig(t, configPath, &filterapi.Config{
-		Schema:                   openAISchema,
-		SelectedBackendHeaderKey: "x-selected-backend-name",
-		ModelNameHeaderKey:       "x-model-name",
-		Rules: []filterapi.RouteRule{
-			{
-				Backends: []filterapi.Backend{{Name: "openai", Schema: openAISchema}},
-				Headers:  []filterapi.HeaderMatch{{Name: routeHeader, Value: "openai"}},
-			},
-			{
-				Backends: []filterapi.Backend{{
-					Name: "dynamic", Schema: openAISchema,
-					DynamicLoadBalancing: &filterapi.DynamicLoadBalancing{
-						Models: []filterapi.DynamicLoadBalancingModel{{Name: coolModelID}},
-						Backends: []filterapi.DynamicLoadBalancingBackend{
-							{
-								Backend:   filterapi.Backend{Name: "testupstream", Schema: openAISchema},
-								Hostnames: []string{"mylocal.io"},
-								Port:      8080, // We route to the testupstream.
-							},
-						},
-					},
-				}},
-				Headers: []filterapi.HeaderMatch{{Name: routeHeader, Value: "dynamic"}},
-			},
-		},
-	})
-
-	// Launch the external processor with the DNS_SERVER_ADDR environment variable set to a new DNS server.
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath,
-		"DNS_SERVER_ADDR="+internaltesting.RequireNewTestDNSServer(t))
-
-	// This ensures that dynamic load balancing can work in conjunction with the other normal backends.
-	t.Run("non dynamic route", func(t *testing.T) {
-		require.Eventually(t, func() bool {
-			req, err := http.NewRequest(http.MethodPost, listenerAddress+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(`
-{"model":"%s","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}
-`, coolModelID)))
-			require.NoError(t, err)
-			req.Header.Set(routeHeader, "openai")
-
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			defer func() { _ = resp.Body.Close() }()
-			if resp.StatusCode != http.StatusUnauthorized {
-				t.Logf("unexpected status code: %d", resp.StatusCode)
-				return false
-			}
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			t.Logf("response: %s", string(body))
-			return true
-		}, 30*time.Second, 2*time.Second)
-	})
-
-	t.Run("dynamic route", func(t *testing.T) {
-		require.Eventually(t, func() bool {
-			req, err := http.NewRequest(http.MethodPost, listenerAddress+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(`
-{"model":"%s","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}
-`, coolModelID)))
-			require.NoError(t, err)
-			req.Header.Set(routeHeader, "dynamic")
-
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			defer func() { _ = resp.Body.Close() }()
-			if resp.StatusCode != http.StatusOK {
-				t.Logf("unexpected status code: %d", resp.StatusCode)
-				return false
-			}
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			t.Logf("response: %s", string(body))
-			var openaiResp openai.ChatCompletionResponse
-			require.NoError(t, json.Unmarshal(body, &openaiResp))
-			require.Len(t, openaiResp.Choices, 1)
-			return true
-		}, 30*time.Second, 2*time.Second)
 	})
 }
 

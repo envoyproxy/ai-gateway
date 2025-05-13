@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -31,7 +33,7 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &processorConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) { return m, nil })
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) { return m, nil })
 
 	return s, m.(*mockProcessor)
 }
@@ -44,15 +46,16 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
 				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
-			Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			SelectedBackendHeaderKey: "x-ai-eg-selected-backend",
-			ModelNameHeaderKey:       "x-model-name",
+			Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			SelectedRouteHeaderKey: "x-ai-eg-selected-route",
+			ModelNameHeaderKey:     "x-model-name",
+			Backends: []*filterapi.Backend{
+				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
+				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+			},
 			Rules: []filterapi.RouteRule{
 				{
-					Backends: []filterapi.Backend{
-						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-					},
 					Headers: []filterapi.HeaderMatch{
 						{
 							Name:  "x-model-name",
@@ -61,9 +64,6 @@ func TestServer_LoadConfig(t *testing.T) {
 					},
 				},
 				{
-					Backends: []filterapi.Backend{
-						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-					},
 					Headers: []filterapi.HeaderMatch{
 						{
 							Name:  "x-model-name",
@@ -85,7 +85,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "ns", s.config.metadataNamespace)
 		require.NotNil(t, s.config.router)
 		require.Equal(t, s.config.schema, config.Schema)
-		require.Equal(t, "x-ai-eg-selected-backend", s.config.selectedBackendHeaderKey)
+		require.Equal(t, "x-ai-eg-selected-route", s.config.selectedRouteHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
@@ -119,10 +119,19 @@ func TestServer_Watch(t *testing.T) {
 	require.ErrorContains(t, err, "Watch is not implemented")
 }
 
+func TestServer_List(t *testing.T) {
+	s, _ := requireNewServerWithMockProcessor(t)
+
+	res, err := s.List(t.Context(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, res.Statuses["extproc"].Status)
+}
+
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
-		_, err := s.processMsg(t.Context(), p, &extprocv3.ProcessingRequest{})
+		_, err := s.processMsg(t.Context(), slog.Default(), p, &extprocv3.ProcessingRequest{})
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
@@ -136,7 +145,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -152,7 +161,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestBody{RequestBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -168,7 +177,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -184,7 +193,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -200,7 +209,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -235,7 +244,22 @@ func TestServer_Process(t *testing.T) {
 		err := s.Process(ms)
 		require.ErrorContains(t, err, "some error")
 	})
+	t.Run("upstream filter", func(t *testing.T) {
+		s, p := requireNewServerWithMockProcessor(t)
 
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: "foo", Value: "bar"}}}
+		p.t = t
+		p.expHeaderMap = hm
+		req := &extprocv3.ProcessingRequest{
+			Attributes: map[string]*structpb.Struct{
+				"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{"something": {}}},
+			},
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
+		}
+		ms := &mockExternalProcessingStream{t: t, ctx: t.Context(), retRecv: req}
+		err := s.Process(ms)
+		require.ErrorContains(t, err, "missing xds.upstream_host_metadata in request")
+	})
 	t.Run("ok", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 
@@ -270,17 +294,62 @@ func TestServer_Process(t *testing.T) {
 	})
 }
 
+func TestServer_setBackend(t *testing.T) {
+	for _, tc := range []struct {
+		md     *corev3.Metadata
+		errStr string
+	}{
+		{md: &corev3.Metadata{}, errStr: "missing aigateawy.envoy.io metadata"},
+		{
+			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {}}},
+			errStr: "missing backend_name in endpoint metadata",
+		},
+		{
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+				Fields: map[string]*structpb.Value{
+					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
+				},
+			}}},
+			errStr: "unknown backend: kserve",
+		},
+		{
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+				Fields: map[string]*structpb.Value{
+					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
+				},
+			}}},
+			errStr: "no router processor found, request_id=aaaaaaaaaaaa, backend=openai",
+		},
+	} {
+		t.Run("errors/"+tc.errStr, func(t *testing.T) {
+			str, err := prototext.Marshal(tc.md)
+			require.NoError(t, err)
+			s, _ := requireNewServerWithMockProcessor(t)
+			s.config.backends = map[string]*processorConfigBackend{"openai": {}}
+			_, err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
+				Attributes: map[string]*structpb.Struct{
+					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+						"xds.upstream_host_metadata": {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
+					}},
+				},
+				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+			})
+			require.ErrorContains(t, err, tc.errStr)
+		})
+	}
+}
+
 func TestServer_ProcessorSelection(t *testing.T) {
 	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
 	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected
 		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger) (Processor, error) {
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
@@ -369,7 +438,7 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 			},
 		},
 	}
-	filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
+	filtered := filterSensitiveRequestBodyForLogging(resp, logger, []string{"authorization"})
 	require.NotNil(t, filtered)
 	filteredMutation := filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
@@ -392,7 +461,7 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 				ImmediateResponse: &extprocv3.ImmediateResponse{},
 			},
 		}
-		filtered := filterSensitiveBodyForLogging(resp, logger, []string{"authorization"})
+		filtered := filterSensitiveRequestBodyForLogging(resp, logger, []string{"authorization"})
 		require.NotNil(t, filtered)
 		require.Equal(t, resp, filtered)
 	})

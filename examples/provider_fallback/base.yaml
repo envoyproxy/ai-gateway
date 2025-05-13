@@ -1,0 +1,190 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: provider-fallback
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: provider-fallback
+  namespace: default
+spec:
+  gatewayClassName: provider-fallback
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: provider-fallback
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: provider-fallback
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: us.meta.llama3-2-1b-instruct-v1:0
+      backendRefs:
+        - name: provider-fallback-always-failing-upstream  # This is the primary backend and trying to speak TLS, which always fails.
+        - name: provider-fallback-aws
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: provider-fallback-aws
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: provider-fallback-aws
+    kind: Backend
+    group: gateway.envoyproxy.io
+  backendSecurityPolicyRef:
+    name: provider-fallback-aws-credentials
+    kind: BackendSecurityPolicy
+    group: aigateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: provider-fallback-aws-credentials
+  namespace: default
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    credentialsFile:
+      secretRef:
+        name: provider-fallback-aws-credentials
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: provider-fallback-aws
+  namespace: default
+spec:
+  # Indicate that this backend is a fallback backend, meaning that it will only be used if the primary backend fails.
+  fallback: true
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: provider-fallback-aws-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: provider-fallback-aws
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: provider-fallback-aws-credentials
+  namespace: default
+type: Opaque
+stringData:
+  # Replace with your AWS credentials.
+  credentials: |
+    [default]
+    aws_access_key_id = AWS_ACCESS_KEY_ID
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: provider-fallback-always-failing-upstream
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: provider-fallback-always-failing-upstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: provider-fallback-always-failing-upstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: provider-fallback-always-failing-upstream.default.svc.cluster.local
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: provider-fallback-always-failing-upstream-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: provider-fallback-always-failing-upstream
+  validation:
+    wellKnownCACertificates: "System"
+    # It doesn't speak TLS, but we force it to use the TLS failure as a signal to failover.
+    hostname: provider-fallback-always-failing-upstream.default.svc.cluster.local
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-fallback-always-failing-upstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: provider-fallback-always-failing-upstream
+  template:
+    metadata:
+      labels:
+        app: provider-fallback-always-failing-upstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: provider-fallback-always-failing-upstream
+  namespace: default
+spec:
+  selector:
+    app: provider-fallback-always-failing-upstream
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 8080
+  type: ClusterIP

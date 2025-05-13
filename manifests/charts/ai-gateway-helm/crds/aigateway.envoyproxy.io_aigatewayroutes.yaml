@@ -8,7 +8,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.1
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: aigatewayroutes.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
@@ -37,7 +37,7 @@ spec:
           on the output schema of the AIServiceBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
 
-          For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+          Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
             - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
               The name of these resources are `ai-eg-route-extproc-${name}`.
@@ -51,7 +51,8 @@ spec:
           All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
           detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
           resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
-          Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+          Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
+          BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
         properties:
           apiVersion:
             description: |-
@@ -437,6 +438,11 @@ spec:
                         Each backend can have a weight that determines the traffic distribution.
 
                         The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+
+                        By configuring multiple backends, you can achieve the fallback behavior in the case of
+                        the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
+                        Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
+                        https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
                       items:
                         description: AIGatewayRouteRuleBackendRef is a reference to
                           a backend with a weight.
@@ -466,6 +472,7 @@ spec:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 
                               Default is 1.
+                            format: int32
                             minimum: 0
                             type: integer
                         required:
@@ -494,7 +501,7 @@ spec:
                                 name:
                                   description: |-
                                     Name is the name of the HTTP Header to be matched. Name matching MUST be
-                                    case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                    case-insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
 
                                     If multiple entries specify equivalent header names, only the first
                                     entry with an equivalent name MUST be considered for a match. Subsequent
@@ -549,6 +556,66 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
+                    timeouts:
+                      description: Timeouts defines the timeouts that can be configured
+                        for an HTTP request.
+                      properties:
+                        backendRequest:
+                          description: |-
+                            BackendRequest specifies a timeout for an individual request from the gateway
+                            to a backend. This covers the time from when the request first starts being
+                            sent from the gateway to when the full response has been received from the backend.
+
+                            Setting a timeout to the zero duration (e.g. "0s") SHOULD disable the timeout
+                            completely. Implementations that cannot completely disable the timeout MUST
+                            instead interpret the zero duration as the longest possible value to which
+                            the timeout can be set.
+
+                            An entire client HTTP transaction with a gateway, covered by the Request timeout,
+                            may result in more than one call from the gateway to the destination backend,
+                            for example, if automatic retries are supported.
+
+                            The value of BackendRequest must be a Gateway API Duration string as defined by
+                            GEP-2257.  When this field is unspecified, its behavior is implementation-specific;
+                            when specified, the value of BackendRequest must be no more than the value of the
+                            Request timeout (since the Request timeout encompasses the BackendRequest timeout).
+
+                            Support: Extended
+                          pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                          type: string
+                        request:
+                          description: |-
+                            Request specifies the maximum duration for a gateway to respond to an HTTP request.
+                            If the gateway has not been able to respond before this deadline is met, the gateway
+                            MUST return a timeout error.
+
+                            For example, setting the `rules.timeouts.request` field to the value `10s` in an
+                            `HTTPRoute` will cause a timeout if a client request is taking longer than 10 seconds
+                            to complete.
+
+                            Setting a timeout to the zero duration (e.g. "0s") SHOULD disable the timeout
+                            completely. Implementations that cannot completely disable the timeout MUST
+                            instead interpret the zero duration as the longest possible value to which
+                            the timeout can be set.
+
+                            This timeout is intended to cover as close to the whole request-response transaction
+                            as possible although an implementation MAY choose to start the timeout after the entire
+                            request stream has been received instead of immediately after the transaction is
+                            initiated by the client.
+
+                            The value of Request is a Gateway API Duration string as defined by GEP-2257. When this
+                            field is unspecified, request timeout behavior is implementation-specific.
+
+                            Support: Extended
+                          pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                          type: string
+                      type: object
+                      x-kubernetes-validations:
+                      - message: backendRequest timeout cannot be longer than request
+                          timeout
+                        rule: '!(has(self.request) && has(self.backendRequest) &&
+                          duration(self.request) != duration(''0s'') && duration(self.backendRequest)
+                          > duration(self.request))'
                   type: object
                 maxItems: 128
                 type: array

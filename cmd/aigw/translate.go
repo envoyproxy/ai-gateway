@@ -53,7 +53,7 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
+	_, _, httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -168,6 +168,7 @@ func translateCustomResourceObjects(
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	logger *slog.Logger,
 ) (
+	fakeClient client.Client,
 	fakeClientSet *fake2.Clientset,
 	httpRoutes gwapiv1.HTTPRouteList,
 	extensionPolicies egv1a1.EnvoyExtensionPolicyList,
@@ -187,7 +188,7 @@ func translateCustomResourceObjects(
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	}) // Error should never happen.
-	fakeClient := builder.Build()
+	fakeClient = builder.Build()
 	fakeClientSet = fake2.NewClientset()
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.Discard(),

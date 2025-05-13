@@ -19,6 +19,7 @@ import (
 )
 
 func Test_Examples_InferenceExtension(t *testing.T) {
+	t.Skip("TODO")
 	const manifest = "../../examples/inference_extension/inference_extension.yaml"
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 

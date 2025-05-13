@@ -34,7 +34,6 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
-	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
@@ -105,20 +104,16 @@ func TestAIGatewayRouteController_reconcileExtProcExtensionPolicy(t *testing.T) 
 	err = c.client.Get(t.Context(), client.ObjectKey{Name: extProcName(aiGatewayRoute), Namespace: "default"}, &extPolicy)
 	require.NoError(t, err)
 
-	require.Equal(t, len(aiGatewayRoute.Spec.TargetRefs), len(extPolicy.Spec.TargetRefs))
+	require.Len(t, aiGatewayRoute.Spec.TargetRefs, len(extPolicy.Spec.TargetRefs))
 	for i, target := range extPolicy.Spec.TargetRefs {
 		require.Equal(t, aiGatewayRoute.Spec.TargetRefs[i].Name, target.Name)
 	}
 	require.Equal(t, ownerRef, extPolicy.OwnerReferences)
 	require.Len(t, extPolicy.Spec.ExtProc, 1)
-	require.NotNil(t, extPolicy.Spec.ExtProc[0].Metadata)
-	require.NotEmpty(t, extPolicy.Spec.ExtProc[0].Metadata.WritableNamespaces)
 	require.Equal(t, &egv1a1.ExtProcProcessingMode{
 		AllowModeOverride: true,
 		Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
-		Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
 	}, extPolicy.Spec.ExtProc[0].ProcessingMode)
-	require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, extPolicy.Spec.ExtProc[0].Metadata.WritableNamespaces[0])
 
 	// Update the policy.
 	aiGatewayRoute.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
@@ -257,11 +252,11 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 
 	t.Run("existing", func(t *testing.T) {
 		route := &aigv1a1.AIGatewayRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1"},
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1"},
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 1}, {Name: "orange", Weight: 1}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
 					},
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
@@ -270,7 +265,7 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		err := fakeClient.Create(t.Context(), route, &client.CreateOptions{})
 		require.NoError(t, err)
 		httpRoute := &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns1", Labels: map[string]string{managedByLabel: "envoy-ai-gateway"}},
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1", Labels: map[string]string{managedByLabel: "envoy-ai-gateway"}},
 			Spec:       gwapiv1.HTTPRouteSpec{},
 		}
 		err = fakeClient.Create(t.Context(), httpRoute, &client.CreateOptions{})
@@ -279,17 +274,16 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		// Then sync, which should update the HTTPRoute.
 		require.NoError(t, s.syncAIGatewayRoute(t.Context(), route))
 		var updatedHTTPRoute gwapiv1.HTTPRoute
-		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "ns1"}, &updatedHTTPRoute)
+		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 3) // 2 backends + 1 for the default rule.
-		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 1)
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 rule + 1 for the default rule.
+		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "apple.ns1", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
-		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "orange.ns1", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value)
+		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].BackendRef.Name))
+		require.Equal(t, "myroute-rule-0", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		// Defaulting to the empty path, which shouldn't reach in practice.
-		require.Empty(t, updatedHTTPRoute.Spec.Rules[2].BackendRefs)
-		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[2].Matches[0].Path.Value)
+		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
+		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
 	})
 
 	// Check the namespace has the default host rewrite filter.
@@ -310,11 +304,11 @@ func Test_newHTTPRoute(t *testing.T) {
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug")
 			httpRoute := &gwapiv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
+				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
 				Spec:       gwapiv1.HTTPRouteSpec{},
 			}
 			aiGatewayRoute := &aigv1a1.AIGatewayRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: ns},
+				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
 				Spec: aigv1a1.AIGatewayRouteSpec{
 					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 						{
@@ -325,23 +319,17 @@ func Test_newHTTPRoute(t *testing.T) {
 					},
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: 100}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "orange", Weight: 100},
-								{Name: "apple", Weight: 100},
-								{Name: "pineapple", Weight: 100},
+								{Name: "orange", Weight: ptr.To[int32](100)},
+								{Name: "apple", Weight: ptr.To[int32](100)},
+								{Name: "pineapple", Weight: ptr.To[int32](100)},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: 1}},
-						},
-						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{
-								Name: "pool",
-								Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool),
-							}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 						},
 					},
 				},
@@ -390,43 +378,41 @@ func Test_newHTTPRoute(t *testing.T) {
 			expRules := []gwapiv1.HTTPRouteRule{
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "apple." + ns}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-0"}}},
 					},
-					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}}}},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "orange." + ns}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-1"}}},
 					},
-					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}}}},
-					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
+					BackendRefs: []gwapiv1.HTTPBackendRef{
+						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}, Weight: ptr.To[int32](100)}},
+						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}},
+						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}, Weight: ptr.To[int32](100)}},
+					},
+					Timeouts: &gwapiv1.HTTPRouteTimeouts{Request: &timeout2, BackendRequest: &timeout3},
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "pineapple." + ns}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-2"}}},
 					},
-					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}}}},
-					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout3},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: "foo." + ns}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-3"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 				},
-				{
-					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedBackendHeaderKey, Value: extensionserver.OriginalDstClusterName}}},
-					},
-					Timeouts: inferencePoolDefaultTimeout,
-				},
 			}
-			require.Len(t, httpRoute.Spec.Rules, 6) // 5 backends + 1 for the default rule.
+			require.Len(t, httpRoute.Spec.Rules, 4) // 3 rules + 1 for the default rule.
 			for i, r := range httpRoute.Spec.Rules {
 				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-					if i == 5 {
+					if i == 3 {
 						require.Empty(t, r.BackendRefs)
 						require.NotNil(t, r.Matches[0].Path)
 						require.Equal(t, "/", *r.Matches[0].Path.Value)
@@ -572,22 +558,22 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "apple", Weight: 1},
-								{Name: "pineapple", Weight: 2},
+								{Name: "apple", Weight: ptr.To[int32](1)},
+								{Name: "pineapple", Weight: ptr.To[int32](2)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: ptr.To[int32](1)}},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "pen", Weight: 2},
+								{Name: "pen", Weight: ptr.To[int32](2)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}}},
@@ -595,7 +581,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "dog", Weight: 1},
+								{Name: "dog", Weight: ptr.To[int32](1)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}}},
@@ -603,7 +589,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "dragon", Weight: 1},
+								{Name: "dragon", Weight: ptr.To[int32](1)},
 							},
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}}},
@@ -632,61 +618,64 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 				},
 			},
 			exp: &filterapi.Config{
-				UUID:                     string(uuid2.NewUUID()),
-				Schema:                   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"},
-				ModelNameHeaderKey:       aigv1a1.AIModelHeaderKey,
-				MetadataNamespace:        aigv1a1.AIGatewayFilterMetadataNamespace,
-				SelectedBackendHeaderKey: selectedBackendHeaderKey,
+				UUID:                   string(uuid2.NewUUID()),
+				Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"},
+				ModelNameHeaderKey:     aigv1a1.AIModelHeaderKey,
+				MetadataNamespace:      aigv1a1.AIGatewayFilterMetadataNamespace,
+				SelectedRouteHeaderKey: selectedRouteHeaderKey,
 				Rules: []filterapi.RouteRule{
 					{
-						Backends: []filterapi.Backend{
-							{Name: "apple.ns", Weight: 1, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, Auth: &filterapi.BackendAuth{
-								APIKey: &filterapi.APIKeyAuth{
-									Filename: "/etc/backend_security_policy/rule0-backref0-some-backend-security-policy-1/apiKey",
-								},
-							}}, {Name: "pineapple.ns", Weight: 2},
-						},
+						Name:    "myroute-rule-0",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
 					},
 					{
-						Backends: []filterapi.Backend{{Name: "cat.ns", Weight: 1, Auth: &filterapi.BackendAuth{
-							APIKey: &filterapi.APIKeyAuth{
-								Filename: "/etc/backend_security_policy/rule1-backref0-some-backend-security-policy-1/apiKey",
-							},
-						}}},
+						Name:    "myroute-rule-1",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
 					},
 					{
-						Backends: []filterapi.Backend{{Name: "pen.ns", Weight: 2, Auth: &filterapi.BackendAuth{
-							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: "/etc/backend_security_policy/rule2-backref0-some-backend-security-policy-2/credentials",
-								Region:             "us-east-1",
-							},
-						}}},
+						Name:    "myroute-rule-2",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
 					},
 					{
-						Backends: []filterapi.Backend{{Name: "dog.ns", Weight: 1, Auth: &filterapi.BackendAuth{
-							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: "/etc/backend_security_policy/rule3-backref0-some-backend-security-policy-3/credentials",
-								Region:             "us-east-1",
-							},
-						}}},
+						Name:    "myroute-rule-3",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}},
 					},
 					{
-						Backends: []filterapi.Backend{{
-							Name:   "dragon.ns",
-							Weight: 1,
-							Auth: &filterapi.BackendAuth{
-								AzureAuth: &filterapi.AzureAuth{
-									Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
-								},
-							},
-							Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
-						}},
+						Name:    "myroute-rule-4",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}},
 					},
+				},
+				Backends: []*filterapi.Backend{
+					{Name: "apple.ns", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{
+							Filename: "/etc/backend_security_policy/rule0-backref0-some-backend-security-policy-1/apiKey",
+						},
+					}},
+					{Name: "cat.ns", Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{
+							Filename: "/etc/backend_security_policy/rule1-backref0-some-backend-security-policy-1/apiKey",
+						},
+					}},
+					{Name: "dog.ns", Auth: &filterapi.BackendAuth{
+						AWSAuth: &filterapi.AWSAuth{
+							CredentialFileName: "/etc/backend_security_policy/rule3-backref0-some-backend-security-policy-3/credentials",
+							Region:             "us-east-1",
+						},
+					}},
+					{
+						Name: "dragon.ns", Auth: &filterapi.BackendAuth{
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+							},
+						}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+					},
+					{Name: "pen.ns", Auth: &filterapi.BackendAuth{
+						AWSAuth: &filterapi.AWSAuth{
+							CredentialFileName: "/etc/backend_security_policy/rule2-backref0-some-backend-security-policy-2/credentials",
+							Region:             "us-east-1",
+						},
+					}},
+					{Name: "pineapple.ns"},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{
 					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},
@@ -818,15 +807,15 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "apple", Weight: 1},
-						{Name: "pineapple", Weight: 2},
+						{Name: "apple", Weight: ptr.To[int32](1)},
+						{Name: "pineapple", Weight: ptr.To[int32](2)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
 					},
 				},
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: 1}},
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat", Weight: ptr.To[int32](1)}},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 					},
@@ -1042,7 +1031,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "apple", Weight: 1},
+						{Name: "apple", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}}},
@@ -1050,7 +1039,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "pineapple", Weight: 1},
+						{Name: "pineapple", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-2"}}},
@@ -1058,7 +1047,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "dog", Weight: 1},
+						{Name: "dog", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-3"}}},
@@ -1066,7 +1055,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "dragon", Weight: 1},
+						{Name: "dragon", Weight: ptr.To[int32](1)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-4"}}},
@@ -1074,7 +1063,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 				},
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "inference-pool", Weight: 1, Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
+						{Name: "inference-pool", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
 					},
 					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "whatever", Value: "yes"}}},

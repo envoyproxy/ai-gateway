@@ -35,13 +35,13 @@ type NewCustomRouterFn func(defaultRouter Router, config *filterapi.Config) Rout
 //
 // Router must be goroutine-safe as it is shared across multiple requests.
 type Router interface {
-	// Calculate determines the backend to route to based on the request headers.
+	// Calculate determines the route to route to based on the request headers.
 	//
 	// The request headers include the populated [filterapi.Config.ModelNameHeaderKey]
 	// with the parsed model name based on the [filterapi.Config] given to the NewCustomRouterFn.
 	//
-	// Returns the backend.
-	Calculate(requestHeaders map[string]string) (backend *filterapi.Backend, err error)
+	// Returns the selected route rule name and the error if any.
+	Calculate(requestHeaders map[string]string) (route filterapi.RouteRuleName, err error)
 }
 
 // NewCustomChatCompletionMetrics is the function to create a custom chat completion AI Gateway metrics over

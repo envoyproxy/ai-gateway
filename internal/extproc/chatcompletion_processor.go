@@ -24,17 +24,26 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		if config.schema.Name != filterapi.APISchemaOpenAI {
 			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
 		}
-		return &chatCompletionProcessor{
+		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
+		if !isUpstreamFilter {
+			return &chatCompletionProcessorRouterFilter{
+				config:         config,
+				requestHeaders: requestHeaders,
+				logger:         logger,
+			}, nil
+		}
+		return &chatCompletionProcessorUpstreamFilter{
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
@@ -43,31 +52,98 @@ func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactor
 	}
 }
 
-// chatCompletionProcessor handles the processing of the request and response messages for a single stream.
-type chatCompletionProcessor struct {
-	logger           *slog.Logger
-	config           *processorConfig
-	requestHeaders   map[string]string
-	responseHeaders  map[string]string
-	responseEncoding string
-	translator       translator.OpenAIChatCompletionTranslator
+// chatCompletionProcessorRouterFilter implements [Processor] for the `/v1/chat/completion` endpoint.
+//
+// This is primarily used to select the route for the request based on the model name.
+type chatCompletionProcessorRouterFilter struct {
+	passThroughProcessor
+	logger         *slog.Logger
+	config         *processorConfig
+	requestHeaders map[string]string
+	// originalRequestBody is the original request body that is passed to the upstream filter.
+	// This is used to perform the transformation of the request body on the original input
+	// when the request is retried.
+	originalRequestBody    *openai.ChatCompletionRequest
+	originalRequestBodyRaw []byte
+	// upstreamFilterCount is the number of upstream filters that have been processed.
+	// This is used to determine if the request is a retry request.
+	upstreamFilterCount int
+}
+
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	model, body, err := parseOpenAIChatCompletionBody(rawBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+
+	c.requestHeaders[c.config.modelNameHeaderKey] = model
+	routeName, err := c.config.router.Calculate(c.requestHeaders)
+	if err != nil {
+		if errors.Is(err, x.ErrNoMatchingRule) {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+						Body:   []byte(err.Error()),
+					},
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to calculate route: %w", err)
+	}
+
+	var additionalHeaders []*corev3.HeaderValueOption
+	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+		// Set the model name to the request header with the key `x-ai-eg-model`.
+		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
+	}, &corev3.HeaderValueOption{
+		// Also set the selected backend to the request header with the key specified in the config.
+		Header: &corev3.HeaderValue{Key: c.config.selectedRouteHeaderKey, RawValue: []byte(routeName)},
+	}, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
+	})
+	c.originalRequestBody = body
+	c.originalRequestBodyRaw = rawBody.Body
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: additionalHeaders,
+					},
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+// chatCompletionProcessorUpstreamFilter implements [Processor] for the `/v1/chat/completion` endpoint at the upstream filter.
+//
+// This is created per retry and handles the translation as well as the authentication of the request.
+type chatCompletionProcessorUpstreamFilter struct {
+	logger                 *slog.Logger
+	config                 *processorConfig
+	requestHeaders         map[string]string
+	responseHeaders        map[string]string
+	responseEncoding       string
+	handler                backendauth.Handler
+	originalRequestBodyRaw []byte
+	originalRequestBody    *openai.ChatCompletionRequest
+	translator             translator.OpenAIChatCompletionTranslator
+	// onRetry is true if this is a retry request at the upstream filter.
+	onRetry bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
 	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
-	// dynamicLB is not nil if the originally selected backend has dynamic load balancing.
-	// TODO: this is not currently used but can be used to do a failover to the whole another backend as per the
-	// the comment in https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926.
-	dynamicLB *filterapi.DynamicLoadBalancing
 }
 
 // selectTranslator selects the translator based on the output schema.
-func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISchema) error {
-	if c.translator != nil { // Prevents re-selection and allows translator injection in tests.
-		return nil
-	}
+func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	// TODO: currently, we ignore the LLMAPISchema."Version" field.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
@@ -83,7 +159,7 @@ func (c *chatCompletionProcessor) selectTranslator(out filterapi.VersionedAPISch
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
-func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
 
@@ -94,82 +170,33 @@ func (c *chatCompletionProcessor) ProcessRequestHeaders(_ context.Context, _ *co
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.Context, _ *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
-	model, body, err := parseOpenAIChatCompletionBody(rawBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse request body: %w", err)
-	}
-	c.logger.Info("processing request body", "path", c.requestHeaders[":path"], "model", model)
 
-	c.metrics.SetModel(model)
-	c.requestHeaders[c.config.modelNameHeaderKey] = model
-	b, err := c.config.router.Calculate(c.requestHeaders)
-	if err != nil {
-		if errors.Is(err, x.ErrNoMatchingRule) {
-			c.metrics.RecordRequestCompletion(ctx, false)
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-						Body:   []byte(err.Error()),
-					},
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to calculate route: %w", err)
-	}
+	// TODO: We do not use the body from the extproc request since we might have already translated it
+	// to the upstream format on the previous retry (if any). If it's possible, we should be able to
+	// configure the extproc filter to "not send the body but execute the ProcessRequestBody" method.
+	// Currently, there's no way to do this, hence Envoy has to "unnecessarily" send the entire request body
+	// to the extproc twice.
 
-	var headers []*corev3.HeaderValueOption
-	c.dynamicLB = b.DynamicLoadBalancing
-	selectedBackendHeaderValue := b.Name
-	if c.dynamicLB != nil {
-		lb, ok := c.config.dynamicLoadBalancers[c.dynamicLB]
-		if !ok {
-			// If it's not found, that should be a BUG.
-			panic("BUG: failed to find dynamic load balancer")
-		}
-		b, headers, err = lb.SelectChatCompletionsEndpoint(model, c.metrics)
-		if err != nil {
-			return nil, fmt.Errorf("failed to select endpoint: %w", err)
-		}
-		// The selected backend is the dynamic load balancer name.
-		// TODO: we should make this constant as a part of the filterapi package.
-		//  However, that will likely to change after https://github.com/envoyproxy/envoy/pull/38757
-		// 	so for now, we keep it as an inline string.
-		selectedBackendHeaderValue = "original_destination_cluster"
-	}
-
-	c.logger.Info("selected backend", "backend", b.Name, "schema", b.Schema)
-	c.metrics.SetBackend(b)
-
-	if err = c.selectTranslator(b.Schema); err != nil {
-		return nil, fmt.Errorf("failed to select translator: %w", err)
-	}
-
-	headerMutation, bodyMutation, err := c.translator.RequestBody(body)
+	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
+	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
-
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
+	} else {
+		for _, h := range headerMutation.SetHeaders {
+			c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+		}
 	}
-	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		// Also set the selected backend to the request header with the key `x-ai-eg-selected-backend`.
-		Header: &corev3.HeaderValue{Key: c.config.selectedBackendHeaderKey, RawValue: []byte(selectedBackendHeaderValue)},
-	})
-	headerMutation.SetHeaders = append(headerMutation.SetHeaders, headers...)
-	// The cluster-based routing is only used when the selected backend is not using dynamic load balancing.
-	if authHandler, ok := c.config.backendAuthHandlers[b.Name]; ok {
-		if err = authHandler.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
+	if h := c.handler; h != nil {
+		if err = h.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 	}
@@ -177,39 +204,25 @@ func (c *chatCompletionProcessor) ProcessRequestBody(ctx context.Context, rawBod
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					BodyMutation:    bodyMutation,
-					ClearRouteCache: true,
-				},
+				Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation, BodyMutation: bodyMutation},
 			},
 		},
 	}
-	c.stream = body.Stream
+	c.stream = c.originalRequestBody.Stream
 	return resp, nil
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
-	// TODO: check the status code and use the dynamic load balancing to retry the request per the comment in
-	// 	https://github.com/envoyproxy/ai-gateway/issues/34#issuecomment-2743810926
-	_ = c.dynamicLB
 
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
-	}
-	// The translator can be nil as there could be response event generated by previous ext proc without
-	// getting the request event.
-	if c.translator == nil {
-		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
-			ResponseHeaders: &extprocv3.HeadersResponse{},
-		}}, nil
 	}
 	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
@@ -228,7 +241,7 @@ func (c *chatCompletionProcessor) ProcessResponseHeaders(ctx context.Context, he
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		c.metrics.RecordRequestCompletion(ctx, err == nil)
 	}()
@@ -241,11 +254,6 @@ func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body 
 		}
 	default:
 		br = bytes.NewReader(body.Body)
-	}
-	// The translator can be nil as there could be response event generated by previous ext proc without
-	// getting the request event.
-	if c.translator == nil {
-		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
 	}
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
@@ -287,6 +295,27 @@ func (c *chatCompletionProcessor) ProcessResponseBody(ctx context.Context, body 
 	return resp, nil
 }
 
+// SetBackend implements [Processor.SetBackend].
+func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+	defer func() {
+		c.metrics.RecordRequestCompletion(ctx, err == nil)
+	}()
+	rp, ok := routeProcessor.(*chatCompletionProcessorRouterFilter)
+	if !ok {
+		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
+	}
+	rp.upstreamFilterCount++
+	c.metrics.SetBackend(b)
+	if err = c.selectTranslator(b.Schema); err != nil {
+		return fmt.Errorf("failed to select translator: %w", err)
+	}
+	c.handler = backendHandler
+	c.originalRequestBody = rp.originalRequestBody
+	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
+	c.onRetry = rp.upstreamFilterCount > 1
+	return
+}
+
 func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, err error) {
 	var openAIReq openai.ChatCompletionRequest
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
@@ -295,7 +324,7 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 	return openAIReq.Model, &openAIReq, nil
 }
 
-func (c *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
+func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(c.config.requestCosts))
 	for i := range c.config.requestCosts {
 		rc := &c.config.requestCosts[i]
@@ -311,7 +340,7 @@ func (c *chatCompletionProcessor) maybeBuildDynamicMetadata() (*structpb.Struct,
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
 				c.requestHeaders[c.config.modelNameHeaderKey],
-				c.requestHeaders[c.config.selectedBackendHeaderKey],
+				c.requestHeaders[c.config.selectedRouteHeaderKey],
 				c.costs.InputTokens,
 				c.costs.OutputTokens,
 				c.costs.TotalTokens,

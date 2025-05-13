@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -78,18 +79,7 @@ type (
 // This blocks until the manager is stopped.
 //
 // Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
-func StartControllers(ctx context.Context, config *rest.Config, logger logr.Logger, options Options) error {
-	opt := ctrl.Options{
-		Scheme:           Scheme,
-		LeaderElection:   options.EnableLeaderElection,
-		LeaderElectionID: "envoy-ai-gateway-controller",
-	}
-
-	mgr, err := ctrl.NewManager(config, opt)
-	if err != nil {
-		return fmt.Errorf("failed to create new controller manager: %w", err)
-	}
-
+func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Config, logger logr.Logger, options Options) (err error) {
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
 	if err = ApplyIndexing(ctx, options.EnableInfExt, indexer.IndexField); err != nil {
