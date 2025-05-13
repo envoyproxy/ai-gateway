@@ -212,6 +212,13 @@ func (in *AIGatewayRouteSpec) DeepCopyInto(out *AIGatewayRouteSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ParentRefs != nil {
+		in, out := &in.ParentRefs, &out.ParentRefs
+		*out = make([]v1.ParentReference, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	out.APISchema = in.APISchema
 	if in.Rules != nil {
 		in, out := &in.Rules, &out.Rules
