@@ -22,3 +22,13 @@ logging:
     default: error
 extensionApis:
   enableBackend: true
+extensionManager:
+  hooks:
+    xdsTranslator:
+      post:
+        - VirtualHost
+        - Translation
+  service:
+    fqdn:
+      hostname: localhost
+      port: 1061

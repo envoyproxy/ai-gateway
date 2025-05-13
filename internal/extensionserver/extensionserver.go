@@ -76,8 +76,10 @@ const (
 //
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
 func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
+	fmt.Println("PostTranslateModify called")
 	var originalDstExists bool
 	for _, cluster := range req.Clusters {
+		fmt.Println(cluster)
 		s.maybeModifyCluster(cluster)
 		originalDstExists = originalDstExists || cluster.Name == OriginalDstClusterName
 	}

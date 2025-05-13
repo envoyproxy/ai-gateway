@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19
 	github.com/coreos/go-oidc/v3 v3.14.1
-	github.com/envoyproxy/gateway v1.4.0-rc.2
+	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20250513103415-8455177501fb
 	github.com/envoyproxy/go-control-plane/envoy v1.32.5-0.20250408134212-157c26b62099
 	github.com/go-logr/logr v1.4.2
 	github.com/google/cel-go v0.25.0
