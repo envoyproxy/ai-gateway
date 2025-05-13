@@ -10,31 +10,31 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
-	egextension "github.com/envoyproxy/gateway/proto/extension"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"path"
 	"path/filepath"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
+	egextension "github.com/envoyproxy/gateway/proto/extension"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
 // This is the default configuration for the AI Gateway when <path> parameter is not given.
@@ -144,7 +144,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	lis, err := net.Listen("tcp", ":1061")
+	lis, err := net.Listen("tcp", "localhost:1061")
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
