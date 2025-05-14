@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
@@ -90,4 +91,25 @@ func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, 
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIServiceBackend status")
 	}
+}
+
+func maybeGetReferencedInferencePool(c client.Client, backend *aigv1a1.AIServiceBackend) (*v1alpha2.InferencePool, error) {
+	kind := backend.Spec.BackendRef.Kind
+	if kind == nil {
+		return nil, nil
+	}
+	if *kind != "InferencePool" {
+		return nil, nil
+	}
+	if backend.Spec.BackendRef.Group == nil {
+		return nil, nil
+	}
+	var inferencePool v1alpha2.InferencePool
+	if err := c.Get(context.Background(), client.ObjectKey{
+		Name:      string(backend.Spec.BackendRef.Name),
+		Namespace: backend.Namespace,
+	}, &inferencePool); err != nil {
+		return nil, fmt.Errorf("failed to get InferencePool: %w", err)
+	}
+	return &inferencePool, nil
 }
