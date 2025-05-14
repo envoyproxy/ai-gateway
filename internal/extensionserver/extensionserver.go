@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -76,35 +77,10 @@ const (
 //
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
 func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
-	var originalDstExists bool
 	for _, cluster := range req.Clusters {
 		s.maybeModifyCluster(cluster)
-		originalDstExists = originalDstExists || cluster.Name == OriginalDstClusterName
 	}
-	if !originalDstExists {
-		// Append the following cluster to the list of clusters:
-		//   name: original_destination_cluster
-		//   connectTimeout: 60s
-		//   lbPolicy: CLUSTER_PROVIDED
-		//   originalDstLbConfig:
-		//     httpHeaderName: x-ai-eg-original-dst
-		//     useHttpHeader: true
-		//   type: ORIGINAL_DST
-		req.Clusters = append(req.Clusters, &clusterv3.Cluster{
-			Name:                 OriginalDstClusterName,
-			ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
-			LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
-			LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
-				OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
-					UseHttpHeader: true, HttpHeaderName: originalDstHeaderName,
-				},
-			},
-			ConnectTimeout: &durationpb.Duration{Seconds: 60},
-		})
-		s.log.Info("Added original_dst cluster to the list of clusters")
-	}
-	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
-	return response, nil
+	return &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}, nil
 }
 
 // maybeModifyCluster mainly does two things:
@@ -144,19 +120,36 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
 		return
 	}
-	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
+
+	// To determine if the target route is InferencePool, we check the header match value.
+	var httpRoute gwapiv1.HTTPRoute
+	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &httpRoute)
+	if err != nil {
+		s.log.Error(err, "failed to get HTTPRoute object",
+			"namespace", httpRouteNamespace, "name", httpRouteName)
+		return
+	}
+	httpRouteRule := &httpRoute.Spec.Rules[httpRouteRuleIndex]
+	if len(httpRouteRule.Matches) == 1 && len(httpRouteRule.Matches[0].Headers) == 1 { // This is not a http route not created by the AIGatewayRoute, so skip it.
+		hdrMatch := &httpRouteRule.Matches[0].Headers[0]
+		if strings.Contains(hdrMatch.Value, "inferencepool") {
+			s.maybeModifyClusterForInferencePool(cluster)
+			return
+		}
+	}
 	if cluster.LoadAssignment == nil {
 		s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
 		return
 	}
-	if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
+	aigwRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
+	if len(cluster.LoadAssignment.Endpoints) != len(aigwRouteRule.BackendRefs) {
 		s.log.Info("LoadAssignment endpoints length does not match backend refs length",
 			"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs))
 		return
 	}
 	// Populate the metadata for each endpoint in the LoadAssignment.
 	for i, endpoints := range cluster.LoadAssignment.Endpoints {
-		backendRef := httpRouteRule.BackendRefs[i]
+		backendRef := aigwRouteRule.BackendRefs[i]
 		name := backendRef.Name
 		namespace := aigwRoute.Namespace
 		// We populate the same metadata for all endpoints in the LoadAssignment.
@@ -253,6 +246,23 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		po.HttpFilters = append(po.HttpFilters, upstreamCodec)
 	}
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = mustToAny(po)
+}
+
+func (s *Server) maybeModifyClusterForInferencePool(cluster *clusterv3.Cluster) {
+	name := cluster.Name
+	*cluster = clusterv3.Cluster{
+		Name:                 name,
+		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
+		LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
+		LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
+			OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
+				// Default header name to be used for the original destination.
+				// https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/c2e3fa9e5a46962374f3428374adfd8d4898696d/pkg/epp/server/runserver.go#L63
+				UseHttpHeader: true, HttpHeaderName: "x-gateway-destination-endpoint",
+			},
+		},
+		ConnectTimeout: &durationpb.Duration{Seconds: 60},
+	}
 }
 
 func mustToAny(msg proto.Message) *anypb.Any {

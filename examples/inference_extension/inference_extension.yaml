@@ -41,9 +41,22 @@ spec:
               name: x-target-inference-extension
               value: "yes"
       backendRefs:
-        - name: inference-extension-example-pool  # The name of the InferencePool that this route will route to.
-          # Explicitly specify the kind of the backend to be InferencePool.
-          kind: InferencePool
+        - name: inference-extension-example-backend
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: inference-extension-example-backend
+  namespace: default
+  labels:
+    app: inference-extension-example-backend
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: inference-extension-example-pool
+    kind: InferencePool
+    group: inference.networking.x-k8s.io
 ---
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
@@ -52,8 +65,7 @@ metadata:
 spec:
   targetPortNumber: 8080
   selector:
-    # Select multiple AIServiceBackend objects to bind to the InferencePool.
-    app: my-backend
+    app: inference-extension-example-backend
   extensionRef:
     # Specify the static name "envoy-ai-gateway" to bind the InferencePool to the Envoy AI Gateway.
     # This indicates that the InferencePool will be managed by the Envoy AI Gateway.
@@ -68,32 +80,16 @@ spec:
   criticality: Critical
   poolRef:
     # Bind the InferenceModel to the InferencePool.
-    name: inference-extension-example-pool
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: inference-extension-example-testupstream
-  namespace: default
-  labels:
-    # Indicate the backend is selected by the InferencePool.
-    app: my-backend
-spec:
-  schema:
-    name: OpenAI
-  backendRef:
-    name: inference-extension-example-testupstream
-    kind: Service
-    port: 8080
+    name: inference-extension-example-backend
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: inference-extension-example-testupstream
+  name: inference-extension-example-backend
   namespace: default
 spec:
   selector:
-    app: inference-extension-example-testupstream
+    app: inference-extension-example-backend
   ports:
     - protocol: TCP
       port: 8080
@@ -104,17 +100,17 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: inference-extension-example-testupstream
+  name: inference-extension-example-backend
   namespace: default
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: inference-extension-example-testupstream
+      app: inference-extension-example-backend
   template:
     metadata:
       labels:
-        app: inference-extension-example-testupstream
+        app: inference-extension-example-backend
     spec:
       containers:
         - name: testupstream

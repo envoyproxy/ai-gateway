@@ -204,7 +204,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			}
 			if isUpstreamFilter {
 				var resp *extprocv3.ProcessingResponse
-				resp, err = s.setBackend(ctx, p, reqID, req)
+				resp, err = s.setBackend(ctx, p, reqID, req, headersMap)
 				if err != nil {
 					s.logger.Error("error processing request message", slog.String("error", err.Error()))
 					return status.Errorf(codes.Unknown, "error processing request message: %v", err)
@@ -293,9 +293,20 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 
 // setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
 // if the processor is an upstream filter.
-func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest, reqHeaders map[string]string) (*extprocv3.ProcessingResponse, error) {
 	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
+	var backendName string
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
+		selectedRouteValue, ok := reqHeaders[s.config.selectedRouteHeaderKey]
+		if ok {
+			// Example of the selected route value:
+			// "%s-rule-%d-inferencepool=%s.%s"
+			if index := strings.Index(selectedRouteValue, "="); index >= 0 {
+				backendName = selectedRouteValue[index+1:]
+				goto ok
+			}
+		}
+
 		if runtime.GOOS == "darwin" {
 			// TODO: this feels like a bug of Envoy v1.33 or earlier, not the darwin specific code.
 			//
@@ -312,32 +323,35 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 		}
 		// Otherwise, this is a bug of either Envoy or control plane.
 		return nil, status.Error(codes.Internal, "missing attributes in request")
+	} else {
+		// This should contain the endpoint metadata.
+		hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
+		if !ok {
+			return nil, status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
+		}
+
+		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
+		var metadata corev3.Metadata
+		err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+		if err != nil {
+			panic(err)
+		}
+
+		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
+		if !ok {
+			return nil, status.Error(codes.Internal, "missing aigateawy.envoy.io metadata")
+		}
+		backendNameRaw, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
+		if !ok {
+			return nil, status.Error(codes.Internal, "missing backend_name in endpoint metadata")
+		}
+		backendName = backendNameRaw.GetStringValue()
 	}
 
-	// This should contain the endpoint metadata.
-	hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
+ok:
+	backend, ok := s.config.backends[backendName]
 	if !ok {
-		return nil, status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
-	}
-
-	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-	var metadata corev3.Metadata
-	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-	if err != nil {
-		panic(err)
-	}
-
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
-	if !ok {
-		return nil, status.Error(codes.Internal, "missing aigateawy.envoy.io metadata")
-	}
-	backendName, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
-	if !ok {
-		return nil, status.Error(codes.Internal, "missing backend_name in endpoint metadata")
-	}
-	backend, ok := s.config.backends[backendName.GetStringValue()]
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
+		return nil, status.Errorf(codes.Internal, "unknown backend: %s", backendName)
 	}
 
 	s.routerProcessorsPerReqIDMutex.RLock()
@@ -345,7 +359,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 	routerProcessor, ok := s.routerProcessorsPerReqID[reqID]
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
-			reqID, backendName.GetStringValue())
+			reqID, backendName)
 	}
 
 	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {

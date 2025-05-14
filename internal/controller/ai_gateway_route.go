@@ -266,8 +266,23 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-func routeName(aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) filterapi.RouteRuleName {
-	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex))
+// routeRuleName generates a unique name for the route rule based on the AIGatewayRoute name and the rule index.
+// The returned name is used to route requests to the correct Envoy cluster which consists of one or more backends.
+func (c *AIGatewayRouteController) routeRuleName(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) (
+	rn filterapi.RouteRuleName, isInferencePool bool, err error,
+) {
+	rule := &aiGatewayRoute.Spec.Rules[ruleIndex]
+	if len(rule.BackendRefs) == 1 {
+		backend, err := c.backend(ctx, aiGatewayRoute.Namespace, rule.BackendRefs[0].Name)
+		if err != nil {
+			return "", false, fmt.Errorf("failed to get AIServiceBackend %s: %w", rule.BackendRefs[0].Name, err)
+		}
+		if ptr.Deref(backend.Spec.BackendRef.Kind, "Service") == "InferencePool" {
+			return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d-inferencepool=%s.%s",
+				aiGatewayRoute.Name, ruleIndex, backend.Name, backend.Namespace)), true, nil
+		}
+	}
+	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex)), false, nil
 }
 
 // reconcileExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
@@ -309,7 +324,10 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				}
 			}
 		}
-		ec.Rules[i].Name = routeName(aiGatewayRoute, i)
+		ec.Rules[i].Name, _, err = c.routeRuleName(ctx, aiGatewayRoute, i)
+		if err != nil {
+			return fmt.Errorf("failed to get route name: %w", err)
+		}
 		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
@@ -430,30 +448,48 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	}}
 	var rules []gwapiv1.HTTPRouteRule
 	for i, rule := range aiGatewayRoute.Spec.Rules {
-		routeName := routeName(aiGatewayRoute, i)
 		var backendRefs []gwapiv1.HTTPBackendRef
 		timeouts := rule.Timeouts
+		rn, isInferencePool, err := c.routeRuleName(ctx, aiGatewayRoute, i)
+		if err != nil {
+			return fmt.Errorf("failed to get route name: %w", err)
+		}
 		for i := range rule.BackendRefs {
 			br := &rule.BackendRefs[i]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
-			if err != nil {
-				return fmt.Errorf("AIServiceBackend %s not found", dstName)
+			var backendRef gwapiv1.BackendObjectReference
+			if isInferencePool {
+				brName := br.Name + "-inferencepool"
+				if err := c.ensureDummyBackendExists(ctx, aiGatewayRoute, brName); err != nil {
+					return fmt.Errorf("failed to ensure dummy backend exists: %w", err)
+				}
+				backendRef = gwapiv1.BackendObjectReference{
+					Name:      gwapiv1.ObjectName(brName),
+					Namespace: ptr.To(gwapiv1.Namespace(aiGatewayRoute.Namespace)),
+					Kind:      ptr.To(gwapiv1.Kind("Backend")),
+					Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+				}
+			} else {
+				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
+				if err != nil {
+					return fmt.Errorf("AIServiceBackend %s not found", dstName)
+				}
+				backendRef = backend.Spec.BackendRef
+				// If the rule level timeout is not set AND there are multiple backends with deprecated timeouts,
+				// use the first one.
+				timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 			}
 			backendRefs = append(backendRefs,
 				gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
-					BackendObjectReference: backend.Spec.BackendRef,
+					BackendObjectReference: backendRef,
 					Weight:                 br.Weight,
 				}},
 			)
-			// If the rule level timeout is not set AND there are multiple backends with deprecated timeouts,
-			// use the first one.
-			timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
+				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(rn)}}},
 			},
 			Filters:  rewriteFilters,
 			Timeouts: timeouts,
@@ -741,4 +777,31 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}
+}
+
+func (c *AIGatewayRouteController) ensureDummyBackendExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, backendName string) error {
+	backend := egv1a1.Backend{}
+	if err := c.client.Get(ctx, client.ObjectKey{Name: backendName, Namespace: aiGatewayRoute.Namespace}, &backend); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get AIServiceBackend %s: %w", backendName, err)
+		}
+		backend = egv1a1.Backend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      backendName,
+				Namespace: aiGatewayRoute.Namespace,
+			},
+			Spec: egv1a1.BackendSpec{
+				Endpoints: []egv1a1.BackendEndpoint{
+					{FQDN: &egv1a1.FQDNEndpoint{Hostname: "foo.com", Port: 80}},
+				},
+			},
+		}
+		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &backend, c.client.Scheme()); err != nil {
+			return fmt.Errorf("failed to set controller reference for backend: %w", err)
+		}
+		if err := c.client.Create(ctx, &backend); err != nil {
+			return fmt.Errorf("failed to create backend: %w", err)
+		}
+	}
+	return nil
 }
