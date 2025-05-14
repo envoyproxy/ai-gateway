@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	egLatest      = "v0.0.0-latest" // This defaults to the latest dev version.
-	egNamespace   = "envoy-gateway-system"
-	egDefaultPort = 10080
+	egDefaultVersion = "v1.4.0"
+	egNamespace      = "envoy-gateway-system"
+	egDefaultPort    = 10080
 
 	kindClusterName = "envoy-ai-gateway"
 	kindLogDir      = "./logs"
@@ -34,7 +34,7 @@ var egVersion = func() string {
 	if v, ok := os.LookupEnv("EG_VERSION"); ok {
 		return v
 	} else {
-		return egLatest
+		return egDefaultVersion
 	}
 }()
 
