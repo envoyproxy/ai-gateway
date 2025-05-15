@@ -23,14 +23,6 @@ on:
       - 'site/**'
       - 'netlify.toml'
 
-  # If the PR is coming from a fork, they are not allowed to access secrets by default.
-  # This even is triggered only if the PR gets labeled with 'safe to test' which can only be added by the maintainers.
-  # Jobs do not use secrets in the workflow will ignore this event.
-  pull_request_target:
-    types: [labeled]
-    branches:
-      - main
-
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
   group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
@@ -42,7 +34,6 @@ permissions:
 
 jobs:
   unittest:
-    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     name: Unit Test
     runs-on: ubuntu-latest
     steps:
@@ -65,7 +56,6 @@ jobs:
         run: make test-coverage
 
   test_crdcel:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: CRD CEL Validation Test
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +74,6 @@ jobs:
       - run: make test-crdcel
 
   test_controller:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     name: Controller Test
     runs-on: ubuntu-latest
     steps:
@@ -104,8 +93,6 @@ jobs:
 
   test_extproc:
     name: External Processor Test (Envoy ${{ matrix.name }})
-    # Not all the cases in E2E require secrets, so we run for all the events.
-    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +136,6 @@ jobs:
 
   test_e2e:
     # Not all the cases in E2E require secrets, so we run for all the events.
-    if: (github.event_name != 'pull_request_target' || contains(github.event.pull_request.labels.*.name, 'safe to test'))
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
