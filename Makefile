@@ -268,7 +268,7 @@ docker-build.%:
 docker-build:
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) docker-build.$(COMMAND_NAME);)
 
-HELM_DIR := ./manifests/charts/ai-gateway-helm
+HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crd-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
 .PHONY: helm-lint
