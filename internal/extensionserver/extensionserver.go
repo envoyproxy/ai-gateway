@@ -122,7 +122,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		return
 	}
 	httpRouteRule := &httpRoute.Spec.Rules[httpRouteRuleIndex]
-	if len(httpRouteRule.Matches) == 1 && len(httpRouteRule.Matches[0].Headers) == 1 { // This is not a http route not created by the AIGatewayRoute, so skip it.
+	if len(httpRouteRule.Matches) == 1 && len(httpRouteRule.Matches[0].Headers) == 1 { // This is not an http route created by the AIGatewayRoute, so skip it.
 		hdrMatch := &httpRouteRule.Matches[0].Headers[0]
 		if strings.Contains(hdrMatch.Value, "inferencepool") {
 			s.maybeModifyClusterForInferencePool(cluster)

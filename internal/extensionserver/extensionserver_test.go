@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -68,6 +69,17 @@ func Test_maybeModifyCluster(t *testing.T) {
 					},
 				},
 			},
+		},
+	})
+	require.NoError(t, err)
+	// Create a corresponding HTTPRoute object.
+	err = c.Create(t.Context(), &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myroute",
+			Namespace: "ns",
+		},
+		Spec: gwapiv1.HTTPRouteSpec{
+			Rules: []gwapiv1.HTTPRouteRule{{BackendRefs: []gwapiv1.HTTPBackendRef{}}},
 		},
 	})
 	require.NoError(t, err)

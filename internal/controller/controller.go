@@ -144,12 +144,6 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
-	// k8sClientIndexInferencePoolToReferencingAIServiceBackend is the index name that maps from an InferencePool to the AIServiceBackend
-	// that references it.
-	k8sClientIndexInferencePoolToReferencingAIGatewayRoute = "InferencePoolToReferencingAIGatewayRoute"
-	// k8sClientIndexInferencePoolToReferencingInferenceModel is the index name that maps from an InferencePool to the InferenceModel
-	// that references it.
-	k8sClientIndexInferencePoolToReferencingInferenceModel = "InferencePoolToReferencingInferenceModel"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.

@@ -36,7 +36,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
-					tc.dash + "enableInferenceExtension=true",
 				}
 				extProcLogLevel, extProcImage, enableLeaderElection, logLevel, extensionServerPort, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", extProcLogLevel)

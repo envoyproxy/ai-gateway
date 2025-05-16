@@ -1097,8 +1097,8 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	require.NoError(t, err)
 
 	// Volumes and volume mounts start with one configmap, and then 6 more for the security policies.
-	require.Len(t, updatedSpec.Volumes, 7)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 7)
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	// Ensure that all security policies are mounted correctly.
 	for i, tc := range []struct {
 		name       string
@@ -1129,18 +1129,6 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			secretName: rotators.GetBSPSecretName("some-other-backend-security-policy-4"),
 			volumeName: "rule3-backref0-some-other-backend-security-policy-4",
 			mountPath:  "/etc/backend_security_policy/rule3-backref0-some-other-backend-security-policy-4",
-		},
-		{
-			name:       "InfernecePool.Ref[0]",
-			secretName: "some-secret-policy-1",
-			volumeName: "rule4-backref0-inpool0-some-other-backend-security-policy-1",
-			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool0-some-other-backend-security-policy-1",
-		},
-		{
-			name:       "InfernecePool.Ref[2]",
-			secretName: "some-secret-policy-3",
-			volumeName: "rule4-backref0-inpool2-some-other-backend-security-policy-aws",
-			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool2-some-other-backend-security-policy-aws",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1175,8 +1163,8 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	updatedSpec, err = c.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 7)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 7)
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
