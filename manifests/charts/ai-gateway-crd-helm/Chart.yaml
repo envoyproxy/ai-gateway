@@ -1,0 +1,36 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: v2
+name: ai-gateway-crd-helm
+description: The Helm chart for Envoy AI Gateway CRD
+type: application
+
+# Note: in general version means the version of the chart, not the version of the application.
+# version must be a semver version number like 0.0.1-rc1, 1.0.0, etc., vs appVersion can be anything.
+#
+# Since we release both the chart and the application together from the same repo, we don't need to differentiate
+# between the two versions and use the release tag for both. However, on main branch, we use "latest" as the appVersion
+# to follow the convention of container images vs v0.0.0-latest for the chart version.
+version: v0.0.0-latest
+appVersion: "latest"
+icon: https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/site/static/img/logo.svg
+
+maintainers:
+  - name: envoy-ai-gateway-maintainers
+    url: https://github.com/envoyproxy/ai-gateway/blob/main/CODEOWNERS
+
+keywords:
+  - gateway-api
+  - envoyproxy
+  - envoy-gateway
+  - eg
+  - ai-gateway
+  - ai
+
+home: https://aigateway.envoyproxy.io/
+
+sources:
+  - https://github.com/envoyproxy/ai-gateway
