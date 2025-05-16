@@ -215,6 +215,15 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
+	helm_crd := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"../../manifests/charts/ai-gateway-crd-helm",
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helm_crd.Stdout = os.Stdout
+	helm_crd.Stderr = os.Stderr
+	if err = helm_crd.Run(); err != nil {
+		return
+	}
+
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
 		"--set", "controller.enableInferenceExtension=true",
 		"../../manifests/charts/ai-gateway-helm",
