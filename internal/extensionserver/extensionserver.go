@@ -15,7 +15,6 @@ import (
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -65,13 +64,6 @@ func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc
 		serverName: {Status: grpc_health_v1.HealthCheckResponse_SERVING},
 	}}, nil
 }
-
-const (
-	// originalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
-	originalDstHeaderName = "x-ai-eg-original-dst"
-	// OriginalDstClusterName is the global name of the original destination cluster.
-	OriginalDstClusterName = "original_destination_cluster"
-)
 
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config.
 //
@@ -275,29 +267,4 @@ func mustToAny(msg proto.Message) *anypb.Any {
 		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
 		Value:   b,
 	}
-}
-
-// PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
-//
-// Currently, this replaces the route that has "x-ai-eg-selected-route" pointing to "original_destination_cluster" to route to the original destination cluster.
-func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
-	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
-		return nil, nil
-	}
-	for _, route := range req.VirtualHost.Routes {
-		for _, h := range route.Match.Headers {
-			if h.Name != "x-ai-eg-selected-route" {
-				continue
-			}
-			matcher, ok := h.HeaderMatchSpecifier.(*routev3.HeaderMatcher_StringMatch)
-			if !ok || matcher.StringMatch.GetExact() != OriginalDstClusterName {
-				s.log.Info("unexpected header value", "header", h)
-				continue
-			}
-			route.Action = &routev3.Route_Route{
-				Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: OriginalDstClusterName}},
-			}
-		}
-	}
-	return &egextension.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
 }

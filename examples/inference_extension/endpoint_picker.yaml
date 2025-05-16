@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 # Derived from https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v0.3.0/config/manifests/inferencepool-resources.yaml
 ---
 apiVersion: v1

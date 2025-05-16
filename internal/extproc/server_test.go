@@ -333,7 +333,7 @@ func TestServer_setBackend(t *testing.T) {
 					}},
 				},
 				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
-			})
+			}, map[string]string{})
 			require.ErrorContains(t, err, tc.errStr)
 		})
 	}

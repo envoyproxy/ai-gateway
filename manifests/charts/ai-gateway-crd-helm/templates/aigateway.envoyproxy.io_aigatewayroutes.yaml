@@ -286,6 +286,10 @@ spec:
                         the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
                         Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
                         https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
+
+                        When multiple backends are specified, this must not contain backends with kind=InferencePool.  TODO: enforce this in the validation.
+                        When the only one specified backend is of kind=InferencePool, users are required to manually
+                        configure the "endpoint picker" extensions to actually route the traffic to the serving endpoints.
                       items:
                         description: AIGatewayRouteRuleBackendRef is a reference to
                           a backend with a weight.

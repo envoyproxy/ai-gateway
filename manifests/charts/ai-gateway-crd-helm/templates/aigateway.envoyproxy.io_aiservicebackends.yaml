@@ -60,8 +60,9 @@ spec:
                 description: |-
                   BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 
-                  A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
-                  as a backend in the future.
+                  A backend must be either a Backend resource of Envoy Gateway or InferencePool of the Inference Extension API.
+
+                  Note that k8s Service will be supported as a backend in the future.
 
                   This is required to be set.
                 properties:

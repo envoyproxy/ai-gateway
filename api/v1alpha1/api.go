@@ -212,7 +212,7 @@ type AIGatewayRouteRule struct {
 	// https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
 	//
 	// When multiple backends are specified, this must not contain backends with kind=InferencePool.  TODO: enforce this in the validation.
-	// When the only one spcified backend is of kind=InferencePool, users are required to manually
+	// When the only one specified backend is of kind=InferencePool, users are required to manually
 	// configure the "endpoint picker" extensions to actually route the traffic to the serving endpoints.
 	//
 	// +optional

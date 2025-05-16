@@ -414,7 +414,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
   required="false"
-  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />By configuring multiple backends, you can achieve the fallback behavior in the case of<br />the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
+  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />By configuring multiple backends, you can achieve the fallback behavior in the case of<br />the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.<br />When multiple backends are specified, this must not contain backends with kind=InferencePool.  TODO: enforce this in the validation.<br />When the only one specified backend is of kind=InferencePool, users are required to manually<br />configure the `endpoint picker` extensions to actually route the traffic to the serving endpoints."
 /><ApiField
   name="matches"
   type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
@@ -560,7 +560,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendRef"
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
-  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
+  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be either a Backend resource of Envoy Gateway or InferencePool of the Inference Extension API.<br />Note that k8s Service will be supported as a backend in the future.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](#localobjectreference)"

@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -291,18 +292,43 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 	}
 }
 
+func extractBackendNameFromAttributes(attributes *structpb.Struct) (string, error) {
+	// This should contain the endpoint metadata.
+	hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
+	if !ok {
+		return "", errors.New("missing xds.upstream_host_metadata in request")
+	}
+
+	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
+	var metadata corev3.Metadata
+	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+	if err != nil {
+		panic(err)
+	}
+
+	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
+	if !ok {
+		return "", errors.New("missing aigateawy.envoy.io metadata")
+	}
+	backendNameRaw, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
+	if !ok {
+		return "", errors.New("missing backend_name in endpoint metadata")
+	}
+	return backendNameRaw.GetStringValue(), nil
+}
+
 // setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
 // if the processor is an upstream filter.
 func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest, reqHeaders map[string]string) (*extprocv3.ProcessingResponse, error) {
 	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
 	var backendName string
+	var err error
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		selectedRouteValue, ok := reqHeaders[s.config.selectedRouteHeaderKey]
 		if ok {
-			// Example of the selected route value:
-			// "%s-rule-%d-inferencepool=%s.%s"
-			if index := strings.Index(selectedRouteValue, "="); index >= 0 {
-				backendName = selectedRouteValue[index+1:]
+			// On the InferencePool target route, the selected route value should contain the backend name.
+			if index := strings.Index(selectedRouteValue, "inferencepool="); index >= 0 {
+				backendName = selectedRouteValue[index+len("inferencepool="):]
 				goto ok
 			}
 		}
@@ -323,29 +349,10 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 		}
 		// Otherwise, this is a bug of either Envoy or control plane.
 		return nil, status.Error(codes.Internal, "missing attributes in request")
-	} else {
-		// This should contain the endpoint metadata.
-		hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
-		if !ok {
-			return nil, status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
-		}
-
-		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-		var metadata corev3.Metadata
-		err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-		if err != nil {
-			panic(err)
-		}
-
-		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
-		if !ok {
-			return nil, status.Error(codes.Internal, "missing aigateawy.envoy.io metadata")
-		}
-		backendNameRaw, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
-		if !ok {
-			return nil, status.Error(codes.Internal, "missing backend_name in endpoint metadata")
-		}
-		backendName = backendNameRaw.GetStringValue()
+	}
+	backendName, err = extractBackendNameFromAttributes(attributes)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot extract backend name from attributes: %v", err)
 	}
 
 ok:
