@@ -25,7 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -267,8 +266,26 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-func routeName(aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) filterapi.RouteRuleName {
-	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex))
+// routeRuleName generates a unique name for the route rule based on the AIGatewayRoute name and the rule index.
+// The returned name is used to route requests to the correct Envoy cluster which consists of one or more backends.
+func (c *AIGatewayRouteController) routeRuleName(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) (
+	rn filterapi.RouteRuleName, isInferencePool bool, err error,
+) {
+	rule := &aiGatewayRoute.Spec.Rules[ruleIndex]
+	if len(rule.BackendRefs) == 1 {
+		backend, err := c.backend(ctx, aiGatewayRoute.Namespace, rule.BackendRefs[0].Name)
+		if err != nil {
+			return "", false, fmt.Errorf("failed to get AIServiceBackend %s: %w", rule.BackendRefs[0].Name, err)
+		}
+		if ptr.Deref(backend.Spec.BackendRef.Kind, "Service") == "InferencePool" {
+			// When the backend is an inference pool, we need to include the unique backend name in the route rule name.
+			// That allows the upstream external processor to know which backend it's routing to since for inference pool,
+			// it uses ORIGINAL_DST cluster instead of normal load balancing.
+			return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d-inferencepool=%s.%s",
+				aiGatewayRoute.Name, ruleIndex, backend.Name, backend.Namespace)), true, nil
+		}
+	}
+	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex)), false, nil
 }
 
 // reconcileExtProcConfigMap updates the external processor configmap with the new AIGatewayRoute.
@@ -293,29 +310,27 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			}
 			b := &filterapi.Backend{Name: key}
 			backends[key] = b
-			if isInferencePoolRef(backendRef) {
-				c.logger.Info("TODO: inference pool ref not supported yet",
-					"namespace", aiGatewayRoute.Namespace, "name", backendRef.Name)
-			} else {
-				var backendObj *aigv1a1.AIServiceBackend
-				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+			var backendObj *aigv1a1.AIServiceBackend
+			backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+			if err != nil {
+				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
+			}
+			b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
+			b.Schema.Version = backendObj.Spec.APISchema.Version
+			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
+				volumeName := backendSecurityPolicyVolumeName(
+					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
+				)
+				b.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
 				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
-				}
-				b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-				b.Schema.Version = backendObj.Spec.APISchema.Version
-				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-					volumeName := backendSecurityPolicyVolumeName(
-						i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
-					)
-					b.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
-					if err != nil {
-						return fmt.Errorf("failed to create backend auth: %w", err)
-					}
+					return fmt.Errorf("failed to create backend auth: %w", err)
 				}
 			}
 		}
-		ec.Rules[i].Name = routeName(aiGatewayRoute, i)
+		ec.Rules[i].Name, _, err = c.routeRuleName(ctx, aiGatewayRoute, i)
+		if err != nil {
+			return fmt.Errorf("failed to get route name: %w", err)
+		}
 		ec.Rules[i].Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 		for j, match := range rule.Matches {
 			ec.Rules[i].Headers[j].Name = match.Headers[0].Name
@@ -436,37 +451,55 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	}}
 	var rules []gwapiv1.HTTPRouteRule
 	for i, rule := range aiGatewayRoute.Spec.Rules {
-		routeName := routeName(aiGatewayRoute, i)
 		var backendRefs []gwapiv1.HTTPBackendRef
 		timeouts := rule.Timeouts
+		rn, isInferencePool, err := c.routeRuleName(ctx, aiGatewayRoute, i)
+		if err != nil {
+			return fmt.Errorf("failed to get route name: %w", err)
+		}
 		for i := range rule.BackendRefs {
 			br := &rule.BackendRefs[i]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			if isInferencePoolRef(br) {
-				c.logger.Info("TODO: inference pool ref not supported yet",
-					"namespace", aiGatewayRoute.Namespace, "name", br.Name)
+			var backendRef gwapiv1.BackendObjectReference
+			if isInferencePool {
+				brName := br.Name + "-inferencepool"
+				if err := c.ensureDummyBackendExists(ctx, aiGatewayRoute, brName); err != nil {
+					return fmt.Errorf("failed to ensure dummy backend exists: %w", err)
+				}
+				backendRef = gwapiv1.BackendObjectReference{
+					Name:      gwapiv1.ObjectName(brName),
+					Namespace: ptr.To(gwapiv1.Namespace(aiGatewayRoute.Namespace)),
+					Kind:      ptr.To(gwapiv1.Kind("Backend")),
+					Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+				}
 			} else {
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 				if err != nil {
 					return fmt.Errorf("AIServiceBackend %s not found", dstName)
 				}
-				backendRefs = append(backendRefs,
-					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
-						BackendObjectReference: backend.Spec.BackendRef,
-						Weight:                 br.Weight,
-					}},
-				)
+				backendRef = backend.Spec.BackendRef
 				// If the rule level timeout is not set AND there are multiple backends with deprecated timeouts,
 				// use the first one.
 				timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 			}
+			backendRefs = append(backendRefs,
+				gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
+					BackendObjectReference: backendRef,
+					Weight:                 br.Weight,
+				}},
+			)
+		}
+		_rewriteFilters := rewriteFilters
+		if isInferencePool {
+			// Inference pool backend does not need the host rewrite filter.
+			_rewriteFilters = nil
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
+				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(rn)}}},
 			},
-			Filters:  rewriteFilters,
+			Filters:  _rewriteFilters,
 			Timeouts: timeouts,
 		})
 	}
@@ -661,40 +694,20 @@ func (c *AIGatewayRouteController) mountBackendSecurityPolicySecrets(ctx context
 		rule := &aiGatewayRoute.Spec.Rules[i]
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
-			if isInferencePoolRef(backendRef) {
-				_, referencedAIServiceBackends, err := c.getPoolAndReferencedAIServiceBackends(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get pool and referenced AIServiceBackends: %w", err)
-				}
-				for k := range referencedAIServiceBackends {
-					backend := &referencedAIServiceBackends[k]
-					if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-						volumeName := backendSecurityPolicyForInferencePoolVolumeName(i, j, k, string(backend.Spec.BackendSecurityPolicyRef.Name))
-						volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
-							string(backend.Spec.BackendSecurityPolicyRef.Name), volumeName)
-						if err != nil {
-							return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
-						}
-						spec.Volumes = append(spec.Volumes, volume)
-						container.VolumeMounts = append(container.VolumeMounts, volumeMount)
-					}
-				}
-			} else {
-				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
-				}
+			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get backend %s: %w", backendRef.Name, err)
+			}
 
-				if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
-					volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
-					volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
-						string(backendSecurityPolicyRef.Name), volumeName)
-					if err != nil {
-						return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
-					}
-					spec.Volumes = append(spec.Volumes, volume)
-					container.VolumeMounts = append(container.VolumeMounts, volumeMount)
+			if backendSecurityPolicyRef := backend.Spec.BackendSecurityPolicyRef; backendSecurityPolicyRef != nil {
+				volumeName := backendSecurityPolicyVolumeName(i, j, string(backend.Spec.BackendSecurityPolicyRef.Name))
+				volume, volumeMount, err := c.backendSecurityPolicyVolumes(ctx, aiGatewayRoute.Namespace,
+					string(backendSecurityPolicyRef.Name), volumeName)
+				if err != nil {
+					return nil, fmt.Errorf("failed to populate backend security policy volume: %w", err)
 				}
+				spec.Volumes = append(spec.Volumes, volume)
+				container.VolumeMounts = append(container.VolumeMounts, volumeMount)
 			}
 		}
 	}
@@ -757,11 +770,6 @@ func (c *AIGatewayRouteController) backendSecurityPolicy(ctx context.Context, na
 	return backendSecurityPolicy, nil
 }
 
-func backendSecurityPolicyForInferencePoolVolumeName(ruleIndex, backendRefIndex, inPoolIndex int, name string) string {
-	// Note: do not use "." as it's not allowed in the volume name.
-	return fmt.Sprintf("rule%d-backref%d-inpool%d-%s", ruleIndex, backendRefIndex, inPoolIndex, name)
-}
-
 func backendSecurityPolicyVolumeName(ruleIndex, backendRefIndex int, name string) string {
 	// Note: do not use "." as it's not allowed in the volume name.
 	return fmt.Sprintf("rule%d-backref%d-%s", ruleIndex, backendRefIndex, name)
@@ -779,143 +787,29 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	}
 }
 
-// getPoolAndReferencedAIServiceBackends returns the InferencePool and the referenced AIServiceBackends via its selector.
-//
-// The returned AIServiceBackends are sorted by name for the deterministic behavior.
-func (c *AIGatewayRouteController) getPoolAndReferencedAIServiceBackends(ctx context.Context, inferencePoolNamespace, inferencePoolName string) (
-	*gwaiev1a2.InferencePool, []aigv1a1.AIServiceBackend, error,
-) {
-	// Find the referenced InferencePool.
-	var pool gwaiev1a2.InferencePool
-	if err := c.client.Get(ctx, client.ObjectKey{Name: inferencePoolName, Namespace: inferencePoolNamespace}, &pool); err != nil {
-		return nil, nil, fmt.Errorf("failed to get InferencePool %s: %w", inferencePoolName, err)
-	}
-
-	// Gather the AIServiceBackend from the pool.Spec.Selector.
-	labels := make(client.MatchingLabels, len(pool.Spec.Selector))
-	for k, v := range pool.Spec.Selector {
-		labels[string(k)] = string(v)
-	}
-	var aiServiceBackends aigv1a1.AIServiceBackendList
-	if err := c.client.List(ctx, &aiServiceBackends, labels); err != nil {
-		return nil, nil, fmt.Errorf("failed to list AIServiceBackends: %w", err)
-	}
-	sort.Slice(aiServiceBackends.Items, func(i, j int) bool {
-		return aiServiceBackends.Items[i].Name < aiServiceBackends.Items[j].Name
-	})
-	return &pool, aiServiceBackends.Items, nil
-}
-
-func (c *AIGatewayRouteController) createDynamicLoadBalancing(ctx context.Context,
-	ruleIndex, backendRefIndex int,
-	pool *gwaiev1a2.InferencePool,
-	referencedAIServiceBackends []aigv1a1.AIServiceBackend,
-) (*filterapi.DynamicLoadBalancing, error) {
-	ret := &filterapi.DynamicLoadBalancing{Backends: make([]filterapi.DynamicLoadBalancingBackend, len(referencedAIServiceBackends))}
-	var err error
-	for i, b := range referencedAIServiceBackends {
-		sp := b.Spec
-		dynB := filterapi.DynamicLoadBalancingBackend{
-			Port: pool.Spec.TargetPortNumber,
-			Backend: filterapi.Backend{
-				Name: b.Name,
-				Schema: filterapi.VersionedAPISchema{
-					Name:    filterapi.APISchemaName(b.Spec.APISchema.Name),
-					Version: b.Spec.APISchema.Version,
+func (c *AIGatewayRouteController) ensureDummyBackendExists(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute, backendName string) error {
+	backend := egv1a1.Backend{}
+	if err := c.client.Get(ctx, client.ObjectKey{Name: backendName, Namespace: aiGatewayRoute.Namespace}, &backend); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get AIServiceBackend %s: %w", backendName, err)
+		}
+		backend = egv1a1.Backend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      backendName,
+				Namespace: aiGatewayRoute.Namespace,
+			},
+			Spec: egv1a1.BackendSpec{
+				Endpoints: []egv1a1.BackendEndpoint{
+					{FQDN: &egv1a1.FQDNEndpoint{Hostname: "foo.com", Port: 80}},
 				},
 			},
 		}
-		if bspRef := b.Spec.BackendSecurityPolicyRef; bspRef != nil {
-			volumeName := backendSecurityPolicyForInferencePoolVolumeName(
-				ruleIndex, backendRefIndex, i, string(bspRef.Name))
-			dynB.Backend.Auth, err = c.bspToFilterAPIAuth(ctx, pool.Namespace, string(bspRef.Name), volumeName)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create backend auth: %w", err)
-			}
+		if err := ctrlutil.SetControllerReference(aiGatewayRoute, &backend, c.client.Scheme()); err != nil {
+			return fmt.Errorf("failed to set controller reference for backend: %w", err)
 		}
-		clientObjectKey := client.ObjectKey{Name: string(sp.BackendRef.Name), Namespace: pool.Namespace}
-		if sp.BackendRef.Namespace != nil {
-			clientObjectKey.Namespace = string(*sp.BackendRef.Namespace)
-		}
-		// TODO: better check sp.BackendRef.Group as well?
-		switch ptr.Deref(sp.BackendRef.Kind, "Service") {
-		case "Service": // TODO: we should reconcile Service objects to update the section created below when the Service changes.
-			var svc *corev1.Service
-			svc, err = c.kube.CoreV1().Services(clientObjectKey.Namespace).Get(ctx, clientObjectKey.Name, metav1.GetOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("failed to get Service '%s': %w", clientObjectKey.String(), err)
-			}
-			hasTargetPort := false
-			for _, p := range svc.Spec.Ports {
-				if p.Port == pool.Spec.TargetPortNumber {
-					hasTargetPort = true
-					break
-				}
-			}
-			if !hasTargetPort {
-				return nil, fmt.Errorf("port %d not found in Service %s", pool.Spec.TargetPortNumber, sp.BackendRef.Name)
-			}
-			// TODO: at the moment, we assume that all target services are local, i.e. no externalName, etc.
-			//
-			// Note: do not resolve the (pod) IPs at this level which will be resolved by the external processor since
-			// this is the reconciliation subroutine happening when AIServiceBackend (or its transitive referencing resources)
-			// changes.
-			//
-			// This means that if the service is headless, the external processor will resolve the Pod IPs, otherwise
-			// the static cluster IP.
-			//
-			// TODO: we assume that the cluster domain is "cluster.local" which is the default in Kubernetes.
-			// 	Read /etc/resolv.conf and use the search domain to add the suffix instead of hardcoding it.
-			dynB.Hostnames = append(dynB.Hostnames, fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace))
-		case "Backend": // TODO: we should reconcile Backend objects to update the section created below when the Backend changes.
-			var backend egv1a1.Backend
-			if err := c.client.Get(ctx, clientObjectKey, &backend); err != nil {
-				return nil, fmt.Errorf("failed to get Backend '%s': %w", clientObjectKey.String(), err)
-			}
-			for _, ep := range backend.Spec.Endpoints {
-				switch {
-				case ep.IP != nil:
-					if ep.IP.Port != pool.Spec.TargetPortNumber {
-						return nil, fmt.Errorf("port mismatch: InferecePool %s has port %d, but Backend %s has port %d",
-							pool.Name, pool.Spec.TargetPortNumber, backend.Name, ep.IP.Port)
-					}
-					dynB.IPs = append(dynB.IPs, ep.IP.Address)
-				case ep.FQDN != nil:
-					if ep.FQDN.Port != pool.Spec.TargetPortNumber {
-						return nil, fmt.Errorf("port mismatch: InferecePool %s has port %d, but Backend %s has port %d",
-							pool.Name, pool.Spec.TargetPortNumber, backend.Name, ep.FQDN.Port)
-					}
-					dynB.Hostnames = append(dynB.Hostnames, ep.FQDN.Hostname)
-				default:
-					return nil, fmt.Errorf("invalid backend endpoint: %v", ep)
-				}
-			}
-		}
-		ret.Backends[i] = dynB
-	}
-
-	// Gather the models that belong to the pool.
-	var models gwaiev1a2.InferenceModelList
-	if err := c.client.List(ctx, &models, client.MatchingFields{
-		k8sClientIndexInferencePoolToReferencingInferenceModel: fmt.Sprintf("%s.%s", pool.Name, pool.Namespace),
-	}); err != nil {
-		return nil, fmt.Errorf("failed to list InferenceModels: %w", err)
-	}
-	for _, model := range models.Items {
-		ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: model.Spec.ModelName})
-		for _, targetModel := range model.Spec.TargetModels {
-			var weight *int
-			if targetModel.Weight != nil {
-				_weight := int(*targetModel.Weight)
-				weight = &_weight
-			}
-			ret.Models = append(ret.Models, filterapi.DynamicLoadBalancingModel{Name: targetModel.Name, Weight: weight})
+		if err := c.client.Create(ctx, &backend); err != nil {
+			return fmt.Errorf("failed to create backend: %w", err)
 		}
 	}
-	return ret, nil
-}
-
-// isInferencePoolRef returns true if AIGatewayRouteRuleBackendRef references an InferencePool reference.
-func isInferencePoolRef(ref *aigv1a1.AIGatewayRouteRuleBackendRef) bool {
-	return ref.Kind != nil && *ref.Kind == aigv1a1.AIGatewayRouteRuleBackendRefInferencePool
+	return nil
 }

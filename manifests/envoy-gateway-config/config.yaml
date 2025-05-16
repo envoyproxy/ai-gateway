@@ -44,7 +44,6 @@ data:
       hooks:
         xdsTranslator:
           post:
-            - VirtualHost
             - Translation
       service:
         fqdn:

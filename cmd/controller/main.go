@@ -31,7 +31,6 @@ func parseAndValidateFlags(args []string) (
 	enableLeaderElection bool,
 	logLevel zapcore.Level,
 	extensionServerPort string,
-	enableInfExt bool,
 	err error,
 ) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
@@ -61,11 +60,6 @@ func parseAndValidateFlags(args []string) (
 		":1063",
 		"gRPC port for the extension server",
 	)
-	enableInfExtPtr := fs.Bool(
-		"enableInferenceExtension",
-		false,
-		"Enable the Gateway Inference Extetension. When enabling this, the CRDs for the InferenceModel and InferencePool must be installed prior to starting the controller.",
-	)
 
 	if err = fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -83,7 +77,7 @@ func parseAndValidateFlags(args []string) (
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
 		return
 	}
-	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, *enableInfExtPtr, nil
+	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, nil
 }
 
 func main() {
@@ -94,7 +88,6 @@ func main() {
 		flagEnableLeaderElection,
 		zapLogLevel,
 		flagExtensionServerPort,
-		enableInfExt,
 		err := parseAndValidateFlags(os.Args[1:])
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
@@ -145,7 +138,6 @@ func main() {
 		ExtProcImage:         flagExtProcImage,
 		ExtProcLogLevel:      flagExtProcLogLevel,
 		EnableLeaderElection: flagEnableLeaderElection,
-		EnableInfExt:         enableInfExt,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

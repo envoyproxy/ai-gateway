@@ -211,6 +211,18 @@ type AIGatewayRouteRule struct {
 	// Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
 	// https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
 	//
+	// When multiple backends are specified, this must not contain backends with kind=InferencePool. (TODO: enforce this in the validation.)
+	// When the only one specified backend is of kind=InferencePool, users are required to manually
+	// configure the "endpoint picker" (epp) to actually route the traffic to the serving endpoints.
+	// Envoy AI Gateway will expect these epp to set the special header "x-gateway-destination-endpoint"
+	// with the value "<ip>:<port>" to route the traffic to the correct endpoint. Envoy AI Gateway's role
+	// here is to provide the necessary transformation of the request and response, and not to choose
+	// the actual serving endpoint. As a very simple example, you can insert your own Lua script to choose the
+	// serving endpoint based on the request content, and set the "x-gateway-destination-endpoint: <ip>:<port>"
+	// header to route the traffic to the correct endpoint.
+	// Note that this is an experimental feature and also the implementation detail of the Envoy AI Gateway, so
+	// this is subject to change in the future.
+	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	BackendRefs []AIGatewayRouteRuleBackendRef `json:"backendRefs,omitempty"`
@@ -229,30 +241,8 @@ type AIGatewayRouteRule struct {
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
 }
 
-// AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
-type AIGatewayRouteRuleBackendRefKind string
-
-const (
-	// AIGatewayRouteRuleBackendRefAIServiceBackend is the kind of the AIServiceBackend.
-	AIGatewayRouteRuleBackendRefAIServiceBackend AIGatewayRouteRuleBackendRefKind = "AIServiceBackend"
-	// AIGatewayRouteRuleBackendRefInferencePool is the kind of the InferencePool in the Gateway API Inference Extension.
-	// https://github.com/kubernetes-sigs/gateway-api-inference-extension
-	AIGatewayRouteRuleBackendRefInferencePool AIGatewayRouteRuleBackendRefKind = "InferencePool"
-)
-
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 type AIGatewayRouteRuleBackendRef struct {
-	// Kind is the kind of the backend, which is either "AIServiceBackend" or "InferencePool" in Gateway API Inference Extension.
-	//
-	// When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-	// that can serve the same model sets that the InferencePool binds.
-	//
-	// Default is AIServiceBackend.
-	//
-	// +kubebuilder:validation:Enum=AIServiceBackend;InferencePool
-	// +kubebuilder:default=AIServiceBackend
-	Kind *AIGatewayRouteRuleBackendRefKind `json:"kind,omitempty"`
-
 	// Name is the name of the AIServiceBackend.
 	//
 	// +kubebuilder:validation:Required
@@ -367,8 +357,10 @@ type AIServiceBackendSpec struct {
 	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
-	// A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
-	// as a backend in the future.
+	// A backend must be either a Backend resource of Envoy Gateway or InferencePool of the Inference Extension API.
+	// When it is an InferencePoo, see the comment on the AIGatewayRouteRule.BackendRefs field for more details.
+	//
+	// Note that k8s Service will be supported as a backend in the future.
 	//
 	// This is required to be set.
 	//

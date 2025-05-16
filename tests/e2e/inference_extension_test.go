@@ -19,9 +19,13 @@ import (
 )
 
 func Test_Examples_InferenceExtension(t *testing.T) {
-	t.Skip("TODO")
-	const manifest = "../../examples/inference_extension/inference_extension.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	for _, manifest := range []string{
+		"../../examples/inference_extension/inference_extension.yaml",
+		"../../examples/inference_extension/patch_policy.yaml",
+		"../../examples/inference_extension/endpoint_picker.yaml",
+	} {
+		require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	}
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-extension-example"
 	requireWaitForPodReady(t, egNamespace, egSelector)
