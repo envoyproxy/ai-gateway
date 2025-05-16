@@ -14,6 +14,11 @@ This guide will walk you through installing Envoy AI Gateway and its required co
 The easiest way to install Envoy AI Gateway is using the Helm chart. First, install the AI Gateway Helm chart and wait for the deployment to be ready:
 
 ```shell
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crd-helm \
+    --version v0.0.0-latest \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace
+
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
     --version v0.0.0-latest \
     --namespace envoy-ai-gateway-system \
