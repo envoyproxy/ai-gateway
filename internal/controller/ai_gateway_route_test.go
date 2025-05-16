@@ -423,26 +423,28 @@ func Test_newHTTPRoute(t *testing.T) {
 					}},
 				},
 			}
-			require.Len(t, httpRoute.Spec.Rules, 5) // 4 rules + 1 for the default rule.
-			for i, r := range httpRoute.Spec.Rules {
+			expRulesCount := len(expRules) + 1 // + 1 for the default rule.
+			require.Len(t, httpRoute.Spec.Rules, expRulesCount)
+			t.Run("default-rule", func(t *testing.T) {
+				actualDefaultRule := httpRoute.Spec.Rules[expRulesCount-1]
+				require.Empty(t, actualDefaultRule.BackendRefs)
+				require.NotNil(t, actualDefaultRule.Matches[0].Path)
+				require.Equal(t, "/", *actualDefaultRule.Matches[0].Path.Value)
+			})
+			for i, r := range httpRoute.Spec.Rules[:expRulesCount-1] {
 				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-					if i == 4 {
-						require.Empty(t, r.BackendRefs)
-						require.NotNil(t, r.Matches[0].Path)
-						require.Equal(t, "/", *r.Matches[0].Path.Value)
+					require.Equal(t, expRules[i].Matches, r.Matches)
+					require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
+					require.Equal(t, expRules[i].Timeouts, r.Timeouts)
+					if i < expRulesCount-2 {
+						// Each rule should have a host rewrite filter by default.
+						require.Len(t, r.Filters, 1)
+						require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+						require.NotNil(t, r.Filters[0].ExtensionRef)
+						require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
 					} else {
-						require.Equal(t, expRules[i].Matches, r.Matches)
-						require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
-						require.Equal(t, expRules[i].Timeouts, r.Timeouts)
-						if i < 3 {
-							// Each rule should have a host rewrite filter by default.
-							require.Len(t, r.Filters, 1)
-							require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-							require.NotNil(t, r.Filters[0].ExtensionRef)
-							require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
-						} else {
-							require.Empty(t, r.Filters)
-						}
+						// Except for the filter for the last rule, which is an inference pool.
+						require.Empty(t, r.Filters)
 					}
 				})
 			}
@@ -682,10 +684,10 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 					}},
 					{
 						Name: "dragon.ns", Auth: &filterapi.BackendAuth{
-							AzureAuth: &filterapi.AzureAuth{
-								Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
-							},
-						}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+						AzureAuth: &filterapi.AzureAuth{
+							Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+						},
+					}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
 					},
 					{Name: "pen.ns", Auth: &filterapi.BackendAuth{
 						AWSAuth: &filterapi.AWSAuth{
