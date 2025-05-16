@@ -89,13 +89,13 @@ spec:
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
 metadata:
-  name: inference-extension-example
+  name: inference-extension-example-model
 spec:
   modelName: mistral:latest
   criticality: Critical
   poolRef:
     # Bind the InferenceModel to the InferencePool.
-    name: inference-extension-example-backend
+    name: inference-extension-example-pool
 ---
 apiVersion: v1
 kind: Service

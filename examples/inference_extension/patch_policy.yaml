@@ -46,7 +46,7 @@ spec:
       name: default/inference-extension-example/http
       operation:
         op: add
-        path: "/default_filter_chain/filters/0/typed_config/http_filters/-2"
+        path: "/default_filter_chain/filters/0/typed_config/http_filters/1"
         value:
           name: "envoy.filters.http.ext_proc/inference-extension-endpoint-picker"
           typedConfig:

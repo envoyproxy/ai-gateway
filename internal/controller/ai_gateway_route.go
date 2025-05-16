@@ -486,12 +486,17 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				}},
 			)
 		}
+		_rewriteFilters := rewriteFilters
+		if isInferencePool {
+			// Inference pool backend does not need the host rewrite filter.
+			_rewriteFilters = nil
+		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(rn)}}},
 			},
-			Filters:  rewriteFilters,
+			Filters:  _rewriteFilters,
 			Timeouts: timeouts,
 		})
 	}

@@ -10,7 +10,7 @@ extProc:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
-  logLevel: debug
+  logLevel: info
 
 controller:
   logLevel: info
