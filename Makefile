@@ -301,4 +301,5 @@ helm-test: helm-package
 .PHONY: helm-push
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
+	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crd-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
 	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
