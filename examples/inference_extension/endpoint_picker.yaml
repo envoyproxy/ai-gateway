@@ -1,0 +1,108 @@
+# Derived from https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v0.3.0/config/manifests/inferencepool-resources.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-extension-example-endpoint-picker
+  namespace: default
+spec:
+  selector:
+    app: inference-extension-example-endpoint-picker
+  ports:
+    - protocol: TCP
+      port: 9002
+      targetPort: 9002
+      appProtocol: http2
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-extension-example-endpoint-picker
+  namespace: default
+  labels:
+    app: inference-extension-example-endpoint-picker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-extension-example-endpoint-picker
+  template:
+    metadata:
+      labels:
+        app: inference-extension-example-endpoint-picker
+    spec:
+      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
+      terminationGracePeriodSeconds: 130
+      containers:
+        - name: epp
+          image: registry.k8s.io/gateway-api-inference-extension/epp:v0.3.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -poolName
+            - "inference-extension-example-pool"
+            - -grpcPort
+            - "9002"
+            - -secureServing=false
+          env:
+            - name: USE_STREAMING
+              value: "true"
+          ports:
+            - containerPort: 9002
+            - containerPort: 9003
+            - name: metrics
+              containerPort: 9090
+          livenessProbe:
+            grpc:
+              port: 9003
+              service: inference-extension
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            grpc:
+              port: 9003
+              service: inference-extension
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read
+rules:
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferencemodels"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read-binding
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: pod-read

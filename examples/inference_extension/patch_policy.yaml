@@ -1,0 +1,59 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: inference-extension-endpoint-picker
+  namespace: default
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: inference-extension-example
+  type: JSONPatch
+  jsonPatches:
+    - type: "type.googleapis.com/envoy.config.cluster.v3.Cluster"
+      name: endpoint_picker_cluster
+      operation:
+        op: add
+        path: ""
+        value:
+          name: endpoint_picker_cluster
+          connect_timeout: 0.25s
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              explicit_http_config:
+                http2_protocol_options:
+                  connection_keepalive:
+                    interval: 30s
+                    timeout: 5s
+          load_assignment:
+            cluster_name: endpoint_picker_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: inference-extension-example-endpoint-picker.default.svc.cluster.local
+                          port_value: 9002
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: default/inference-extension-example/http
+      operation:
+        op: add
+        path: "/default_filter_chain/filters/0/typed_config/http_filters/-2"
+        value:
+          name: "envoy.filters.http.ext_proc/inference-extension-endpoint-picker"
+          typedConfig:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+            grpcService:
+              envoyGrpc:
+                clusterName: endpoint_picker_cluster
+              timeout: 10s
+            processingMode:
+              requestHeaderMode: SEND
+              requestBodyMode: FULL_DUPLEX_STREAMED
+              requestTrailerMode: SEND
+              responseHeaderMode: SKIP
+              responseBodyMode: NONE
+              responseTrailerMode: SKIP
