@@ -29,7 +29,7 @@ const defaultK8sVersion = "1.31.0"
 // NewEnvTest creates a new environment for testing the controller package.
 func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.Interface) {
 	log.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
-	crdPath := filepath.Join("..", "..", "manifests", "charts", "ai-gateway-crd-helm", "templates")
+	crdPath := filepath.Join("..", "..", "manifests", "charts", "ai-gateway-crds-helm", "templates")
 	files, err := os.ReadDir(crdPath)
 	require.NoError(t, err)
 	var crds []string

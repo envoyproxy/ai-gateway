@@ -97,7 +97,7 @@ tidy:
 .PHONY: apigen
 apigen:
 	@echo "apigen => ./api/v1alpha1/..."
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crd-helm/templates
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -268,7 +268,7 @@ docker-build.%:
 docker-build:
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) docker-build.$(COMMAND_NAME);)
 
-HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crd-helm
+HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
 .PHONY: helm-lint
@@ -301,5 +301,5 @@ helm-test: helm-package
 .PHONY: helm-push
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
-	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crd-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
 	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}

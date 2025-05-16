@@ -4,7 +4,7 @@
 # the root of the repo.
 
 apiVersion: v2
-name: ai-gateway-crd-helm
+name: ai-gateway-crds-helm
 description: The Helm chart for Envoy AI Gateway CRD
 type: application
 

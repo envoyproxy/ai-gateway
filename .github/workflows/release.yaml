@@ -37,15 +37,15 @@ jobs:
       - name: Create a release candidate
         if: ${{ contains(github.ref, '-rc') }}
         run: |
-          gh release create $TAG --prerelease --title $TAG --notes "Release candidate" ./out/ai-gateway-crd-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
-          gh release upload $TAG ./out/ai-gateway-crd-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release create $TAG --prerelease --title $TAG --notes "Release candidate" ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release upload $TAG ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create a stable release
         if: ${{ !contains(github.ref, '-rc') }}
         run: |
-          gh release create $TAG --draft --title $TAG --notes "To be written by the release manager" ./out/ai-gateway-crd-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
-          gh release upload $TAG ./out/ai-gateway-crd-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release create $TAG --draft --title $TAG --notes "To be written by the release manager" ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release upload $TAG ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
