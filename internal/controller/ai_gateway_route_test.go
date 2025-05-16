@@ -331,6 +331,7 @@ func Test_newHTTPRoute(t *testing.T) {
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 						},
+						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "cat"}}},
 					},
 				},
 			}
@@ -368,6 +369,12 @@ func Test_newHTTPRoute(t *testing.T) {
 						Timeouts:   &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 					},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cat", Namespace: ns},
+					Spec: aigv1a1.AIServiceBackendSpec{
+						BackendRef: gwapiv1.BackendObjectReference{Name: "some-pool", Namespace: refNs, Kind: ptr.To[gwapiv1.Kind]("InferencePool")},
+					},
+				},
 			} {
 				err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
 				require.NoError(t, err)
@@ -403,16 +410,23 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-3"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-3-inferencepool=cat." + ns}}},
 					},
-					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}}}},
-					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{
+						BackendRef: gwapiv1.BackendRef{
+							BackendObjectReference: gwapiv1.BackendObjectReference{
+								Name: "cat-inferencepool", Namespace: ptr.To(gwapiv1.Namespace(ns)),
+								Kind:  ptr.To(gwapiv1.Kind("Backend")),
+								Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+							},
+						},
+					}},
 				},
 			}
-			require.Len(t, httpRoute.Spec.Rules, 4) // 3 rules + 1 for the default rule.
+			require.Len(t, httpRoute.Spec.Rules, 5) // 4 rules + 1 for the default rule.
 			for i, r := range httpRoute.Spec.Rules {
 				t.Run(fmt.Sprintf("rule-%d", i), func(t *testing.T) {
-					if i == 3 {
+					if i == 4 {
 						require.Empty(t, r.BackendRefs)
 						require.NotNil(t, r.Matches[0].Path)
 						require.Equal(t, "/", *r.Matches[0].Path.Value)
@@ -420,11 +434,15 @@ func Test_newHTTPRoute(t *testing.T) {
 						require.Equal(t, expRules[i].Matches, r.Matches)
 						require.Equal(t, expRules[i].BackendRefs, r.BackendRefs)
 						require.Equal(t, expRules[i].Timeouts, r.Timeouts)
-						// Each rule should have a host rewrite filter by default.
-						require.Len(t, r.Filters, 1)
-						require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
-						require.NotNil(t, r.Filters[0].ExtensionRef)
-						require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
+						if i < 3 {
+							// Each rule should have a host rewrite filter by default.
+							require.Len(t, r.Filters, 1)
+							require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, r.Filters[0].Type)
+							require.NotNil(t, r.Filters[0].ExtensionRef)
+							require.Equal(t, hostRewriteHTTPFilterName, string(r.Filters[0].ExtensionRef.Name))
+						} else {
+							require.Empty(t, r.Filters)
+						}
 					}
 				})
 			}

@@ -78,10 +78,7 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 			errs = append(errs, fmt.Errorf("%s: %w", aiGatewayRoute.Name, err))
 		}
 	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // updateAIServiceBackendStatus updates the status of the AIServiceBackend.
