@@ -278,6 +278,9 @@ func (c *AIGatewayRouteController) routeRuleName(ctx context.Context, aiGatewayR
 			return "", false, fmt.Errorf("failed to get AIServiceBackend %s: %w", rule.BackendRefs[0].Name, err)
 		}
 		if ptr.Deref(backend.Spec.BackendRef.Kind, "Service") == "InferencePool" {
+			// When the backend is an inference pool, we need to include the unique backend name in the route rule name.
+			// That allows the upstream external processor to know which backend it's routing to since for inference pool,
+			// it uses ORIGINAL_DST cluster instead of normal load balancing.
 			return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d-inferencepool=%s.%s",
 				aiGatewayRoute.Name, ruleIndex, backend.Name, backend.Namespace)), true, nil
 		}

@@ -287,9 +287,17 @@ spec:
                         Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
                         https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
 
-                        When multiple backends are specified, this must not contain backends with kind=InferencePool.  TODO: enforce this in the validation.
+                        When multiple backends are specified, this must not contain backends with kind=InferencePool. (TODO: enforce this in the validation.)
                         When the only one specified backend is of kind=InferencePool, users are required to manually
-                        configure the "endpoint picker" extensions to actually route the traffic to the serving endpoints.
+                        configure the "endpoint picker" (epp) to actually route the traffic to the serving endpoints.
+                        Envoy AI Gateway will expect these epp to set the special header "x-gateway-destination-endpoint"
+                        with the value "<ip>:<port>" to route the traffic to the correct endpoint. Envoy AI Gateway's role
+                        here is to provide the necessary transformation of the request and response, and not to choose
+                        the actual serving endpoint. As a very simple example, you can insert your own Lua script to choose the
+                        serving endpoint based on the request content, and set the "x-gateway-destination-endpoint: <ip>:<port>"
+                        header to route the traffic to the correct endpoint.
+                        Note that this is an experimental feature and also the implementation detail of the Envoy AI Gateway, so
+                        this is subject to change in the future.
                       items:
                         description: AIGatewayRouteRuleBackendRef is a reference to
                           a backend with a weight.

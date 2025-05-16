@@ -3,6 +3,8 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# This is the example deployment of the endpoint picker implementation by Inference Extension project.
+#
 # Derived from https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v0.3.0/config/manifests/inferencepool-resources.yaml
 ---
 apiVersion: v1
@@ -45,6 +47,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - -poolName
+            # This must match the pool name in the InferencePool resource in inference_extension.yaml.
             - "inference-extension-example-pool"
             - -grpcPort
             - "9002"

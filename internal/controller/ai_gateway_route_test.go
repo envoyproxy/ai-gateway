@@ -684,10 +684,10 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 					}},
 					{
 						Name: "dragon.ns", Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{
-							Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
-						},
-					}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+							},
+						}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
 					},
 					{Name: "pen.ns", Auth: &filterapi.BackendAuth{
 						AWSAuth: &filterapi.AWSAuth{

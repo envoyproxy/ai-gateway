@@ -3,6 +3,10 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# This EnvoyPatchPolicy is used to insert the endpoint picker implementation by Inference Extension project.
+#
+# See the documentation of EnvoyPatchPolicy for more details:
+# https://gateway.envoyproxy.io/docs/tasks/extensibility/envoy-patch-policy/
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyPatchPolicy
 metadata:
@@ -15,6 +19,7 @@ spec:
     name: inference-extension-example
   type: JSONPatch
   jsonPatches:
+    # This is to create a cluster for the endpoint picker Kubernetes Service.
     - type: "type.googleapis.com/envoy.config.cluster.v3.Cluster"
       name: endpoint_picker_cluster
       operation:
@@ -43,9 +48,16 @@ spec:
                           address: inference-extension-example-endpoint-picker.default.svc.cluster.local
                           port_value: 9002
     - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      # The listener name is of the form <GatewayNamespace>/<GatewayName>/<GatewayListenerName>
       name: default/inference-extension-example/http
       operation:
         op: add
+        # The parts except the last one are the same for all cases. The last "1" might depend
+        # on the number of HTTP filters in the listener. In this example, we only have 2 HTTP filters.
+        # The first one is the Envoy AI Gateway External Processor filter, and the second one is the router.
+        #
+        # We have to insert the endpoint picker filter before the router but after the Envoy AI Gateway External Processor filter,
+        # hence the "1" in the path.
         path: "/default_filter_chain/filters/0/typed_config/http_filters/1"
         value:
           name: "envoy.filters.http.ext_proc/inference-extension-endpoint-picker"
@@ -53,6 +65,7 @@ spec:
             '@type': type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
             grpcService:
               envoyGrpc:
+                # The cluster name that is created above.
                 clusterName: endpoint_picker_cluster
               timeout: 10s
             processingMode:
