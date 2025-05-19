@@ -299,13 +299,13 @@ func TestServer_setBackend(t *testing.T) {
 		md     *corev3.Metadata
 		errStr string
 	}{
-		{md: &corev3.Metadata{}, errStr: "missing aigateawy.envoy.io metadata"},
+		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
 		{
-			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {}}},
+			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {}}},
 			errStr: "missing backend_name in endpoint metadata",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
 				Fields: map[string]*structpb.Value{
 					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
 				},
@@ -313,7 +313,7 @@ func TestServer_setBackend(t *testing.T) {
 			errStr: "unknown backend: kserve",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateawy.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
 				Fields: map[string]*structpb.Value{
 					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
 				},

@@ -200,7 +200,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
 		require.NotNil(t, md)
 		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata["aigateawy.envoy.io"]
+		mmd, ok := md.FilterMetadata["aigateway.envoy.io"]
 		require.True(t, ok)
 		require.Len(t, mmd.Fields, 1)
 		require.Equal(t, "aaa.ns", mmd.Fields["backend_name"].GetStringValue())

@@ -192,7 +192,7 @@ static_resources:
                       port_value: 8080
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "testupstream-openai"
     - name: testupstream-aws
       connect_timeout: 0.25s
@@ -241,7 +241,7 @@ static_resources:
                       port_value: 8080
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "testupstream-aws"
     - name: testupstream-azure
       connect_timeout: 0.25s
@@ -291,7 +291,7 @@ static_resources:
                       port_value: 1066
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "always-failing-backend"
           - priority: 1  # Secondary.
             lb_endpoints:
@@ -302,7 +302,7 @@ static_resources:
                       port_value: 8080
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "testupstream-azure"
     - name: aws_bedrock
       connect_timeout: 30s
@@ -351,7 +351,7 @@ static_resources:
                       port_value: 1067  # Speaks TLS.
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "always-failing-backend"
           - priority: 1  # Secondary.
             lb_endpoints:
@@ -363,7 +363,7 @@ static_resources:
                       port_value: 443
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "aws-bedrock"
       transport_socket:
         name: envoy.transport_sockets.tls
@@ -417,7 +417,7 @@ static_resources:
                       port_value: 1067  # Speaks TLS.
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "always-failing-backend"
           - priority: 1  # Secondary.
             lb_endpoints:
@@ -429,7 +429,7 @@ static_resources:
                       port_value: 443
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "openai"
       transport_socket:
         name: envoy.transport_sockets.tls
@@ -483,7 +483,7 @@ static_resources:
                       port_value: 1067  # Speaks TLS.
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "always-failing-backend"
           - priority: 1  # Secondary.
             lb_endpoints:
@@ -495,7 +495,7 @@ static_resources:
                       port_value: 443
                 metadata:
                   filter_metadata:
-                    aigateawy.envoy.io:
+                    aigateway.envoy.io:
                       backend_name: "azure-openai"
       transport_socket:
         name: envoy.transport_sockets.tls

@@ -168,10 +168,10 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 			if endpoint.Metadata.FilterMetadata == nil {
 				endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
 			}
-			m, ok := endpoint.Metadata.FilterMetadata["aigateawy.envoy.io"]
+			m, ok := endpoint.Metadata.FilterMetadata["aigateway.envoy.io"]
 			if !ok {
 				m = &structpb.Struct{}
-				endpoint.Metadata.FilterMetadata["aigateawy.envoy.io"] = m
+				endpoint.Metadata.FilterMetadata["aigateway.envoy.io"] = m
 			}
 			if m.Fields == nil {
 				m.Fields = make(map[string]*structpb.Value)

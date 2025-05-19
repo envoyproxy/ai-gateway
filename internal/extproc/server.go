@@ -327,9 +327,9 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 		panic(err)
 	}
 
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateawy.envoy.io"]
+	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateway.envoy.io"]
 	if !ok {
-		return nil, status.Error(codes.Internal, "missing aigateawy.envoy.io metadata")
+		return nil, status.Error(codes.Internal, "missing aigateway.envoy.io metadata")
 	}
 	backendName, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
 	if !ok {
