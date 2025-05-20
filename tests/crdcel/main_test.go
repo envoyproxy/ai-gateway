@@ -128,11 +128,11 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{
 			name:   "azure_credentials_missing_client_id.yaml",
-			expErr: "spec.azureCredentials.clientID in body should be at least 1 chars long",
+			expErr: "spec.azureCredentials.clientCredentials.clientID in body should be at least 1 chars long",
 		},
 		{
 			name:   "azure_credentials_missing_tenant_id.yaml",
-			expErr: "spec.azureCredentials.tenantID in body should be at least 1 chars long",
+			expErr: "spec.azureCredentials.clientCredentials.tenantID in body should be at least 1 chars long",
 		},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},

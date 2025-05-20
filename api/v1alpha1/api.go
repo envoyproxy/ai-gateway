@@ -507,7 +507,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// ClientCredentials specifies the client id/secret and tenant id used to obtain azure access token.
 	//
 	// +optional
-	ClientCredentials *AzureClientCredentials `json:"azureClientCredentials,omitempty"`
+	ClientCredentials *AzureClientCredentials `json:"clientCredentials,omitempty"`
 }
 
 type AzureClientCredentials struct {
