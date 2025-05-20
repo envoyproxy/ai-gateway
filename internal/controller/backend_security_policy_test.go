@@ -375,9 +375,11 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testi
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 			AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-				ClientID:        clientID,
-				TenantID:        tenantID,
-				ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-azure-secret", Namespace: ptr.To[gwapiv1.Namespace]("default")},
+				ClientCredentials: &aigv1a1.AzureClientCredentials{
+					ClientID:        clientID,
+					TenantID:        tenantID,
+					ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-azure-secret", Namespace: ptr.To[gwapiv1.Namespace]("default")},
+				},
 			},
 		},
 	}
@@ -410,11 +412,13 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *t
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 			AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-				ClientID: clientID,
-				TenantID: tenantID,
-				ClientSecretRef: &gwapiv1.SecretObjectReference{
-					Name:      "some-azure-secret",
-					Namespace: ptr.To[gwapiv1.Namespace]("default"),
+				ClientCredentials: &aigv1a1.AzureClientCredentials{
+					ClientID: clientID,
+					TenantID: tenantID,
+					ClientSecretRef: &gwapiv1.SecretObjectReference{
+						Name:      "some-azure-secret",
+						Namespace: ptr.To[gwapiv1.Namespace]("default"),
+					},
 				},
 			},
 		},
@@ -499,9 +503,11 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecret
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 			AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-				ClientID:        clientID,
-				TenantID:        tenantID,
-				ClientSecretRef: &gwapiv1.SecretObjectReference{Name: gwapiv1.ObjectName("some-other-secret-name"), Namespace: ptr.To[gwapiv1.Namespace]("default")},
+				ClientCredentials: &aigv1a1.AzureClientCredentials{
+					ClientID:        clientID,
+					TenantID:        tenantID,
+					ClientSecretRef: &gwapiv1.SecretObjectReference{Name: gwapiv1.ObjectName("some-other-secret-name"), Namespace: ptr.To[gwapiv1.Namespace]("default")},
+				},
 			},
 		},
 	}

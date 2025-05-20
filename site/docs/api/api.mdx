@@ -310,6 +310,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureClientCredentials](#azureclientcredentials)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
@@ -721,6 +722,37 @@ and store them in a temporary credentials file.
 />
 
 
+#### AzureClientCredentials
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="clientID"
+  type="string"
+  required="true"
+  description="ClientID is a unique identifier for an application in Azure."
+/><ApiField
+  name="tenantID"
+  type="string"
+  required="true"
+  description="TenantId is a unique identifier for an Azure Active Directory instance."
+/><ApiField
+  name="clientSecretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+/>
+
+
 #### BackendSecurityPolicyAPIKey
 
 
@@ -787,20 +819,10 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 
 
 <ApiField
-  name="clientID"
-  type="string"
-  required="true"
-  description="ClientID is a unique identifier for an application in Azure."
-/><ApiField
-  name="tenantID"
-  type="string"
-  required="true"
-  description="TenantId is a unique identifier for an Azure Active Directory instance."
-/><ApiField
-  name="clientSecretRef"
-  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
-  description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+  name="azureClientCredentials"
+  type="[AzureClientCredentials](#azureclientcredentials)"
+  required="false"
+  description="ClientCredentials specifies the client id/secret and tenant id used to obtain azure access token."
 />
 
 

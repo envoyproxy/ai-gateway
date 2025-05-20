@@ -504,6 +504,13 @@ type BackendSecurityPolicyAPIKey struct {
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 type BackendSecurityPolicyAzureCredentials struct {
+	// ClientCredentials specifies the client id/secret and tenant id used to obtain azure access token.
+	//
+	// +optional
+	ClientCredentials *AzureClientCredentials `json:"azureClientCredentials,omitempty"`
+}
+
+type AzureClientCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
 	// +kubebuilder:validation:Required
