@@ -6,7 +6,7 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
-  name: dog-provider-policy
+  name: dog-provider-policy2
   namespace: default
 spec:
   type: AWSCredentials
