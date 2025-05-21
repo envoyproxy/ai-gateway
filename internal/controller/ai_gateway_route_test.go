@@ -27,7 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -223,7 +222,7 @@ func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
-	err := ApplyIndexing(t.Context(), true, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	err := ApplyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
 	})
@@ -962,10 +961,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "apple", Namespace: "ns",
-				Labels: map[string]string{"inference-pool-target:": "yeah"},
-			},
+			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
 					Name: aigv1a1.APISchemaAWSBedrock,
@@ -975,10 +971,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "pineapple", Namespace: "ns",
-				Labels: map[string]string{"inference-pool-target:": "yeah"},
-			},
+			ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
 					Name: aigv1a1.APISchemaAWSBedrock,
@@ -1009,10 +1002,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "no-security-policy", Namespace: "ns",
-				Labels: map[string]string{"inference-pool-target:": "yeah"},
-			},
+			ObjectMeta: metav1.ObjectMeta{Name: "no-security-policy", Namespace: "ns"},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: aigv1a1.VersionedAPISchema{
 					Name: aigv1a1.APISchemaAWSBedrock,
@@ -1061,25 +1051,9 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai-4"}}},
 					},
 				},
-				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "inference-pool", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
-					},
-					Matches: []aigv1a1.AIGatewayRouteRuleMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "whatever", Value: "yes"}}},
-					},
-				},
 			},
 		},
 	}
-
-	// Create an inference pool
-	require.NoError(t, fakeClient.Create(t.Context(), &gwaiev1a2.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{Name: "inference-pool", Namespace: "ns"},
-		Spec: gwaiev1a2.InferencePoolSpec{
-			Selector: map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{"inference-pool-target:": "yeah"},
-		},
-	}, &client.CreateOptions{}))
 
 	spec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
@@ -1104,9 +1078,9 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	updatedSpec, err := c.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	// Volumes and volume mounts start with one configmap, and then 6 more for the security policies.
-	require.Len(t, updatedSpec.Volumes, 7)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 7)
+	// Volumes and volume mounts start with one configmap, and then 4 more for the security policies.
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	// Ensure that all security policies are mounted correctly.
 	for i, tc := range []struct {
 		name       string
@@ -1138,18 +1112,6 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			volumeName: "rule3-backref0-some-other-backend-security-policy-4",
 			mountPath:  "/etc/backend_security_policy/rule3-backref0-some-other-backend-security-policy-4",
 		},
-		{
-			name:       "InfernecePool.Ref[0]",
-			secretName: "some-secret-policy-1",
-			volumeName: "rule4-backref0-inpool0-some-other-backend-security-policy-1",
-			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool0-some-other-backend-security-policy-1",
-		},
-		{
-			name:       "InfernecePool.Ref[2]",
-			secretName: "some-secret-policy-3",
-			volumeName: "rule4-backref0-inpool2-some-other-backend-security-policy-aws",
-			mountPath:  "/etc/backend_security_policy/rule4-backref0-inpool2-some-other-backend-security-policy-aws",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			index := i + 1 // +1 to skip the configmap volume.
@@ -1164,10 +1126,7 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 
 	// Update to new security policy.
 	backend := aigv1a1.AIServiceBackend{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "apple", Namespace: "ns",
-			Labels: map[string]string{"inference-pool-target:": "yeah"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns"},
 		Spec: aigv1a1.AIServiceBackendSpec{
 			APISchema: aigv1a1.VersionedAPISchema{
 				Name: aigv1a1.APISchemaAWSBedrock,
@@ -1183,8 +1142,8 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 	updatedSpec, err = c.mountBackendSecurityPolicySecrets(t.Context(), &spec, &aiGateway)
 	require.NoError(t, err)
 
-	require.Len(t, updatedSpec.Volumes, 7)
-	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 7)
+	require.Len(t, updatedSpec.Volumes, 5)
+	require.Len(t, updatedSpec.Containers[0].VolumeMounts, 5)
 	require.Equal(t, "some-secret-policy-2", updatedSpec.Volumes[1].VolumeSource.Secret.SecretName)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Volumes[1].Name)
 	require.Equal(t, "rule0-backref0-some-other-backend-security-policy-2", updatedSpec.Containers[0].VolumeMounts[1].Name)
