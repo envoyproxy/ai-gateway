@@ -172,8 +172,8 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 
 	server := root.GetRootCommand()
 	egOut := &bytes.Buffer{}
-	server.SetOut(os.Stdout)
-	server.SetErr(os.Stdout)
+	server.SetOut(egOut)
+	server.SetErr(egOut)
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
