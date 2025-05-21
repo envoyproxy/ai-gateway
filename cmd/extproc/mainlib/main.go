@@ -39,7 +39,7 @@ type extProcFlags struct {
 	configPath  string     // path to the configuration file.
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
-	metricsPort int        // HTTP address for the metrics server.
+	metricsPort int        // HTTP port for the metrics server.
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.

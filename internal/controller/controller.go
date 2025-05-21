@@ -142,14 +142,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
 	}
 
-	mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{
-		Handler: newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
-			logger.WithName("gateway-mutator"),
-			options.ExtProcImage, options.ExtProcLogLevel,
-			options.EnvoyGatewaySystemNamespace,
-			options.UDSPath,
-		),
-	})
+	if srv := mgr.GetWebhookServer(); srv != nil { // This if-statement is mainly for the controller testing.
+		srv.Register("/mutate", &webhook.Admission{
+			Handler: newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
+				logger.WithName("gateway-mutator"),
+				options.ExtProcImage, options.ExtProcLogLevel,
+				options.EnvoyGatewaySystemNamespace,
+				options.UDSPath,
+			),
+		})
+	}
 
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
 		return fmt.Errorf("failed to start controller manager: %w", err)
@@ -170,6 +172,8 @@ func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Bui
 }
 
 const (
+	// k8sClientIndexAIGatewayRouteToAttachedGateway is the index name that maps from a Gateway to the
+	// AIGatewayRoute that attaches to it.
 	k8sClientIndexAIGatewayRouteToAttachedGateway = "GWAPIGatewayToReferencingAIGatewayRoute"
 	// k8sClientIndexSecretToReferencingBackendSecurityPolicy is the index name that maps
 	// from a Secret to the BackendSecurityPolicy that references it.
