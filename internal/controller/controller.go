@@ -70,9 +70,6 @@ type (
 	// syncBackendSecurityPolicyFn is a function that syncs a BackendSecurityPolicy. This is used to cross the controller boundary
 	// from Secret to BackendSecurityPolicy when a Secret is referenced by a BackendSecurityPolicy.
 	syncBackendSecurityPolicyFn func(context.Context, *aigv1a1.BackendSecurityPolicy) error
-	// syncInferencePoolFn is a function that syncs an InferencePool. This is used to cross the controller boundary
-	// from InferenceModel to InferencePool when an InferenceModel is referenced by an InferencePool.
-	syncInferencePoolFn func(context.Context, *gwaiev1a2.InferencePool) error
 )
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -110,24 +107,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
-	}
-
-	if options.EnableInfExt {
-		inferencePoolC := newInferencePoolController(c,
-			kubernetes.NewForConfigOrDie(config), logger.WithName("inference-pool"),
-			routeC.syncAIGatewayRoute)
-		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
-			Complete(inferencePoolC); err != nil {
-			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
-		}
-
-		inferenceModelC := newInferenceModelController(c,
-			kubernetes.NewForConfigOrDie(config), logger.WithName("inference-model"),
-			inferencePoolC.syncInferencePool)
-		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferenceModel{}).
-			Complete(inferenceModelC); err != nil {
-			return fmt.Errorf("failed to create controller for InferenceModel: %w", err)
-		}
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
