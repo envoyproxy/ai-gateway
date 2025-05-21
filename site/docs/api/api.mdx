@@ -310,7 +310,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureClientCredentials](#azureclientcredentials)
+- [AzureApplicationIdentity](#azureapplicationidentity)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
@@ -722,7 +722,7 @@ and store them in a temporary credentials file.
 />
 
 
-#### AzureClientCredentials
+#### AzureApplicationIdentity
 
 
 
@@ -819,10 +819,10 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 
 
 <ApiField
-  name="clientCredentials"
-  type="[AzureClientCredentials](#azureclientcredentials)"
+  name="applicationIdentity"
+  type="[AzureApplicationIdentity](#azureapplicationidentity)"
   required="false"
-  description="ClientCredentials specifies the client id/secret and tenant id used to obtain azure access token."
+  description="ApplicationIdentity specifies the client id/secret and tenant id used to obtain azure access token."
 />
 
 

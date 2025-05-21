@@ -129,7 +129,7 @@ metadata:
 spec:
   type: AzureCredentials
   azureCredentials:
-    clientCredentials:
+    applicationIdentity:
       clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
       tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
       clientSecretRef:
