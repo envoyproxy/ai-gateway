@@ -504,7 +504,7 @@ type BackendSecurityPolicyAPIKey struct {
 
 // BackendSecurityPolicyOIDC specifies OIDC related fields.
 type BackendSecurityPolicyOIDC struct {
-	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
+	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials.
 	//
 	// +kubebuilder:validation:Required
 	OIDC egv1a1.OIDC `json:"oidc"`
