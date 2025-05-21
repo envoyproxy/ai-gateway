@@ -18,22 +18,28 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
+type flags struct {
+	extProcLogLevel             string
+	extProcImage                string
+	enableLeaderElection        bool
+	logLevel                    zapcore.Level
+	extensionServerPort         string
+	enableInfExt                bool
+	tlsCertDir                  string
+	tlsCertName                 string
+	tlsKeyName                  string
+	envoyGatewaySystemNamespace string
+}
+
 // parseAndValidateFlags parses the command-line arguments provided in args,
 // validates them, and returns the parsed configuration.
-func parseAndValidateFlags(args []string) (
-	extProcLogLevel string,
-	extProcImage string,
-	enableLeaderElection bool,
-	logLevel zapcore.Level,
-	extensionServerPort string,
-	enableInfExt bool,
-	err error,
-) {
+func parseAndValidateFlags(args []string) (flags, error) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
 	extProcLogLevelPtr := fs.String(
@@ -66,68 +72,100 @@ func parseAndValidateFlags(args []string) (
 		false,
 		"Enable the Gateway Inference Extetension. When enabling this, the CRDs for the InferenceModel and InferencePool must be installed prior to starting the controller.",
 	)
+	tlsCertDir := fs.String(
+		"tlsCertDir",
+		"/certs",
+		"The directory containing the TLS certificate and key for the webhook server.",
+	)
+	tlsCertName := fs.String(
+		"tlsCertName",
+		"tls.crt",
+		"The name of the TLS certificate file.",
+	)
+	tlsKeyName := fs.String(
+		"tlsKeyName",
+		"tls.key",
+		"The name of the TLS key file.",
+	)
+	envoyGatewaySystemNamespace := fs.String(
+		"envoyGatewaySystemNamespace",
+		"envoy-gateway-system",
+		"The namespace where the Envoy Gateway system components are installed. This is used to set the default namespace for the controller manager.",
+	)
 
-	if err = fs.Parse(args); err != nil {
+	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
-		return
+		return flags{}, err
 	}
 
 	var slogLevel slog.Level
-	if err = slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
+	if err := slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid external processor log level: %q", *extProcLogLevelPtr)
-		return
+		return flags{}, err
 	}
 
 	var zapLogLevel zapcore.Level
-	if err = zapLogLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
+	if err := zapLogLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
-		return
+		return flags{}, err
 	}
-	return *extProcLogLevelPtr, *extProcImagePtr, *enableLeaderElectionPtr, zapLogLevel, *extensionServerPortPtr, *enableInfExtPtr, nil
+	return flags{
+		extProcLogLevel:             *extProcLogLevelPtr,
+		extProcImage:                *extProcImagePtr,
+		enableLeaderElection:        *enableLeaderElectionPtr,
+		logLevel:                    zapLogLevel,
+		extensionServerPort:         *extensionServerPortPtr,
+		enableInfExt:                *enableInfExtPtr,
+		tlsCertDir:                  *tlsCertDir,
+		tlsCertName:                 *tlsCertName,
+		tlsKeyName:                  *tlsKeyName,
+		envoyGatewaySystemNamespace: *envoyGatewaySystemNamespace,
+	}, nil
 }
 
 func main() {
 	setupLog := ctrl.Log.WithName("setup")
 
-	flagExtProcLogLevel,
-		flagExtProcImage,
-		flagEnableLeaderElection,
-		zapLogLevel,
-		flagExtensionServerPort,
-		enableInfExt,
-		err := parseAndValidateFlags(os.Args[1:])
+	flags, err := parseAndValidateFlags(os.Args[1:])
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
 		os.Exit(1)
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapLogLevel})))
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: flags.logLevel})))
 	k8sConfig, err := ctrl.GetConfig()
 	if err != nil {
 		setupLog.Error(err, "failed to get k8s config")
 	}
 
-	lis, err := net.Listen("tcp", flagExtensionServerPort)
+	lis, err := net.Listen("tcp", flags.extensionServerPort)
 	if err != nil {
-		setupLog.Error(err, "failed to listen", "port", flagExtensionServerPort)
+		setupLog.Error(err, "failed to listen", "port", flags.extensionServerPort)
 		os.Exit(1)
 	}
 
 	ctx := ctrl.SetupSignalHandler()
-
-	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme:           controller.Scheme,
-		LeaderElection:   flagEnableLeaderElection,
+		LeaderElection:   flags.enableLeaderElection,
 		LeaderElectionID: "envoy-ai-gateway-controller",
-	})
+		WebhookServer: webhook.NewServer(webhook.Options{
+			CertDir:  flags.tlsCertDir,
+			CertName: flags.tlsCertName,
+			KeyName:  flags.tlsKeyName,
+			Port:     443,
+		}),
+	}
+	mgr, err := ctrl.NewManager(k8sConfig, mgrOpts)
 	if err != nil {
 		setupLog.Error(err, "failed to create manager")
 		os.Exit(1)
 	}
 
 	// Start the extension server running alongside the controller.
+	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log)
+	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -142,10 +180,12 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:         flagExtProcImage,
-		ExtProcLogLevel:      flagExtProcLogLevel,
-		EnableLeaderElection: flagEnableLeaderElection,
-		EnableInfExt:         enableInfExt,
+		ExtProcImage:                flags.extProcImage,
+		ExtProcLogLevel:             flags.extProcLogLevel,
+		EnableLeaderElection:        flags.enableLeaderElection,
+		EnableInfExt:                flags.enableInfExt,
+		EnvoyGatewaySystemNamespace: flags.envoyGatewaySystemNamespace,
+		UDSPath:                     extProcUDSPath,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

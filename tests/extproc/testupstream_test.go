@@ -364,7 +364,7 @@ data: [DONE]
 		require.NoError(t, stream.Err())
 	})
 	t.Run("metrics", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, "http://localhost:9190/metrics", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)

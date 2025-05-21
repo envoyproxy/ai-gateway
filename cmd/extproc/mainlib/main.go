@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -38,7 +39,7 @@ type extProcFlags struct {
 	configPath  string     // path to the configuration file.
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
-	metricsAddr string     // HTTP address for the metrics server.
+	metricsPort int        // HTTP address for the metrics server.
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -65,7 +66,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	fs.StringVar(&flags.metricsAddr, "metricsAddr", ":9190", "HTTP address for the metrics server.")
+	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "HTTP address for the metrics server.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -109,12 +110,20 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		slog.String("configPath", flags.configPath),
 	)
 
-	lis, err := net.Listen(listenAddress(flags.extProcAddr))
+	network, address := listenAddress(flags.extProcAddr)
+	lis, err := net.Listen(network, address)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
+	if network == "unix" {
+		// Change the permission of the UDS to 0775 so that the envoy process (the same group) can access it.
+		err = os.Chmod(address, 0o775)
+		if err != nil {
+			return fmt.Errorf("failed to change UDS permission: %w", err)
+		}
+	}
 
-	metricsServer, meter := startMetricsServer(flags.metricsAddr, l)
+	metricsServer, meter := startMetricsServer(fmt.Sprintf(":%d", flags.metricsPort), l)
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
 
 	server, err := extproc.NewServer(l)
@@ -188,7 +197,7 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 	}
 
 	go func() {
-		logger.Info("starting metrics server", "address", addr)
+		logger.Info("starting metrics server", "address", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Metrics server failed", "error", err)
 		}

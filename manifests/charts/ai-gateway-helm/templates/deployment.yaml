@@ -37,6 +37,7 @@ spec:
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           ports:
+            - containerPort: 443
             - containerPort: 1063
             - containerPort: 9090
           args:
@@ -44,6 +45,9 @@ spec:
             - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
             - --enableInferenceExtension={{ .Values.controller.enableInferenceExtension }}
+            - --tlsCertDir=/certs
+            - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
+            - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
             {{- end }}
@@ -66,8 +70,11 @@ spec:
             periodSeconds: 2
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}
-          {{- if .Values.controller.volumes }}
           volumeMounts:
+            - mountPath: /certs
+              name: certs
+              readOnly: true
+          {{- if .Values.controller.volumes }}
             {{- range $volume := .Values.controller.volumes }}
             - mountPath: {{ $volume.mountPath }}
               name: {{ $volume.name }}
@@ -76,8 +83,11 @@ spec:
               {{- end }}
             {{- end}}
           {{- end }}
-      {{- if .Values.controller.volumes }}
       volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+      {{- if .Values.controller.volumes }}
         {{- range $volume := .Values.controller.volumes }}
         - name: {{ $volume.name }}
           configMap:

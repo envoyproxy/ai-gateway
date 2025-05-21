@@ -40,7 +40,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				azureAccessTokenKey: []byte("some-azure-access-token"),
+				AzureAccessTokenKey: []byte("some-azure-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -97,7 +97,7 @@ func TestAzureTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				azureAccessTokenKey: []byte("some-azure-access-token"),
+				AzureAccessTokenKey: []byte("some-azure-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -148,7 +148,7 @@ func TestAzureTokenRotator_GetPreRotationTime(t *testing.T) {
 					Namespace: "default",
 				},
 				Data: map[string][]byte{
-					azureAccessTokenKey: []byte("some-azure-access-token"),
+					AzureAccessTokenKey: []byte("some-azure-access-token"),
 				},
 			},
 			expectedTime:  time.Time{},
@@ -165,7 +165,7 @@ func TestAzureTokenRotator_GetPreRotationTime(t *testing.T) {
 					},
 				},
 				Data: map[string][]byte{
-					azureAccessTokenKey: []byte("some-azure-access-token"),
+					AzureAccessTokenKey: []byte("some-azure-access-token"),
 				},
 			},
 			expectedTime:  now.Add(2 * time.Hour),
@@ -237,7 +237,7 @@ func TestPopulateAzureAccessToken(t *testing.T) {
 	require.Equal(t, expiration.Format(time.RFC3339), annotation)
 
 	require.Len(t, secret.Data, 1)
-	val, ok := secret.Data[azureAccessTokenKey]
+	val, ok := secret.Data[AzureAccessTokenKey]
 	require.True(t, ok)
 	require.Equal(t, "some-azure-token", string(val))
 }

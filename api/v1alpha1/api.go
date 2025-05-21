@@ -25,12 +25,10 @@ import (
 //
 // Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 //
-//   - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-//     The name of these resources are `ai-eg-route-extproc-${name}`.
 //   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
 //     The name of the HTTPRoute is the same as the AIGatewayRoute.
 //   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-//     The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+//     The name of the EnvoyExtensionPolicy is `ai-eg-eep-${name}` where name is the target Gateway.
 //   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
 //     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 //
@@ -313,15 +311,18 @@ const (
 type AIGatewayFilterConfigExternalProcessor struct {
 	// Replicas is the number of desired pods of the external processor deployment.
 	//
+	// Deprecated: This field is no longer used.
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
+	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
+	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
+	// to configure the resource requirements of the external processor container.
+	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// TODO: maybe adding the option not to deploy the external processor filter and let the user deploy it manually?
-	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
 // AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.

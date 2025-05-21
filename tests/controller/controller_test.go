@@ -334,7 +334,8 @@ func TestStartControllers(t *testing.T) {
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
-	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info")
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info", eventCh.Ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
@@ -510,14 +511,13 @@ func TestAIGatewayRouteController(t *testing.T) {
 func TestBackendSecurityPolicyController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
-	syncAIServiceBackend := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
-
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), syncAIServiceBackend.Sync)
+	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
 	require.NoError(t, err)
 
@@ -581,11 +581,11 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		}
 		require.NoError(t, c.Create(t.Context(), origin))
 		require.Eventually(t, func() bool {
-			return len(syncAIServiceBackend.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
 		// Verify that they are the same.
-		backends := syncAIServiceBackend.GetItems()
+		backends := eventCh.GetItems(t.Context(), 2)
 		sort.Slice(backends, func(i, j int) bool {
 			backends[i].TypeMeta = metav1.TypeMeta{}
 			backends[j].TypeMeta = metav1.TypeMeta{}
@@ -594,7 +594,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.Equal(t, originals, backends)
 	})
 
-	syncAIServiceBackend.Reset()
+	eventCh.Reset()
 	t.Run("update security policy", func(t *testing.T) {
 		origin := &aigv1a1.BackendSecurityPolicy{}
 		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, origin))
@@ -613,11 +613,11 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.NoError(t, c.Update(t.Context(), origin))
 
 		require.Eventually(t, func() bool {
-			return len(syncAIServiceBackend.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
 		// Verify that they are the same.
-		backends := syncAIServiceBackend.GetItems()
+		backends := eventCh.GetItems(t.Context(), 2)
 		sort.Slice(backends, func(i, j int) bool {
 			backends[i].TypeMeta = metav1.TypeMeta{}
 			backends[j].TypeMeta = metav1.TypeMeta{}
@@ -642,14 +642,14 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 func TestAIServiceBackendController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
-	syncAIGatewayRoute := internaltesting.NewSyncFnImpl[aigv1a1.AIGatewayRoute]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), syncAIGatewayRoute.Sync)
+	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
 	require.NoError(t, err)
 
@@ -719,11 +719,11 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
-			return len(syncAIGatewayRoute.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
 		// Verify that they are the same.
-		routes := syncAIGatewayRoute.GetItems()
+		routes := eventCh.GetItems(t.Context(), 2)
 		sort.Slice(routes, func(i, j int) bool {
 			routes[i].TypeMeta = metav1.TypeMeta{}
 			routes[j].TypeMeta = metav1.TypeMeta{}
@@ -732,7 +732,7 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.Equal(t, originals, routes)
 	})
 
-	syncAIGatewayRoute.Reset()
+	eventCh.Reset()
 	t.Run("update backend", func(t *testing.T) {
 		var origin aigv1a1.AIServiceBackend
 		err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
@@ -741,11 +741,11 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.NoError(t, c.Update(t.Context(), &origin))
 
 		require.Eventually(t, func() bool {
-			return len(syncAIGatewayRoute.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
 		// Verify that they are the same.
-		routes := syncAIGatewayRoute.GetItems()
+		routes := eventCh.GetItems(t.Context(), 2)
 		sort.Slice(routes, func(i, j int) bool {
 			routes[i].TypeMeta = metav1.TypeMeta{}
 			routes[j].TypeMeta = metav1.TypeMeta{}
@@ -774,8 +774,8 @@ func TestSecretController(t *testing.T) {
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 
-	bspSyncFn := internaltesting.NewSyncFnImpl[aigv1a1.BackendSecurityPolicy]()
-	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), bspSyncFn.Sync)
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
 	const secretName, secretNamespace = "mysecret", "default"
 
 	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
@@ -817,11 +817,11 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
-			return len(bspSyncFn.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
 		// Verify that they are the same.
-		bsps := bspSyncFn.GetItems()
+		bsps := eventCh.GetItems(t.Context(), 2)
 		sort.Slice(bsps, func(i, j int) bool {
 			bsps[i].TypeMeta = metav1.TypeMeta{}
 			bsps[j].TypeMeta = metav1.TypeMeta{}
@@ -830,7 +830,7 @@ func TestSecretController(t *testing.T) {
 		require.Equal(t, originals, bsps)
 	})
 
-	bspSyncFn.Reset()
+	eventCh.Reset()
 	t.Run("update secret", func(t *testing.T) {
 		err = c.Update(t.Context(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
@@ -839,10 +839,10 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
-			return len(bspSyncFn.GetItems()) == 2
+			return len(eventCh.GetItems(t.Context(), 2)) == 2
 		}, 5*time.Second, 200*time.Millisecond)
 
-		bsps := bspSyncFn.GetItems()
+		bsps := eventCh.GetItems(t.Context(), 2)
 		// Verify that they are the same.
 		sort.Slice(bsps, func(i, j int) bool {
 			bsps[i].TypeMeta = metav1.TypeMeta{}

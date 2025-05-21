@@ -42,12 +42,10 @@ upstream authentication, rate limit, etc.
 
 Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
-  - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-    The name of these resources are `ai-eg-route-extproc-${name}`.
   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
     The name of the HTTPRoute is the same as the AIGatewayRoute.
   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-    The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+    The name of the EnvoyExtensionPolicy is `ai-eg-eep-${name}` where name is the target Gateway.
   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 
@@ -365,12 +363,12 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="replicas"
   type="integer"
   required="false"
-  description="Replicas is the number of desired pods of the external processor deployment."
+  description="Replicas is the number of desired pods of the external processor deployment.<br />Deprecated: This field is no longer used."
 /><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
 />
 
 

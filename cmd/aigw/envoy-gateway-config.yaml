@@ -19,7 +19,7 @@ provider:
       host: {}
 logging:
   level:
-    default: error
+    default: debug
 extensionApis:
   enableBackend: true
 extensionManager:

@@ -38,9 +38,9 @@ import (
 )
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -72,7 +72,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
-	items := syncFn.GetItems()
+	items := eventCh.GetItems(t.Context(), 1)
 	require.Len(t, items, 1)
 	require.Equal(t, asb, items[0])
 
@@ -111,9 +111,9 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 }
 
 func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -153,9 +153,9 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -363,9 +363,9 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "my-azure-backend-security-policy"
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -390,9 +390,9 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testi
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "my-azure-backend-security-policy"
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -428,9 +428,9 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *t
 }
 
 func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
 
@@ -453,9 +453,9 @@ func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testi
 }
 
 func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
 
@@ -476,9 +476,9 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 }
 
 func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecretRef(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -529,9 +529,9 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 	}))
 	defer discoveryServer.Close()
 
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIServiceBackend]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspNamespace := "default"
 	bspName := "some-back-end-security-policy"
 	oidcSecretName := "oidcClientSecret"

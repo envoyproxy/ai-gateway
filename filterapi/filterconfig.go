@@ -66,6 +66,8 @@ modelNameHeaderKey: x-ai-eg-model
 // From the Envoy configuration perspective, the extproc expects there are corresponding routes in the envoy configuration as well as
 // each cluster must configure the upstream filter to talk to the experoc to perform the corresponding authn/z as well as the transformation.
 // See tests/extproc/envoy.yaml for the example configuration.
+//
+// Note that this contains literal credentials inlined.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
@@ -210,39 +212,43 @@ type BackendAuth struct {
 
 // AWSAuth defines the credentials needed to access AWS.
 type AWSAuth struct {
-	CredentialFileName string `json:"credentialFileName,omitempty"`
-	Region             string `json:"region"`
+	// CredentialFileLiteral is the literal string of the AWS credential file. E.g.
+	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>
+	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
+	Region                string `json:"region"`
 }
 
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
-	Filename string `json:"filename"`
+	// Key is the API key as a literal string.
+	Key string `json:"key"`
 }
 
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
-	Filename string `json:"filename"`
+	// AccessToken is the access token as a literal string.
+	AccessToken string `json:"accessToken"`
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
-func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
+func UnmarshalConfigYaml(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return &cfg, raw, nil
+	return &cfg, nil
 }
 
 // MustLoadDefaultConfig loads the default configuration.
 // This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() (*Config, []byte) {
+func MustLoadDefaultConfig() *Config {
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
 		panic(err)
 	}
-	return &cfg, []byte(DefaultConfig)
+	return &cfg
 }

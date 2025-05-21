@@ -85,7 +85,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
 
-	defaultCfg, _ := filterapi.MustLoadDefaultConfig()
+	defaultCfg := filterapi.MustLoadDefaultConfig()
 	require.NoError(t, err)
 
 	// Verify the default config has been loaded.
@@ -167,30 +167,7 @@ rules:
 		return strings.Contains(buf.String(), "loading a new config")
 	}, 1*time.Second, tickInterval, buf.String())
 
-	// Verify the buffer contains the config line changed.
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "config line changed")
-	}, 1*time.Second, tickInterval, buf.String())
-
 	// Wait for a couple ticks to verify config is not reloaded if file does not change.
 	time.Sleep(2 * tickInterval)
 	require.Equal(t, int32(3), rcv.loadCount.Load())
-}
-
-func TestDiff(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
-	cw := &configWatcher{
-		l: logger,
-	}
-
-	oldConfig := `schema:
-	name: Foo`
-	newConfig := `schema:
-	name: Bar`
-
-	expectedLog := `msg="config line changed" line=2 path="" old="name: Foo" new="name: Bar"`
-	cw.diff(oldConfig, newConfig)
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), expectedLog)
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
 }

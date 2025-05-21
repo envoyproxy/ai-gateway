@@ -59,7 +59,7 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 		profile = awsProfileName
 	}
 	data := map[string][]byte{
-		awsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+		AwsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
 			profile, accessKey, secretKey, sessionToken, awsRegion)),
 	}
 	err := client.Create(t.Context(), &corev1.Secret{
@@ -77,7 +77,7 @@ func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, s
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
 	expectedSecretData := fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n", profile, expectedKeyID, expectedSecret, expectedToken, region)
-	require.Equal(t, expectedSecretData, string(secret.Data[awsCredentialsKey]))
+	require.Equal(t, expectedSecretData, string(secret.Data[AwsCredentialsKey]))
 }
 
 // createOidcClientSecret creates the OIDC client secret
