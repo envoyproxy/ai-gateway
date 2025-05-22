@@ -502,6 +502,24 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
+// BackendSecurityPolicyOIDC specifies OIDC related fields.
+type BackendSecurityPolicyOIDC struct {
+	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials.
+	//
+	// +kubebuilder:validation:Required
+	OIDC egv1a1.OIDC `json:"oidc"`
+
+	// GrantType is the method application gets access token.
+	//
+	// +optional
+	GrantType string `json:"grantType,omitempty"`
+
+	// Aud defines the audience that this ID Token is intended for.
+	//
+	// +optional
+	Aud string `json:"aud,omitempty"`
+}
+
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
@@ -559,20 +577,8 @@ type AWSCredentialsFile struct {
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file.
 type AWSOIDCExchangeToken struct {
-	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
-	//
-	// +kubebuilder:validation:Required
-	OIDC egv1a1.OIDC `json:"oidc"`
-
-	// GrantType is the method application gets access token.
-	//
-	// +optional
-	GrantType string `json:"grantType,omitempty"`
-
-	// Aud defines the audience that this ID Token is intended for.
-	//
-	// +optional
-	Aud string `json:"aud,omitempty"`
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.

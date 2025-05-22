@@ -14,7 +14,6 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -63,18 +62,6 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 
 	err = c.List(t.Context(), &aiGatewayRoutes,
 		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
-	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
-
-	err = c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGatewayRoute: "inference-pool1.default"})
-	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
-
-	err = c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingAIGatewayRoute: "inference-pool2.default"})
 	require.NoError(t, err)
 	require.Len(t, aiGatewayRoutes.Items, 1)
 	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
@@ -176,47 +163,4 @@ func Test_getSecretNameAndNamespace(t *testing.T) {
 	require.Equal(t, "mysecret.default", getSecretNameAndNamespace(secretRef, "foo"))
 	secretRef.Namespace = nil
 	require.Equal(t, "mysecret.foo", getSecretNameAndNamespace(secretRef, "foo"))
-}
-
-func Test_inferenceModelIndexFunc(t *testing.T) {
-	c := requireNewFakeClientWithIndexes(t)
-
-	for _, inf := range []*gwaiev1a2.InferenceModel{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "mymodel", Namespace: "default"},
-			Spec: gwaiev1a2.InferenceModelSpec{
-				ModelName: "mymodel",
-				PoolRef:   gwaiev1a2.PoolObjectReference{Name: "mypool"},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "mymodel2", Namespace: "default"},
-			Spec: gwaiev1a2.InferenceModelSpec{
-				ModelName: "mymodel2",
-				PoolRef:   gwaiev1a2.PoolObjectReference{Name: "mypool"},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "mymodel3", Namespace: "default"},
-			Spec: gwaiev1a2.InferenceModelSpec{
-				ModelName: "mymodel2",
-				PoolRef:   gwaiev1a2.PoolObjectReference{Name: "anotherpool"},
-			},
-		},
-	} {
-		require.NoError(t, c.Create(t.Context(), inf))
-	}
-
-	var inferenceModels gwaiev1a2.InferenceModelList
-	err := c.List(t.Context(), &inferenceModels,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingInferenceModel: "mypool.default"})
-	require.NoError(t, err)
-	require.Len(t, inferenceModels.Items, 2)
-	require.ElementsMatch(t, []string{"mymodel", "mymodel2"}, []string{inferenceModels.Items[0].Name, inferenceModels.Items[1].Name})
-
-	err = c.List(t.Context(), &inferenceModels,
-		client.MatchingFields{k8sClientIndexInferencePoolToReferencingInferenceModel: "anotherpool.default"})
-	require.NoError(t, err)
-	require.Len(t, inferenceModels.Items, 1)
-	require.Equal(t, "mymodel3", inferenceModels.Items[0].Name)
 }

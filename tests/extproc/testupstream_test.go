@@ -51,6 +51,9 @@ func TestWithTestUpstream(t *testing.T) {
 			{
 				Name:    "testupstream-openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
+				Backends: []filterapi.Backend{
+					{Name: "testupstream-openai", Schema: openAISchema},
+				},
 			},
 			{
 				Name:    "testupstream-aws-route",
@@ -67,9 +70,9 @@ func TestWithTestUpstream(t *testing.T) {
 					{Name: "x-model-name", Value: "some-model2"},
 					{Name: "x-model-name", Value: "some-model3"},
 				},
+				Backends: fakeBackends,
 			},
 		},
-		Backends: fakeBackends,
 	})
 
 	expectedModels := openai.ModelList{

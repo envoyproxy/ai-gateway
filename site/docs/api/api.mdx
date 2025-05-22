@@ -313,6 +313,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
@@ -702,7 +703,7 @@ and store them in a temporary credentials file.
   name="oidc"
   type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
   required="true"
-  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials."
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
 /><ApiField
   name="grantType"
   type="string"
@@ -801,6 +802,37 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
   required="true"
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+/>
+
+
+#### BackendSecurityPolicyOIDC
+
+
+
+**Appears in:**
+- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+
+BackendSecurityPolicyOIDC specifies OIDC related fields.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
 />
 
 

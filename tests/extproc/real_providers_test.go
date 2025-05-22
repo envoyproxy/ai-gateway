@@ -48,6 +48,11 @@ func TestWithRealProviders(t *testing.T) {
 			{
 				Name:    "openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
+				Backends: []filterapi.Backend{
+					{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Filename: cc.OpenAIAPIKeyFilePath},
+					}},
+				},
 			},
 			{
 				Name: "aws-bedrock-route",
@@ -55,24 +60,23 @@ func TestWithRealProviders(t *testing.T) {
 					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
 					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
 				},
+				Backends: []filterapi.Backend{
+					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+						CredentialFileName: cc.AWSFilePath,
+						Region:             "us-east-1",
+					}}},
+				},
 			},
 			{
 				Name:    "azure-openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
+				Backends: []filterapi.Backend{
+					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+						AzureAuth: &filterapi.AzureAuth{Filename: cc.AzureAccessTokenFilePath},
+					}},
+				},
 			},
 		},
-		Backends: append(fakeBackends, []*filterapi.Backend{
-			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-				APIKey: &filterapi.APIKeyAuth{Filename: cc.OpenAIAPIKeyFilePath},
-			}},
-			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-				CredentialFileName: cc.AWSFilePath,
-				Region:             "us-east-1",
-			}}},
-			{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-				AzureAuth: &filterapi.AzureAuth{Filename: cc.AzureAccessTokenFilePath},
-			}},
-		}...),
 	})
 
 	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
