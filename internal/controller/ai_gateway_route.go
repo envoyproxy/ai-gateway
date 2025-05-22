@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"sort"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -280,30 +279,29 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	ec.Rules = make([]filterapi.RouteRule, len(spec.Rules))
-	backends := map[string]*filterapi.Backend{}
+
 	var err error
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
+		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]
+			ecBackendConfig := &ec.Rules[i].Backends[j]
 			key := fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
-			if _, ok := backends[key]; ok {
-				continue
-			}
-			b := &filterapi.Backend{Name: key}
-			backends[key] = b
+			ecBackendConfig.Name = key
+
 			var backendObj *aigv1a1.AIServiceBackend
 			backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 			if err != nil {
 				return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
 			}
-			b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-			b.Schema.Version = backendObj.Spec.APISchema.Version
+			ecBackendConfig.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
+			ecBackendConfig.Schema.Version = backendObj.Spec.APISchema.Version
 			if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 				volumeName := backendSecurityPolicyVolumeName(
 					i, j, string(backendObj.Spec.BackendSecurityPolicyRef.Name),
 				)
-				b.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
+				ecBackendConfig.Auth, err = c.bspToFilterAPIAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name), volumeName)
 				if err != nil {
 					return fmt.Errorf("failed to create backend auth: %w", err)
 				}
@@ -316,13 +314,6 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 			ec.Rules[i].Headers[j].Value = match.Headers[0].Value
 		}
 	}
-	ec.Backends = make([]*filterapi.Backend, 0, len(backends))
-	for _, backend := range backends {
-		ec.Backends = append(ec.Backends, backend)
-	}
-	sort.Slice(ec.Backends, func(i, j int) bool {
-		return ec.Backends[i].Name < ec.Backends[j].Name
-	})
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {

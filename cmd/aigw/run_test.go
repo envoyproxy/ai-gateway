@@ -196,33 +196,38 @@ func TestRunCmdContext_writeExtensionPolicy(t *testing.T) {
 			"extproc-config.yaml": `
 metadataNamespace: io.envoy.ai_gateway
 modelNameHeaderKey: x-ai-eg-model
-backends:
-- auth:
-    apiKey:
-      filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
-  name: envoy-ai-gateway-basic-openai.default
-  schema:
-    name: OpenAI
-- auth:
-    aws:
-      credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
-      region: us-east-1
-  name: envoy-ai-gateway-basic-aws.default
-  schema:
-    name: AWSBedrock
-- name: envoy-ai-gateway-basic-testupstream.default
-  schema:
-    name: OpenAI
 rules:
 - headers:
   - name: x-ai-eg-model
     value: gpt-4o-mini
+  backends:
+  - auth:
+      apiKey:
+        filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
+    name: envoy-ai-gateway-basic-openai.default
+    schema:
+      name: OpenAI
+    weight: 0
 - headers:
   - name: x-ai-eg-model
     value: us.meta.llama3-2-1b-instruct-v1:0
+  backends:
+  - auth:
+      aws:
+        credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
+        region: us-east-1
+    name: envoy-ai-gateway-basic-aws.default
+    schema:
+      name: AWSBedrock
+    weight: 0
 - headers:
   - name: x-ai-eg-model
     value: some-cool-self-hosted-model
+  backends:
+  - name: envoy-ai-gateway-basic-testupstream.default
+    schema:
+      name: OpenAI
+    weight: 0
 schema:
   name: OpenAI
 selectedRouteHeaderKey: x-ai-eg-selected-route
@@ -366,9 +371,9 @@ uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 	require.Equal(t, "dog", string(content))
 
 	// Check the file path in the filter config.
-	require.Equal(t, filterConfig.Backends[0].Auth.APIKey.Filename,
+	require.Equal(t, filterConfig.Rules[0].Backends[0].Auth.APIKey.Filename,
 		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
-	require.Equal(t, filterConfig.Backends[1].Auth.AWSAuth.CredentialFileName,
+	require.Equal(t, filterConfig.Rules[1].Backends[0].Auth.AWSAuth.CredentialFileName,
 		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
 
 	// Check the Backend and ExtensionPolicy resources are written to the output file.

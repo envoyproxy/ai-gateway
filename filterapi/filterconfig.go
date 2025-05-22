@@ -41,22 +41,27 @@ modelNameHeaderKey: x-ai-eg-model
 //	llmRequestCosts:
 //	- metadataKey: token_usage_key
 //	  type: OutputToken
-//	backends:
-//	- name: openai-backend.mynamespace
-//	  schema:
-//	    name: OpenAI
-//	- name: aws-bedrock-backend.mynamespace
-//	  schema:
-//	    name: AWSBedrock
 //	rules:
 //	- name: llama3-route
 //	  headers:
 //	  - name: x-ai-eg-model
 //	    value: llama3.3333
+//	  backends:
+//	  - name: openai-backend.mynamespace
+//	    schema:
+//	      name: OpenAI
+//	  - name: awsbedrock
+//	    weight: 10
+//	    schema:
+//	      name: AWSBedrock
 //	- name: gpt4-route
 //	  headers:
 //	  - name: x-ai-eg-model
 //	    value: gpt4.4444
+//	  backends:
+//	  - name: openai
+//	    schema:
+//	      name: OpenAI
 //
 // where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-ai-eg-model,
 // The model name header `x-ai-eg-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
@@ -84,8 +89,6 @@ type Config struct {
 	// Rules is the routing rules to be used by the filter to make the routing decision.
 	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
 	Rules []RouteRule `json:"rules"`
-	// Backends is the list of backends to which the request should be routed to when the headers match.
-	Backends []*Backend `json:"backends"`
 }
 
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
@@ -148,6 +151,8 @@ type RouteRule struct {
 	// Headers is the list of headers to match for the routing decision.
 	// Currently, only exact match is supported.
 	Headers []HeaderMatch `json:"headers"`
+	// Backends is the list of backends to which the request should be routed to when the headers match.
+	Backends []Backend `json:"backends"`
 }
 
 // RouteRuleName is the name of the route rule.

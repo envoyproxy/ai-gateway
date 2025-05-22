@@ -97,35 +97,37 @@ spec:
 apiVersion: v1
 data:
   extproc-config.yaml: |
-    backends:
-    - auth:
-        aws:
-          credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
-          region: us-east-1
-      name: envoy-ai-gateway-basic-aws.default
-      schema:
-        name: AWSBedrock
-    - auth:
-        apiKey:
-          filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
-      name: envoy-ai-gateway-basic-openai.default
-      schema:
-        name: OpenAI
-    - name: envoy-ai-gateway-basic-testupstream.default
-      schema:
-        name: OpenAI
     metadataNamespace: io.envoy.ai_gateway
     modelNameHeaderKey: x-ai-eg-model
     rules:
-    - headers:
+    - backends:
+      - auth:
+          apiKey:
+            filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
+        name: envoy-ai-gateway-basic-openai.default
+        schema:
+          name: OpenAI
+      headers:
       - name: x-ai-eg-model
         value: gpt-4o-mini
       name: envoy-ai-gateway-basic-rule-0
-    - headers:
+    - backends:
+      - auth:
+          aws:
+            credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
+            region: us-east-1
+        name: envoy-ai-gateway-basic-aws.default
+        schema:
+          name: AWSBedrock
+      headers:
       - name: x-ai-eg-model
         value: us.meta.llama3-2-1b-instruct-v1:0
       name: envoy-ai-gateway-basic-rule-1
-    - headers:
+    - backends:
+      - name: envoy-ai-gateway-basic-testupstream.default
+        schema:
+          name: OpenAI
+      headers:
       - name: x-ai-eg-model
         value: some-cool-self-hosted-model
       name: envoy-ai-gateway-basic-rule-2

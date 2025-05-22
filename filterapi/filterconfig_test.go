@@ -50,34 +50,35 @@ rules:
   - name: x-ai-eg-model
     value: llama3.3333
   name: llama3-route
+  backends:
+  - name: kserve
+    schema:
+      name: OpenAI
+    auth:
+      apiKey:
+        filename: apikey.txt
+  - name: awsbedrock
+    schema:
+      name: AWSBedrock
+    auth:
+      aws:
+        credentialFileName: aws.txt
+        region: us-east-1
 - headers:
   - name: x-ai-eg-model
     value: gpt4.4444
   name: gpt4-route
-backends:
-- name: openai
-  schema:
-    name: OpenAI
-- name: azureopenai
-  schema:
-    name: AzureOpenAI
-    version: 2024-10-21
-  auth:
-    azure:
-      filename: azure.txt
-- name: awsbedrock
-  schema:
-    name: AWSBedrock
-  auth:
-    aws:
-      credentialFileName: aws.txt
-      region: us-east-1
-- name: kserve
-  schema:
-    name: OpenAI
-  auth:
-    apiKey:
-      filename: apikey.txt
+  backends:
+  - name: openai
+    schema:
+      name: OpenAI
+  - name: azureopenai
+    schema:
+      name: AzureOpenAI
+      version: 2024-10-21
+    auth:
+      azure:
+        filename: azure.txt
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 	cfg, raw, err := filterapi.UnmarshalConfigYaml(configPath)
@@ -95,43 +96,51 @@ backends:
 				Type:        filterapi.LLMRequestCostTypeOutputToken,
 			},
 		},
-		Backends: []*filterapi.Backend{
-			{
-				Name:   "openai",
-				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			},
-			{
-				Name:   "azureopenai",
-				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-10-21"},
-				Auth: &filterapi.BackendAuth{
-					AzureAuth: &filterapi.AzureAuth{
-						Filename: "azure.txt",
-					},
-				},
-			},
-			{
-				Name:   "awsbedrock",
-				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
-				Auth: &filterapi.BackendAuth{
-					AWSAuth: &filterapi.AWSAuth{
-						CredentialFileName: "aws.txt",
-						Region:             "us-east-1",
-					},
-				},
-			},
-			{
-				Name:   "kserve",
-				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-				Auth: &filterapi.BackendAuth{
-					APIKey: &filterapi.APIKeyAuth{
-						Filename: "apikey.txt",
-					},
-				},
-			},
-		},
 		Rules: []filterapi.RouteRule{
-			{Name: "llama3-route", Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "llama3.3333"}}},
-			{Name: "gpt4-route", Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "gpt4.4444"}}},
+			{
+				Name:    "llama3-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "llama3.3333"}},
+				Backends: []filterapi.Backend{
+					{
+						Name:   "kserve",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+						Auth: &filterapi.BackendAuth{
+							APIKey: &filterapi.APIKeyAuth{
+								Filename: "apikey.txt",
+							},
+						},
+					},
+					{
+						Name:   "awsbedrock",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
+						Auth: &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
+								CredentialFileName: "aws.txt",
+								Region:             "us-east-1",
+							},
+						},
+					},
+				},
+			},
+			{
+				Name:    "gpt4-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "gpt4.4444"}},
+				Backends: []filterapi.Backend{
+					{
+						Name:   "openai",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+					},
+					{
+						Name:   "azureopenai",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-10-21"},
+						Auth: &filterapi.BackendAuth{
+							AzureAuth: &filterapi.AzureAuth{
+								Filename: "azure.txt",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 

@@ -626,55 +626,76 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 					{
 						Name:    "myroute-rule-0",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "some-ai"}},
+						Backends: []filterapi.Backend{
+							{
+								Name:   "apple.ns",
+								Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
+								Auth: &filterapi.BackendAuth{
+									APIKey: &filterapi.APIKeyAuth{
+										Filename: "/etc/backend_security_policy/rule0-backref0-some-backend-security-policy-1/apiKey",
+									},
+								},
+							},
+							{Name: "pineapple.ns"},
+						},
 					},
 					{
 						Name:    "myroute-rule-1",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}},
+						Backends: []filterapi.Backend{
+							{
+								Name: "cat.ns",
+								Auth: &filterapi.BackendAuth{
+									APIKey: &filterapi.APIKeyAuth{
+										Filename: "/etc/backend_security_policy/rule1-backref0-some-backend-security-policy-1/apiKey",
+									},
+								},
+							},
+						},
 					},
 					{
 						Name:    "myroute-rule-2",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-2"}},
+						Backends: []filterapi.Backend{
+							{
+								Name: "pen.ns",
+								Auth: &filterapi.BackendAuth{
+									AWSAuth: &filterapi.AWSAuth{
+										CredentialFileName: "/etc/backend_security_policy/rule2-backref0-some-backend-security-policy-2/credentials",
+										Region:             "us-east-1",
+									},
+								},
+							},
+						},
 					},
 					{
 						Name:    "myroute-rule-3",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-3"}},
+						Backends: []filterapi.Backend{
+							{
+								Name: "dog.ns",
+								Auth: &filterapi.BackendAuth{
+									AWSAuth: &filterapi.AWSAuth{
+										CredentialFileName: "/etc/backend_security_policy/rule3-backref0-some-backend-security-policy-3/credentials",
+										Region:             "us-east-1",
+									},
+								},
+							},
+						},
 					},
 					{
 						Name:    "myroute-rule-4",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}},
-					},
-				},
-				Backends: []*filterapi.Backend{
-					{Name: "apple.ns", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{
-							Filename: "/etc/backend_security_policy/rule0-backref0-some-backend-security-policy-1/apiKey",
-						},
-					}},
-					{Name: "cat.ns", Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{
-							Filename: "/etc/backend_security_policy/rule1-backref0-some-backend-security-policy-1/apiKey",
-						},
-					}},
-					{Name: "dog.ns", Auth: &filterapi.BackendAuth{
-						AWSAuth: &filterapi.AWSAuth{
-							CredentialFileName: "/etc/backend_security_policy/rule3-backref0-some-backend-security-policy-3/credentials",
-							Region:             "us-east-1",
-						},
-					}},
-					{
-						Name: "dragon.ns", Auth: &filterapi.BackendAuth{
-							AzureAuth: &filterapi.AzureAuth{
-								Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+						Backends: []filterapi.Backend{{
+							Name: "dragon.ns",
+							Auth: &filterapi.BackendAuth{
+								AzureAuth: &filterapi.AzureAuth{
+									Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+								},
 							},
-						}, Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+							Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
+						}},
 					},
-					{Name: "pen.ns", Auth: &filterapi.BackendAuth{
-						AWSAuth: &filterapi.AWSAuth{
-							CredentialFileName: "/etc/backend_security_policy/rule2-backref0-some-backend-security-policy-2/credentials",
-							Region:             "us-east-1",
-						},
-					}},
-					{Name: "pineapple.ns"},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{
 					{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output-token"},

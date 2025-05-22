@@ -85,15 +85,19 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		}
 	}
 
-	for _, b := range config.Backends {
-		var h backendauth.Handler
-		if b.Auth != nil {
-			h, err = backendauth.NewHandler(ctx, b.Auth)
-			if err != nil {
-				return fmt.Errorf("cannot create backend auth handler: %w", err)
+	for _, r := range config.Rules {
+		for _, backend := range r.Backends {
+			b := backend
+			var h backendauth.Handler
+			if b.Auth != nil {
+				h, err = backendauth.NewHandler(ctx, b.Auth)
+				if err != nil {
+					return fmt.Errorf("cannot create backend auth handler: %w", err)
+				}
 			}
+			// TODO: handle DynamicLoadBalancing.
+			backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
 		}
-		backends[b.Name] = &processorConfigBackend{b: b, handler: h}
 	}
 
 	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
