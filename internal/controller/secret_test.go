@@ -61,7 +61,7 @@ func TestSecretController_Reconcile(t *testing.T) {
 		Namespace: "default", Name: "mysecret",
 	}})
 	require.NoError(t, err)
-	actual := eventCh.GetItems(t.Context(), len(originals))
+	actual := eventCh.RequireItemsEventually(t, len(originals))
 	sort.Slice(actual, func(i, j int) bool {
 		return actual[i].Name < actual[j].Name
 	})

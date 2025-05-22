@@ -7,6 +7,8 @@ package internaltesting
 
 import (
 	"context"
+	"testing"
+	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -23,22 +25,19 @@ func NewControllerEventChan[T client.Object]() *NewControllerEventChanImpl[T] {
 	return &NewControllerEventChanImpl[T]{Ch: make(chan event.GenericEvent, 100)}
 }
 
-// GetItems returns a copy of the items.
-func (s *NewControllerEventChanImpl[T]) GetItems(ctx context.Context, exp int) []T {
+// RequireItemsEventually returns a copy of the items.
+func (s *NewControllerEventChanImpl[T]) RequireItemsEventually(t *testing.T, exp int) []T {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
 	var ret []T
-	for i := 0; i < exp; i++ {
+	for len(ret) < exp {
 		select {
 		case <-ctx.Done():
-			return ret
+			t.Fatalf("timed out waiting for %d items, got %d", exp, len(ret))
 		case item := <-s.Ch:
 			ret = append(ret, item.Object.(T))
 		default:
 		}
 	}
 	return ret
-}
-
-// Reset resets the items.
-func (s *NewControllerEventChanImpl[T]) Reset() {
-	s.Ch = make(chan event.GenericEvent, 100)
 }

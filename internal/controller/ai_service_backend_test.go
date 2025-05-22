@@ -73,7 +73,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
-	require.Equal(t, originals, eventChan.GetItems(t.Context(), 2))
+	require.Equal(t, originals, eventChan.RequireItemsEventually(t, 2))
 
 	// Check that the status was updated.
 	var backend aigv1a1.AIServiceBackend

@@ -72,7 +72,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
-	items := eventCh.GetItems(t.Context(), 1)
+	items := eventCh.RequireItemsEventually(t, 1)
 	require.Len(t, items, 1)
 	require.Equal(t, asb, items[0])
 

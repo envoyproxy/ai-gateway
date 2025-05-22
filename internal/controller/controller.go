@@ -65,6 +65,8 @@ type Options struct {
 	EnvoyGatewaySystemNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
+	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
+	DisableMutatingWebhook bool
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -142,8 +144,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
 	}
 
-	if srv := mgr.GetWebhookServer(); srv != nil { // This if-statement is mainly for the controller testing.
-		srv.Register("/mutate", &webhook.Admission{
+	if !options.DisableMutatingWebhook {
+		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{
 			Handler: newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
 				logger.WithName("gateway-mutator"),
 				options.ExtProcImage, options.ExtProcLogLevel,
