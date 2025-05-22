@@ -83,9 +83,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 			}
 			declaredModels = append(declaredModels, h.Value)
 		}
-	}
 
-	for _, r := range config.Rules {
 		for _, backend := range r.Backends {
 			b := backend
 			var h backendauth.Handler
