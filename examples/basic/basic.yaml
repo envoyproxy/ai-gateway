@@ -129,9 +129,9 @@ metadata:
 spec:
   type: AzureCredentials
   azureCredentials:
-    applicationIdentity:
-      clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
-      tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
+    clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
+    tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
+    clientSecretCredential:
       clientSecretRef:
         name: envoy-ai-gateway-basic-azure-client-secret
         namespace: default
