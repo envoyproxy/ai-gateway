@@ -73,26 +73,21 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
 	if err != nil {
-		c.logger.Error(err, "Failed to list AIGatewayRoutes",
-			"namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 
 	if len(routes.Items) == 0 {
 		// This means that the gateway is not attached to any AIGatewayRoute.
+		c.logger.Info("No AIGatewayRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, nil
 	}
 	if err := c.ensureExtensionPolicy(ctx, &gw); err != nil {
-		c.logger.Error(err, "Failed to ensure extension policy",
-			"namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	if err := c.reconcileFilterConfigSecret(ctx, &gw, routes.Items, gw.Name); err != nil {
-		c.logger.Error(err, "Failed to reconcile filter config secret",
-			"namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 
@@ -100,23 +95,23 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
 	if err := c.annotateGatewayPods(ctx, &gw, uuid.NewString()); err != nil {
-		c.logger.Error(err, "Failed to annotate gateway pods",
-			"namespace", gw.Namespace, "name", gw.Name)
+		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
+const sideCarExtProcBackendName = "envoy-ai-gateway-extproc-backend"
+
 // ensureExtensionPolicy creates or updates the extension policy for the external process running as a sidecar.
 func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapiv1.Gateway) (err error) {
 	// Ensure that the backend that makes Envoy talk to the UDS exists.
-	const extProcBackendName = "envoy-ai-gateway-extproc-backend"
 	var backend egv1a1.Backend
-	if err = c.client.Get(ctx, client.ObjectKey{Name: extProcBackendName, Namespace: gw.Namespace}, &backend); err != nil {
+	if err = c.client.Get(ctx, client.ObjectKey{Name: sideCarExtProcBackendName, Namespace: gw.Namespace}, &backend); err != nil {
 		if apierrors.IsNotFound(err) {
 			backend = egv1a1.Backend{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      extProcBackendName,
+					Name:      sideCarExtProcBackendName,
 					Namespace: gw.Namespace,
 				},
 				Spec: egv1a1.BackendSpec{
@@ -158,7 +153,7 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 				},
 				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
-						Name:      gwapiv1.ObjectName(extProcBackendName),
+						Name:      gwapiv1.ObjectName(sideCarExtProcBackendName),
 						Kind:      ptr.To(gwapiv1.Kind("Backend")),
 						Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 						Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
@@ -295,7 +290,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 	switch backendSecurityPolicy.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
-		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKey)
+		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
@@ -361,22 +356,16 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 
 func (c *GatewayController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
 	backend := &aigv1a1.AIServiceBackend{}
-	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
-		return nil, err
-	}
-	return backend, nil
+	return backend, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend)
 }
 
 func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
 	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
-	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy); err != nil {
-		return nil, err
-	}
-	return backendSecurityPolicy, nil
+	return backendSecurityPolicy, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy)
 }
 
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
-// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
+// If the pod doesn't have the extproc container, it will roll out the deployment altogether, which eventually ends up
 // the mutation hook invoked.
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
@@ -423,7 +412,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
 			_, err = c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				[]byte(fmt.Sprintf(
-					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				), metav1.PatchOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)

@@ -36,8 +36,8 @@ const (
 	aigatewayUUIDAnnotationKey    = "aigateway.envoyproxy.io/uuid"
 	egOwningGatewayNameLabel      = "gateway.envoyproxy.io/owning-gateway-name"
 	egOwningGatewayNamespaceLabel = "gateway.envoyproxy.io/owning-gateway-namespace"
-	// apiKey is the key to store OpenAI API key.
-	apiKey = "apiKey"
+	// apiKeyInSecret is the key to store OpenAI API key.
+	apiKeyInSecret = "apiKey"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].

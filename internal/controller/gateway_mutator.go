@@ -61,8 +61,8 @@ func (g *gatewayMutator) Handle(ctx context.Context, req admission.Request) admi
 	}
 	gatewayName := pod.Labels[egOwningGatewayNameLabel]
 	gatewayNamespace := pod.Labels[egOwningGatewayNamespaceLabel]
-	g.logger.Info("mutating gateway deployment",
-		"deployment_name", req.Name, "deployment_namespace", req.Namespace,
+	g.logger.Info("mutating gateway pod",
+		"pod_name", req.Name, "pod_namespace", req.Namespace,
 		"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace,
 	)
 	if err := g.mutatePod(ctx, &pod, gatewayName, gatewayNamespace); err != nil {
@@ -71,15 +71,13 @@ func (g *gatewayMutator) Handle(ctx context.Context, req admission.Request) admi
 	}
 	mutated, err := json.Marshal(pod)
 	if err != nil {
-		g.logger.Error(err, "failed to marshal mutated deployment")
+		g.logger.Error(err, "failed to marshal mutated pod")
 		return admission.Allowed("internal error, skipped")
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, mutated)
 }
 
-const (
-	mutationNamePrefix = "ai-gateway-"
-)
+const mutationNamePrefix = "ai-gateway-"
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
 	var routes aigv1a1.AIGatewayRouteList
