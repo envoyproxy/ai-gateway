@@ -7,8 +7,7 @@ sidebar_position: 8
 
 ## Overview
 
-Upstream Authentication secures the connectivity between the Gateway and the LLM Providers. This layer ensures secure communication and proper access control when the Gateway interacts with various AI service providers like AWS Bedrock, Azure OpenAI, and other platforms.
-
+Upstream Authentication secures the connectivity between the Gateway and the LLM Providers. This layer ensures secure communication and proper access control when the Gateway interacts with various AI service providers like AWS Bedrock, Azure OpenAI, Open AI, Mistral, Gemini, and other platforms.
 
 ## Why Upstream Authentication Matters
 
@@ -25,13 +24,13 @@ Upstream Authentication is essential for several reasons:
 In enterprise environments, security is implemented in multiple layers:
 
 1. **Client to Gateway Authentication**
-   - Clients must authenticate to the Gateway using appropriate methods (API keys, OAuth, etc.) aligned with the organization's security standards
-   - This ensures only authorized clients can access the Gateway's services, and the Gateway enforces the access to the upstream providers and models
+   - Clients must authenticate to the Gateway using appropriate methods (API keys, OAuth, etc.) aligned with the organization's security standards.
+   - This ensures only authorized clients can access the Gateway's services, and the Gateway enforces the access to the upstream providers and models.
 
 1. **Gateway to Upstream Authentication**
-   - The Gateway must authenticate to upstream providers
-   - This layer is managed by Upstream Authentication
-   - Ensures secure communication between the Gateway and AI service providers
+   - The Gateway must authenticate to upstream providers.
+   - This layer is managed by Upstream Authentication.
+   - Ensures secure communication between the Gateway and AI service providers.
 
 <div style={{ textAlign: 'center' }}>
   ![Upstream Authentication](/diagrams/upstream-auth.png)
@@ -51,6 +50,10 @@ The Gateway integrates with each provider's identity system to ensure secure, sh
 - **Azure OpenAI**: Leverages Entra ID (formerly Azure AD) to provide short-lived access tokens
 
 In both cases, the Gateway automatically manages these credentials, ensuring that each request to upstream providers is sent with short-lived credentials. This approach significantly reduces the risk of credential exposure and aligns with enterprise security best practices.
+
+:::tip
+Learn more about connecting to [AWS Bedrock](../getting-started/connect-providers/aws-bedrock.md) and [Azure OpenAI](../getting-started/connect-providers/azure-openai.md) in the provider specific documentation.
+:::
 
 ## Conclusion
 
