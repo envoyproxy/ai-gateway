@@ -417,21 +417,24 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	})
 
 	t.Run("update security policy", func(t *testing.T) {
-		origin := aigv1a1.BackendSecurityPolicy{}
-		require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &origin))
-		origin.Spec.APIKey = nil
-		origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAWSCredentials
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			origin := aigv1a1.BackendSecurityPolicy{}
+			require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &origin))
+			origin.Spec.APIKey = nil
+			origin.Spec.Type = aigv1a1.BackendSecurityPolicyTypeAWSCredentials
 
-		origin.Spec.AWSCredentials = &aigv1a1.BackendSecurityPolicyAWSCredentials{
-			Region: "us-east-1",
-			CredentialsFile: &aigv1a1.AWSCredentialsFile{
-				SecretRef: &gwapiv1.SecretObjectReference{
-					Name:      "secret",
-					Namespace: ptr.To[gwapiv1.Namespace](backendSecurityPolicyNamespace),
+			origin.Spec.AWSCredentials = &aigv1a1.BackendSecurityPolicyAWSCredentials{
+				Region: "us-east-1",
+				CredentialsFile: &aigv1a1.AWSCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name:      "secret",
+						Namespace: ptr.To[gwapiv1.Namespace](backendSecurityPolicyNamespace),
+					},
 				},
-			},
-		}
-		require.NoError(t, c.Update(t.Context(), &origin, &client.UpdateOptions{}))
+			}
+			return c.Update(t.Context(), &origin)
+		})
+		require.NoError(t, err)
 
 		// Verify that they are the same.
 		backends := eventCh.RequireItemsEventually(t, 2)
