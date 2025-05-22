@@ -1295,15 +1295,15 @@ spec:
                 description: AzureCredentials is a mechanism to access a backend(s).
                   Azure OpenAI specific logic will be applied.
                 properties:
-                  applicationIdentity:
-                    description: ApplicationIdentity specifies the client id/secret
-                      and tenant id used to obtain azure access token.
+                  clientID:
+                    description: ClientID is a unique identifier for an application
+                      in Azure.
+                    minLength: 1
+                    type: string
+                  clientSecretCredential:
+                    description: ClientSecretCredential specifies the client secret
+                      used to obtain azure access token.
                     properties:
-                      clientID:
-                        description: ClientID is a unique identifier for an application
-                          in Azure.
-                        minLength: 1
-                        type: string
                       clientSecretRef:
                         description: |-
                           ClientSecretRef is the reference to the secret containing the Azure client secret.
@@ -1349,16 +1349,17 @@ spec:
                         required:
                         - name
                         type: object
-                      tenantID:
-                        description: TenantId is a unique identifier for an Azure
-                          Active Directory instance.
-                        minLength: 1
-                        type: string
                     required:
-                    - clientID
                     - clientSecretRef
-                    - tenantID
                     type: object
+                  tenantID:
+                    description: TenantId is a unique identifier for an Azure Active
+                      Directory instance.
+                    minLength: 1
+                    type: string
+                required:
+                - clientID
+                - tenantID
                 type: object
               type:
                 description: Type specifies the auth mechanism used to access the

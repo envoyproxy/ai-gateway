@@ -310,7 +310,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureApplicationIdentity](#azureapplicationidentity)
+- [AzureClientSecretCredential](#azureclientsecretcredential)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
@@ -722,7 +722,7 @@ and store them in a temporary credentials file.
 />
 
 
-#### AzureApplicationIdentity
+#### AzureClientSecretCredential
 
 
 
@@ -736,16 +736,6 @@ and store them in a temporary credentials file.
 
 
 <ApiField
-  name="clientID"
-  type="string"
-  required="true"
-  description="ClientID is a unique identifier for an application in Azure."
-/><ApiField
-  name="tenantID"
-  type="string"
-  required="true"
-  description="TenantId is a unique identifier for an Azure Active Directory instance."
-/><ApiField
   name="clientSecretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
   required="true"
@@ -819,10 +809,20 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 
 
 <ApiField
-  name="applicationIdentity"
-  type="[AzureApplicationIdentity](#azureapplicationidentity)"
+  name="clientID"
+  type="string"
+  required="true"
+  description="ClientID is a unique identifier for an application in Azure."
+/><ApiField
+  name="tenantID"
+  type="string"
+  required="true"
+  description="TenantId is a unique identifier for an Azure Active Directory instance."
+/><ApiField
+  name="clientSecretCredential"
+  type="[AzureClientSecretCredential](#azureclientsecretcredential)"
   required="false"
-  description="ApplicationIdentity specifies the client id/secret and tenant id used to obtain azure access token."
+  description="ClientSecretCredential specifies the client secret used to obtain azure access token."
 />
 
 

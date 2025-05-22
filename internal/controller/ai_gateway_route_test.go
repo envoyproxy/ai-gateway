@@ -478,9 +478,9 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 			Spec: aigv1a1.BackendSecurityPolicySpec{
 				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-					ApplicationIdentity: &aigv1a1.AzureApplicationIdentity{
-						ClientID:        "some-client-id",
-						TenantID:        "some-tenant-id",
+					ClientID: "some-client-id",
+					TenantID: "some-tenant-id",
+					ClientSecretCredential: &aigv1a1.AzureClientSecretCredential{
 						ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 					},
 				},
@@ -737,9 +737,9 @@ func TestAIGatewayRouteController_syncExtProcDeployment(t *testing.T) {
 			Spec: aigv1a1.BackendSecurityPolicySpec{
 				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-					ApplicationIdentity: &aigv1a1.AzureApplicationIdentity{
-						ClientID:        "some-client-id",
-						TenantID:        "some-tenant-id",
+					ClientID: "some-client-id",
+					TenantID: "some-tenant-id",
+					ClientSecretCredential: &aigv1a1.AzureClientSecretCredential{
 						ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 					},
 				},
@@ -954,9 +954,9 @@ func TestAIGatewayRouteController_MountBackendSecurityPolicySecrets(t *testing.T
 			Spec: aigv1a1.BackendSecurityPolicySpec{
 				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
-					ApplicationIdentity: &aigv1a1.AzureApplicationIdentity{
-						ClientID:        "some-client-id",
-						TenantID:        "some-tenant-id",
+					ClientID: "some-client-id",
+					TenantID: "some-tenant-id",
+					ClientSecretCredential: &aigv1a1.AzureClientSecretCredential{
 						ClientSecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret-policy-4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 					},
 				},

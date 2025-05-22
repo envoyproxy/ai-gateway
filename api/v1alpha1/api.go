@@ -504,13 +504,6 @@ type BackendSecurityPolicyAPIKey struct {
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 type BackendSecurityPolicyAzureCredentials struct {
-	// ApplicationIdentity specifies the client id/secret and tenant id used to obtain azure access token.
-	//
-	// +optional
-	ApplicationIdentity *AzureApplicationIdentity `json:"applicationIdentity,omitempty"`
-}
-
-type AzureApplicationIdentity struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
 	// +kubebuilder:validation:Required
@@ -523,6 +516,13 @@ type AzureApplicationIdentity struct {
 	// +kubebuilder:validation:MinLength=1
 	TenantID string `json:"tenantID"`
 
+	// ClientSecretCredential specifies the client secret used to obtain azure access token.
+	//
+	// +optional
+	ClientSecretCredential *AzureClientSecretCredential `json:"clientSecretCredential,omitempty"`
+}
+
+type AzureClientSecretCredential struct {
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of secret should be "client-secret".
