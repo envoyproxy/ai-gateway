@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -210,7 +209,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info", eventCh.Ch)
+	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), eventCh.Ch)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)

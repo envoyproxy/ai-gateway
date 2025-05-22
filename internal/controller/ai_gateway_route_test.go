@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,7 +31,7 @@ import (
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, uuid2.NewUUID, "gcr.io/ai-gateway/extproc:latest", "info", eventCh.Ch)
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "mytarget", Namespace: "default"}})
 	require.NoError(t, err)
@@ -88,7 +87,7 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug", eventCh.Ch)
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch)
 	require.NotNil(t, s)
 
 	for _, backend := range []*aigv1a1.AIServiceBackend{
@@ -156,7 +155,7 @@ func Test_newHTTPRoute(t *testing.T) {
 
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), uuid2.NewUUID, "defaultExtProcImage", "debug", eventCh.Ch)
+			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 			httpRoute := &gwapiv1.HTTPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
 				Spec:       gwapiv1.HTTPRouteSpec{},
@@ -290,7 +289,7 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), uuid2.NewUUID, "foo", "debug", eventCh.Ch)
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch)
 
 	r := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{

@@ -210,9 +210,7 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent))
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent))
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()), fakeUID,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest",
-		"info",
+	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
@@ -331,9 +329,4 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 		panic(err)
 	}
 	_, _ = w.Write(marshaled)
-}
-
-// fakeUID returns a fake UID for the AI Gateway Route controller.
-func fakeUID() types.UID {
-	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }

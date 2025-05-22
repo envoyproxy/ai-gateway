@@ -12,10 +12,8 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,13 +47,6 @@ type AIGatewayRouteController struct {
 	client client.Client
 	kube   kubernetes.Interface
 	logger logr.Logger
-
-	extProcImage           string
-	extProcImagePullPolicy corev1.PullPolicy
-	extProcLogLevel        string
-	// uidFn is a function that returns a unique identifier for the external process.
-	// Configured as a field to allow the deterministic generation of the UID for testing.
-	uidFn func() types.UID
 	// gatewayEventChan is a channel to send events to the gateway controller.
 	gatewayEventChan chan event.GenericEvent
 }
@@ -63,19 +54,13 @@ type AIGatewayRouteController struct {
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	uidFn func() types.UID,
-	extProcImage, extProcLogLevel string,
 	gatewayEventChan chan event.GenericEvent,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
-		client:                 client,
-		kube:                   kube,
-		logger:                 logger,
-		extProcImage:           extProcImage,
-		extProcImagePullPolicy: corev1.PullIfNotPresent,
-		extProcLogLevel:        extProcLogLevel,
-		uidFn:                  uidFn,
-		gatewayEventChan:       gatewayEventChan,
+		client:           client,
+		kube:             kube,
+		logger:           logger,
+		gatewayEventChan: gatewayEventChan,
 	}
 }
 
