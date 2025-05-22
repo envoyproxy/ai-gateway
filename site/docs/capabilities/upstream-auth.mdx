@@ -7,7 +7,8 @@ sidebar_position: 8
 
 ## Overview
 
-Upstream Authentication secures the connectivity between the Gateway and the LLM Providers. This layer ensures secure communication and proper access control when the Gateway interacts with various AI service providers like AWS Bedrock, Azure OpenAI, and other platforms. Where the providers support it, the Envoy AI Gateway control plane supports dynamic automatic credential rotation to ensure short-lived access tokens and credentials are used for increased security.
+Upstream Authentication secures the connectivity between the Gateway and the LLM Providers. This layer ensures secure communication and proper access control when the Gateway interacts with various AI service providers like AWS Bedrock, Azure OpenAI, and other platforms.
+
 
 ## Why Upstream Authentication Matters
 
@@ -36,14 +37,20 @@ In enterprise environments, security is implemented in multiple layers:
   ![Upstream Authentication](/diagrams/upstream-auth.png)
 </div>
 
-## Dynamic Credential Management
+## Credential Management
+
+**Where the providers support short lived access credentials**, the Envoy AI Gateway control plane supports automated credential management with the providers' identity system. This ensures a short-lived proof of authorization, such as an access token, is used when the request is sent to the upstream service.
+
+**For providers that do not support short lived access credentials**, the Envoy AI Gateway control plane supports a manual credential management process. In these cases the credentials, like API keys, are stored in Kubernetes secrets and managed by the administrator. Envoy AI Gateway will use the credentials from the secret to authenticate with the upstream service, attaching them to each request by securely retrieving them from the secret and attaching them to the request.
+
+### Automated Credential Management
 
 The Gateway integrates with each provider's identity system to ensure secure, short-lived authentication:
 
 - **AWS Bedrock**: Uses OIDC integration with AWS STS to generate temporary credentials for each request
 - **Azure OpenAI**: Leverages Entra ID (formerly Azure AD) to provide short-lived access tokens
 
-In both cases, the Gateway automatically manages these credentials, ensuring that each request to upstream providers is authenticated with fresh, short-lived credentials. This approach significantly reduces the risk of credential exposure and aligns with enterprise security best practices.
+In both cases, the Gateway automatically manages these credentials, ensuring that each request to upstream providers is sent with short-lived credentials. This approach significantly reduces the risk of credential exposure and aligns with enterprise security best practices.
 
 ## Conclusion
 
