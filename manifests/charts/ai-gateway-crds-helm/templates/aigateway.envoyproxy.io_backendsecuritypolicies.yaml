@@ -188,8 +188,7 @@ spec:
                         type: string
                       oidc:
                         description: OIDC is used to obtain oidc tokens via an SSO
-                          server which will be used to exchange for temporary AWS
-                          credentials.
+                          server which will be used to exchange for provider credentials.
                         properties:
                           clientID:
                             description: |-

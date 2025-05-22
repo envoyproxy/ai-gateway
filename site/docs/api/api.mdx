@@ -314,6 +314,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
@@ -703,7 +704,7 @@ and store them in a temporary credentials file.
   name="oidc"
   type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
   required="true"
-  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials."
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
 /><ApiField
   name="grantType"
   type="string"
@@ -823,6 +824,37 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
   type="[AzureClientSecretCredential](#azureclientsecretcredential)"
   required="false"
   description="ClientSecretCredential specifies the client secret used to obtain azure access token."
+/>
+
+
+#### BackendSecurityPolicyOIDC
+
+
+
+**Appears in:**
+- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+
+BackendSecurityPolicyOIDC specifies OIDC related fields.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
 />
 
 

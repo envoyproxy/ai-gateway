@@ -49,11 +49,6 @@ func TestServer_LoadConfig(t *testing.T) {
 			Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 			SelectedRouteHeaderKey: "x-ai-eg-selected-route",
 			ModelNameHeaderKey:     "x-model-name",
-			Backends: []*filterapi.Backend{
-				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-			},
 			Rules: []filterapi.RouteRule{
 				{
 					Headers: []filterapi.HeaderMatch{
@@ -61,6 +56,10 @@ func TestServer_LoadConfig(t *testing.T) {
 							Name:  "x-model-name",
 							Value: "llama3.3333",
 						},
+					},
+					Backends: []filterapi.Backend{
+						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
 					},
 				},
 				{
@@ -73,6 +72,9 @@ func TestServer_LoadConfig(t *testing.T) {
 							Name:  "some-random-header",
 							Value: "some-random-value",
 						},
+					},
+					Backends: []filterapi.Backend{
+						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 					},
 				},
 			},
