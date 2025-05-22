@@ -88,7 +88,7 @@ If you encounter issues:
 4. View External Processor Logs
 
    ```shell
-   kubectl logs services/ai-eg-route-extproc-envoy-ai-gateway-basic
+   kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic -c ai-gateway-extproc
    ```
 
 5. Common errors:
