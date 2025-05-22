@@ -35,11 +35,11 @@ func TestExtProcCustomRouter(t *testing.T) {
 		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Name:    "testupstream-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Name:     "testupstream-openai-route",
+				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Backends: fakeBackends,
 			},
 		},
-		Backends: fakeBackends,
 	})
 	stdoutPath := t.TempDir() + "/extproc-stdout.log"
 	f, err := os.Create(stdoutPath)
@@ -95,11 +95,11 @@ func TestExtProcCustomMetrics(t *testing.T) {
 		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Name:    "testupstream-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Name:     "testupstream-openai-route",
+				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Backends: fakeBackends,
 			},
 		},
-		Backends: fakeBackends,
 	})
 	stdoutPath := t.TempDir() + "/extproc-stdout.log"
 	f, err := os.Create(stdoutPath)

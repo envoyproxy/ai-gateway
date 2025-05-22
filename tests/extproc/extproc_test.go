@@ -68,7 +68,7 @@ var (
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 )
 
-var fakeBackends = []*filterapi.Backend{
+var fakeBackends = []filterapi.Backend{
 	{Name: "testupstream-openai", Schema: openAISchema},
 	{Name: "testupstream-aws", Schema: awsBedrockSchema},
 	{Name: "testupstream-azure", Schema: azureOpenAISchema},

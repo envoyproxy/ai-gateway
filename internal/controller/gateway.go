@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -178,25 +177,21 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec.Schema.Version = input.Version
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
-	backends := map[string]*filterapi.Backend{}
 	var err error
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		spec := aiGatewayRoute.Spec
 		for i := range spec.Rules {
 			rule := &spec.Rules[i]
+			backends := make([]filterapi.Backend, len(rule.BackendRefs))
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
-				key := fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
-				if _, ok := backends[key]; ok {
-					continue
-				}
-				b := &filterapi.Backend{Name: key}
-				backends[key] = b
+				b := &backends[j]
+				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", key, err)
+					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
 				}
 				b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
 				b.Schema.Version = backendObj.Spec.APISchema.Version
@@ -207,7 +202,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					}
 				}
 			}
-			configRule := filterapi.RouteRule{}
+			configRule := filterapi.RouteRule{Backends: backends}
 			configRule.Name = routeName(aiGatewayRoute, i)
 			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 			for j, match := range rule.Matches {
@@ -241,13 +236,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 			}
 		}
 	}
-	ec.Backends = make([]*filterapi.Backend, 0, len(backends))
-	for _, backend := range backends {
-		ec.Backends = append(ec.Backends, backend)
-	}
-	sort.Slice(ec.Backends, func(i, j int) bool {
-		return ec.Backends[i].Name < ec.Backends[j].Name
-	})
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 

@@ -123,7 +123,9 @@ func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: egv1a1.OIDC{},
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: egv1a1.OIDC{},
+					},
 				},
 			},
 		},
@@ -196,7 +198,9 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: oidc,
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: oidc,
+					},
 				},
 				Region: "us-east-1",
 			},
@@ -284,7 +288,9 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: oidc,
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: oidc,
+					},
 				},
 			},
 		},
@@ -352,8 +358,10 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-				OIDC: egv1a1.OIDC{
-					ClientID: "some-client-id",
+				BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+					OIDC: egv1a1.OIDC{
+						ClientID: "some-client-id",
+					},
 				},
 			},
 		},
@@ -440,7 +448,9 @@ func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testi
 			Type: "Unknown",
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: egv1a1.OIDC{},
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: egv1a1.OIDC{},
+					},
 				},
 			},
 		},
@@ -562,7 +572,9 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 			Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 			AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 				OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
-					OIDC: oidc,
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: oidc,
+					},
 				},
 				Region: "us-east-1",
 			},
