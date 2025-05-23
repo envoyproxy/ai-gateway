@@ -98,23 +98,27 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
 	filterConfigVolumeName := mutationNamePrefix + filterConfigSecretName
-	const filterConfigMountPath = "/etc/filter-config"
-	const filterConfigFullPath = filterConfigMountPath + "/" + FilterConfigKeyInSecret
-	podspec.Volumes = append(podspec.Volumes, corev1.Volume{
-		Name:         filterConfigVolumeName,
-		VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: filterConfigSecretName}},
-	})
 	const extProcUDSVolumeName = mutationNamePrefix + "extproc-uds"
-	podspec.Volumes = append(podspec.Volumes, corev1.Volume{
-		Name: extProcUDSVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
+	podspec.Volumes = append(podspec.Volumes,
+		corev1.Volume{
+			Name: filterConfigVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: filterConfigSecretName},
+			},
 		},
-	})
+		corev1.Volume{
+			Name: extProcUDSVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+	)
 
 	const (
-		extProcMetricsPort = 1064
-		extProcHealthPort  = 1065
+		extProcMetricsPort    = 1064
+		extProcHealthPort     = 1065
+		filterConfigMountPath = "/etc/filter-config"
+		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
 	extProcContainer := corev1.Container{
