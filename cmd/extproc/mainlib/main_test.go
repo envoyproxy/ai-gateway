@@ -8,9 +8,6 @@ package mainlib
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"io"
 	"log/slog"
 	"net"
@@ -22,6 +19,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -141,7 +141,7 @@ func TestStartHealthCheckServer(t *testing.T) {
 				_ = os.Remove("/tmp/ext_proc.sock")
 				grpcLis, err = net.Listen("unix", "/tmp/ext_proc.sock")
 			} else {
-				grpcLis, err = net.Listen("tcp", ":1063")
+				grpcLis, err = net.Listen("tcp", "localhost:1063")
 			}
 			require.NoError(t, err)
 
