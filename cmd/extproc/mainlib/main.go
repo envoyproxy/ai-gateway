@@ -66,7 +66,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "HTTP address for the metrics server.")
+	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "HTTP port for the metrics server.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)

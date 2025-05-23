@@ -23,19 +23,19 @@ import (
 //
 // Exported for testing purposes.
 type AIBackendController struct {
-	client        client.Client
-	kube          kubernetes.Interface
-	logger        logr.Logger
-	aiGatewayChan chan event.GenericEvent
+	client             client.Client
+	kube               kubernetes.Interface
+	logger             logr.Logger
+	aiGatewayRouteChan chan event.GenericEvent
 }
 
 // NewAIServiceBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayChan chan event.GenericEvent) *AIBackendController {
+func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent) *AIBackendController {
 	return &AIBackendController{
-		client:        client,
-		kube:          kube,
-		logger:        logger,
-		aiGatewayChan: aiGatewayChan,
+		client:             client,
+		kube:               kube,
+		logger:             logger,
+		aiGatewayRouteChan: aiGatewayRouteChan,
 	}
 }
 
@@ -60,7 +60,8 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 	return ctrl.Result{}, nil
 }
 
-// syncAIServiceBackend implements syncAIServiceBackendFn.
+// syncAIGatewayRoute is the main logic for reconciling the AIServiceBackend resource.
+// This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
@@ -73,7 +74,7 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		c.aiGatewayChan <- event.GenericEvent{Object: &aiGatewayRoute}
+		c.aiGatewayRouteChan <- event.GenericEvent{Object: &aiGatewayRoute}
 	}
 	return nil
 }

@@ -91,7 +91,8 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
-// syncAIGatewayRoute implements syncAIGatewayRouteFn.
+// syncAIGatewayRoute is the main logic for reconciling the AIGatewayRoute resource.
+// This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	// Check if the HTTPRouteFilter exists in the namespace.
 	var httpRouteFilter egv1a1.HTTPRouteFilter
@@ -111,7 +112,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 				},
 			},
 		}
-		if err = c.client.Create(ctx, &httpRouteFilter); err != nil && apierrors.IsNotFound(err) {
+		if err = c.client.Create(ctx, &httpRouteFilter); err != nil {
 			return fmt.Errorf("failed to create HTTPRouteFilter: %w", err)
 		}
 	} else if err != nil {

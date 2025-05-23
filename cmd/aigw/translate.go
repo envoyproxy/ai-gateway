@@ -197,13 +197,13 @@ func translateCustomResourceObjects(
 	fakeClientSet = fake2.NewClientset()
 
 	// Store the user-defined secrets in the fake client set so that Gateway controller can read them.
-	usedDefinedSecretKeys := map[string]struct{}{}
+	userDefinedSecretKeys := map[string]struct{}{}
 	for _, s := range usedDefinedSecrets {
 		if _, err = fakeClientSet.CoreV1().Secrets(s.Namespace).Create(ctx, s, metav1.CreateOptions{}); err != nil {
 			err = fmt.Errorf("error creating secret: %w", err)
 			return
 		}
-		usedDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
+		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
 	}
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
@@ -260,7 +260,7 @@ func translateCustomResourceObjects(
 	// We only want to return the secrets that are not user-defined, but created by the controller.
 	for i := len(secrets.Items) - 1; i >= 0; i-- {
 		secret := &secrets.Items[i]
-		if _, ok := usedDefinedSecretKeys[fmt.Sprintf("%s/%s", secret.Namespace, secret.Name)]; ok {
+		if _, ok := userDefinedSecretKeys[fmt.Sprintf("%s/%s", secret.Namespace, secret.Name)]; ok {
 			secrets.Items = append(secrets.Items[:i], secrets.Items[i+1:]...)
 		}
 	}
