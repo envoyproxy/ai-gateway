@@ -404,7 +404,7 @@ type AIServiceBackendSpec struct {
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;GCPGemini;GCPAnthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -427,6 +427,15 @@ const (
 	//
 	// https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs
 	APISchemaAzureOpenAI APISchema = "AzureOpenAI"
+	// APISchemaGCPGemini is the schema followed by Gemini models hosted on GCP.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en
+	APISchemaGCPGemini APISchema = "GCPGemini"
+	// APISchemaGCPAnthropic is the schema followed by Anthropic models hosted on GCP.
+	// This is majorly the Anthropic API with some GCP specific parameters as described in below URL.
+	//
+	// https://docs.anthropic.com/en/api/claude-on-vertex-ai
+	APISchemaGCPAnthropic APISchema = "GCPAnthropic"
 )
 
 const (
@@ -442,6 +451,7 @@ const (
 	BackendSecurityPolicyTypeAPIKey           BackendSecurityPolicyType = "APIKey"
 	BackendSecurityPolicyTypeAWSCredentials   BackendSecurityPolicyType = "AWSCredentials"
 	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
+	BackendSecurityPolicyTypeGCPCredentials   BackendSecurityPolicyType = "GCPCredentials"
 )
 
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
@@ -466,7 +476,7 @@ type BackendSecurityPolicy struct {
 type BackendSecurityPolicySpec struct {
 	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials" are supported.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -483,6 +493,10 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AzureCredentials *BackendSecurityPolicyAzureCredentials `json:"azureCredentials,omitempty"`
+	// GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied.
+	//
+	// +optional
+	GCPCredentials *BackendSecurityPolicyGCPCredentials `json:"gcpCredentials,omitempty"`
 }
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
@@ -518,6 +532,32 @@ type BackendSecurityPolicyOIDC struct {
 	//
 	// +optional
 	Aud string `json:"aud,omitempty"`
+}
+
+// BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+type BackendSecurityPolicyGCPCredentials struct {
+	// ProjectID is the GCP project ID that the backend is hosted in.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ProjectID string `json:"projectID"`
+	// ServiceAccountEmail is the email address of the service account to be used to access GCP.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ServiceAccountEmail string `json:"serviceAccountEmail"`
+	// WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	WorkloadIdentityPoolName string `json:"workloadIdentityPoolName"`
+	// GCPIdentityProviderName refers to the external identity provider whose credentials your workload is using to authenticate to Google Cloud.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	GCPIdentityProviderName string `json:"GCPIdentityProviderName"`
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.

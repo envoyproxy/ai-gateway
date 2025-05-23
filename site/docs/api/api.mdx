@@ -313,6 +313,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
@@ -655,6 +656,16 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaAzureOpenAI APISchemaAzure is the Azure OpenAI schema.<br />https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs<br />"
+/><ApiField
+  name="GCPGemini"
+  type="enum"
+  required="false"
+  description="APISchemaGCPGemini is the schema followed by Gemini models hosted on GCP.<br />https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en<br />"
+/><ApiField
+  name="GCPAnthropic"
+  type="enum"
+  required="false"
+  description="APISchemaGCPAnthropic is the schema followed by Anthropic models hosted on GCP.<br />This is majorly the Anthropic API with some GCP specific parameters as described in below URL.<br />https://docs.anthropic.com/en/api/claude-on-vertex-ai<br />"
 />
 #### AWSCredentialsFile
 
@@ -805,12 +816,64 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 />
 
 
+#### BackendSecurityPolicyGCPCredentials
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+
+##### Fields
+
+
+
+<ApiField
+  name="projectID"
+  type="string"
+  required="true"
+  description="ProjectID is the GCP project ID that the backend is hosted in."
+/><ApiField
+  name="serviceAccountEmail"
+  type="string"
+  required="true"
+  description="ServiceAccountEmail is the email address of the service account to be used to access GCP."
+/><ApiField
+  name="workloadIdentityPoolName"
+  type="string"
+  required="true"
+  description="WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP."
+/><ApiField
+  name="GCPIdentityProviderName"
+  type="string"
+  required="true"
+  description="GCPIdentityProviderName refers to the external identity provider whose credentials your workload is using to authenticate to Google Cloud."
+/><ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
+/>
+
+
 #### BackendSecurityPolicyOIDC
 
 
 
 **Appears in:**
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -872,6 +935,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
   required="false"
   description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
+/><ApiField
+  name="gcpCredentials"
+  type="[BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)"
+  required="false"
+  description="GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied."
 />
 
 
@@ -921,6 +989,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="AzureCredentials"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="GCPCredentials"
   type="enum"
   required="false"
   description=""
