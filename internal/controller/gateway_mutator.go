@@ -137,6 +137,11 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 				MountPath: udsMountPath,
 				ReadOnly:  false,
 			},
+			{
+				Name:      filterConfigVolumeName,
+				MountPath: filterConfigMountPath,
+				ReadOnly:  true,
+			},
 		},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
@@ -168,10 +173,6 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			FailureThreshold:    1,
 		},
 	}
-	extProcContainer.VolumeMounts = append(extProcContainer.VolumeMounts, corev1.VolumeMount{
-		Name:      filterConfigVolumeName,
-		MountPath: filterConfigMountPath,
-	})
 	// Currently, we have to set the resources for the extproc container at route level.
 	// We choose one of the routes to set the resources for the extproc container.
 	for i := range routes.Items {
