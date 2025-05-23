@@ -159,31 +159,22 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
-func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	// Start tracking metrics for this request.
-	c.metrics.StartRequest(c.requestHeaders)
-
-	// The request headers have already been at the time the processor was created.
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
-		RequestHeaders: &extprocv3.HeadersResponse{},
-	}}, nil
-}
-
-// ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.Context, _ *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+//
+// At the upstream filter, we already have the original request body at request headers phase.
+// So, we simply do the translation and upstream auth at this stage, and send them back to Envoy
+// with the status CONTINUE_AND_REPLACE. This will allows Envoy to not send the request body again
+// to the extproc.
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
 
-	// TODO: We do not use the body from the extproc request since we might have already translated it
-	// to the upstream format on the previous retry (if any). If it's possible, we should be able to
-	// configure the extproc filter to "not send the body but execute the ProcessRequestBody" method.
-	// Currently, there's no way to do this, hence Envoy has to "unnecessarily" send the entire request body
-	// to the extproc twice.
-
+	// Start tracking metrics for this request.
+	c.metrics.StartRequest(c.requestHeaders)
 	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
+
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
@@ -201,15 +192,21 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.C
 		}
 	}
 
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation, BodyMutation: bodyMutation},
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation, BodyMutation: bodyMutation,
+					Status: extprocv3.CommonResponse_CONTINUE_AND_REPLACE,
+				},
 			},
 		},
-	}
-	c.stream = c.originalRequestBody.Stream
-	return resp, nil
+	}, nil
+}
+
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	panic("BUG: ProcessRequestBody should not be called in the upstream filter")
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -313,6 +310,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
+	c.stream = c.originalRequestBody.Stream
 	return
 }
 
