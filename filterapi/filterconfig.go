@@ -16,6 +16,7 @@ package filterapi
 
 import (
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -153,6 +154,16 @@ type RouteRule struct {
 	Headers []HeaderMatch `json:"headers"`
 	// Backends is the list of backends to which the request should be routed to when the headers match.
 	Backends []Backend `json:"backends"`
+	// OwnedBy represents the owner of the running model serving by the backend,
+	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+	//
+	// Default to "Envoy AI Gateway" if not set.
+	OwnedBy string `json:"ownedBy"`
+	// CreatedAt represents the creation timestamp of the running model serving by the backend,
+	// which will be exported as the field of "Created" in openai-compatible API "/models".
+	//
+	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // RouteRuleName is the name of the route rule.

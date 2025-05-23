@@ -427,6 +427,17 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   type="[HTTPRouteTimeouts](#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
+/><ApiField
+  name="ownedBy"
+  type="string"
+  required="false"
+  defaultValue="Envoy AI Gateway"
+  description="OwnedBy represents the owner of the running model serving by the backend,<br />which will be exported as the field of `OwnedBy` in openai-compatible API `/models`.<br />Default to `Envoy AI Gateway` if not set."
+/><ApiField
+  name="createdAt"
+  type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
+  required="false"
+  description="CreatedAt represents the creation timestamp of the running model serving by the backend,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
 />
 
 

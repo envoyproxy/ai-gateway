@@ -323,6 +323,15 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
+                    createdAt:
+                      description: |-
+                        CreatedAt represents the creation timestamp of the running model serving by the backend,
+                        which will be exported as the field of "Created" in openai-compatible API "/models".
+                        It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+
+                        Default to the creation timestamp of the AIGatewayRoute if not set.
+                      format: date-time
+                      type: string
                     matches:
                       description: |-
                         Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
@@ -399,6 +408,14 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
+                    ownedBy:
+                      default: Envoy AI Gateway
+                      description: |-
+                        OwnedBy represents the owner of the running model serving by the backend,
+                        which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+
+                        Default to "Envoy AI Gateway" if not set.
+                      type: string
                     timeouts:
                       description: Timeouts defines the timeouts that can be configured
                         for an HTTP request.

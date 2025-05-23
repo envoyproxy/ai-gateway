@@ -227,6 +227,25 @@ type AIGatewayRouteRule struct {
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
+
+	// OwnedBy represents the owner of the running model serving by the backend,
+	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+	//
+	// Default to "Envoy AI Gateway" if not set.
+	//
+	// +optional
+	// +kubebuilder:default="Envoy AI Gateway"
+	OwnedBy *string `json:"ownedBy,omitempty"`
+
+	// CreatedAt represents the creation timestamp of the running model serving by the backend,
+	// which will be exported as the field of "Created" in openai-compatible API "/models".
+	// It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+	//
+	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	//
+	// +optional
+	// +kubebuilder:validation:Format=date-time
+	CreatedAt *metav1.Time `json:"createdAt,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
