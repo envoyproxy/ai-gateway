@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -40,6 +41,7 @@ type extProcFlags struct {
 	extProcAddr string     // gRPC address for the external processor.
 	logLevel    slog.Level // log level for the external processor.
 	metricsPort int        // HTTP port for the metrics server.
+	healthPort  int        // HTTP port for the health check server.
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -66,7 +68,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "HTTP port for the metrics server.")
+	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "port for the metrics server.")
+	fs.IntVar(&flags.healthPort, "healthPort", 1065, "port for the health check HTTP server.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -141,6 +144,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
 
+	hs := startHealthCheckServer(fmt.Sprintf(":%d", flags.healthPort), l, lis)
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
@@ -150,8 +154,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown metrics server gracefully", "error", err)
 		}
+		if err := hs.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown health check server gracefully", "error", err)
+		}
 	}()
-
 	return s.Serve(lis)
 }
 
@@ -204,4 +210,54 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 	}()
 
 	return server, meter
+}
+
+// startHealthCheckServer is a proxy for the gRPC health check server.
+// This is necessary because the gRPC health check at k8s level does not
+// support unix domain sockets. To make the health check work regardless of
+// the network type, we serve a simple HTTP server that checks the gRPC health.
+func startHealthCheckServer(addr string, l *slog.Logger, grpcLis net.Listener) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		var prefix string
+		switch grpcLis.Addr().Network() {
+		case "unix":
+			prefix = "unix://"
+		default:
+			prefix = ""
+		}
+
+		conn, err := grpc.NewClient(prefix+grpcLis.Addr().String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("dial failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close()
+
+		client := grpc_health_v1.NewHealthClient(conn)
+		resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{Service: ""})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("health check RPC failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+			http.Error(w, fmt.Sprintf("unhealthy status: %s", resp.Status), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		l.Info("Starting health check HTTP server", "addr", addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error("Health check server failed", "error", err)
+		}
+	}()
+	return server
 }

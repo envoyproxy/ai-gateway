@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"net/http"
 	"path/filepath"
 
@@ -111,7 +112,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		},
 	})
 
-	const extProcMetricsPort = 1064
+	const (
+		extProcMetricsPort = 1064
+		extProcHealthPort  = 1065
+	)
 	udsMountPath := filepath.Dir(g.udsPath)
 	extProcContainer := corev1.Container{
 		Name:            mutationNamePrefix + "extproc",
@@ -125,6 +129,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			"-logLevel", g.extProcLogLevel,
 			"-extProcAddr", "unix://" + g.udsPath,
 			"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
+			"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -147,6 +152,20 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
+		},
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port:   intstr.FromInt32(extProcHealthPort),
+					Path:   "/",
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			InitialDelaySeconds: 2,
+			TimeoutSeconds:      5,
+			PeriodSeconds:       10,
+			SuccessThreshold:    1,
+			FailureThreshold:    1,
 		},
 	}
 	extProcContainer.VolumeMounts = append(extProcContainer.VolumeMounts, corev1.VolumeMount{

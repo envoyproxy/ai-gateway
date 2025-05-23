@@ -6,10 +6,19 @@
 package mainlib
 
 import (
+	"context"
+	"fmt"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,4 +130,51 @@ func TestStartMetricsServer(t *testing.T) {
 
 	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil)
 	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, "target_info{")
+}
+
+func TestStartHealthCheckServer(t *testing.T) {
+	for _, tc := range []string{"unix", "tcp"} {
+		t.Run(tc, func(t *testing.T) {
+			var grpcLis net.Listener
+			var err error
+			if tc == "unix" {
+				_ = os.Remove("/tmp/ext_proc.sock")
+				grpcLis, err = net.Listen("unix", "/tmp/ext_proc.sock")
+			} else {
+				grpcLis, err = net.Listen("tcp", ":1063")
+			}
+			require.NoError(t, err)
+
+			hs := health.NewServer()
+			hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+			grpcSrv := grpc.NewServer()
+			grpc_health_v1.RegisterHealthServer(grpcSrv, hs)
+			go func() {
+				_ = grpcSrv.Serve(grpcLis)
+			}()
+			defer grpcSrv.Stop()
+			time.Sleep(time.Millisecond * 100)
+
+			httpSrv := startHealthCheckServer(
+				"", // addr unused when invoking Handler directly.
+				slog.Default(),
+				grpcLis,
+			)
+
+			req := httptest.NewRequest("GET", "/", nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			httpSrv.Handler.ServeHTTP(rr, req)
+			res := rr.Result()
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			fmt.Println(string(body))
+			require.Equal(t, http.StatusOK, res.StatusCode)
+		})
+	}
 }
