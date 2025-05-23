@@ -6,7 +6,7 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: envoy-ai-gateway-gateway-deployment-mutator
+  name: envoy-ai-gateway-gateway-pod-mutator.{{ .Release.Namespace }}
 webhooks:
   - name:  {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
     clientConfig:
@@ -14,11 +14,6 @@ webhooks:
         name:  {{ include "ai-gateway-helm.controller.fullname" . }}
         namespace: {{ .Release.Namespace }}
         path: /mutate
-      {{- if .Values.controller.mutatingWebhook.caBundle }}
-      caBundle: {{ .Values.controller.mutatingWebhook.caBundle }}
-      {{- else }}
-      caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURPekNDQWlPZ0F3SUJBZ0lVVStnMVVwcDFRdGZwazg3elk1SDIvRVk1NVFVd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURUxNQWtHQTFVRUJoTUNRVlV4SGpBY0JnTlZCQU1NRldGcExXZGhkR1YzWVhrdFkyOXVkSEp2Ykd4bApjakFlRncweU5UQTFNakF4TmpRek5USmFGdzB6TlRBMU1UZ3hOalF6TlRKYU1DMHhDekFKQmdOVkJBWVRBa0ZWCk1SNHdIQVlEVlFRRERCVmhhUzFuWVhSbGQyRjVMV052Ym5SeWIyeHNaWEl3Z2dFaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURLTjVZbU1oN1RnR3FOcGVkQzBEV0JXZG4ycE1pSHRDZVJsVGtsdURqSwpsK1plbGVpUjdyb29OVVhjNmdFMDJSQWFSQ0VhTk1TWkwzbTZCa1oxWG9vOTJNdmFidStPUmt3QXBPK09USXZqCk5zWWIzL2Jsc1NUMXFIWEFwbTduODg2RWQ4MENHM0pjemk3QWlvWHNBaFR2K1NvSmVRSnNvS0xlVllWNW01bC8KajR4b0psOWZZK2x6cG1nZGNBTEJtN0ZEckFic0Vnakt3bUZFUUF4VE54V293WkRpQVJXMjFpbzQ1c2FDNDExUwptL1podGhTeERRcHFTelB3WWNYd1IwNHN5WnhHVWV3WXJwSUU1NGhSc004S3dwcU5FWlZuamxhS0Jzc2lFZ0c4Cjk3c3g5d0RiM0hMemVwN0ZTaEt6NExzbGVQQWM4RG12ZFlqbm9vWmF4enNmQWdNQkFBR2pVekJSTUIwR0ExVWQKRGdRV0JCUzlwdUowaSt6S1c0WTNGWTJOdlJLQWIwT05ZekFmQmdOVkhTTUVHREFXZ0JTOXB1SjBpK3pLVzRZMwpGWTJOdlJLQWIwT05ZekFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJBUUNaClpnUENRbmFYdC94U0o3b1VGQk1iYTVUTGVxdnpJS1BlRHZTMGlpNjR0WmVRNzVSN25RdlNWdDJRbkdEanB5SisKMDBFUmphN2pXcGpMM0lXaWptRTE5OXZ2NDBaWTRwYWpoQkFMM3k4d1BmNnZSaDhkN1RPNFhtTjdoc2VyMnRjaQpkZW5OR1B4dTFiWDJ0TEU4RkFHTThTVWFyVnk2dmVIZGlVeW9NbEpXcHZqV1lOZ2FWRTVZeC84MzlXbXhSaG5TCjJJT2xqQXNUd2FJa0kwd21zNTFsWlhHUGhSZ0VTOUFvTFB1eXdzZ3E3R2NqSWhZSHBmc28vM0RnUzgvTVRSNUIKaVdxaVhwZ2pENlpPelRReXA4enBuR3pZR2R4U0theGQxSTBMaExUdWF3ZExRK0RTM3p2UjVTNVY1dkxRVVoxcgowVW44RTY4bjdzOEVwbFY4TjZ4bAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
-      {{- end }}
     rules:
       - apiGroups: [""]
         apiVersions: ["v1"]
@@ -37,6 +32,27 @@ kind: Secret
 metadata:
   name: self-signed-cert-for-mutating-webhook
 stringData:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDOzCCAiOgAwIBAgIUU+g1Upp1Qtfpk87zY5H2/EY55QUwDQYJKoZIhvcNAQEL
+    BQAwLTELMAkGA1UEBhMCQVUxHjAcBgNVBAMMFWFpLWdhdGV3YXktY29udHJvbGxl
+    cjAeFw0yNTA1MjAxNjQzNTJaFw0zNTA1MTgxNjQzNTJaMC0xCzAJBgNVBAYTAkFV
+    MR4wHAYDVQQDDBVhaS1nYXRld2F5LWNvbnRyb2xsZXIwggEiMA0GCSqGSIb3DQEB
+    AQUAA4IBDwAwggEKAoIBAQDKN5YmMh7TgGqNpedC0DWBWdn2pMiHtCeRlTkluDjK
+    l+ZeleiR7rooNUXc6gE02RAaRCEaNMSZL3m6BkZ1Xoo92Mvabu+ORkwApO+OTIvj
+    NsYb3/blsST1qHXApm7n886Ed80CG3Jczi7AioXsAhTv+SoJeQJsoKLeVYV5m5l/
+    j4xoJl9fY+lzpmgdcALBm7FDrAbsEgjKwmFEQAxTNxWowZDiARW21io45saC411S
+    m/ZhthSxDQpqSzPwYcXwR04syZxGUewYrpIE54hRsM8KwpqNEZVnjlaKBssiEgG8
+    97sx9wDb3HLzep7FShKz4LslePAc8DmvdYjnooZaxzsfAgMBAAGjUzBRMB0GA1Ud
+    DgQWBBS9puJ0i+zKW4Y3FY2NvRKAb0ONYzAfBgNVHSMEGDAWgBS9puJ0i+zKW4Y3
+    FY2NvRKAb0ONYzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCZ
+    ZgPCQnaXt/xSJ7oUFBMba5TLeqvzIKPeDvS0ii64tZeQ75R7nQvSVt2QnGDjpyJ+
+    00ERja7jWpjL3IWijmE199vv40ZY4pajhBAL3y8wPf6vRh8d7TO4XmN7hser2tci
+    denNGPxu1bX2tLE8FAGM8SUarVy6veHdiUyoMlJWpvjWYNgaVE5Yx/839WmxRhnS
+    2IOljAsTwaIkI0wms51lZXGPhRgES9AoLPuywsgq7GcjIhYHpfso/3DgS8/MTR5B
+    iWqiXpgjD6ZOzTQyp8zpnGzYGdxSKaxd1I0LhLTuawdLQ+DS3zvR5S5V5vLQUZ1r
+    0Un8E68n7s8EplV8N6xl
+    -----END CERTIFICATE-----
   tls.crt: |
     -----BEGIN CERTIFICATE-----
     MIIDaTCCAlGgAwIBAgIUHUaEt6oW5HaBSAc/DZZ39PclDaUwDQYJKoZIhvcNAQEL
