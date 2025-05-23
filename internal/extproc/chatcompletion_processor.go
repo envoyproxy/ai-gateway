@@ -159,6 +159,11 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+//
+// At the upstream filter, we already have the original request body at request headers phase.
+// So, we simply do the translation and upstream auth at this stage, and send them back to Envoy
+// with the status CONTINUE_AND_REPLACE. This will allows Envoy to not send the request body again
+// to the extproc.
 func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
@@ -187,7 +192,6 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		}
 	}
 
-	// The request headers have already been at the time the processor was created.
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
