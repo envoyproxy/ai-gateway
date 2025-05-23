@@ -114,6 +114,15 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		},
 	)
 
+	// Currently, we have to set the resources for the extproc container at route level.
+	// We choose one of the routes to set the resources for the extproc container.
+	var resources corev1.ResourceRequirements
+	for i := range routes.Items {
+		fc := routes.Items[i].Spec.FilterConfig
+		if fc != nil && fc.ExternalProcessor.Resources != nil {
+			resources = *fc.ExternalProcessor.Resources
+		}
+	}
 	const (
 		extProcMetricsPort    = 1064
 		extProcHealthPort     = 1065
@@ -121,7 +130,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
-	extProcContainer := corev1.Container{
+	podspec.Containers = append(podspec.Containers, corev1.Container{
 		Name:            mutationNamePrefix + "extproc",
 		Image:           g.extProcImage,
 		ImagePullPolicy: g.extProcImagePullPolicy,
@@ -176,17 +185,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			SuccessThreshold:    1,
 			FailureThreshold:    1,
 		},
-	}
-	// Currently, we have to set the resources for the extproc container at route level.
-	// We choose one of the routes to set the resources for the extproc container.
-	for i := range routes.Items {
-		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor.Resources != nil {
-			extProcContainer.Resources = *fc.ExternalProcessor.Resources
-		}
-	}
-
-	podspec.Containers = append(podspec.Containers, extProcContainer)
+		Resources: resources,
+	})
 
 	// Lastly, we need to mount the Envoy container with the extproc socket.
 	for i := range podspec.Containers {
