@@ -15,7 +15,7 @@ import (
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -38,14 +39,17 @@ type Server struct {
 	egextension.UnimplementedEnvoyGatewayExtensionServer
 	log       logr.Logger
 	k8sClient client.Client
+	// udsPath is the path to the UDS socket.
+	// This is used to communicate with the external processor.
+	udsPath string
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger) *Server {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string) *Server {
 	logger = logger.WithName(serverName)
-	return &Server{log: logger, k8sClient: k8sClient}
+	return &Server{log: logger, k8sClient: k8sClient, udsPath: udsPath}
 }
 
 // Check implements [grpc_health_v1.HealthServer].
@@ -66,42 +70,59 @@ func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc
 }
 
 const (
-	// originalDstHeaderName is the header name that will be used to pass the original destination endpoint in the form of "ip:port".
-	originalDstHeaderName = "x-ai-eg-original-dst"
-	// OriginalDstClusterName is the global name of the original destination cluster.
-	OriginalDstClusterName = "original_destination_cluster"
+	ExtProcUDSClusterName = "ai-gateway-extproc-uds"
 )
 
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config.
 //
 // Currently, this adds an ORIGINAL_DST cluster to the list of clusters unconditionally.
 func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
-	var originalDstExists bool
+	var extProcUDSExist bool
 	for _, cluster := range req.Clusters {
 		s.maybeModifyCluster(cluster)
-		originalDstExists = originalDstExists || cluster.Name == OriginalDstClusterName
+		extProcUDSExist = extProcUDSExist || cluster.Name == ExtProcUDSClusterName
 	}
-	if !originalDstExists {
-		// Append the following cluster to the list of clusters:
-		//   name: original_destination_cluster
-		//   connectTimeout: 60s
-		//   lbPolicy: CLUSTER_PROVIDED
-		//   originalDstLbConfig:
-		//     httpHeaderName: x-ai-eg-original-dst
-		//     useHttpHeader: true
-		//   type: ORIGINAL_DST
-		req.Clusters = append(req.Clusters, &clusterv3.Cluster{
-			Name:                 OriginalDstClusterName,
-			ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST},
-			LbPolicy:             clusterv3.Cluster_CLUSTER_PROVIDED,
-			LbConfig: &clusterv3.Cluster_OriginalDstLbConfig_{
-				OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
-					UseHttpHeader: true, HttpHeaderName: originalDstHeaderName,
+	if !extProcUDSExist {
+		po := &httpv3.HttpProtocolOptions{}
+		po.UpstreamProtocolOptions = &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+			ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
+				Http2ProtocolOptions: &corev3.Http2ProtocolOptions{
+					InitialConnectionWindowSize: wrapperspb.UInt32(1048576),
+					InitialStreamWindowSize:     wrapperspb.UInt32(65536),
 				},
 			},
-			ConnectTimeout: &durationpb.Duration{Seconds: 60},
+		}}
+		req.Clusters = append(req.Clusters, &clusterv3.Cluster{
+			Name:                 ExtProcUDSClusterName,
+			ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
+			ConnectTimeout:       &durationpb.Duration{Seconds: 1},
+			TypedExtensionProtocolOptions: map[string]*anypb.Any{
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(po),
+			},
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{
+				ClusterName: ExtProcUDSClusterName,
+				Endpoints: []*endpointv3.LocalityLbEndpoints{
+					{
+						LbEndpoints: []*endpointv3.LbEndpoint{
+							{
+								HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
+									Endpoint: &endpointv3.Endpoint{
+										Address: &corev3.Address{
+											Address: &corev3.Address_Pipe{
+												Pipe: &corev3.Pipe{
+													Path: s.udsPath,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		})
-		s.log.Info("Added original_dst cluster to the list of clusters")
+		s.log.Info("Added extproc-uds cluster to the list of clusters")
 	}
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets}
 	return response, nil
@@ -220,11 +241,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	extProcConfig.GrpcService = &corev3.GrpcService{
 		TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
 			EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
-				ClusterName: fmt.Sprintf(
-					"envoyextensionpolicy/%s/ai-eg-route-extproc-%s/extproc/0",
-					aigwRoute.Namespace,
-					aigwRoute.Name,
-				),
+				ClusterName: ExtProcUDSClusterName,
 			},
 		},
 		Timeout: durationpb.New(30 * time.Second),
@@ -270,26 +287,6 @@ func mustToAny(msg proto.Message) *anypb.Any {
 }
 
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.
-//
-// Currently, this replaces the route that has "x-ai-eg-selected-route" pointing to "original_destination_cluster" to route to the original destination cluster.
-func (s *Server) PostVirtualHostModify(_ context.Context, req *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
-	if req.VirtualHost == nil || len(req.VirtualHost.Routes) == 0 {
-		return nil, nil
-	}
-	for _, route := range req.VirtualHost.Routes {
-		for _, h := range route.Match.Headers {
-			if h.Name != "x-ai-eg-selected-route" {
-				continue
-			}
-			matcher, ok := h.HeaderMatchSpecifier.(*routev3.HeaderMatcher_StringMatch)
-			if !ok || matcher.StringMatch.GetExact() != OriginalDstClusterName {
-				s.log.Info("unexpected header value", "header", h)
-				continue
-			}
-			route.Action = &routev3.Route_Route{
-				Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: OriginalDstClusterName}},
-			}
-		}
-	}
-	return &egextension.PostVirtualHostModifyResponse{VirtualHost: req.VirtualHost}, nil
+func (s *Server) PostVirtualHostModify(context.Context, *egextension.PostVirtualHostModifyRequest) (*egextension.PostVirtualHostModifyResponse, error) {
+	return nil, nil
 }

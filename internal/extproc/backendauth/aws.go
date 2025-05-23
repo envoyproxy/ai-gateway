@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unsafe"
@@ -38,10 +39,21 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (Handler, er
 
 	if awsAuth != nil {
 		region = awsAuth.Region
-		if len(awsAuth.CredentialFileName) != 0 {
+		if len(awsAuth.CredentialFileLiteral) != 0 {
+			tmpfile, err := os.CreateTemp("", "aws-credentials")
+			if err != nil {
+				return nil, fmt.Errorf("cannot create temp file for AWS credentials: %w", err)
+			}
+			defer func() {
+				_ = os.Remove(tmpfile.Name())
+			}()
+			if _, err = tmpfile.WriteString(awsAuth.CredentialFileLiteral); err != nil {
+				return nil, fmt.Errorf("cannot write AWS credentials to temp file: %w", err)
+			}
+			name := tmpfile.Name()
 			cfg, err := config.LoadDefaultConfig(
 				ctx,
-				config.WithSharedCredentialsFiles([]string{awsAuth.CredentialFileName}),
+				config.WithSharedCredentialsFiles([]string{name}),
 				config.WithRegion(awsAuth.Region),
 			)
 			if err != nil {

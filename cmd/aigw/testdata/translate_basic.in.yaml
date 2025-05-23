@@ -182,7 +182,20 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: something
+  name: envoy-ai-gateway-basic-openai-apikey
+  namespace: default
 type: Opaque
 stringData:
-  something: foo
+  apiKey: apiKey
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-aws-credentials
+  namespace: default
+type: Opaque
+stringData:
+  credentials: |
+    [default]
+    aws_access_key_id = AWS_ACCESS_KEY_ID
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY

@@ -23,9 +23,9 @@ import (
 )
 
 func TestSecretController_Reconcile(t *testing.T) {
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.BackendSecurityPolicy]()
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 
 	err := fakeClient.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
@@ -61,7 +61,7 @@ func TestSecretController_Reconcile(t *testing.T) {
 		Namespace: "default", Name: "mysecret",
 	}})
 	require.NoError(t, err)
-	actual := syncFn.GetItems()
+	actual := eventCh.RequireItemsEventually(t, len(originals))
 	sort.Slice(actual, func(i, j int) bool {
 		return actual[i].Name < actual[j].Name
 	})

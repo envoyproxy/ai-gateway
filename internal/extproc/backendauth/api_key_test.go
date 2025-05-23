@@ -6,7 +6,6 @@
 package backendauth
 
 import (
-	"os"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -17,16 +16,7 @@ import (
 )
 
 func TestNewAPIKeyHandler(t *testing.T) {
-	apiKeyFile := t.TempDir() + "/test"
-
-	f, err := os.Create(apiKeyFile)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
-	_, err = f.WriteString(" test \n")
-	require.NoError(t, err)
-	require.NoError(t, f.Sync())
-
-	auth := filterapi.APIKeyAuth{Filename: apiKeyFile}
+	auth := filterapi.APIKeyAuth{Key: "test \n"}
 	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
@@ -35,23 +25,10 @@ func TestNewAPIKeyHandler(t *testing.T) {
 }
 
 func TestApiKeyHandler_Do(t *testing.T) {
-	apiKeyFile := t.TempDir() + "/test"
-
-	f, err := os.Create(apiKeyFile)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
-	_, err = f.WriteString("test")
-	require.NoError(t, err)
-	require.NoError(t, f.Sync())
-
-	auth := filterapi.APIKeyAuth{Filename: apiKeyFile}
+	auth := filterapi.APIKeyAuth{Key: "test"}
 	handler, err := newAPIKeyHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
-
-	secret, err := os.ReadFile(auth.Filename)
-	require.NoError(t, err)
-	require.Equal(t, "test", string(secret))
 
 	requestHeaders := map[string]string{":method": "POST"}
 	headerMut := &extprocv3.HeaderMutation{

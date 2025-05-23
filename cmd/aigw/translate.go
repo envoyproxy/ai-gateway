@@ -17,7 +17,6 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +27,7 @@ import (
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	kyaml "sigs.k8s.io/yaml"
@@ -48,12 +48,12 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, _, httpRoutes, extensionPolicies, httpRouteFilter, configMaps, secrets, deployments, services, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, stderrLogger)
+	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, "/var/run/translate.sock", stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -65,11 +65,11 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	for _, extensionPolicy := range extensionPolicies.Items {
 		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
 	}
+	for _, backend := range backends.Items {
+		mustWriteObj(&backend.TypeMeta, &backend, output)
+	}
 	for _, filter := range httpRouteFilter.Items {
 		mustWriteObj(&filter.TypeMeta, &filter, output)
-	}
-	for _, configMap := range configMaps.Items {
-		mustWriteObj(&configMap.TypeMeta, &configMap, output)
 	}
 	for _, secret := range secrets.Items {
 		mustWriteObj(&secret.TypeMeta, &secret, output)
@@ -77,11 +77,8 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	for _, secret := range originalSecrets {
 		mustWriteObj(nil, secret, output)
 	}
-	for _, deployment := range deployments.Items {
-		mustWriteObj(&deployment.TypeMeta, &deployment, output)
-	}
-	for _, service := range services.Items {
-		mustWriteObj(&service.TypeMeta, &service, output)
+	for _, gateway := range originalGateways {
+		mustWriteObj(nil, gateway, output)
 	}
 	return nil
 }
@@ -109,6 +106,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
 	err error,
 ) {
@@ -152,6 +150,8 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			mustExtractAndAppend(obj, &backendSecurityPolicies)
 		case "Secret":
 			mustExtractAndAppend(obj, &secrets)
+		case "Gateway":
+			mustExtractAndAppend(obj, &gws)
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
@@ -160,12 +160,19 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	}
 }
 
+const (
+	envoyGatewayNamespace = "envoy-gateway-system"
+)
+
 // translateCustomResourceObjects translates the AI Gateway custom resources to Envoy Gateway and Kubernetes objects.
 func translateCustomResourceObjects(
 	ctx context.Context,
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	gws []*gwapiv1.Gateway,
+	usedDefinedSecrets []*corev1.Secret,
+	extProcUDSPath string,
 	logger *slog.Logger,
 ) (
 	fakeClient client.Client,
@@ -173,10 +180,8 @@ func translateCustomResourceObjects(
 	httpRoutes gwapiv1.HTTPRouteList,
 	extensionPolicies egv1a1.EnvoyExtensionPolicyList,
 	httpRouteFilter egv1a1.HTTPRouteFilterList,
-	configMaps *corev1.ConfigMapList,
+	backends egv1a1.BackendList,
 	secrets *corev1.SecretList,
-	deployments *appsv1.DeploymentList,
-	services *corev1.ServiceList,
 	err error,
 ) {
 	builder := fake.NewClientBuilder().
@@ -191,15 +196,26 @@ func translateCustomResourceObjects(
 	fakeClient = builder.Build()
 	fakeClientSet = fake2.NewClientset()
 
-	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.Discard(),
-		func(context.Context, *aigv1a1.AIServiceBackend) error { return nil })
-	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.Discard(),
-		func(context.Context, *aigv1a1.AIGatewayRoute) error { return nil })
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.Discard(), fakeUID,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest",
-		"info",
-	)
+	// Store the user-defined secrets in the fake client set so that Gateway controller can read them.
+	userDefinedSecretKeys := map[string]struct{}{}
+	for _, s := range usedDefinedSecrets {
+		if _, err = fakeClientSet.CoreV1().Secrets(s.Namespace).Create(ctx, s, metav1.CreateOptions{}); err != nil {
+			err = fmt.Errorf("error creating secret: %w", err)
+			return
+		}
+		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
+	}
 
+	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+		make(chan event.GenericEvent))
+	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+		make(chan event.GenericEvent))
+	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+		make(chan event.GenericEvent),
+	)
+	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+		envoyGatewayNamespace, extProcUDSPath,
+	)
 	// Create and reconcile the custom resources to store the translated objects.
 	// Note that the order of creation is important as some objects depend on others.
 	for _, bsp := range backendSecurityPolicies {
@@ -210,6 +226,9 @@ func translateCustomResourceObjects(
 	}
 	for _, route := range aigwRoutes {
 		mustCreateAndReconcile(ctx, fakeClient, route, airC, logger)
+	}
+	for _, gw := range gws {
+		mustCreateAndReconcile(ctx, fakeClient, gw, gwC, logger)
 	}
 
 	// Now you can retrieve the translated objects from the fake client.
@@ -223,14 +242,14 @@ func translateCustomResourceObjects(
 		err = fmt.Errorf("error listing EnvoyExtensionPolicies: %w", err)
 		return
 	}
+	err = fakeClient.List(ctx, &backends)
+	if err != nil {
+		err = fmt.Errorf("error listing Backends: %w", err)
+		return
+	}
 	err = fakeClient.List(ctx, &httpRouteFilter)
 	if err != nil {
 		err = fmt.Errorf("error listing HTTPRouteFilters: %w", err)
-		return
-	}
-	configMaps, err = fakeClientSet.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		err = fmt.Errorf("error listing ConfigMaps: %w", err)
 		return
 	}
 	secrets, err = fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
@@ -238,15 +257,12 @@ func translateCustomResourceObjects(
 		err = fmt.Errorf("error listing Secrets: %w", err)
 		return
 	}
-	deployments, err = fakeClientSet.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		err = fmt.Errorf("error listing Deployments: %w", err)
-		return
-	}
-	services, err = fakeClientSet.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		err = fmt.Errorf("error listing Services: %w", err)
-		return
+	// We only want to return the secrets that are not user-defined, but created by the controller.
+	for i := len(secrets.Items) - 1; i >= 0; i-- {
+		secret := &secrets.Items[i]
+		if _, ok := userDefinedSecretKeys[fmt.Sprintf("%s/%s", secret.Namespace, secret.Name)]; ok {
+			secrets.Items = append(secrets.Items[:i], secrets.Items[i+1:]...)
+		}
 	}
 	return
 }
@@ -313,9 +329,4 @@ func mustWriteObj(typedMeta *metav1.TypeMeta, obj client.Object, w io.Writer) {
 		panic(err)
 	}
 	_, _ = w.Write(marshaled)
-}
-
-// fakeUID returns a fake UID for the AI Gateway Route controller.
-func fakeUID() types.UID {
-	return "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }

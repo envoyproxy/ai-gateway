@@ -6,35 +6,17 @@
 package backendauth
 
 import (
-	"os"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
-func TestNewAzureHandler_MissingConfigFile(t *testing.T) {
-	handler, err := newAzureHandler(&filterapi.AzureAuth{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read azure access token file")
-	require.Nil(t, handler)
-}
-
 func TestNewAzureHandler(t *testing.T) {
-	azureTokenFile := t.TempDir() + "/azureAccessToken"
-	file, err := os.Create(azureTokenFile)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, file.Close()) }()
-
-	_, err = file.WriteString(" some-access-token \n")
-	require.NoError(t, err)
-	require.NoError(t, file.Sync())
-
-	auth := filterapi.AzureAuth{Filename: azureTokenFile}
+	auth := filterapi.AzureAuth{AccessToken: " some-access-token \n"}
 	handler, err := newAzureHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
@@ -43,23 +25,10 @@ func TestNewAzureHandler(t *testing.T) {
 }
 
 func TestNewAzureHandler_Do(t *testing.T) {
-	azureTokenFile := t.TempDir() + "/azureAccessToken"
-	file, err := os.Create(azureTokenFile)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, file.Close()) }()
-
-	_, err = file.WriteString("some-access-token")
-	require.NoError(t, err)
-	require.NoError(t, file.Sync())
-
-	auth := filterapi.AzureAuth{Filename: azureTokenFile}
+	auth := filterapi.AzureAuth{AccessToken: "some-access-token"}
 	handler, err := newAzureHandler(&auth)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
-
-	secret, err := os.ReadFile(auth.Filename)
-	require.NoError(t, err)
-	require.Equal(t, "some-access-token", string(secret))
 
 	requestHeaders := map[string]string{":method": "POST"}
 	headerMut := &extprocv3.HeaderMutation{

@@ -7,13 +7,13 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -23,19 +23,19 @@ import (
 //
 // Exported for testing purposes.
 type AIBackendController struct {
-	client    client.Client
-	kube      kubernetes.Interface
-	logger    logr.Logger
-	syncRoute syncAIGatewayRouteFn
+	client             client.Client
+	kube               kubernetes.Interface
+	logger             logr.Logger
+	aiGatewayRouteChan chan event.GenericEvent
 }
 
 // NewAIServiceBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncRoute syncAIGatewayRouteFn) *AIBackendController {
+func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent) *AIBackendController {
 	return &AIBackendController{
-		client:    client,
-		kube:      kube,
-		logger:    logger,
-		syncRoute: syncRoute,
+		client:             client,
+		kube:               kube,
+		logger:             logger,
+		aiGatewayRouteChan: aiGatewayRouteChan,
 	}
 }
 
@@ -60,7 +60,8 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 	return ctrl.Result{}, nil
 }
 
-// syncAIServiceBackend implements syncAIServiceBackendFn.
+// syncAIGatewayRoute is the main logic for reconciling the AIServiceBackend resource.
+// This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
@@ -68,18 +69,12 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 	if err != nil {
 		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
 	}
-	var errs []error
 	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
 		c.logger.Info("syncing AIGatewayRoute",
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		if err := c.syncRoute(ctx, &aiGatewayRoute); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", aiGatewayRoute.Name, err))
-		}
-	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+		c.aiGatewayRouteChan <- event.GenericEvent{Object: &aiGatewayRoute}
 	}
 	return nil
 }

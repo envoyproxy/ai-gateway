@@ -14,7 +14,6 @@ import (
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,22 +32,24 @@ func newFakeClient() client.Client {
 	return builder.Build()
 }
 
+const udsPath = "/tmp/uds/test.sock"
+
 func TestNew(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger)
+	s := New(newFakeClient(), logger, udsPath)
 	require.NotNil(t, s)
 }
 
 func TestCheck(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger)
+	s := New(newFakeClient(), logger, udsPath)
 	_, err := s.Check(t.Context(), nil)
 	require.NoError(t, err)
 }
 
 func TestWatch(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger)
+	s := New(newFakeClient(), logger, udsPath)
 	err := s.Watch(nil, nil)
 	require.Error(t, err)
 	require.Equal(t, "rpc error: code = Unimplemented desc = Watch is not implemented", err.Error())
@@ -56,8 +57,8 @@ func TestWatch(t *testing.T) {
 
 func TestServerPostTranslateModify(t *testing.T) {
 	t.Run("existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard())
-		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: OriginalDstClusterName}}}
+		s := New(newFakeClient(), logr.Discard(), udsPath)
+		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: ExtProcUDSClusterName}}}
 		res, err := s.PostTranslateModify(t.Context(), req)
 		require.Equal(t, &egextension.PostTranslateModifyResponse{
 			Clusters: req.Clusters, Secrets: req.Secrets,
@@ -65,64 +66,32 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("not existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard())
+		s := New(newFakeClient(), logr.Discard(), udsPath)
 		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
-			Clusters: []*clusterv3.Cluster{
-				{Name: "foo"},
-			},
+			Clusters: []*clusterv3.Cluster{{Name: "foo"}},
 		})
 		require.NotNil(t, res)
 		require.NoError(t, err)
 		require.Len(t, res.Clusters, 2)
 		require.Equal(t, "foo", res.Clusters[0].Name)
-		require.Equal(t, OriginalDstClusterName, res.Clusters[1].Name)
+		require.Equal(t, ExtProcUDSClusterName, res.Clusters[1].Name)
 	})
 }
 
 func TestServerPostVirtualHostModify(t *testing.T) {
 	t.Run("nil virtual host", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard())
+		s := New(newFakeClient(), logr.Discard(), udsPath)
 		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{})
 		require.Nil(t, res)
 		require.NoError(t, err)
 	})
 	t.Run("zero routes", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard())
+		s := New(newFakeClient(), logr.Discard(), udsPath)
 		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
 			VirtualHost: &routev3.VirtualHost{},
 		})
 		require.Nil(t, res)
 		require.NoError(t, err)
-	})
-	t.Run("route", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard())
-		res, err := s.PostVirtualHostModify(t.Context(), &egextension.PostVirtualHostModifyRequest{
-			VirtualHost: &routev3.VirtualHost{
-				Routes: []*routev3.Route{
-					{Name: "foo", Match: &routev3.RouteMatch{
-						Headers: []*routev3.HeaderMatcher{
-							{
-								Name: "x-ai-eg-selected-route",
-								HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
-									StringMatch: &matcherv3.StringMatcher{
-										MatchPattern: &matcherv3.StringMatcher_Exact{
-											Exact: OriginalDstClusterName,
-										},
-									},
-								},
-							},
-						},
-					}},
-				},
-			},
-		})
-		require.NotNil(t, res)
-		require.NoError(t, err)
-		// Original route should be first per the code comment.
-		require.Equal(t, "foo", res.VirtualHost.Routes[0].Name)
-		// Ensure that the action has been updated.
-		require.Equal(t, OriginalDstClusterName, res.VirtualHost.Routes[0].Action.(*routev3.Route_Route).
-			Route.ClusterSpecifier.(*routev3.RouteAction_Cluster).Cluster)
 	})
 }
 
@@ -171,7 +140,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})))
+			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath)
 			s.maybeModifyCluster(tc.c)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -191,7 +160,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			},
 		}
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})))
+		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath)
 		s.maybeModifyCluster(cluster)
 		require.Empty(t, buf.String())
 

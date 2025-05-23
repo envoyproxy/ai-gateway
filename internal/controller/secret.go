@@ -7,7 +7,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -16,6 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -23,21 +23,21 @@ import (
 
 // secretController implements reconcile.TypedReconciler for corev1.Secret.
 type secretController struct {
-	client                    client.Client
-	kubeClient                kubernetes.Interface
-	logger                    logr.Logger
-	syncBackendSecurityPolicy syncBackendSecurityPolicyFn
+	client                         client.Client
+	kubeClient                     kubernetes.Interface
+	logger                         logr.Logger
+	backendSecurityPolicyEventChan chan event.GenericEvent
 }
 
 // NewSecretController creates a new reconcile.TypedReconciler[reconcile.Request] for corev1.Secret.
 func NewSecretController(client client.Client, kubeClient kubernetes.Interface,
-	logger logr.Logger, syncBackendSecurityPolicy syncBackendSecurityPolicyFn,
+	logger logr.Logger, backendSecurityPolicyEventChan chan event.GenericEvent,
 ) reconcile.TypedReconciler[reconcile.Request] {
 	return &secretController{
-		client:                    client,
-		kubeClient:                kubeClient,
-		logger:                    logger,
-		syncBackendSecurityPolicy: syncBackendSecurityPolicy,
+		client:                         client,
+		kubeClient:                     kubeClient,
+		logger:                         logger,
+		backendSecurityPolicyEventChan: backendSecurityPolicyEventChan,
 	}
 }
 
@@ -68,17 +68,11 @@ func (c *secretController) syncSecret(ctx context.Context, namespace, name strin
 	if err != nil {
 		return fmt.Errorf("failed to list BackendSecurityPolicyList: %w", err)
 	}
-	var errs []error
 	for i := range backendSecurityPolicies.Items {
 		backendSecurityPolicy := &backendSecurityPolicies.Items[i]
 		c.logger.Info("Syncing BackendSecurityPolicy",
 			"namespace", backendSecurityPolicy.Namespace, "name", backendSecurityPolicy.Name)
-		if err = c.syncBackendSecurityPolicy(ctx, backendSecurityPolicy); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", backendSecurityPolicy.Name, err))
-		}
-	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+		c.backendSecurityPolicyEventChan <- event.GenericEvent{Object: backendSecurityPolicy}
 	}
 	return nil
 }

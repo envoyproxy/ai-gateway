@@ -8,7 +8,6 @@ package backendauth
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -22,11 +21,7 @@ type azureHandler struct {
 }
 
 func newAzureHandler(auth *filterapi.AzureAuth) (Handler, error) {
-	secret, err := os.ReadFile(auth.Filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read azure access token file: %w", err)
-	}
-	return &azureHandler{azureAccessToken: strings.TrimSpace(string(secret))}, nil
+	return &azureHandler{azureAccessToken: strings.TrimSpace(auth.AccessToken)}, nil
 }
 
 // Do implements [Handler.Do].

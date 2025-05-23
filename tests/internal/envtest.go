@@ -55,6 +55,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 		egURLBase + "gateway.envoyproxy.io_envoyextensionpolicies.yaml",
 		egURLBase + "gateway.envoyproxy.io_httproutefilters.yaml",
 		gwAPIURLBase + "gateway.networking.k8s.io_httproutes.yaml",
+		gwAPIURLBase + "gateway.networking.k8s.io_gateways.yaml",
 	} {
 		path := filepath.Base(url) + "_for_tests.yaml"
 		crds = append(crds, requireThirdPartyCRDDownloaded(t, path, url))

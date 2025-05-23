@@ -8,7 +8,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -20,17 +19,9 @@ import (
 	"testing"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	fake2 "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/utils/ptr"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -139,6 +130,9 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
+		// UNIX doesn't like a long UDS path, so we use a short one.
+		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
+		udsPath: filepath.Join("/tmp", "run.sock"),
 	}
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
@@ -151,269 +145,17 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
-func TestRunCmdContext_writeExtensionPolicy(t *testing.T) {
-	// They will be used for substitutions.
-	t.Setenv("FOO", "bar")
-	tmpFilePath := filepath.Join(t.TempDir(), "some-temp")
-	require.NoError(t, os.WriteFile(tmpFilePath, []byte("some-temp-content"), 0o600))
-
-	extP := &egv1a1.EnvoyExtensionPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myextproc",
-			Namespace: "foo-namespace",
-		},
-		Spec: egv1a1.EnvoyExtensionPolicySpec{
-			ExtProc: []egv1a1.ExtProc{
-				{
-					BackendCluster: egv1a1.BackendCluster{
-						BackendRefs: []egv1a1.BackendRef{
-							{
-								BackendObjectReference: gwapiv1.BackendObjectReference{
-									Name:      "myextproc",
-									Namespace: ptr.To[gwapiv1.Namespace]("foo-namespace"),
-									Port:      ptr.To[gwapiv1.PortNumber](1063),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	fakeClientSet := fake2.NewClientset()
-	runCtx := &runCmdContext{
-		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
-		envoyGatewayResourcesOut: &bytes.Buffer{},
-		tmpdir:                   t.TempDir(),
-		fakeClientSet:            fakeClientSet,
-	}
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myextproc",
-			Namespace: "foo-namespace",
-		},
-		Data: map[string]string{
-			"extproc-config.yaml": `
-metadataNamespace: io.envoy.ai_gateway
-modelNameHeaderKey: x-ai-eg-model
-rules:
-- headers:
-  - name: x-ai-eg-model
-    value: gpt-4o-mini
-  backends:
-  - auth:
-      apiKey:
-        filename: /etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey/apiKey
-    name: envoy-ai-gateway-basic-openai.default
-    schema:
-      name: OpenAI
-    weight: 0
-- headers:
-  - name: x-ai-eg-model
-    value: us.meta.llama3-2-1b-instruct-v1:0
-  backends:
-  - auth:
-      aws:
-        credentialFileName: /etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials/credentials
-        region: us-east-1
-    name: envoy-ai-gateway-basic-aws.default
-    schema:
-      name: AWSBedrock
-    weight: 0
-- headers:
-  - name: x-ai-eg-model
-    value: some-cool-self-hosted-model
-  backends:
-  - name: envoy-ai-gateway-basic-testupstream.default
-    schema:
-      name: OpenAI
-    weight: 0
-schema:
-  name: OpenAI
-selectedRouteHeaderKey: x-ai-eg-selected-route
-uuid: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
-`,
-		},
-	}
-	secrets := []*corev1.Secret{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envoy-ai-gateway-basic-openai-apikey",
-				Namespace: "foo-namespace",
-				Annotations: map[string]string{
-					substitutionEnvAnnotationPrefix + "envSubstTarget":    "FOO",
-					substitutionEnvAnnotationPrefix + "nonExistEnvTarget": "dog",
-				},
-			},
-			Data: map[string][]byte{
-				"apiKey":            []byte("my-api-key"),
-				"envSubstTarget":    []byte("NO"),
-				"nonExistEnvTarget": []byte("cat"),
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envoy-ai-gateway-basic-aws-credentials",
-				Namespace: "foo-namespace",
-				Annotations: map[string]string{
-					substitutionFileAnnotationPrefix + "fileSubstTarget":    tmpFilePath,
-					substitutionFileAnnotationPrefix + "nonExistFileTarget": "non-exist",
-				},
-			},
-			StringData: map[string]string{
-				"credentials":        "my-aws-credentials",
-				"fileSubstTarget":    "NO",
-				"nonExistFileTarget": "dog",
-			},
-		},
-	}
-	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "myextproc",
-			Namespace: "foo-namespace",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									MountPath: "/etc/ai-gateway/extproc",
-									Name:      "config",
-								},
-								{
-									MountPath: "/etc/backend_security_policy/rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-									Name:      "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-								},
-								{
-									MountPath: "/etc/backend_security_policy/rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-									Name:      "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "config",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "foo-namespace-myextproc",
-									},
-								},
-							},
-						},
-						{
-							Name: "rule0-backref0-envoy-ai-gateway-basic-openai-apikey",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "envoy-ai-gateway-basic-openai-apikey",
-								},
-							},
-						},
-						{
-							Name: "rule1-backref0-envoy-ai-gateway-basic-aws-credentials",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "envoy-ai-gateway-basic-aws-credentials",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	_, err := fakeClientSet.CoreV1().ConfigMaps("foo-namespace").Create(context.Background(), configMap, metav1.CreateOptions{})
-	require.NoError(t, err)
-	for _, secret := range secrets {
-		_, err = fakeClientSet.CoreV1().Secrets("foo-namespace").Create(context.Background(), secret, metav1.CreateOptions{})
-		require.NoError(t, err)
-	}
-	_, err = fakeClientSet.AppsV1().Deployments("foo-namespace").Create(context.Background(), deployment, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	wd, port, filterConfig, err := runCtx.writeExtensionPolicy(extP)
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join(runCtx.tmpdir, "envoy-ai-gateway-extproc-foo-namespace-myextproc"), wd)
-	require.NotZero(t, port)
-	require.NotEmpty(t, filterConfig)
-
-	// Check the secrets are written to the working directory.
-	// API key secret.
-	_, err = os.Stat(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey"))
-	require.NoError(t, err)
-	content, err := os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
-	require.NoError(t, err)
-	require.Equal(t, "my-api-key", string(content))
-	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/envSubstTarget"))
-	require.NoError(t, err)
-	require.Equal(t, "bar", string(content))
-	// Non-exist env target should be skipped.
-	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/nonExistEnvTarget"))
-	require.NoError(t, err)
-	require.Equal(t, "cat", string(content))
-	// AWS credentials secret.
-	_, err = os.Stat(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials"))
-	require.NoError(t, err)
-	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
-	require.NoError(t, err)
-	require.Equal(t, "my-aws-credentials", string(content))
-	// Check the symlink from the secret to the file.
-	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/fileSubstTarget"))
-	require.NoError(t, err)
-	require.Equal(t, "some-temp-content", string(content))
-	// Check the symlink from the secret to the non-exist file should not be skipped.
-	content, err = os.ReadFile(filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/nonExistFileTarget"))
-	require.NoError(t, err)
-	require.Equal(t, "dog", string(content))
-
-	// Check the file path in the filter config.
-	require.Equal(t, filterConfig.Rules[0].Backends[0].Auth.APIKey.Filename,
-		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-openai-apikey/apiKey"))
-	require.Equal(t, filterConfig.Rules[1].Backends[0].Auth.AWSAuth.CredentialFileName,
-		filepath.Join(wd, "foo-namespace-envoy-ai-gateway-basic-aws-credentials/credentials"))
-
-	// Check the Backend and ExtensionPolicy resources are written to the output file.
-	out := runCtx.envoyGatewayResourcesOut.(*bytes.Buffer).String()
-	require.Contains(t, out, fmt.Sprintf(`
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  creationTimestamp: null
-  name: myextproc
-  namespace: foo-namespace
-spec:
-  endpoints:
-  - ip:
-      address: 127.0.0.1
-      port: %d`, port))
-	require.Contains(t, out, `apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyExtensionPolicy
-metadata:
-  creationTimestamp: null
-  name: myextproc
-  namespace: foo-namespace
-spec:
-  extProc:
-  - backendRefs:
-    - group: gateway.envoyproxy.io
-      kind: Backend
-      name: myextproc
-      namespace: foo-namespace`)
-}
-
 func Test_mustStartExtProc(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dir := t.TempDir() + "/aaaaaaaaaaaaaaaaaaaaa"
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(filterapi.DefaultConfig), &fc))
-	runCtx := &runCmdContext{stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))}
-	runCtx.mustStartExtProc(ctx, dir, mustGetAvailablePort(), fc)
+	runCtx := &runCmdContext{
+		tmpdir: t.TempDir(),
+		// UNIX doesn't like a long UDS path, so we use a short one.
+		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
+		udsPath:      filepath.Join("/tmp", "run.sock"),
+		stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
+	}
+	runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
 	time.Sleep(1 * time.Second)
 	cancel()
 	// Wait for the external processor to stop.

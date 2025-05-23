@@ -7,7 +7,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -41,18 +41,18 @@ const (
 //
 // Exported for testing purposes.
 type BackendSecurityPolicyController struct {
-	client               client.Client
-	kube                 kubernetes.Interface
-	logger               logr.Logger
-	syncAIServiceBackend syncAIServiceBackendFn
+	client                    client.Client
+	kube                      kubernetes.Interface
+	logger                    logr.Logger
+	aiServiceBackendEventChan chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
-		client:               client,
-		kube:                 kube,
-		logger:               logger,
-		syncAIServiceBackend: syncAIServiceBackend,
+		client:                    client,
+		kube:                      kube,
+		logger:                    logger,
+		aiServiceBackendEventChan: aiServiceBackendEventChan,
 	}
 }
 
@@ -207,17 +207,10 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 	if err != nil {
 		return fmt.Errorf("failed to list AIServiceBackendList: %w", err)
 	}
-
-	var errs []error
 	for i := range aiServiceBackends.Items {
 		aiBackend := &aiServiceBackends.Items[i]
 		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-		if err = c.syncAIServiceBackend(ctx, aiBackend); err != nil {
-			errs = append(errs, fmt.Errorf("%s/%s: %w", aiBackend.Namespace, aiBackend.Name, err))
-		}
-	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
 	}
 	return nil
 }

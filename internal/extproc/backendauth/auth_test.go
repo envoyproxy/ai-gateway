@@ -6,7 +6,6 @@
 package backendauth
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,22 +14,6 @@ import (
 )
 
 func TestNewHandler(t *testing.T) {
-	awsFile := t.TempDir() + "/awstest"
-	err := os.WriteFile(awsFile, []byte(`
-[default]
-aws_access_key_id = test
-aws_secret_access_key = test
-`), 0o600)
-	require.NoError(t, err)
-
-	apiKeyFile := t.TempDir() + "/apikey"
-	err = os.WriteFile(apiKeyFile, []byte("TEST"), 0o600)
-	require.NoError(t, err)
-
-	azureFile := t.TempDir() + "/azuretest"
-	err = os.WriteFile(azureFile, []byte("some-access-token"), 0o600)
-	require.NoError(t, err)
-
 	for _, tt := range []struct {
 		name   string
 		config *filterapi.BackendAuth
@@ -38,19 +21,23 @@ aws_secret_access_key = test
 		{
 			name: "AWSAuth",
 			config: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-				Region: "us-west-2", CredentialFileName: awsFile,
+				Region: "us-west-2", CredentialFileLiteral: `
+[default]
+aws_access_key_id = test
+aws_secret_access_key = test
+`,
 			}},
 		},
 		{
 			name: "APIKey",
 			config: &filterapi.BackendAuth{
-				APIKey: &filterapi.APIKeyAuth{Filename: apiKeyFile},
+				APIKey: &filterapi.APIKeyAuth{Key: "TEST"},
 			},
 		},
 		{
 			name: "AzureAuth",
 			config: &filterapi.BackendAuth{
-				AzureAuth: &filterapi.AzureAuth{Filename: azureFile},
+				AzureAuth: &filterapi.AzureAuth{AccessToken: "some-access-token"},
 			},
 		},
 	} {
