@@ -294,7 +294,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
 }
 
-func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestBody(t *testing.T) {
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	const modelKey = "x-ai-gateway-model-key"
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream%v", stream), func(t *testing.T) {
