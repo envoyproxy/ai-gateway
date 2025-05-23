@@ -210,8 +210,10 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	extProcConfig.AllowModeOverride = true
 	extProcConfig.RequestAttributes = []string{"xds.upstream_host_metadata"}
 	extProcConfig.ProcessingMode = &extprocv3http.ProcessingMode{
-		RequestHeaderMode:  extprocv3http.ProcessingMode_SEND,
-		RequestBodyMode:    extprocv3http.ProcessingMode_BUFFERED,
+		RequestHeaderMode: extprocv3http.ProcessingMode_SEND,
+		// At the upstream filter, it can access the original body in its memory, so it can perform the translation
+		// as well as the authentication at the request headers. Hence, there's no need to send the request body to the extproc.
+		RequestBodyMode:    extprocv3http.ProcessingMode_NONE,
 		ResponseHeaderMode: extprocv3http.ProcessingMode_SEND,
 		ResponseBodyMode:   extprocv3http.ProcessingMode_BUFFERED,
 	}
