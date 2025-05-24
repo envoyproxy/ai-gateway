@@ -66,9 +66,12 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 	var (
 		backends       = make(map[string]*processorConfigBackend)
-		declaredModels []string
+		declaredModels []model
 	)
 	for _, r := range config.Rules {
+		ownedBy := r.ModelsOwnedBy
+		createdAt := r.ModelsCreatedAt
+
 		// Collect declared models from configured header routes. These will be used to
 		// serve requests to the /v1/models endpoint.
 		// TODO(nacx): note that currently we only support exact matching in the headers. When
@@ -81,7 +84,11 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
 				continue
 			}
-			declaredModels = append(declaredModels, h.Value)
+			declaredModels = append(declaredModels, model{
+				name:      h.Value,
+				createdAt: createdAt,
+				ownedBy:   ownedBy,
+			})
 		}
 
 		for _, backend := range r.Backends {

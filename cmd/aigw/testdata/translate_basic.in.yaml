@@ -42,6 +42,8 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: envoy-ai-gateway-basic-openai
+      modelsOwnedBy: "openai"
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
     - matches:
         - headers:
             - type: Exact
@@ -49,6 +51,8 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: envoy-ai-gateway-basic-aws
+      modelsOwnedBy: "aws"
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
     - matches:
         - headers:
             - type: Exact
@@ -56,6 +60,7 @@ spec:
               value: some-cool-self-hosted-model
       backendRefs:
         - name: envoy-ai-gateway-basic-testupstream
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

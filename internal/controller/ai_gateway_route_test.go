@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -542,6 +543,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NotNil(t, s)
+	now := time.Unix(int64(time.Now().Second()), 0).UTC()
+	gwFakeTime := time.Date(2025, 5, 23, 14, 0, 0, 0, time.UTC)
 
 	for _, tc := range []struct {
 		name  string
@@ -551,7 +554,7 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 		{
 			name: "basic",
 			route: &aigv1a1.AIGatewayRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns", CreationTimestamp: metav1.NewTime(gwFakeTime)},
 				Spec: aigv1a1.AIGatewayRouteSpec{
 					APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v123"},
 					Rules: []aigv1a1.AIGatewayRouteRule{
@@ -569,6 +572,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
+							ModelsOwnedBy:   ptr.To[string]("catOwner"),
+							ModelsCreatedAt: &metav1.Time{Time: now},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -638,6 +643,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 							},
 							{Name: "pineapple.ns"},
 						},
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-1",
@@ -652,6 +659,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
+						ModelsOwnedBy:   "catOwner",
+						ModelsCreatedAt: now,
 					},
 					{
 						Name:    "myroute-rule-2",
@@ -667,6 +676,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-3",
@@ -682,19 +693,25 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-4",
 						Headers: []filterapi.HeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai-4"}},
-						Backends: []filterapi.Backend{{
-							Name: "dragon.ns",
-							Auth: &filterapi.BackendAuth{
-								AzureAuth: &filterapi.AzureAuth{
-									Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+						Backends: []filterapi.Backend{
+							{
+								Name: "dragon.ns",
+								Auth: &filterapi.BackendAuth{
+									AzureAuth: &filterapi.AzureAuth{
+										Filename: "/etc/backend_security_policy/rule4-backref0-some-backend-security-policy-4/azureAccessToken",
+									},
 								},
+								Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
 							},
-							Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
-						}},
+						},
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{

@@ -20,7 +20,19 @@ import (
 )
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {
-	cfg := &processorConfig{declaredModels: []string{"openai", "aws-bedrock"}}
+	now := time.Now()
+	cfg := &processorConfig{declaredModels: []model{
+		{
+			name:      "openai",
+			ownedBy:   "openai",
+			createdAt: now,
+		},
+		{
+			name:      "aws-bedrock",
+			ownedBy:   "aws",
+			createdAt: now,
+		},
+	}}
 	p, err := NewModelsProcessor(cfg, nil, slog.Default(), false)
 	require.NoError(t, err)
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
@@ -41,9 +53,10 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 	require.Equal(t, "list", models.Object)
 	require.Len(t, models.Data, len(cfg.declaredModels))
 	for i, m := range cfg.declaredModels {
-		require.Equal(t, m, models.Data[i].ID)
 		require.Equal(t, "model", models.Data[i].Object)
-		require.False(t, time.Time(models.Data[i].Created).IsZero())
+		require.Equal(t, m.name, models.Data[i].ID)
+		require.Equal(t, now.Unix(), time.Time(models.Data[i].Created).Unix())
+		require.Equal(t, m.ownedBy, models.Data[i].OwnedBy)
 	}
 }
 

@@ -110,6 +110,8 @@ data:
       headers:
       - name: x-ai-eg-model
         value: gpt-4o-mini
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
+      modelsOwnedBy: openai
       name: envoy-ai-gateway-basic-rule-0
     - backends:
       - auth:
@@ -122,6 +124,8 @@ data:
       headers:
       - name: x-ai-eg-model
         value: us.meta.llama3-2-1b-instruct-v1:0
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
+      modelsOwnedBy: aws
       name: envoy-ai-gateway-basic-rule-1
     - backends:
       - name: envoy-ai-gateway-basic-testupstream.default
@@ -130,6 +134,8 @@ data:
       headers:
       - name: x-ai-eg-model
         value: some-cool-self-hosted-model
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
+      modelsOwnedBy: Envoy AI Gateway
       name: envoy-ai-gateway-basic-rule-2
     schema:
       name: OpenAI

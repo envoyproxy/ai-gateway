@@ -39,6 +39,8 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 }
 
 func TestServer_LoadConfig(t *testing.T) {
+	now := time.Now()
+
 	t.Run("ok", func(t *testing.T) {
 		config := &filterapi.Config{
 			MetadataNamespace: "ns",
@@ -61,6 +63,8 @@ func TestServer_LoadConfig(t *testing.T) {
 						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
 					},
+					ModelsOwnedBy:   "meta",
+					ModelsCreatedAt: now,
 				},
 				{
 					Headers: []filterapi.HeaderMatch{
@@ -76,6 +80,8 @@ func TestServer_LoadConfig(t *testing.T) {
 					Backends: []filterapi.Backend{
 						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 					},
+					ModelsOwnedBy:   "openai",
+					ModelsCreatedAt: now,
 				},
 			},
 		}
@@ -100,7 +106,18 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
-		require.Equal(t, []string{"llama3.3333", "gpt4.4444"}, s.config.declaredModels)
+		require.Equal(t, []model{
+			{
+				name:      "llama3.3333",
+				ownedBy:   "meta",
+				createdAt: now,
+			},
+			{
+				name:      "gpt4.4444",
+				ownedBy:   "openai",
+				createdAt: now,
+			},
+		}, s.config.declaredModels)
 	})
 }
 

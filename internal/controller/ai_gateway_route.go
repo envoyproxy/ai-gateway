@@ -34,6 +34,8 @@ import (
 )
 
 const (
+	defaultOwnedBy = "Envoy AI Gateway"
+
 	managedByLabel             = "app.kubernetes.io/managed-by"
 	expProcConfigFileName      = "extproc-config.yaml"
 	selectedRouteHeaderKey     = "x-ai-eg-selected-route"
@@ -283,6 +285,10 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	var err error
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
+		ec.Rules[i].ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
+		// Convert to UTC time in force to avoid timezone issues.
+		ec.Rules[i].ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
+
 		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {
 			backendRef := &rule.BackendRefs[j]

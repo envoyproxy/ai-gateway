@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -45,10 +44,10 @@ func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *sl
 	}
 	for _, m := range config.declaredModels {
 		models.Data = append(models.Data, openai.Model{
-			ID:      m,
+			ID:      m.name,
 			Object:  "model",
-			OwnedBy: "Envoy AI Gateway",              // TODO(nacx): make this configurable when we need more flexibility
-			Created: openai.JSONUNIXTime(time.Now()), // TODO(nacx): does this really matter here?
+			OwnedBy: m.ownedBy,
+			Created: openai.JSONUNIXTime(m.createdAt),
 		})
 	}
 	return &modelsProcessor{logger: logger, models: models}, nil
