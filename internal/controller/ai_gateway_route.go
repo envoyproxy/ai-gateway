@@ -285,18 +285,9 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	var err error
 	for i := range spec.Rules {
 		rule := &spec.Rules[i]
-		ownedBy := rule.OwnedBy
-		createdAt := rule.CreatedAt
-		ec.Rules[i].OwnedBy = defaultOwnedBy
-		if ownedBy != nil {
-			ec.Rules[i].OwnedBy = *ownedBy
-		}
-		ec.Rules[i].CreatedAt = aiGatewayRoute.CreationTimestamp.Time
-		if createdAt != nil {
-			ec.Rules[i].CreatedAt = createdAt.Time
-		}
-		// convert to UTC time in force to avoid timezone issues.
-		ec.Rules[i].CreatedAt = ec.Rules[i].CreatedAt.UTC()
+		ec.Rules[i].ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
+		// Convert to UTC time in force to avoid timezone issues.
+		ec.Rules[i].ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
 
 		ec.Rules[i].Backends = make([]filterapi.Backend, len(rule.BackendRefs))
 		for j := range rule.BackendRefs {

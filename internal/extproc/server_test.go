@@ -63,8 +63,8 @@ func TestServer_LoadConfig(t *testing.T) {
 						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
 					},
-					OwnedBy:   "meta",
-					CreatedAt: now,
+					ModelsOwnedBy:   "meta",
+					ModelsCreatedAt: now,
 				},
 				{
 					Headers: []filterapi.HeaderMatch{
@@ -80,8 +80,8 @@ func TestServer_LoadConfig(t *testing.T) {
 					Backends: []filterapi.Backend{
 						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 					},
-					OwnedBy:   "openai",
-					CreatedAt: now,
+					ModelsOwnedBy:   "openai",
+					ModelsCreatedAt: now,
 				},
 			},
 		}

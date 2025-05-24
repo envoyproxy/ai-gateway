@@ -71,9 +71,9 @@ func TestWithTestUpstream(t *testing.T) {
 					{Name: "x-model-name", Value: "some-model2"},
 					{Name: "x-model-name", Value: "some-model3"},
 				},
-				Backends:  fakeBackends,
-				OwnedBy:   "Envoy AI Gateway",
-				CreatedAt: now,
+				Backends:        fakeBackends,
+				ModelsOwnedBy:   "Envoy AI Gateway",
+				ModelsCreatedAt: now,
 			},
 		},
 	})

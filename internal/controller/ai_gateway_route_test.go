@@ -572,8 +572,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{{Name: aigv1a1.AIModelHeaderKey, Value: "another-ai"}}},
 							},
-							OwnedBy:   ptr.To[string]("catOwner"),
-							CreatedAt: &metav1.Time{Time: now},
+							ModelsOwnedBy:   ptr.To[string]("catOwner"),
+							ModelsCreatedAt: &metav1.Time{Time: now},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -643,8 +643,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 							},
 							{Name: "pineapple.ns"},
 						},
-						OwnedBy:   defaultOwnedBy,
-						CreatedAt: gwFakeTime,
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-1",
@@ -659,8 +659,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
-						OwnedBy:   "catOwner",
-						CreatedAt: now,
+						ModelsOwnedBy:   "catOwner",
+						ModelsCreatedAt: now,
 					},
 					{
 						Name:    "myroute-rule-2",
@@ -676,8 +676,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
-						OwnedBy:   defaultOwnedBy,
-						CreatedAt: gwFakeTime,
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-3",
@@ -693,8 +693,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								},
 							},
 						},
-						OwnedBy:   defaultOwnedBy,
-						CreatedAt: gwFakeTime,
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 					{
 						Name:    "myroute-rule-4",
@@ -710,8 +710,8 @@ func TestAIGatewayRouteController_reconcileExtProcConfigMap(t *testing.T) {
 								Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "version1"},
 							},
 						},
-						OwnedBy:   defaultOwnedBy,
-						CreatedAt: gwFakeTime,
+						ModelsOwnedBy:   defaultOwnedBy,
+						ModelsCreatedAt: gwFakeTime,
 					},
 				},
 				LLMRequestCosts: []filterapi.LLMRequestCost{

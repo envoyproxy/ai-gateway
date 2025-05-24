@@ -69,8 +69,8 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		declaredModels []model
 	)
 	for _, r := range config.Rules {
-		ownedBy := r.OwnedBy
-		createdAt := r.CreatedAt
+		ownedBy := r.ModelsOwnedBy
+		createdAt := r.ModelsCreatedAt
 
 		// Collect declared models from configured header routes. These will be used to
 		// serve requests to the /v1/models endpoint.

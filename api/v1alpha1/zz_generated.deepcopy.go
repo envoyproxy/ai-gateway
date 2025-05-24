@@ -143,13 +143,13 @@ func (in *AIGatewayRouteRule) DeepCopyInto(out *AIGatewayRouteRule) {
 		*out = new(v1.HTTPRouteTimeouts)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.OwnedBy != nil {
-		in, out := &in.OwnedBy, &out.OwnedBy
+	if in.ModelsOwnedBy != nil {
+		in, out := &in.ModelsOwnedBy, &out.ModelsOwnedBy
 		*out = new(string)
 		**out = **in
 	}
-	if in.CreatedAt != nil {
-		in, out := &in.CreatedAt, &out.CreatedAt
+	if in.ModelsCreatedAt != nil {
+		in, out := &in.ModelsCreatedAt, &out.ModelsCreatedAt
 		*out = (*in).DeepCopy()
 	}
 }
