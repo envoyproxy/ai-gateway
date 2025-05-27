@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -21,8 +20,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
 const (
@@ -336,35 +333,26 @@ func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector st
 
 // requireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
 //
-// If checkCompletionHealth is true, it will also check the health of the completion endpoint is working correctly by
-// ensuring that the extproc returns an error for a non-existent model.
-func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int, checkCompletionHealth bool) portForwarder {
-	// Before creating the port forwarder, we need to ensure that the pod is ready.
+// If gatewayPod is true, it will check and wait until the pod has the extproc container.
+func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int, gatewayPod bool) portForwarder {
+	if gatewayPod {
+		require.Eventually(t, func() bool {
+			cmd := kubectl(t.Context(), "get", "pod", "-n", namespace,
+				"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
+			cmd.Stdout = nil // To ensure that we can capture the output by Output().
+			out, err := cmd.Output()
+			if err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+			t.Logf("gateway pod containers: %s", string(out))
+			return strings.Contains(string(out), "ai-gateway-extproc")
+		}, 3*time.Minute, 200*time.Millisecond)
+	}
+
+	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
-		require.NoError(t, err)
-		defer f.kill()
-		if checkCompletionHealth {
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, f.address()+"/v1/chat/completions",
-				strings.NewReader(`{"model": "non-existent-model"}`))
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			defer func() { _ = resp.Body.Close() }()
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			t.Logf("response: status=%d; headers=%v; body=%s", resp.StatusCode, resp.Header, string(body))
-			return resp.StatusCode == http.StatusOK || strings.Contains(string(body),
-				// This should be the error message returned by the extproc.
-				x.ErrNoMatchingRule.Error())
-		}
 		res, err := http.Get(f.address())
 		if err != nil {
 			t.Logf("error: %v", err)
@@ -373,9 +361,6 @@ func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string
 		_ = res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
-
-	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
-	require.NoError(t, err)
 	return f
 }
 
