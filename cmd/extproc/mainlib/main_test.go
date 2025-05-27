@@ -98,13 +98,17 @@ failed to unmarshal log level: slog: level string "invalid": unknown name`)
 }
 
 func TestListenAddress(t *testing.T) {
+	unixPath := t.TempDir() + "/extproc.sock"
+	// Create a stale file to ensure that removing the file works correctly.
+	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0600))
+
 	tests := []struct {
 		addr        string
 		wantNetwork string
 		wantAddress string
 	}{
 		{":8080", "tcp", ":8080"},
-		{"unix:///var/run/ai-gateway/extproc.sock", "unix", "/var/run/ai-gateway/extproc.sock"},
+		{"unix://" + unixPath, "unix", unixPath},
 	}
 
 	for _, tt := range tests {
@@ -114,6 +118,8 @@ func TestListenAddress(t *testing.T) {
 			assert.Equal(t, tt.wantAddress, address)
 		})
 	}
+	_, err := os.Stat(unixPath)
+	require.ErrorIs(t, err, os.ErrNotExist, "expected the stale socket file to be removed")
 }
 
 func TestStartMetricsServer(t *testing.T) {

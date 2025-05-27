@@ -164,7 +164,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 // listenAddress returns the network and address for the given address flag.
 func listenAddress(addrFlag string) (string, string) {
 	if strings.HasPrefix(addrFlag, "unix://") {
-		return "unix", strings.TrimPrefix(addrFlag, "unix://")
+		p := strings.TrimPrefix(addrFlag, "unix://")
+		_ = os.Remove(p) // Remove the socket file if it exists.
+		return "unix", p
 	}
 	return "tcp", addrFlag
 }
