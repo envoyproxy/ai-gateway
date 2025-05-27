@@ -178,6 +178,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
+	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		spec := aiGatewayRoute.Spec
@@ -213,6 +214,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
+				_, ok := llmCosts[cost.MetadataKey]
+				if ok {
+					c.logger.Info("LLMRequestCost with the same metadata key already exists, skipping",
+						"metadataKey", cost.MetadataKey, "route", aiGatewayRoute.Name)
+					continue
+				}
 				switch cost.Type {
 				case aigv1a1.LLMRequestCostTypeInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeInputToken

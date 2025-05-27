@@ -218,7 +218,11 @@ spec:
                   \           unit: Hour\n\t          cost:\n\t            request:\n\t
                   \             from: Number\n\t              number: 0\n\t            response:\n\t
                   \             from: Metadata\n\t              metadata:\n\t                namespace:
-                  io.envoy.ai_gateway\n\t                key: llm_total_token\n```"
+                  io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
+                  that when multiple AIGatewayRoute resources are attached to the
+                  same Gateway, and\ndifferent costs are configured for the same metadata
+                  key, the ai-gateway will pick one of them\nto configure the metadata
+                  key in the generated HTTPRoute, and ignore the rest."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:

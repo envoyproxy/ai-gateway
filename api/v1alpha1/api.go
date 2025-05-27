@@ -192,6 +192,11 @@ type AIGatewayRouteSpec struct {
 	//	                namespace: io.envoy.ai_gateway
 	//	                key: llm_total_token
 	// ```
+	//
+	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
+	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
+	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
