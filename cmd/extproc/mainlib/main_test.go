@@ -100,7 +100,7 @@ failed to unmarshal log level: slog: level string "invalid": unknown name`)
 func TestListenAddress(t *testing.T) {
 	unixPath := t.TempDir() + "/extproc.sock"
 	// Create a stale file to ensure that removing the file works correctly.
-	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0600))
+	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0o600))
 
 	tests := []struct {
 		addr        string
