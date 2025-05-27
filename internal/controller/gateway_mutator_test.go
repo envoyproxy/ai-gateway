@@ -66,7 +66,8 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 			},
-			APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"},
+			APISchema:    aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
 		},
 	})
 	require.NoError(t, err)

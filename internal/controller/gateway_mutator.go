@@ -112,7 +112,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	var resources corev1.ResourceRequirements
 	for i := range routes.Items {
 		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor.Resources != nil {
+		if fc != nil && fc.ExternalProcessor != nil && fc.ExternalProcessor.Resources != nil {
 			resources = *fc.ExternalProcessor.Resources
 		}
 	}
