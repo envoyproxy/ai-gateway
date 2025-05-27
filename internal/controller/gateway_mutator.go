@@ -7,24 +7,22 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"path/filepath"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// gatewayMutator implements [admission.Handler].
+// gatewayMutator implements [admission.CustomDefaulter].
 type gatewayMutator struct {
 	codec  serializer.CodecFactory
 	c      client.Client
@@ -54,28 +52,23 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	}
 }
 
-// Handle implements [admission.Handler].
-func (g *gatewayMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	var pod corev1.Pod
-	if _, _, err := g.codec.UniversalDeserializer().Decode(req.Object.Raw, nil, &pod); err != nil {
-		return admission.Errored(http.StatusBadRequest, err)
+// Default implements [admission.CustomDefaulter].
+func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		panic(fmt.Sprintf("BUG: unexpected object type %T, expected *corev1.Pod", obj))
 	}
 	gatewayName := pod.Labels[egOwningGatewayNameLabel]
 	gatewayNamespace := pod.Labels[egOwningGatewayNamespaceLabel]
 	g.logger.Info("mutating gateway pod",
-		"pod_name", req.Name, "pod_namespace", req.Namespace,
+		"pod_name", pod.Name, "pod_namespace", pod.Namespace,
 		"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace,
 	)
-	if err := g.mutatePod(ctx, &pod, gatewayName, gatewayNamespace); err != nil {
+	if err := g.mutatePod(ctx, pod, gatewayName, gatewayNamespace); err != nil {
 		g.logger.Error(err, "failed to mutate deployment", "name", pod.Name, "namespace", pod.Namespace)
-		return admission.Allowed("internal error, skipped")
+		return err
 	}
-	mutated, err := json.Marshal(pod)
-	if err != nil {
-		g.logger.Error(err, "failed to marshal mutated pod")
-		return admission.Allowed("internal error, skipped")
-	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, mutated)
+	return nil
 }
 
 const mutationNamePrefix = "ai-gateway-"

@@ -6,25 +6,21 @@
 package controller
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
-	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-func TestGatewayMutator_Handle(t *testing.T) {
+func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
@@ -32,23 +28,19 @@ func TestGatewayMutator_Handle(t *testing.T) {
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"info", "envoy-gateway-system", "/tmp/extproc.sock",
 	)
-
-	t.Run("non attached pod", func(t *testing.T) {
-		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pod",
-				Namespace: "test-namespace",
-			},
-		}
-		raw, err := json.Marshal(pod)
-		require.NoError(t, err)
-
-		res := g.Handle(t.Context(), admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{Object: runtime.RawExtension{Raw: raw}},
-		})
-		require.True(t, res.Allowed)
-		require.Empty(t, res.Patch)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "envoy"}},
+		},
+	}
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-gateway", Namespace: "test-namespace"},
+		Spec:       aigv1a1.AIGatewayRouteSpec{},
 	})
+	require.NoError(t, err)
+	err = g.Default(t.Context(), pod)
+	require.NoError(t, err)
 }
 
 func TestGatewayMutator_mutatePod(t *testing.T) {

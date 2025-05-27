@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -142,14 +143,13 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	if !options.DisableMutatingWebhook {
-		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{
-			Handler: newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
-				logger.WithName("gateway-mutator"),
-				options.ExtProcImage, options.ExtProcLogLevel,
-				options.EnvoyGatewaySystemNamespace,
-				options.UDSPath,
-			),
-		})
+		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
+			logger.WithName("gateway-mutator"),
+			options.ExtProcImage, options.ExtProcLogLevel,
+			options.EnvoyGatewaySystemNamespace,
+			options.UDSPath,
+		))
+		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
 
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
