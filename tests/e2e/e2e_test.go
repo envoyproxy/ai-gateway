@@ -11,14 +11,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
 const (
@@ -330,16 +334,41 @@ func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector st
 	}, timeout, 5*time.Second)
 }
 
-func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
+// requireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
+//
+// If checkCompletionHealth is true, it will also check the health of the completion endpoint is working correctly by
+// ensuring that the extproc returns an error for a non-existent model.
+func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int, checkCompletionHealth bool) portForwarder {
 	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		conn, err := http.Get(f.address())
+		if checkCompletionHealth {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, f.address()+"/v1/chat/completions",
+				strings.NewReader(`{"model": "non-existent-model"}`))
+			if err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			t.Logf("response: status=%d; headers=%v; body=%s", resp.StatusCode, resp.Header, string(body))
+			return resp.StatusCode == http.StatusOK || strings.Contains(string(body),
+				// This should be the error message returned by the extproc.
+				x.ErrNoMatchingRule.Error())
+		}
+		res, err := http.Get(f.address())
 		if err != nil {
 			t.Logf("error: %v", err)
 			return false
 		}
-		_ = conn.Body.Close()
+		_ = res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
 	return f

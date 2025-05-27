@@ -26,7 +26,7 @@ func Test_Examples_InferenceExtension(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-extension-example"
 	requireWaitForPodReady(t, egNamespace, egSelector)
 
-	fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+	fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort, true)
 	defer fwd.kill()
 	require.Eventually(t, func() bool {
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"mistral:latest"}`)
