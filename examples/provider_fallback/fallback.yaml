@@ -29,7 +29,7 @@ spec:
         - retriable-status-codes
   healthCheck:
     passive:
-      baseEjectionTime: 5s
+      baseEjectionTime: 30s
       interval: 2s
       maxEjectionPercent: 100
       consecutive5XxErrors: 1
