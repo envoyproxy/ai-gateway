@@ -240,6 +240,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					return fmt.Errorf("unknown request cost type: %s", cost.Type)
 				}
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
+				llmCosts[cost.MetadataKey] = struct{}{}
 			}
 		}
 	}
