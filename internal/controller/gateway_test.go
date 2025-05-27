@@ -148,7 +148,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 				},
 				APISchema:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{{Type: aigv1a1.LLMRequestCostTypeInputToken}},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}},
 			},
 		},
 		{
@@ -159,7 +159,8 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: "v1"},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{
-					{Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
+					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
 		},
