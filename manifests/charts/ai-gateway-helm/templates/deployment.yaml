@@ -48,7 +48,7 @@ spec:
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
-            - --envoyGatewayNamespace=={{ .Values.controller.envoyGatewayNamespace }}
+            - --envoyGatewayNamespace={{ .Values.controller.envoyGatewayNamespace }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
             {{- end }}
