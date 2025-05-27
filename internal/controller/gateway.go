@@ -37,24 +37,24 @@ const FilterConfigKeyInSecret = "filter-config.yaml" //nolint: gosec
 // NewGatewayController creates a new reconcile.TypedReconciler for gwapiv1.Gateway.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewaySystemNamespace, udsPath string,
+	envoyGatewayNamespace, udsPath string,
 ) *GatewayController {
 	return &GatewayController{
-		client:                      client,
-		kube:                        kube,
-		logger:                      logger,
-		envoyGatewaySystemNamespace: envoyGatewaySystemNamespace,
-		udsPath:                     udsPath,
+		client:                client,
+		kube:                  kube,
+		logger:                logger,
+		envoyGatewayNamespace: envoyGatewayNamespace,
+		udsPath:               udsPath,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                      client.Client
-	kube                        kubernetes.Interface
-	logger                      logr.Logger
-	envoyGatewaySystemNamespace string
-	udsPath                     string
+	client                client.Client
+	kube                  kubernetes.Interface
+	logger                logr.Logger
+	envoyGatewayNamespace string
+	udsPath               string
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -248,14 +248,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(c.envoyGatewaySystemNamespace).Get(ctx, name, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: c.envoyGatewaySystemNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: c.envoyGatewayNamespace},
 				StringData: data,
 			}
-			if _, err = c.kube.CoreV1().Secrets(c.envoyGatewaySystemNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+			if _, err = c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("failed to create secret %s: %w", name, err)
 			}
 			return nil
@@ -264,7 +264,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	}
 
 	secret.StringData = data
-	if _, err := c.kube.CoreV1().Secrets(c.envoyGatewaySystemNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
 	return nil
@@ -358,7 +358,7 @@ func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1.Gateway, uuid string) error {
-	pods, err := c.kube.CoreV1().Pods(c.envoyGatewaySystemNamespace).List(ctx, metav1.ListOptions{
+	pods, err := c.kube.CoreV1().Pods(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 	})
@@ -388,7 +388,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 	}
 
 	if rollout {
-		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewaySystemNamespace).List(ctx, metav1.ListOptions{
+		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 		})

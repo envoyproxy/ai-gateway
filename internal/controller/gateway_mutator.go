@@ -29,26 +29,26 @@ type gatewayMutator struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	extProcImage                string
-	extProcImagePullPolicy      corev1.PullPolicy
-	extProcLogLevel             string
-	envoyGatewaySystemNamespace string
-	udsPath                     string
+	extProcImage           string
+	extProcImagePullPolicy corev1.PullPolicy
+	extProcLogLevel        string
+	envoyGatewayNamespace  string
+	udsPath                string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage, extProcLogLevel, envoyGatewaySystemNamespace string,
+	extProcImage, extProcLogLevel, envoyGatewayNamespace string,
 	udsPath string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		kube:                        kube,
-		extProcImage:                extProcImage,
-		extProcImagePullPolicy:      corev1.PullIfNotPresent,
-		extProcLogLevel:             extProcLogLevel,
-		logger:                      logger,
-		envoyGatewaySystemNamespace: envoyGatewaySystemNamespace,
-		udsPath:                     udsPath,
+		kube:                   kube,
+		extProcImage:           extProcImage,
+		extProcImagePullPolicy: corev1.PullIfNotPresent,
+		extProcLogLevel:        extProcLogLevel,
+		logger:                 logger,
+		envoyGatewayNamespace:  envoyGatewayNamespace,
+		udsPath:                udsPath,
 	}
 }
 

@@ -61,8 +61,8 @@ type Options struct {
 	EnableLeaderElection bool
 	// EnableInfExt enables the Gateway API Inference Extension.
 	EnableInfExt bool
-	// EnvoyGatewaySystemNamespace is the namespace where the Envoy Gateway system resources are deployed.
-	EnvoyGatewaySystemNamespace string
+	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
+	EnvoyGatewayNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
@@ -82,7 +82,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewaySystemNamespace, options.UDSPath)
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
@@ -146,7 +146,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
 			logger.WithName("gateway-mutator"),
 			options.ExtProcImage, options.ExtProcLogLevel,
-			options.EnvoyGatewaySystemNamespace,
+			options.EnvoyGatewayNamespace,
 			options.UDSPath,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})

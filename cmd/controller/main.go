@@ -31,17 +31,17 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel             string
-	extProcImage                string
-	enableLeaderElection        bool
-	logLevel                    zapcore.Level
-	extensionServerPort         string
-	enableInfExt                bool
-	tlsCertDir                  string
-	tlsCertName                 string
-	tlsKeyName                  string
-	caBundleName                string
-	envoyGatewaySystemNamespace string
+	extProcLogLevel       string
+	extProcImage          string
+	enableLeaderElection  bool
+	logLevel              zapcore.Level
+	extensionServerPort   string
+	enableInfExt          bool
+	tlsCertDir            string
+	tlsCertName           string
+	tlsKeyName            string
+	caBundleName          string
+	envoyGatewayNamespace string
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -99,8 +99,8 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"tls.key",
 		"The name of the TLS key file.",
 	)
-	envoyGatewaySystemNamespace := fs.String(
-		"envoyGatewaySystemNamespace",
+	envoyGatewayNamespace := fs.String(
+		"envoyGatewayNamespace",
 		"envoy-gateway-system",
 		"The namespace where the Envoy Gateway system components are installed.",
 	)
@@ -122,17 +122,17 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		return flags{}, err
 	}
 	return flags{
-		extProcLogLevel:             *extProcLogLevelPtr,
-		extProcImage:                *extProcImagePtr,
-		enableLeaderElection:        *enableLeaderElectionPtr,
-		logLevel:                    zapLogLevel,
-		extensionServerPort:         *extensionServerPortPtr,
-		enableInfExt:                *enableInfExtPtr,
-		tlsCertDir:                  *tlsCertDir,
-		tlsCertName:                 *tlsCertName,
-		tlsKeyName:                  *tlsKeyName,
-		caBundleName:                *caBundleName,
-		envoyGatewaySystemNamespace: *envoyGatewaySystemNamespace,
+		extProcLogLevel:       *extProcLogLevelPtr,
+		extProcImage:          *extProcImagePtr,
+		enableLeaderElection:  *enableLeaderElectionPtr,
+		logLevel:              zapLogLevel,
+		extensionServerPort:   *extensionServerPortPtr,
+		enableInfExt:          *enableInfExtPtr,
+		tlsCertDir:            *tlsCertDir,
+		tlsCertName:           *tlsCertName,
+		tlsKeyName:            *tlsKeyName,
+		caBundleName:          *caBundleName,
+		envoyGatewayNamespace: *envoyGatewayNamespace,
 	}, nil
 }
 
@@ -203,12 +203,12 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:                flags.extProcImage,
-		ExtProcLogLevel:             flags.extProcLogLevel,
-		EnableLeaderElection:        flags.enableLeaderElection,
-		EnableInfExt:                flags.enableInfExt,
-		EnvoyGatewaySystemNamespace: flags.envoyGatewaySystemNamespace,
-		UDSPath:                     extProcUDSPath,
+		ExtProcImage:          flags.extProcImage,
+		ExtProcLogLevel:       flags.extProcLogLevel,
+		EnableLeaderElection:  flags.enableLeaderElection,
+		EnableInfExt:          flags.enableInfExt,
+		EnvoyGatewayNamespace: flags.envoyGatewayNamespace,
+		UDSPath:               extProcUDSPath,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
