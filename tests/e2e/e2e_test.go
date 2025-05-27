@@ -339,9 +339,11 @@ func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector st
 // If checkCompletionHealth is true, it will also check the health of the completion endpoint is working correctly by
 // ensuring that the extproc returns an error for a non-existent model.
 func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int, checkCompletionHealth bool) portForwarder {
-	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
-	require.NoError(t, err)
+	// Before creating the port forwarder, we need to ensure that the pod is ready.
 	require.Eventually(t, func() bool {
+		f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
+		require.NoError(t, err)
+		defer f.kill()
 		if checkCompletionHealth {
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, f.address()+"/v1/chat/completions",
 				strings.NewReader(`{"model": "non-existent-model"}`))
@@ -371,6 +373,9 @@ func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string
 		_ = res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
+
+	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
+	require.NoError(t, err)
 	return f
 }
 
