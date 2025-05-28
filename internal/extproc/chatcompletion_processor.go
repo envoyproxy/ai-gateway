@@ -80,6 +80,8 @@ type chatCompletionProcessorRouterFilter struct {
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
+	// c.upstreamFilter can be nil.
 	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		return c.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
 	}
@@ -88,6 +90,8 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
+	// c.upstreamFilter can be nil.
 	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		return c.upstreamFilter.ProcessResponseBody(ctx, body)
 	}
