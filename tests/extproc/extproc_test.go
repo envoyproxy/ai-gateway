@@ -38,6 +38,7 @@ func TestMain(m *testing.M) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Internal Server Error"))
 	})
 
 	httpServer := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", fakeServerPort), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
