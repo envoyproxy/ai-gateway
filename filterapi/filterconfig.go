@@ -231,6 +231,8 @@ type BackendAuth struct {
 	AWSAuth *AWSAuth `json:"aws,omitempty"`
 	// AzureAuth specifies the location of Azure access token file.
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
+	// GCPAuth specifies the location of GCP credential file.
+	GCPAuth *GCPAuth `json:"gcp,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
@@ -247,6 +249,15 @@ type APIKeyAuth struct {
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
 	Filename string `json:"filename"`
+}
+
+// GCPAuth defines the file containing GCP credential that will be mounted to the external proc.
+type GCPAuth struct {
+	// CredentialFileName is the name of the file containing the GCP credential.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	CredentialFileName string `json:"credentialFileName,omitempty"`
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
