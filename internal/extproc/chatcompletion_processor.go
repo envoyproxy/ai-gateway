@@ -57,6 +57,7 @@ func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactor
 // This is primarily used to select the route for the request based on the model name.
 type chatCompletionProcessorRouterFilter struct {
 	passThroughProcessor
+	upstreamFilter Processor
 	logger         *slog.Logger
 	config         *processorConfig
 	requestHeaders map[string]string
@@ -68,6 +69,20 @@ type chatCompletionProcessorRouterFilter struct {
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
+}
+
+func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	if c.upstreamFilter != nil {
+		return c.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
+	}
+	return c.passThroughProcessor.ProcessResponseHeaders(ctx, headerMap)
+}
+
+func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	if c.upstreamFilter != nil {
+		return c.upstreamFilter.ProcessResponseBody(ctx, body)
+	}
+	return c.passThroughProcessor.ProcessResponseBody(ctx, body)
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
@@ -311,6 +326,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
+	rp.upstreamFilter = c
 	return
 }
 

@@ -88,7 +88,7 @@ func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath strin
 	cmd := exec.CommandContext(t.Context(), executable)
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Args = append(cmd.Args, "-configPath", configPath, "--logLevel", "debug")
 	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 }
