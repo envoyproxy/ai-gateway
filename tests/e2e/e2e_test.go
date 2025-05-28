@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -314,32 +315,42 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	return
 }
 
-func requireWaitForPodReady(t *testing.T, namespace, labelSelector string) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
-	requireWaitForPodReadyWithTimeout(t, namespace, labelSelector, 3*time.Minute)
-}
-
-func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector string, timeout time.Duration) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
+func requireWaitForGatewayPodReady(t *testing.T, selector string) {
+	// Wait for the Envoy Gateway pod containing the extproc container.
 	require.Eventually(t, func() bool {
-		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", namespace,
-			"pods", "--for=condition=Ready", "-l", labelSelector)
-		return cmd.Run() == nil
-	}, timeout, 5*time.Second)
-}
-
-func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
-	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		conn, err := http.Get(f.address())
+		cmd := kubectl(t.Context(), "get", "pod", "-n", egNamespace,
+			"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
+		cmd.Stdout = nil // To ensure that we can capture the output by Output().
+		out, err := cmd.Output()
 		if err != nil {
 			t.Logf("error: %v", err)
 			return false
 		}
-		_ = conn.Body.Close()
+		return strings.Contains(string(out), "ai-gateway-extproc")
+	}, 2*time.Minute, 1*time.Second)
+
+	// This repeats the wait subcommand in order to be able to wait for the
+	// resources not created yet.
+	require.Eventually(t, func() bool {
+		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", egNamespace,
+			"pods", "--for=condition=Ready", "-l", selector)
+		return cmd.Run() == nil
+	}, 3*time.Minute, 5*time.Second)
+}
+
+// requireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
+//
+// If gatewayPod is true, it will check and wait until the pod has the extproc container.
+func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
+	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		res, err := http.Get(f.address())
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		_ = res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
 	return f

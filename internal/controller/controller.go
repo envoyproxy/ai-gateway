@@ -11,20 +11,23 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -58,19 +61,13 @@ type Options struct {
 	EnableLeaderElection bool
 	// EnableInfExt enables the Gateway API Inference Extension.
 	EnableInfExt bool
+	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
+	EnvoyGatewayNamespace string
+	// UDSPath is the path to the UDS socket for the external processor.
+	UDSPath string
+	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
+	DisableMutatingWebhook bool
 }
-
-type (
-	// syncAIGatewayRouteFn is a function that syncs an AIGatewayRoute. This is used to cross the controller boundary
-	// from AIServiceBackend to AIGatewayRoute when an AIServiceBackend is referenced by an AIGatewayRoute.
-	syncAIGatewayRouteFn func(context.Context, *aigv1a1.AIGatewayRoute) error
-	// syncAIServiceBackendFn is a function that syncs an AIServiceBackend. This is used to cross the controller boundary
-	// from BackendSecurityPolicy to AIServiceBackend when a BackendSecurityPolicy is referenced by an AIServiceBackend.
-	syncAIServiceBackendFn func(context.Context, *aigv1a1.AIServiceBackend) error
-	// syncBackendSecurityPolicyFn is a function that syncs a BackendSecurityPolicy. This is used to cross the controller boundary
-	// from Secret to BackendSecurityPolicy when a Secret is referenced by a BackendSecurityPolicy.
-	syncBackendSecurityPolicyFn func(context.Context, *aigv1a1.BackendSecurityPolicy) error
-)
 
 // StartControllers starts the controllers for the AI Gateway.
 // This blocks until the manager is stopped.
@@ -83,39 +80,76 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
 
+	gatewayEventChan := make(chan event.GenericEvent, 100)
+	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath)
+	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
+		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
+		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
+		WatchesRawSource(source.Channel(
+			gatewayEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
+		Complete(gatewayC); err != nil {
+		return fmt.Errorf("failed to create controller for Gateway: %w", err)
+	}
+
+	aiGatewayRouteEventChan := make(chan event.GenericEvent, 100)
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
-		uuid2.NewUUID,
-		options.ExtProcImage, options.ExtProcLogLevel)
+		gatewayEventChan,
+	)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
 		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
-		Owns(&appsv1.Deployment{}).
-		Owns(&corev1.Service{}).
+		WatchesRawSource(source.Channel(
+			aiGatewayRouteEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
 		Complete(routeC); err != nil {
 		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
 	}
 
+	aiServiceBackendEventChan := make(chan event.GenericEvent, 100)
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("ai-service-backend"), routeC.syncAIGatewayRoute)
+		WithName("ai-service-backend"), aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).
+		WatchesRawSource(source.Channel(
+			aiServiceBackendEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
 		Complete(backendC); err != nil {
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
+	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), backendC.syncAIServiceBackend)
+		WithName("backend-security-policy"), aiServiceBackendEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
+		WatchesRawSource(source.Channel(
+			backendSecurityPolicyEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("secret"), backendSecurityPolicyC.syncBackendSecurityPolicy)
+		WithName("secret"), backendSecurityPolicyEventChan)
 	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
 		Complete(secretC); err != nil {
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
+	}
+
+	if !options.DisableMutatingWebhook {
+		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
+			logger.WithName("gateway-mutator"),
+			options.ExtProcImage, options.ExtProcLogLevel,
+			options.EnvoyGatewayNamespace,
+			options.UDSPath,
+		))
+		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
 
 	if err = mgr.Start(ctx); err != nil { // This blocks until the manager is stopped.
@@ -137,6 +171,9 @@ func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Bui
 }
 
 const (
+	// k8sClientIndexAIGatewayRouteToAttachedGateway is the index name that maps from a Gateway to the
+	// AIGatewayRoute that attaches to it.
+	k8sClientIndexAIGatewayRouteToAttachedGateway = "GWAPIGatewayToReferencingAIGatewayRoute"
 	// k8sClientIndexSecretToReferencingBackendSecurityPolicy is the index name that maps
 	// from a Secret to the BackendSecurityPolicy that references it.
 	k8sClientIndexSecretToReferencingBackendSecurityPolicy = "SecretToReferencingBackendSecurityPolicy"
@@ -153,7 +190,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute: %w", err)
+		return fmt.Errorf("failed to index field for AIGatewayRoute to Backends: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
+		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for AIGatewayRoute to Gateway: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
@@ -166,6 +208,15 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)
 	}
 	return nil
+}
+
+func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
+	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+	var ret []string
+	for _, ref := range aiGatewayRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+	}
+	return ret
 }
 
 func aiGatewayRouteIndexFunc(o client.Object) []string {

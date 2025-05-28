@@ -25,12 +25,10 @@ import (
 //
 // Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 //
-//   - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-//     The name of these resources are `ai-eg-route-extproc-${name}`.
 //   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
 //     The name of the HTTPRoute is the same as the AIGatewayRoute.
-//   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-//     The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+//   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the target Gateways.
+//     This will be created per Gateway, and its name is `ai-eg-eep-${gateway-name}`.
 //   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
 //     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 //
@@ -194,6 +192,11 @@ type AIGatewayRouteSpec struct {
 	//	                namespace: io.envoy.ai_gateway
 	//	                key: llm_total_token
 	// ```
+	//
+	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
+	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
+	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
@@ -227,6 +230,33 @@ type AIGatewayRouteRule struct {
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
+
+	// ModelsOwnedBy represents the owner of the running models serving by the backends,
+	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same owner.
+	//
+	// Default to "Envoy AI Gateway" if not set.
+	//
+	// +optional
+	// +kubebuilder:default="Envoy AI Gateway"
+	ModelsOwnedBy *string `json:"modelsOwnedBy,omitempty"`
+
+	// ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
+	// which will be exported as the field of "Created" in openai-compatible API "/models".
+	// It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same creation time.
+	//
+	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	//
+	// +optional
+	// +kubebuilder:validation:Format=date-time
+	ModelsCreatedAt *metav1.Time `json:"modelsCreatedAt,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
@@ -313,15 +343,18 @@ const (
 type AIGatewayFilterConfigExternalProcessor struct {
 	// Replicas is the number of desired pods of the external processor deployment.
 	//
+	// Deprecated: This field is no longer used.
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
+	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
+	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
+	// to configure the resource requirements of the external processor container.
+	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// TODO: maybe adding the option not to deploy the external processor filter and let the user deploy it manually?
-	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
 // AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.

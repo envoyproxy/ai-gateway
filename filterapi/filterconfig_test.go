@@ -22,8 +22,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, server)
 
-	cfg, raw := filterapi.MustLoadDefaultConfig()
-	require.Equal(t, []byte(filterapi.DefaultConfig), raw)
+	cfg := filterapi.MustLoadDefaultConfig()
 	require.Equal(t, &filterapi.Config{
 		Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 		SelectedRouteHeaderKey: "x-ai-eg-selected-route",
@@ -51,24 +50,6 @@ rules:
     value: llama3.3333
   name: llama3-route
   backends:
-  - name: kserve
-    schema:
-      name: OpenAI
-    auth:
-      apiKey:
-        filename: apikey.txt
-  - name: awsbedrock
-    schema:
-      name: AWSBedrock
-    auth:
-      aws:
-        credentialFileName: aws.txt
-        region: us-east-1
-- headers:
-  - name: x-ai-eg-model
-    value: gpt4.4444
-  name: gpt4-route
-  backends:
   - name: openai
     schema:
       name: OpenAI
@@ -78,12 +59,28 @@ rules:
       version: 2024-10-21
     auth:
       azure:
-        filename: azure.txt
+        accessToken: "azureazureazureazureazureazure"
+  - name: awsbedrock
+    schema:
+      name: AWSBedrock
+    auth:
+      aws:
+        CredentialFileLiteral: "awsawsawsawsawsawsaws"
+        region: us-east-1
+  - name: kserve
+    schema:
+      name: OpenAI
+    auth:
+      apiKey:
+        key: kservekservekservekservekservekservekservekservekserve
+- headers:
+  - name: x-ai-eg-model
+    value: gpt4.4444
+  name: gpt4-route
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
-	cfg, raw, err := filterapi.UnmarshalConfigYaml(configPath)
+	cfg, err := filterapi.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
-	require.Equal(t, []byte(config), raw)
 
 	expectedCfg := &filterapi.Config{
 		Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
@@ -98,33 +95,7 @@ rules:
 		},
 		Rules: []filterapi.RouteRule{
 			{
-				Name:    "llama3-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "llama3.3333"}},
-				Backends: []filterapi.Backend{
-					{
-						Name:   "kserve",
-						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-						Auth: &filterapi.BackendAuth{
-							APIKey: &filterapi.APIKeyAuth{
-								Filename: "apikey.txt",
-							},
-						},
-					},
-					{
-						Name:   "awsbedrock",
-						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
-						Auth: &filterapi.BackendAuth{
-							AWSAuth: &filterapi.AWSAuth{
-								CredentialFileName: "aws.txt",
-								Region:             "us-east-1",
-							},
-						},
-					},
-				},
-			},
-			{
-				Name:    "gpt4-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "gpt4.4444"}},
+				Name: "llama3-route", Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "llama3.3333"}},
 				Backends: []filterapi.Backend{
 					{
 						Name:   "openai",
@@ -135,26 +106,46 @@ rules:
 						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-10-21"},
 						Auth: &filterapi.BackendAuth{
 							AzureAuth: &filterapi.AzureAuth{
-								Filename: "azure.txt",
+								AccessToken: "azureazureazureazureazureazure",
+							},
+						},
+					},
+					{
+						Name:   "awsbedrock",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
+						Auth: &filterapi.BackendAuth{
+							AWSAuth: &filterapi.AWSAuth{
+								CredentialFileLiteral: "awsawsawsawsawsawsaws",
+								Region:                "us-east-1",
+							},
+						},
+					},
+					{
+						Name:   "kserve",
+						Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+						Auth: &filterapi.BackendAuth{
+							APIKey: &filterapi.APIKeyAuth{
+								Key: "kservekservekservekservekservekservekservekservekserve",
 							},
 						},
 					},
 				},
 			},
+			{Name: "gpt4-route", Headers: []filterapi.HeaderMatch{{Name: "x-ai-eg-model", Value: "gpt4.4444"}}},
 		},
 	}
 
 	require.Equal(t, expectedCfg, cfg)
 
 	t.Run("not found", func(t *testing.T) {
-		_, _, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
+		_, err := filterapi.UnmarshalConfigYaml("not-found.yaml")
 		require.Error(t, err)
 		require.True(t, os.IsNotExist(err))
 	})
 	t.Run("invalid", func(t *testing.T) {
 		const invalidConfig = `{wefaf3q20,9u,f02`
 		require.NoError(t, os.WriteFile(configPath, []byte(invalidConfig), 0o600))
-		_, _, err := filterapi.UnmarshalConfigYaml(configPath)
+		_, err := filterapi.UnmarshalConfigYaml(configPath)
 		require.Error(t, err)
 	})
 }

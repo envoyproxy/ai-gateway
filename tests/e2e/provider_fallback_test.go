@@ -27,7 +27,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), baseManifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=provider-fallback"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	// This requires the following environment variables to be set:
 	//   - TEST_AWS_ACCESS_KEY_ID

@@ -14,11 +14,9 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"google.golang.org/grpc"
@@ -26,14 +24,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
@@ -64,6 +61,8 @@ type runCmdContext struct {
 	stderrLogger *slog.Logger
 	// tmpdir is the temporary directory for the resources.
 	tmpdir string
+	// udsPath is the path to the UDS socket used by the AI Gateway extproc.
+	udsPath string
 	// fakeClientSet is the fake client set for the k8s resources. The objects are written to this client set and updated
 	// during the translation.
 	fakeClientSet *fake.Clientset
@@ -127,8 +126,10 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", resourceYamlPath, err)
 	}
+	udsPath := filepath.Join(tmpdir, "uds.sock")
+	_ = os.Remove(udsPath)
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
-	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, tmpdir: tmpdir, isDebug: c.Debug}
+	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
 	// Use the default configuration if the path is not given.
 	aiGatewayResourcesYaml := aiGatewayDefaultResources
 	if c.Path != "" {
@@ -149,7 +150,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeCleint, ctrl.Log)
+	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -197,11 +198,13 @@ func recreateDir(path string) error {
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
 func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, error) {
-	aigwRoutes, aigwBackends, backendSecurityPolicies, secrets, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error collecting: %w", err)
 	}
-
+	if len(gateways) > 1 {
+		return nil, fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
+	}
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
@@ -209,190 +212,74 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 			return nil, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
-	fakeClient, _fakeClientSet, httpRoutes, extensionPolicies, httpRouteFilter, _, _, _, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, runCtx.stderrLogger)
+
+	// Do the substitution for the secrets.
+	for _, s := range secrets {
+		if err = runCtx.rewriteSecretWithAnnotatedLocation(s); err != nil {
+			return nil, fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
+		}
+	}
+
+	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.udsPath, runCtx.stderrLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
-	// We don't need special logic for HTTPRouteFilter, so write them now.
 	for _, hrf := range httpRouteFilter.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
 	}
-	// Also HTTPRoutes.
 	for _, hr := range httpRoutes.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, &hr)
 	}
-
-	// Store the user defined secrets in the fake client set.
-	for _, s := range secrets {
-		if _, err := runCtx.fakeClientSet.CoreV1().Secrets(s.Namespace).Create(ctx, s, metav1.CreateOptions{}); err != nil {
-			return nil, fmt.Errorf("failed to create secret %s: %w", s.Name, err)
-		}
+	for _, b := range backends.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, &b)
+	}
+	gw := gateways[0]
+	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&gw.TypeMeta, gw)
+	for _, ep := range eps.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, &ep)
 	}
 
-	for i := range extensionPolicies.Items {
-		ep := &extensionPolicies.Items[i]
-		if len(ep.OwnerReferences) != 1 || ep.OwnerReferences[0].Kind != "AIGatewayRoute" || ep.OwnerReferences[0].APIVersion != "aigateway.envoyproxy.io/v1alpha1" {
-			runCtx.stderrLogger.Info("Ignoring non-AI Gateway managed extension policy", "policy", ep.Name)
-			mustWriteObj(&ep.TypeMeta, ep, runCtx.envoyGatewayResourcesOut)
-			continue
-		}
-		wd, port, filterCfg, err := runCtx.writeExtensionPolicy(ep)
-		if err != nil {
-			return nil, err
-		}
-		runCtx.stderrLogger.Info("Running external process",
-			"policy", ep.Name, "port", port,
-			"working directory", wd, "config", filterCfg,
-		)
-		runCtx.mustStartExtProc(ctx, wd, port, filterCfg)
-	}
-	return fakeClient, nil
-}
-
-// writeExtensionPolicy modifies the given EnvoyExtensionPolicy to run an external process locally, writes the
-// modified policy to the output file, and returns the working directory, the port the external process is supposed to
-// listen on, and the filter configuration.
-func (runCtx *runCmdContext) writeExtensionPolicy(
-	ep *egv1a1.EnvoyExtensionPolicy,
-) (wd string, port int32, filterCfg filterapi.Config, err error) {
-	if len(ep.Spec.ExtProc) != 1 {
-		panic(fmt.Sprintf("BUG: unexpected number of ext-proc items: %d", len(ep.Spec.ExtProc)))
-	}
-
-	extProc := &ep.Spec.ExtProc[0]
-	if len(extProc.BackendRefs) != 1 {
-		panic(fmt.Sprintf("BUG: unexpected number of backend refs: %d", len(extProc.BackendRefs)))
-	}
-	backendRef := &extProc.BackendRefs[0]
-	ns := ep.Namespace
-	if backendRef.Namespace != nil {
-		ns = string(*backendRef.Namespace)
-	}
-
-	// Find the locally available port, create a Backend resource, and modify the backend ref.
-	port = mustGetAvailablePort()
-	backend := &egv1a1.Backend{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      string(backendRef.Name),
-			Namespace: ns,
-		},
-		Spec: egv1a1.BackendSpec{
-			Endpoints: []egv1a1.BackendEndpoint{
-				// We run the external process on the host network, so use the localhost.
-				{IP: &egv1a1.IPEndpoint{Address: "127.0.0.1", Port: port}}, // nolint:gosec
-			},
-		},
-	}
-	mustWriteObj(&backend.TypeMeta, backend, runCtx.envoyGatewayResourcesOut)
-	backendRef.Group = ptr.To[gwapiv1.Group]("gateway.envoyproxy.io")
-	backendRef.Kind = ptr.To[gwapiv1.Kind]("Backend")
-	backendRef.Port = nil
-
-	// Make sure that config works locally.
-	wd = filepath.Join(runCtx.tmpdir, fmt.Sprintf("envoy-ai-gateway-extproc-%s-%s", ns, string(backendRef.Name)))
-	if err = recreateDir(wd); err != nil {
-		panic(fmt.Sprintf("BUG: failed to create directory %s: %v", wd, err))
-	}
-
-	config, err := runCtx.fakeClientSet.CoreV1().ConfigMaps(ns).Get(context.Background(), string(backendRef.Name), metav1.GetOptions{})
+	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
+		Secrets(envoyGatewayNamespace).Get(ctx,
+		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
-		panic(fmt.Sprintf("BUG: failed to get configmap %s/%s: %v", ns, backendRef.Name, err))
+		return nil, fmt.Errorf("failed to get filter config secret: %w", err)
 	}
-	raw, ok := config.Data["extproc-config.yaml"]
+
+	rawConfig, ok := filterConfigSecret.StringData[controller.FilterConfigKeyInSecret]
 	if !ok {
-		panic(fmt.Sprintf("BUG: extproc-config.yaml not found in configmap %s", string(backendRef.Name)))
+		return nil, fmt.Errorf("failed to get filter config from secret: %w", err)
 	}
-	if err = yaml.Unmarshal([]byte(raw), &filterCfg); err != nil {
-		panic(fmt.Sprintf("BUG: failed to unmarshal extproc-config.yaml: %v", err))
+	var fc filterapi.Config
+	if err = yaml.Unmarshal([]byte(rawConfig), &fc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal filter config: %w", err)
 	}
-	deployment, err := runCtx.fakeClientSet.AppsV1().Deployments(ns).Get(context.Background(), string(backendRef.Name), metav1.GetOptions{})
-	if err != nil {
-		panic(fmt.Sprintf("BUG: failed to get deployment %s/%s: %v", ns, backendRef.Name, err))
-	}
-
-	// Write the secret to the working directory.
-	volumeNameToWd := make(map[string]string)
-	for _, volume := range deployment.Spec.Template.Spec.Volumes {
-		if volume.Secret == nil {
-			continue
-		}
-		secretKey := fmt.Sprintf("%s-%s", ns, volume.Secret.SecretName)
-		var s *corev1.Secret
-		s, err = runCtx.fakeClientSet.CoreV1().Secrets(ns).Get(context.Background(), volume.Secret.SecretName, metav1.GetOptions{})
-		if err != nil {
-			panic(fmt.Sprintf("BUG: failed to get secret %s/%s: %v", ns, volume.Secret.SecretName, err))
-		}
-		// Write the secret to the working directory.
-		dir := filepath.Join(wd, secretKey)
-		runCtx.stderrLogger.Info("Creating secret directory", "path", dir)
-		err = os.MkdirAll(dir, 0o755)
-		if err != nil {
-			panic(fmt.Sprintf("BUG: failed to create directory %s: %v", dir, err))
-		}
-		err = runCtx.writeSecretToWorkingDir(dir, s)
-		if err != nil {
-			return
-		}
-		volumeNameToWd[volume.Name] = dir
-	}
-
-	dirMapping := make(map[string]string)
-	for _, volume := range deployment.Spec.Template.Spec.Containers[0].VolumeMounts {
-		dir, ok := volumeNameToWd[volume.Name]
-		if !ok {
-			continue
-		}
-		dirMapping[volume.MountPath] = dir
-	}
-
-	for i := range filterCfg.Rules {
-		rule := &filterCfg.Rules[i]
-		for j := range rule.Backends {
-			be := &rule.Backends[j]
-			if auth := be.Auth; auth != nil {
-				if auth.AWSAuth != nil {
-					newDir, ok := dirMapping[path.Dir(auth.AWSAuth.CredentialFileName)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.AWSAuth.CredentialFileName)))
-					}
-					auth.AWSAuth.CredentialFileName = filepath.Join(newDir, path.Base(auth.AWSAuth.CredentialFileName))
-				} else if auth.APIKey != nil {
-					newDir, ok := dirMapping[path.Dir(auth.APIKey.Filename)]
-					if !ok {
-						panic(fmt.Sprintf("BUG: dir %s not found in dirMapping", path.Dir(auth.APIKey.Filename)))
-					}
-					auth.APIKey.Filename = filepath.Join(newDir, path.Base(auth.APIKey.Filename))
-				}
-			}
-		}
-	}
-
-	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, ep)
-	return
+	runCtx.stderrLogger.Info("Running external process", "config", fc)
+	runCtx.mustStartExtProc(ctx, &fc)
+	return fakeClient, nil
 }
 
 // mustStartExtProc starts the external process with the given working directory, port, and filter configuration.
 func (runCtx *runCmdContext) mustStartExtProc(
 	ctx context.Context,
-	wd string,
-	port int32,
-	filterCfg filterapi.Config,
+	filterCfg *filterapi.Config,
 ) {
-	configPath := filepath.Join(wd, "extproc-config.yaml")
 	marshaled, err := yaml.Marshal(filterCfg)
 	if err != nil {
 		panic(fmt.Sprintf("BUG: failed to marshal filter config: %v", err))
 	}
+	configPath := filepath.Join(runCtx.tmpdir, "extproc-config.yaml")
+	_ = os.Remove(configPath)
 	err = os.WriteFile(configPath, marshaled, 0o600)
 	if err != nil {
 		panic(fmt.Sprintf("BUG: failed to write extension proc config: %v", err))
 	}
 	args := []string{
 		"--configPath", configPath,
-		"--extProcAddr", fmt.Sprintf(":%d", port),
-		"--metricsAddr", fmt.Sprintf(":%d", mustGetAvailablePort()),
+		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
+		"--metricsPort", fmt.Sprintf("%d", mustGetAvailablePort()),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
@@ -406,8 +293,6 @@ func (runCtx *runCmdContext) mustStartExtProc(
 	}()
 }
 
-// mustGetAvailablePort returns an available local port. This is used to run the external process.
-//
 // This function panics if it fails to find an available port. This should not happen in practice.
 func mustGetAvailablePort() int32 {
 	l, err := net.Listen("tcp", "localhost:0")
@@ -451,9 +336,7 @@ func (runCtx *runCmdContext) mustClearSetOwnerReferencesAndStatusAndWriteObj(typ
 	}
 }
 
-// writeSecretToWorkingDir writes the given secret to the working directory while resolving the environment variables and
-// symlinks specified in the annotations such as substitutionEnvAnnotationPrefix and substitutionFileAnnotationPrefix.
-func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secret) (err error) {
+func (runCtx *runCmdContext) rewriteSecretWithAnnotatedLocation(s *corev1.Secret) (err error) {
 	allData := s.Data
 	if allData == nil {
 		allData = make(map[string][]byte)
@@ -462,43 +345,32 @@ func (runCtx *runCmdContext) writeSecretToWorkingDir(dir string, s *corev1.Secre
 		allData[k] = []byte(v)
 	}
 	for k, v := range allData {
-		p := filepath.Join(dir, k)
 		envSubKeyAnnotation := substitutionEnvAnnotationPrefix + k
 		fileSubKeyAnnotation := substitutionFileAnnotationPrefix + k
 		if envSubKey, ok := s.Annotations[envSubKeyAnnotation]; ok {
 			// If this is an environment variable, substitute it.
-			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubKey)
 			envVal := os.Getenv(envSubKey)
 			if envVal == "" {
 				runCtx.stderrLogger.Warn("Missing environment variable, skipping substitution",
 					"annotation_key", envSubKey, "env_key", k, "env_substitution_key", envSubKey)
-			} else {
-				v = []byte(envVal)
+				continue
 			}
+			runCtx.stderrLogger.Info("Substituting environment variable", "key", k, "value", envSubKey)
+			v = []byte(envVal)
 		} else if fileSubKey, ok := s.Annotations[fileSubKeyAnnotation]; ok {
 			fileSubPath := maybeResolveHome(fileSubKey)
 			// Check the target file exists.
-			if _, err = os.Stat(fileSubKey); err == nil {
-				// Create a symlink to the file inside the dir pointing to the file in the annotation.
-				runCtx.stderrLogger.Info("Creating symlink",
-					"annotation_key", fileSubKeyAnnotation, "file_substitution_path", k, "file_substitution_target_path", fileSubKey)
-				err = os.Symlink(fileSubPath, p)
-				// If it's exist, then the credentials are already referenced by other resources, so we can ignore the error.
-				if err != nil && !os.IsExist(err) {
-					// This might be a user error, so return the error.
-					return fmt.Errorf("failed to create symlink %s -> %s: %w", p, fileSubPath, err)
-				}
+			v, err = os.ReadFile(fileSubPath)
+			if err != nil {
+				runCtx.stderrLogger.Error("Failed to read substitution file. Skipping substitution", "path", fileSubPath, "error", err)
 				continue
 			}
-			runCtx.stderrLogger.Warn("Target file does not exist. Skipping substitution",
-				"annotation_key", fileSubKeyAnnotation, "file_substitution_path", k, "file_substitution_target_path", fileSubKey)
+			runCtx.stderrLogger.Info("Substituting file", "key", k, "value", fileSubKey)
 		}
-		runCtx.stderrLogger.Info("Writing secret", "path", p)
-		err = os.WriteFile(p, v, 0o600)
-		if err != nil {
-			panic(fmt.Sprintf("BUG: failed to write file %s: %v", p, err))
-		}
+		allData[k] = v
 	}
+	s.Data = allData
+	s.StringData = nil
 	return nil
 }
 

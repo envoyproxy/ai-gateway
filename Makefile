@@ -167,13 +167,15 @@ test-controller: apigen
         ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
     done
 
-# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
-#
-# This requires the docker images to be built.
-.PHONY: test-e2e
-test-e2e:
+# This builds the docker images for the controller, extproc and testupstream for the e2e tests.
+.PHONY: build-e2e
+build-e2e:
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+
+# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e
+test-e2e: build-e2e
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 

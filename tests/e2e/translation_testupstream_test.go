@@ -26,7 +26,7 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {

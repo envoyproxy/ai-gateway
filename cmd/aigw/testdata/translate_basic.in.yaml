@@ -42,6 +42,8 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: envoy-ai-gateway-basic-openai
+      modelsOwnedBy: "openai"
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
     - matches:
         - headers:
             - type: Exact
@@ -49,6 +51,8 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: envoy-ai-gateway-basic-aws
+      modelsOwnedBy: "aws"
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
     - matches:
         - headers:
             - type: Exact
@@ -56,6 +60,7 @@ spec:
               value: some-cool-self-hosted-model
       backendRefs:
         - name: envoy-ai-gateway-basic-testupstream
+      modelsCreatedAt: "2025-05-23T00:00:00Z"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -182,7 +187,20 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: something
+  name: envoy-ai-gateway-basic-openai-apikey
+  namespace: default
 type: Opaque
 stringData:
-  something: foo
+  apiKey: apiKey
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-aws-credentials
+  namespace: default
+type: Opaque
+stringData:
+  credentials: |
+    [default]
+    aws_access_key_id = AWS_ACCESS_KEY_ID
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY

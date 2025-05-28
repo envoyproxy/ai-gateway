@@ -24,7 +24,7 @@ func Test_Examples_InferenceExtension(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-extension-example"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 	defer fwd.kill()
