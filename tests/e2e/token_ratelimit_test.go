@@ -30,11 +30,11 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	const modelName = "rate-limit-funky-model"
 	makeRequest := func(usedID string, input, output, total int, expStatus int) {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort, true)
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 		defer fwd.kill()
 
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
@@ -67,7 +67,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 	// Health check to ensure the configuration is propagated.
 	require.Eventually(t, func() bool {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort, true)
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
 		defer fwd.kill()
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
 		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
@@ -121,7 +121,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	makeRequest(usedID, 0, 0, 0, 429)
 
 	require.Eventually(t, func() bool {
-		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090, false)
+		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.kill()
 		const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
