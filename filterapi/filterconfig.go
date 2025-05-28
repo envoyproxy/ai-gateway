@@ -19,6 +19,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 // DefaultConfig is the default configuration that can be used as a
@@ -102,25 +104,11 @@ type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata storing the request cost.
 	MetadataKey string `json:"metadataKey"`
 	// Type is the kind of the request cost calculation.
-	Type LLMRequestCostType `json:"type"`
+	Type aigv1a1.LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CEL string `json:"cel,omitempty"`
 }
-
-// LLMRequestCostType specifies the kind of the request cost calculation.
-type LLMRequestCostType string
-
-const (
-	// LLMRequestCostTypeOutputToken specifies that the request cost is calculated from the output token.
-	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
-	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
-	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
-	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
-	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
-	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
-	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
-)
 
 // VersionedAPISchema corresponds to VersionedAPISchema in api/v1alpha1/api.go.
 type VersionedAPISchema struct {

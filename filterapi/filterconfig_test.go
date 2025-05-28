@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 )
@@ -93,7 +94,7 @@ rules:
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{
 				MetadataKey: "token_usage_key",
-				Type:        filterapi.LLMRequestCostTypeOutputToken,
+				Type:        aigv1a1.LLMRequestCostTypeOutputToken,
 			},
 		},
 		Rules: []filterapi.RouteRule{

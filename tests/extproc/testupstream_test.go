@@ -23,6 +23,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
@@ -41,7 +42,7 @@ func TestWithTestUpstream(t *testing.T) {
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
+			{MetadataKey: "used_token", Type: aigv1a1.LLMRequestCostTypeInputToken},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.

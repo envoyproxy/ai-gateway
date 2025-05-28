@@ -318,15 +318,8 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 	for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 		fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
-		switch cost.Type {
-		case aigv1a1.LLMRequestCostTypeInputToken:
-			fc.Type = filterapi.LLMRequestCostTypeInputToken
-		case aigv1a1.LLMRequestCostTypeOutputToken:
-			fc.Type = filterapi.LLMRequestCostTypeOutputToken
-		case aigv1a1.LLMRequestCostTypeTotalToken:
-			fc.Type = filterapi.LLMRequestCostTypeTotalToken
-		case aigv1a1.LLMRequestCostTypeCEL:
-			fc.Type = filterapi.LLMRequestCostTypeCEL
+		fc.Type = cost.Type
+		if fc.Type == aigv1a1.LLMRequestCostTypeCEL {
 			expr := *cost.CEL
 			// Sanity check the CEL expression.
 			_, err = llmcostcel.NewProgram(expr)
@@ -334,8 +327,6 @@ func (c *AIGatewayRouteController) reconcileExtProcConfigMap(ctx context.Context
 				return fmt.Errorf("invalid CEL expression: %w", err)
 			}
 			fc.CEL = expr
-		default:
-			return fmt.Errorf("unknown request cost type: %s", cost.Type)
 		}
 		ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 	}

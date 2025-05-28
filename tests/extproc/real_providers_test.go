@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -37,8 +38,8 @@ func TestWithRealProviders(t *testing.T) {
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
-			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
+			{MetadataKey: "used_token", Type: aigv1a1.LLMRequestCostTypeInputToken},
+			{MetadataKey: "some_cel", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
 		Schema: openAISchema,
 		// This can be any header key, but it must match the envoy.yaml routing configuration.

@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
@@ -43,8 +44,8 @@ func TestServer_LoadConfig(t *testing.T) {
 		config := &filterapi.Config{
 			MetadataNamespace: "ns",
 			LLMRequestCosts: []filterapi.LLMRequestCost{
-				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
+				{MetadataKey: "key", Type: aigv1a1.LLMRequestCostTypeOutputToken},
+				{MetadataKey: "cel_key", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
 			Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 			SelectedRouteHeaderKey: "x-ai-eg-selected-route",
@@ -91,9 +92,9 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
-		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
+		require.Equal(t, aigv1a1.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
 		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.requestCosts[1].Type)
+		require.Equal(t, aigv1a1.LLMRequestCostTypeCEL, s.config.requestCosts[1].Type)
 		require.Equal(t, "1 + 1", s.config.requestCosts[1].CEL)
 		prog := s.config.requestCosts[1].celProg
 		require.NotNil(t, prog)

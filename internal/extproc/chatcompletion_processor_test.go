@@ -19,6 +19,7 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -231,15 +232,15 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			config: &processorConfig{
 				metadataNamespace: "ai_gateway_llm_ns",
 				requestCosts: []processorConfigRequestCost{
-					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
-					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
+					{LLMRequestCost: &filterapi.LLMRequestCost{Type: aigv1a1.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+					{LLMRequestCost: &filterapi.LLMRequestCost{Type: aigv1a1.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 					{
 						celProg:        celProgInt,
-						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
+						LLMRequestCost: &filterapi.LLMRequestCost{Type: aigv1a1.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
 					},
 					{
 						celProg:        celProgUint,
-						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
+						LLMRequestCost: &filterapi.LLMRequestCost{Type: aigv1a1.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
 					},
 				},
 			},

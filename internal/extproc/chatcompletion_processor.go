@@ -21,6 +21,7 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -328,13 +329,13 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 		rc := &c.config.requestCosts[i]
 		var cost uint32
 		switch rc.Type {
-		case filterapi.LLMRequestCostTypeInputToken:
+		case aigv1a1.LLMRequestCostTypeInputToken:
 			cost = c.costs.InputTokens
-		case filterapi.LLMRequestCostTypeOutputToken:
+		case aigv1a1.LLMRequestCostTypeOutputToken:
 			cost = c.costs.OutputTokens
-		case filterapi.LLMRequestCostTypeTotalToken:
+		case aigv1a1.LLMRequestCostTypeTotalToken:
 			cost = c.costs.TotalTokens
-		case filterapi.LLMRequestCostTypeCEL:
+		case aigv1a1.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
 				c.requestHeaders[c.config.modelNameHeaderKey],
