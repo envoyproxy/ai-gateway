@@ -139,7 +139,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		}
 		aiGatewayResourcesYaml = string(yamlBytes)
 	}
-	fakeCleint, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeClient, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeCleint, ctrl.Log)
+	extSrv := extensionserver.New(fakeClient, ctrl.Log)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
