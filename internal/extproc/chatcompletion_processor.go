@@ -57,6 +57,13 @@ func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactor
 // This is primarily used to select the route for the request based on the model name.
 type chatCompletionProcessorRouterFilter struct {
 	passThroughProcessor
+	// upstreamFilter is the upstream filter that is used to process the request at the upstream filter.
+	// This will be updated when the request is retried.
+	//
+	// On the response handling path, we don't need to do any operation until successful, so we use the implementation
+	// of the upstream filter to handle the response at the router filter.
+	//
+	// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
 	upstreamFilter Processor
 	logger         *slog.Logger
 	config         *processorConfig
@@ -71,15 +78,17 @@ type chatCompletionProcessorRouterFilter struct {
 	upstreamFilterCount int
 }
 
+// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	if c.upstreamFilter != nil {
+	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		return c.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
 	}
 	return c.passThroughProcessor.ProcessResponseHeaders(ctx, headerMap)
 }
 
+// ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	if c.upstreamFilter != nil {
+	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		return c.upstreamFilter.ProcessResponseBody(ctx, body)
 	}
 	return c.passThroughProcessor.ProcessResponseBody(ctx, body)
