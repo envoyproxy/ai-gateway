@@ -31,8 +31,12 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-// FilterConfigKeyInSecret is the key to store the filter config in the secret.
-const FilterConfigKeyInSecret = "filter-config.yaml" //nolint: gosec
+const (
+	// FilterConfigKeyInSecret is the key to store the filter config in the secret.
+	FilterConfigKeyInSecret = "filter-config.yaml" //nolint: gosec
+	// defaultOwnedBy is the default value for the ModelsOwnedBy field in the filter config.
+	defaultOwnedBy = "Envoy AI Gateway"
+)
 
 // NewGatewayController creates a new reconcile.TypedReconciler for gwapiv1.Gateway.
 func NewGatewayController(
@@ -210,6 +214,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				configRule.Headers[j].Name = match.Headers[0].Name
 				configRule.Headers[j].Value = match.Headers[0].Value
 			}
+			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
+			// Convert to UTC time in force to avoid timezone issues.
+			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
 			ec.Rules = append(ec.Rules, configRule)
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {

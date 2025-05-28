@@ -37,6 +37,7 @@ func TestWithTestUpstream(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	requireTestUpstream(t)
+	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
@@ -70,7 +71,9 @@ func TestWithTestUpstream(t *testing.T) {
 					{Name: "x-model-name", Value: "some-model2"},
 					{Name: "x-model-name", Value: "some-model3"},
 				},
-				Backends: fakeBackends,
+				Backends:        fakeBackends,
+				ModelsOwnedBy:   "Envoy AI Gateway",
+				ModelsCreatedAt: now,
 			},
 		},
 	})
@@ -78,9 +81,9 @@ func TestWithTestUpstream(t *testing.T) {
 	expectedModels := openai.ModelList{
 		Object: "list",
 		Data: []openai.Model{
-			{ID: "some-model1", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			{ID: "some-model2", Object: "model", OwnedBy: "Envoy AI Gateway"},
-			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway"},
+			{ID: "some-model1", Object: "model", OwnedBy: "Envoy AI Gateway", Created: openai.JSONUNIXTime(now)},
+			{ID: "some-model2", Object: "model", OwnedBy: "Envoy AI Gateway", Created: openai.JSONUNIXTime(now)},
+			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway", Created: openai.JSONUNIXTime(now)},
 		},
 	}
 
@@ -253,7 +256,7 @@ data: [DONE]
 			path:                "/v1/models",
 			method:              http.MethodGet,
 			expStatus:           http.StatusOK,
-			expResponseBodyFunc: checkModelsIgnoringTimestamps(expectedModels),
+			expResponseBodyFunc: checkModels(expectedModels),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -379,14 +382,11 @@ data: [DONE]
 	})
 }
 
-func checkModelsIgnoringTimestamps(want openai.ModelList) func(t require.TestingT, body []byte) {
+func checkModels(want openai.ModelList) func(t require.TestingT, body []byte) {
 	return func(t require.TestingT, body []byte) {
 		var models openai.ModelList
 		require.NoError(t, json.Unmarshal(body, &models))
 		require.Len(t, models.Data, len(want.Data))
-		for i := range models.Data {
-			models.Data[i].Created = want.Data[i].Created
-		}
 		require.Equal(t, want, models)
 	}
 }

@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -18,6 +19,15 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 )
 
+type model struct {
+	// name will be exported as the field of "ID" in OpenAI-compatible APIs.
+	name string
+	// ownedBy will be exported as the field of "OwnedBy" in OpenAI-compatible API "/models".
+	ownedBy string
+	// createdAt will be exported as the field of "Created" in OpenAI-compatible API "/models".
+	createdAt time.Time
+}
+
 // processorConfig is the configuration for the processor.
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
@@ -27,7 +37,7 @@ type processorConfig struct {
 	modelNameHeaderKey, selectedRouteHeaderKey string
 	metadataNamespace                          string
 	requestCosts                               []processorConfigRequestCost
-	declaredModels                             []string
+	declaredModels                             []model
 	backends                                   map[string]*processorConfigBackend
 }
 
