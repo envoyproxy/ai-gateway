@@ -137,9 +137,14 @@ spec:
           kind: Backend
           name: envoy-ai-gateway-extproc-backend
           namespace: default
+      metadata:
+        writableNamespaces:
+          - io.envoy.ai_gateway
       processingMode:
         allowModeOverride: true
         request:
+          body: Buffered
+        response:
           body: Buffered
   targetRefs:
     - group: gateway.networking.k8s.io
