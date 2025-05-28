@@ -65,6 +65,26 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		require.Equal(t, expStatus, resp.StatusCode)
 	}
 
+	// Health check to ensure the configuration is propagated.
+	require.Eventually(t, func() bool {
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort, true)
+		defer fwd.kill()
+		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
+		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		require.NoError(t, err)
+		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+		req.Header.Set("x-user-id", strconv.Itoa(int(time.Now().UnixNano())))
+		req.Header.Set("Host", "openai.com")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("Failed to send request: %v", err)
+			return false
+		}
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode == http.StatusOK
+	}, time.Minute, 1*time.Second)
+
 	// Test the input token limit.
 	baseID := int(time.Now().UnixNano()) // To avoid collision with previous runs.
 	usedID := strconv.Itoa(baseID)
