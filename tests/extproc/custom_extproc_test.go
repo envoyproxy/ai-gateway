@@ -35,9 +35,12 @@ func TestExtProcCustomRouter(t *testing.T) {
 		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Name:     "testupstream-openai-route",
-				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
-				Backends: fakeBackends,
+				Name:    "testupstream-openai-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Backends: []filterapi.Backend{
+					alwaysFailingBackend,
+					testUpstreamOpenAIBackend,
+				},
 			},
 		},
 	})
@@ -95,9 +98,12 @@ func TestExtProcCustomMetrics(t *testing.T) {
 		ModelNameHeaderKey:     "x-model-name",
 		Rules: []filterapi.RouteRule{
 			{
-				Name:     "testupstream-openai-route",
-				Headers:  []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
-				Backends: fakeBackends,
+				Name:    "testupstream-openai-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "something-cool"}},
+				Backends: []filterapi.Backend{
+					alwaysFailingBackend,
+					testUpstreamOpenAIBackend,
+				},
 			},
 		},
 	})

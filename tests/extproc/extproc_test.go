@@ -36,7 +36,13 @@ func TestMain(m *testing.M) {
 	const fakeServerPort = 1066
 	// This is a fake server that returns a 500 error for all requests.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			return
+		}
+		fmt.Printf("Received request: %s %s\nHeaders: %v\nBody: %s\n", r.Method, r.URL.Path, r.Header, body)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Internal Server Error"))
 	})
@@ -67,16 +73,12 @@ var (
 	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
-)
 
-var fakeBackends = []filterapi.Backend{
-	{Name: "testupstream-openai", Schema: openAISchema},
-	{Name: "testupstream-aws", Schema: awsBedrockSchema},
-	{Name: "testupstream-azure", Schema: azureOpenAISchema},
-	// This always failing backend is configured to have AWS Bedrock schema so that
-	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
-	{Name: "always-failing-backend", Schema: awsBedrockSchema},
-}
+	testUpstreamOpenAIBackend = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	testUpstreamAAWSBackend   = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
+	testUpstreamAzureBackend  = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
+	alwaysFailingBackend      = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
+)
 
 const routeSelectorHeader = "x-selected-route-name"
 
@@ -88,7 +90,7 @@ func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath strin
 	cmd := exec.CommandContext(t.Context(), executable)
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Args = append(cmd.Args, "-configPath", configPath, "-logLevel", "debug")
 	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 }

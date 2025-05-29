@@ -53,16 +53,25 @@ func TestWithTestUpstream(t *testing.T) {
 				Name:    "testupstream-openai-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
 				Backends: []filterapi.Backend{
-					{Name: "testupstream-openai", Schema: openAISchema},
+					testUpstreamOpenAIBackend,
+					testUpstreamAAWSBackend,
 				},
 			},
 			{
 				Name:    "testupstream-aws-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
+				Backends: []filterapi.Backend{
+					alwaysFailingBackend,
+					testUpstreamAAWSBackend,
+				},
 			},
 			{
 				Name:    "testupstream-azure-route",
 				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
+				Backends: []filterapi.Backend{
+					alwaysFailingBackend,
+					testUpstreamAzureBackend,
+				},
 			},
 			{
 				Name: "not-used-for-completion",
@@ -71,7 +80,7 @@ func TestWithTestUpstream(t *testing.T) {
 					{Name: "x-model-name", Value: "some-model2"},
 					{Name: "x-model-name", Value: "some-model3"},
 				},
-				Backends:        fakeBackends,
+				Backends:        []filterapi.Backend{alwaysFailingBackend},
 				ModelsOwnedBy:   "Envoy AI Gateway",
 				ModelsCreatedAt: now,
 			},
