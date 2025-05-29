@@ -71,7 +71,9 @@ var (
 	testUpstreamOpenAIBackend = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamAAWSBackend   = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
 	testUpstreamAzureBackend  = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
-	alwaysFailingBackend      = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
+	// This always failing backend is configured to have AWS Bedrock schema so that
+	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
+	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
 )
 
 const routeSelectorHeader = "x-selected-route-name"
