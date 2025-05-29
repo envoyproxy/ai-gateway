@@ -100,7 +100,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 					return fmt.Errorf("cannot create backend auth handler: %w", err)
 				}
 			}
-			// TODO: handle DynamicLoadBalancing.
 			backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
 		}
 	}
