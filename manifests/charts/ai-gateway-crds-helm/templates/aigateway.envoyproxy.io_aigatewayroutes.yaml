@@ -298,19 +298,6 @@ spec:
                         description: AIGatewayRouteRuleBackendRef is a reference to
                           a backend with a weight.
                         properties:
-                          kind:
-                            default: AIServiceBackend
-                            description: |-
-                              Kind is the kind of the backend, which is either "AIServiceBackend" or "InferencePool" in Gateway API Inference Extension.
-
-                              When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-                              that can serve the same model sets that the InferencePool binds.
-
-                              Default is AIServiceBackend.
-                            enum:
-                            - AIServiceBackend
-                            - InferencePool
-                            type: string
                           name:
                             description: Name is the name of the AIServiceBackend.
                             minLength: 1

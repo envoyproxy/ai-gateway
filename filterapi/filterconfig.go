@@ -192,39 +192,6 @@ type Backend struct {
 	Auth *BackendAuth `json:"auth,omitempty"`
 }
 
-// DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
-type DynamicLoadBalancing struct {
-	// Models that can be served by this backend. If not matched, the 404 is returned to the client.
-	//
-	// If multiple models are provided, the request is routed to the backend based on the weights, criticality, etc.
-	Models []DynamicLoadBalancingModel `json:"models,omitempty"`
-	// Backends can be either ip:port or hostname:port.
-	Backends []DynamicLoadBalancingBackend `json:"backends,omitempty"`
-}
-
-// DynamicLoadBalancingModel corresponds to InferenceModel in the Inference Extension.
-type DynamicLoadBalancingModel struct {
-	// Name is the name of the model.
-	Name string `json:"name"`
-	// Weight is the weight of the model in the routing decision when multiple models are provided.
-	Weight *int `json:"weight,omitempty"`
-	// TODO: Criticality?
-}
-
-// DynamicLoadBalancingBackend corresponds to a single AIServiceBackend that is selected by the
-// InferencePool. It is basically a wrapper of Backend with additional information to do
-// the IP address level dynamic load balancing.
-type DynamicLoadBalancingBackend struct {
-	Backend
-	// Hostnames is the hostname of this backend. The filter will resolve the hostname to the IP address
-	// asynchronously and use the resolved IP address to route the request.
-	Hostnames []string `json:"hostNames,omitempty"`
-	// IP is the IP address of the endpoint.
-	IPs []string `json:"ips,omitempty"`
-	// Port is the port of the endpoint.
-	Port int32 `json:"port"`
-}
-
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
 type BackendAuth struct {
 	// APIKey is a location of the api key secret file.

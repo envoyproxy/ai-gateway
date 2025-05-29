@@ -259,30 +259,8 @@ type AIGatewayRouteRule struct {
 	ModelsCreatedAt *metav1.Time `json:"modelsCreatedAt,omitempty"`
 }
 
-// AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
-type AIGatewayRouteRuleBackendRefKind string
-
-const (
-	// AIGatewayRouteRuleBackendRefAIServiceBackend is the kind of the AIServiceBackend.
-	AIGatewayRouteRuleBackendRefAIServiceBackend AIGatewayRouteRuleBackendRefKind = "AIServiceBackend"
-	// AIGatewayRouteRuleBackendRefInferencePool is the kind of the InferencePool in the Gateway API Inference Extension.
-	// https://github.com/kubernetes-sigs/gateway-api-inference-extension
-	AIGatewayRouteRuleBackendRefInferencePool AIGatewayRouteRuleBackendRefKind = "InferencePool"
-)
-
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 type AIGatewayRouteRuleBackendRef struct {
-	// Kind is the kind of the backend, which is either "AIServiceBackend" or "InferencePool" in Gateway API Inference Extension.
-	//
-	// When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-	// that can serve the same model sets that the InferencePool binds.
-	//
-	// Default is AIServiceBackend.
-	//
-	// +kubebuilder:validation:Enum=AIServiceBackend;InferencePool
-	// +kubebuilder:default=AIServiceBackend
-	Kind *AIGatewayRouteRuleBackendRefKind `json:"kind,omitempty"`
-
 	// Name is the name of the AIServiceBackend.
 	//
 	// +kubebuilder:validation:Required

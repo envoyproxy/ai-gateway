@@ -44,8 +44,6 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend1", Weight: ptr.To[int32](1)},
 						{Name: "backend2", Weight: ptr.To[int32](1)},
-						{Name: "inference-pool1", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
-						{Name: "inference-pool2", Weight: ptr.To[int32](1), Kind: ptr.To(aigv1a1.AIGatewayRouteRuleBackendRefInferencePool)},
 					},
 				},
 			},

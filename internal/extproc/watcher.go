@@ -28,9 +28,6 @@ type configWatcher struct {
 	rcv             ConfigReceiver
 	l               *slog.Logger
 	usingDefaultCfg bool
-	// hasDynamicLB is true if the current configuration has at least one backend with dynamic load balancing.
-	// We need to force a reload of the configuration regardless of the file modification time.
-	hasDynamicLB bool
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
@@ -89,7 +86,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		cw.usingDefaultCfg = true
 	} else {
 		cw.usingDefaultCfg = false
-		if stat.ModTime().Sub(cw.lastMod) <= 0 && !cw.hasDynamicLB {
+		if stat.ModTime().Sub(cw.lastMod) <= 0 {
 			return nil
 		}
 		cw.l.Info("loading a new config", slog.String("path", cw.path))
