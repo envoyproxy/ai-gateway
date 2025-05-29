@@ -36,13 +36,7 @@ func TestMain(m *testing.M) {
 	const fakeServerPort = 1066
 	// This is a fake server that returns a 500 error for all requests.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-			return
-		}
-		fmt.Printf("Received request: %s %s\nHeaders: %v\nBody: %s\n", r.Method, r.URL.Path, r.Header, body)
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Internal Server Error"))
 	})
