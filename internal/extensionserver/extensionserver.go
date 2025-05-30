@@ -100,8 +100,11 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
 				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(po),
 			},
+			// Default is 32768 bytes == 32 KiB which seems small:
 			// https://github.com/envoyproxy/gateway/blob/932b8b155fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
-			PerConnectionBufferLimitBytes: wrapperspb.UInt32(32768),
+			//
+			// So, we set it to 10MB.
+			PerConnectionBufferLimitBytes: wrapperspb.UInt32(10485760),
 			LoadAssignment: &endpointv3.ClusterLoadAssignment{
 				ClusterName: ExtProcUDSClusterName,
 				Endpoints: []*endpointv3.LocalityLbEndpoints{
