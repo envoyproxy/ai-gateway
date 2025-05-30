@@ -172,6 +172,9 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 							// https://github.com/envoyproxy/gateway/blob/932b8b55fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
 							//
 							// So, we set it to 50MBi.
+							//
+							// Note that currently ExtProc cluster is also defined in the extension server,
+							// so ensure that the same value is used there.
 							BufferLimit: ptr.To(resource.MustParse("50Mi")),
 						},
 					},
