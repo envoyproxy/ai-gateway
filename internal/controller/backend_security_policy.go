@@ -109,34 +109,49 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return ctrl.Result{}, nil
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
-		if secretRef == nil {
-			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
-		}
-		secretNamespace := bsp.Namespace
-		if secretRef.Namespace != nil {
-			secretNamespace = string(*secretRef.Namespace)
-		}
-		secretName := string(secretRef.Name)
-		var secret *corev1.Secret
-		secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
-		if err != nil {
-			c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
-			return ctrl.Result{}, err
-		}
-		secretValue, exists := secret.Data[clientSecretKey]
-		if !exists {
-			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
-		}
-		clientSecret := string(secretValue)
-		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
 		var provider tokenprovider.TokenProvider
-		provider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
-		if err != nil {
-			return ctrl.Result{}, err
+		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
+
+		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		if oidc != nil {
+			var oidcProvider tokenprovider.TokenProvider
+			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			provider, err = tokenprovider.NewAzureTokenProvider(ctx, tenantID, clientID, oidcProvider, options)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
+			if secretRef == nil {
+				return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
+			}
+			secretNamespace := bsp.Namespace
+			if secretRef.Namespace != nil {
+				secretNamespace = string(*secretRef.Namespace)
+			}
+			secretName := string(secretRef.Name)
+			var secret *corev1.Secret
+			secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
+			if err != nil {
+				c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
+				return ctrl.Result{}, err
+			}
+			secretValue, exists := secret.Data[clientSecretKey]
+			if !exists {
+				return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
+			}
+			clientSecret := string(secretValue)
+			provider, err = tokenprovider.NewAzureClientSecretTokenProvider(tenantID, clientID, clientSecret, options)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 		}
+
 		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, provider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -190,6 +205,9 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		if spec.AzureCredentials != nil && spec.AzureCredentials.OIDCExchangeToken != nil {
+			return &spec.AzureCredentials.OIDCExchangeToken.OIDC
+		}
 		return nil
 	}
 	return nil

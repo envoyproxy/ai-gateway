@@ -343,7 +343,35 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials}))
+
+	// Azure type supports OIDC type but OIDC needs to be defined.
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+			ClientID:        "client-id",
+			TenantID:        "tenant-id",
+			ClientSecretRef: nil,
+		},
+	}))
+
+	// Azure type with OIDC defined.
+	oidcAzure := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+			ClientID: "client-id",
+			TenantID: "tenant-id",
+			OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{
+				BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+					OIDC: egv1a1.OIDC{
+						ClientID: "some-client-id",
+					},
+				},
+			},
+		},
+	})
+
+	require.NotNil(t, oidcAzure)
+	require.Equal(t, "some-client-id", oidcAzure.ClientID)
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
@@ -354,7 +382,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	}))
 
 	// AWS type with OIDC defined.
-	oidc := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcAWS := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
@@ -366,8 +394,8 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 			},
 		},
 	})
-	require.NotNil(t, oidc)
-	require.Equal(t, "some-client-id", oidc.ClientID)
+	require.NotNil(t, oidcAWS)
+	require.Equal(t, "some-client-id", oidcAWS.ClientID)
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
