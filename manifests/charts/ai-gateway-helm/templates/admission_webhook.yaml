@@ -6,6 +6,10 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+{{- if .Values.controller.mutatingWebhook.certManager.enable }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Values.controller.mutatingWebhook.certManager.certificateName}}
+{{- end }}
   name: envoy-ai-gateway-gateway-pod-mutator.{{ .Release.Namespace }}
 webhooks:
   - name:  {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
@@ -27,10 +31,32 @@ webhooks:
     timeoutSeconds: 10
     failurePolicy: Ignore
 ---
+{{- if .Values.controller.mutatingWebhook.certManager.enable }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.controller.mutatingWebhook.certManager.certificateName }}
+spec:
+  commonName: {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc
+  dnsNames:
+    - {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: {{ .Values.controller.mutatingWebhook.certManager.issuerName }}
+  secretName: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.controller.mutatingWebhook.certManager.issuerName }}
+spec:
+  selfSigned: {}
+{{- else }}
+---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: self-signed-cert-for-mutating-webhook
+  name: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
 stringData:
   ca.crt: |
     -----BEGIN CERTIFICATE-----
@@ -104,3 +130,4 @@ stringData:
     i4X6Yrl37GEpCf94kpkdM6AtzA2DZ9Tfzoai61RKvP1W93vWohjXtv1OZWDuDB+H
     SJhKidoVRcKlB8eLvnwIh+g=
     -----END PRIVATE KEY-----
+{{- end }}

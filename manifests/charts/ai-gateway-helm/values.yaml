@@ -105,6 +105,13 @@ controller:
     tlsKeyName: tls.key
     # The name of the CA bundle in the secret to use for the webhook.
     caBundleName: ca.crt
+    # When cert-manager is enabled, the self-signed cert is created and rotated by cert-manager.
+    certManager:
+      enable: false
+      # The name of the issuer.
+      issuerName: self-signed-issuer-for-mutating-webhook
+      # The name of the certificate.
+      certificateName: self-signed-cert-for-mutating-webhook
 
   resources: {}
   nodeSelector: {}
