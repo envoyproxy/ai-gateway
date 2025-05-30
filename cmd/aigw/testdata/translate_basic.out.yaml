@@ -137,6 +137,9 @@ spec:
           kind: Backend
           name: envoy-ai-gateway-extproc-backend
           namespace: default
+      backendSettings:
+        connection:
+          bufferLimit: 50Mi
       metadata:
         writableNamespaces:
           - io.envoy.ai_gateway
