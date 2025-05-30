@@ -125,11 +125,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-		} else {
-			secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
-			if secretRef == nil {
-				return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
-			}
+		} else if secretRef := bsp.Spec.AzureCredentials.ClientSecretRef; secretRef != nil {
 			secretNamespace := bsp.Namespace
 			if secretRef.Namespace != nil {
 				secretNamespace = string(*secretRef.Namespace)
@@ -150,6 +146,8 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			if err != nil {
 				return ctrl.Result{}, err
 			}
+		} else {
+			return ctrl.Result{}, fmt.Errorf("one of secret ref or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
 
 		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, provider)
