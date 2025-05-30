@@ -2460,6 +2460,11 @@ spec:
                 - clientID
                 - tenantID
                 type: object
+                x-kubernetes-validations:
+                - message: Exactly one of clientSecretRef or oidcExchangeToken must
+                    be specified
+                  rule: (has(self.clientSecretRef) && !has(self.oidcExchangeToken))
+                    || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))
               type:
                 description: Type specifies the auth mechanism used to access the
                   provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials"

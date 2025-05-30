@@ -534,6 +534,8 @@ type BackendSecurityPolicyOIDC struct {
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 // Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
 // neither are set.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
