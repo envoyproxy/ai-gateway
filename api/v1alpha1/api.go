@@ -548,7 +548,24 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of secret should be "client-secret".
-	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+	//
+	// +optional
+	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef,omitempty"`
+
+	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
+	// used to obtain temporary credentials to access Azure.
+	// In the case both OIDC and clientSecret is defined, OIDC exchange tokens will be used to obtain Azure access token.
+	//
+	// +optional
+	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+}
+
+// AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+// For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+// and store them in a secret.
+type AzureOIDCExchangeToken struct {
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 }
 
 // BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
