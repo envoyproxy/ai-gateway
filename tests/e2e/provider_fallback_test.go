@@ -24,10 +24,10 @@ import (
 // Test_Examples_ProviderFallback tests the basic example in the examples/provider_fallback directory.
 func Test_Examples_ProviderFallback(t *testing.T) {
 	const baseManifest = "../../examples/provider_fallback/base.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), baseManifest))
-
+	const fallbackManifest = "../../examples/provider_fallback/fallback.yaml"
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=provider-fallback"
-	requireWaitForGatewayPodReady(t, egSelector)
+	// Delete the fallback configuration if it exists so that multiple runs of this test do not conflict.
+	_ = kubectlDeleteManifest(t.Context(), fallbackManifest)
 
 	// This requires the following environment variables to be set:
 	//   - TEST_AWS_ACCESS_KEY_ID
@@ -46,12 +46,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	replaced := strings.ReplaceAll(string(read), "AWS_ACCESS_KEY_ID", cmp.Or(awsAccessKeyID, "dummy-aws-access-key-id"))
 	replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", cmp.Or(awsSecretAccessKey, "dummy-aws-secret-access-key"))
 	require.NoError(t, kubectlApplyManifestStdin(t.Context(), replaced))
-
-	const fallbackManifest = "../../examples/provider_fallback/fallback.yaml"
-	// Delete the fallback configuration if it exists.
-	_ = kubectlDeleteManifest(t.Context(), fallbackManifest)
-
-	time.Sleep(5 * time.Second) // At least 5 seconds for the configuration to be propagated.
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	const body = `{"model": "us.meta.llama3-2-1b-instruct-v1:0","messages": [{"role": "user", "content": "Say this is a test!"}],"temperature": 0.7}`
 
