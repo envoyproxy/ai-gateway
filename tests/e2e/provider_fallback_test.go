@@ -96,6 +96,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+		t.Logf("Response headers: %v", resp.Header)
 		t.Logf("Response body: %s", string(respBody))
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusUnauthorized {
 			// This means that the fallback configuration is not working as expected.

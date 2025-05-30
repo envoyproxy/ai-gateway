@@ -62,6 +62,8 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.Equal(t, int64(output), oaiBody.Usage.CompletionTokens)
 			require.Equal(t, int64(total), oaiBody.Usage.TotalTokens)
 		}
+		t.Logf("Response headers: %v", resp.Header)
+		t.Logf("Response body: %s", string(body))
 		require.Equal(t, expStatus, resp.StatusCode)
 	}
 
