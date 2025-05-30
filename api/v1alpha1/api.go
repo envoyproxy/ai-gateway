@@ -532,6 +532,8 @@ type BackendSecurityPolicyOIDC struct {
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+// neither are set.
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
@@ -554,7 +556,6 @@ type BackendSecurityPolicyAzureCredentials struct {
 
 	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
 	// used to obtain temporary credentials to access Azure.
-	// In the case both OIDC and clientSecret is defined, OIDC exchange tokens will be used to obtain Azure access token.
 	//
 	// +optional
 	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`

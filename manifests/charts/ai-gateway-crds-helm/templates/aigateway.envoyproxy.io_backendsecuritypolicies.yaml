@@ -1347,7 +1347,6 @@ spec:
                     description: |-
                       OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
                       used to obtain temporary credentials to access Azure.
-                      In the case both OIDC and clientSecret is defined, OIDC exchange tokens will be used to obtain Azure access token.
                     properties:
                       aud:
                         description: Aud defines the audience that this ID Token is
