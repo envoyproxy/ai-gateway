@@ -130,6 +130,15 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "azure_credentials_missing_tenant_id.yaml",
 			expErr: "spec.azureCredentials.tenantID in body should be at least 1 chars long",
 		},
+		{
+			name:   "azure_missing_auth.yaml",
+			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		{
+			name:   "azure_multiple_auth.yaml",
+			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},

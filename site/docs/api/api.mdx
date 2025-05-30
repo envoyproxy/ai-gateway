@@ -307,6 +307,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
@@ -700,6 +701,39 @@ and store them in a temporary credentials file.
 />
 
 
+#### AzureOIDCExchangeToken
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+
+AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+and store them in a secret.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
+/>
+
+
 #### BackendSecurityPolicyAPIKey
 
 
@@ -760,6 +794,8 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+neither are set.
 
 ##### Fields
 
@@ -778,8 +814,13 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 /><ApiField
   name="clientSecretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
+  required="false"
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+/><ApiField
+  name="oidcExchangeToken"
+  type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
+  required="false"
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
 />
 
 
@@ -789,6 +830,7 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 
 **Appears in:**
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
