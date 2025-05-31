@@ -72,7 +72,7 @@ func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string
 			t.Skip("skipped due to missing credentials")
 		}
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

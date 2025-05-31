@@ -54,7 +54,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	// So, no matter how many times we try, we should always get a 503 error.
 	for i := range 5 {
 		t.Run("no-fallback/"+strconv.Itoa(i), func(t *testing.T) {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -82,7 +82,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	// At this point, the fallback configuration should be applied. So the request must be either
 	// successful or return a 401 error due to the secret key not being propagated yet.
 	require.Eventually(t, func() bool {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -108,7 +108,7 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	// Now we should be able to get a response from the fallback provider (AWS) without dropping any requests.
 	for i := range 5 {
 		t.Run("with-fallback/"+strconv.Itoa(i), func(t *testing.T) {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

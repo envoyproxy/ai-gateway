@@ -56,7 +56,7 @@ func TestTranslationWithTestUpstream(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {
-					fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+					fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 					defer fwd.kill()
 
 					ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
