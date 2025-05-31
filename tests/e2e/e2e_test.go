@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	egDefaultVersion = "v1.4.0"
-	egNamespace      = "envoy-gateway-system"
-	egDefaultPort    = 10080
+	egDefaultVersion     = "v1.4.0"
+	egNamespace          = "envoy-gateway-system"
+	egDefaultServicePort = 80
 
 	kindClusterName = "envoy-ai-gateway"
 	kindLogDir      = "./logs"
@@ -339,10 +339,8 @@ func requireWaitForGatewayPodReady(t *testing.T, selector string) {
 }
 
 // requireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
-//
-// If gatewayPod is true, it will check and wait until the pod has the extproc container.
 func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
-	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
+	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		res, err := http.Get(f.address())
@@ -356,8 +354,8 @@ func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string
 	return f
 }
 
-// newPodPortForwarder creates a new local port forwarder for the namespace and selector.
-func newPodPortForwarder(ctx context.Context, namespace, selector string, podPort int) (f portForwarder, err error) {
+// newServicePortForwarder creates a new local port forwarder for the namespace and selector.
+func newServicePortForwarder(ctx context.Context, namespace, selector string, podPort int) (f portForwarder, err error) {
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return portForwarder{}, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
@@ -368,7 +366,7 @@ func newPodPortForwarder(ctx context.Context, namespace, selector string, podPor
 	}
 	f.localPort = l.Addr().(*net.TCPAddr).Port
 
-	cmd := kubectl(ctx, "get", "pod", "-n", namespace,
+	cmd := kubectl(ctx, "get", "svc", "-n", namespace,
 		"--selector="+selector, "-o", "jsonpath='{.items[0].metadata.name}'")
 	cmd.Stdout = nil // To ensure that we can capture the output by Output().
 	out, err := cmd.Output()
@@ -378,7 +376,7 @@ func newPodPortForwarder(ctx context.Context, namespace, selector string, podPor
 	serviceName := string(out[1 : len(out)-1]) // Remove the quotes.
 
 	cmd = kubectl(ctx, "port-forward",
-		"-n", namespace, "pod/"+serviceName,
+		"-n", namespace, "svc/"+serviceName,
 		fmt.Sprintf("%d:%d", f.localPort, podPort),
 	)
 	if err := cmd.Start(); err != nil {

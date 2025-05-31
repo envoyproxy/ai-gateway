@@ -34,7 +34,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 	const modelName = "rate-limit-funky-model"
 	makeRequest := func(usedID string, input, output, total int, expStatus int) {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
