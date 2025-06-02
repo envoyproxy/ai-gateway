@@ -24,7 +24,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.True(t, f.enableLeaderElection)
 		require.Equal(t, "info", f.logLevel.String())
 		require.Equal(t, ":1063", f.extensionServerPort)
-		require.False(t, f.enableInfExt)
 		require.Equal(t, "/certs", f.tlsCertDir)
 		require.Equal(t, "tls.crt", f.tlsCertName)
 		require.Equal(t, "tls.key", f.tlsKeyName)
@@ -46,7 +45,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
-					tc.dash + "enableInferenceExtension=true",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -54,7 +52,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.False(t, f.enableLeaderElection)
 				require.Equal(t, "debug", f.logLevel.String())
 				require.Equal(t, ":8080", f.extensionServerPort)
-				require.True(t, f.enableInfExt)
 				require.NoError(t, err)
 			})
 		}
