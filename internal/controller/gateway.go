@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -156,14 +157,28 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 					Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
 				},
 				Metadata: &egv1a1.ExtProcMetadata{WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace}},
-				BackendCluster: egv1a1.BackendCluster{BackendRefs: []egv1a1.BackendRef{{
-					BackendObjectReference: gwapiv1.BackendObjectReference{
-						Name:      gwapiv1.ObjectName(sideCarExtProcBackendName),
-						Kind:      ptr.To(gwapiv1.Kind("Backend")),
-						Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
-						Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
+				BackendCluster: egv1a1.BackendCluster{
+					BackendRefs: []egv1a1.BackendRef{{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name:      gwapiv1.ObjectName(sideCarExtProcBackendName),
+							Kind:      ptr.To(gwapiv1.Kind("Backend")),
+							Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+							Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
+						},
+					}},
+					BackendSettings: &egv1a1.ClusterSettings{
+						Connection: &egv1a1.BackendConnection{
+							// Default is 32768 bytes == 32 KiB which seems small:
+							// https://github.com/envoyproxy/gateway/blob/932b8b55fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
+							//
+							// So, we set it to 50MBi.
+							//
+							// Note that currently ExtProc cluster is also defined in the extension server,
+							// so ensure that the same value is used there.
+							BufferLimit: ptr.To(resource.MustParse("50Mi")),
+						},
 					},
-				}}},
+				},
 			}},
 		},
 	}

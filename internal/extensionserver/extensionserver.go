@@ -87,6 +87,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		po.UpstreamProtocolOptions = &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
 			ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
 				Http2ProtocolOptions: &corev3.Http2ProtocolOptions{
+					// https://github.com/envoyproxy/gateway/blob/932b8b155fa562ae917da19b497a4370733478f1/internal/xds/translator/listener.go#L50-L53
 					InitialConnectionWindowSize: wrapperspb.UInt32(1048576),
 					InitialStreamWindowSize:     wrapperspb.UInt32(65536),
 				},
@@ -95,10 +96,16 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		req.Clusters = append(req.Clusters, &clusterv3.Cluster{
 			Name:                 ExtProcUDSClusterName,
 			ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
-			ConnectTimeout:       &durationpb.Duration{Seconds: 1},
+			// https://github.com/envoyproxy/gateway/blob/932b8b155fa562ae917da19b497a4370733478f1/api/v1alpha1/timeout_types.go#L25
+			ConnectTimeout: &durationpb.Duration{Seconds: 10},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
 				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(po),
 			},
+			// Default is 32768 bytes == 32 KiB which seems small:
+			// https://github.com/envoyproxy/gateway/blob/932b8b155fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
+			//
+			// So, we set it to 50MBi.
+			PerConnectionBufferLimitBytes: wrapperspb.UInt32(52428800),
 			LoadAssignment: &endpointv3.ClusterLoadAssignment{
 				ClusterName: ExtProcUDSClusterName,
 				Endpoints: []*endpointv3.LocalityLbEndpoints{
