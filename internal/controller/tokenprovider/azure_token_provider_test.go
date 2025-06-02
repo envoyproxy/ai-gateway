@@ -8,7 +8,6 @@ package tokenprovider
 import (
 	"context"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -49,8 +48,7 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 	t.Run("azure proxy url", func(t *testing.T) {
 		// Set environment variable for the test
 		mockProxyURL := "http://localhost:8888"
-		os.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
-		defer os.Unsetenv("AI_GATEWAY_AZURE_PROXY_URL")
+		t.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
 
 		opts := GetClientAssertionCredentialOptions()
 

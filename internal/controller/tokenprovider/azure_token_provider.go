@@ -23,9 +23,9 @@ type azureTokenProvider struct {
 }
 
 // NewAzureTokenProvider creates a new TokenProvider with the given tenant ID, client ID, tokenProvider, and token request options.
-func NewAzureTokenProvider(ctx context.Context, tenantID, clientID string, tokenProvider TokenProvider, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
+func NewAzureTokenProvider(_ context.Context, tenantID, clientID string, tokenProvider TokenProvider, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
 	clientOptions := GetClientAssertionCredentialOptions()
-	credential, err := azidentity.NewClientAssertionCredential(tenantID, clientID, func(_ context.Context) (string, error) {
+	credential, err := azidentity.NewClientAssertionCredential(tenantID, clientID, func(ctx context.Context) (string, error) {
 		token, err := tokenProvider.GetToken(ctx)
 		if err != nil {
 			return "", err
