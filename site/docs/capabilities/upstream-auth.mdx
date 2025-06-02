@@ -27,11 +27,11 @@ In enterprise environments, security is implemented in multiple layers:
    - Clients must authenticate to the Gateway using appropriate methods (API keys, OAuth, etc.) aligned with the organization's security standards.
    - This ensures only authorized clients can access the Gateway's services, and the Gateway enforces the access to the upstream providers and models.
 
-:::tip
-Check out [Envoy Gateway Security Documentation](https://gateway.envoyproxy.io/docs/tasks/security/) for Client to Gateway security configuration options.
-:::
+    :::tip
+    Check out [Envoy Gateway Security Documentation](https://gateway.envoyproxy.io/docs/tasks/security/) for Client to Gateway security configuration options.
+    :::
 
-1. **Gateway to Upstream Authentication**
+2. **Gateway to Upstream Authentication**
    - The Gateway must authenticate to upstream providers.
    - This layer is managed by Upstream Authentication.
    - Ensures secure communication between the Gateway and AI service providers.
