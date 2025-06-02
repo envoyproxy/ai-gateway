@@ -20,13 +20,6 @@ controller:
   # It is hence where the gateway pods are running and the AI Gateway controller will mutate the pods.
   envoyGatewayNamespace: "envoy-gateway-system"
 
-  # Set to true to enable the support for Gateway API Inference Extension custom resources.
-  # https://github.com/kubernetes-sigs/gateway-api-inference-extension
-  #
-  # When enabled, InferencePool objects can be referenced in AIGatewayRoute's rule destination.
-  # See the documentation of AIGatewayRouteRuleBackendRef API for more details.
-  enableInferenceExtension: false
-
   # -- Service Account --
   serviceAccount:
     # Specifies whether a service account should be created

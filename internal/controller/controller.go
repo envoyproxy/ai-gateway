@@ -59,8 +59,6 @@ type Options struct {
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
-	// EnableInfExt enables the Gateway API Inference Extension.
-	EnableInfExt bool
 	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
 	EnvoyGatewayNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.

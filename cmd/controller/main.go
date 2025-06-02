@@ -36,7 +36,6 @@ type flags struct {
 	enableLeaderElection  bool
 	logLevel              zapcore.Level
 	extensionServerPort   string
-	enableInfExt          bool
 	tlsCertDir            string
 	tlsCertName           string
 	tlsKeyName            string
@@ -73,11 +72,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"port",
 		":1063",
 		"gRPC port for the extension server",
-	)
-	enableInfExtPtr := fs.Bool(
-		"enableInferenceExtension",
-		false,
-		"Enable the Gateway Inference Extetension. When enabling this, the CRDs for the InferenceModel and InferencePool must be installed prior to starting the controller.",
 	)
 	tlsCertDir := fs.String(
 		"tlsCertDir",
@@ -127,7 +121,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		enableLeaderElection:  *enableLeaderElectionPtr,
 		logLevel:              zapLogLevel,
 		extensionServerPort:   *extensionServerPortPtr,
-		enableInfExt:          *enableInfExtPtr,
 		tlsCertDir:            *tlsCertDir,
 		tlsCertName:           *tlsCertName,
 		tlsKeyName:            *tlsKeyName,
@@ -206,7 +199,6 @@ func main() {
 		ExtProcImage:          flags.extProcImage,
 		ExtProcLogLevel:       flags.extProcLogLevel,
 		EnableLeaderElection:  flags.enableLeaderElection,
-		EnableInfExt:          flags.enableInfExt,
 		EnvoyGatewayNamespace: flags.envoyGatewayNamespace,
 		UDSPath:               extProcUDSPath,
 	}); err != nil {

@@ -136,6 +136,8 @@ kind: Service
 metadata:
   name: prometheus
   namespace: monitoring
+  labels:
+    app: prometheus
 spec:
   selector:
     app: prometheus

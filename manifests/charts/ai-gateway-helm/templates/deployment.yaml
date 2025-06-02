@@ -44,7 +44,6 @@ spec:
             - -logLevel={{ .Values.controller.logLevel }}
             - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
-            - --enableInferenceExtension={{ .Values.controller.enableInferenceExtension }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
