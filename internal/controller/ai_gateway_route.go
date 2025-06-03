@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -28,12 +29,13 @@ import (
 )
 
 const (
-	managedByLabel                = "app.kubernetes.io/managed-by"
-	selectedRouteHeaderKey        = "x-ai-eg-selected-route"
-	hostRewriteHTTPFilterName     = "ai-eg-host-rewrite"
-	aigatewayUUIDAnnotationKey    = "aigateway.envoyproxy.io/uuid"
-	egOwningGatewayNameLabel      = "gateway.envoyproxy.io/owning-gateway-name"
-	egOwningGatewayNamespaceLabel = "gateway.envoyproxy.io/owning-gateway-namespace"
+	managedByLabel                           = "app.kubernetes.io/managed-by"
+	selectedRouteHeaderKey                   = "x-ai-eg-selected-route"
+	hostRewriteHTTPFilterName                = "ai-eg-host-rewrite"
+	aigatewayUUIDAnnotationKey               = "aigateway.envoyproxy.io/uuid"
+	httpRouteBackendRefPriorityAnnotationKey = "gateway.envoyproxy.io/backend-ref-priority"
+	egOwningGatewayNameLabel                 = "gateway.envoyproxy.io/owning-gateway-name"
+	egOwningGatewayNamespaceLabel            = "gateway.envoyproxy.io/owning-gateway-namespace"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
 )
@@ -227,6 +229,12 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Rules = rules
 
+	if dst.ObjectMeta.Annotations == nil {
+		dst.ObjectMeta.Annotations = make(map[string]string)
+	}
+	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
+	dst.ObjectMeta.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
+
 	targetRefs := aiGatewayRoute.Spec.TargetRefs
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
@@ -275,4 +283,16 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}
+}
+
+// Build an annotation that contains the priority of each backend ref. This is used to ensure Envoy Gateway reconciles the
+// HTTP route when the priorities change.
+func buildPriorityAnnotation(rules []aigv1a1.AIGatewayRouteRule) string {
+	priorities := make([]string, 0, len(rules))
+	for i, rule := range rules {
+		for _, br := range rule.BackendRefs {
+			priorities = append(priorities, fmt.Sprintf("%d:%s:%d", i, br.Name, *br.Priority))
+		}
+	}
+	return strings.Join(priorities, ",")
 }
