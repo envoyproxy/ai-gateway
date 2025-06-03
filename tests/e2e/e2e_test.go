@@ -120,7 +120,7 @@ func initKindCluster(ctx context.Context) (err error) {
 	}()
 
 	initLog(fmt.Sprintf("\tCreating kind cluster named %s", kindClusterName))
-	cmd := exec.CommandContext(ctx, "go", "run", "sigs.k8s.io/kind@v0.24.0", "create", "cluster", "--name", kindClusterName)
+	cmd := exec.CommandContext(ctx, "go", "tool", "kind", "create", "cluster", "--name", kindClusterName)
 	out, err := cmd.CombinedOutput()
 	if err != nil && !bytes.Contains(out, []byte("already exist")) {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
@@ -128,7 +128,7 @@ func initKindCluster(ctx context.Context) (err error) {
 	}
 
 	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", kindClusterName))
-	cmd = exec.CommandContext(ctx, "go", "run", "sigs.k8s.io/kind@v0.24.0", "export", "kubeconfig", "--name", kindClusterName)
+	cmd = exec.CommandContext(ctx, "go", "tool", "kind", "export", "kubeconfig", "--name", kindClusterName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -141,7 +141,7 @@ func initKindCluster(ctx context.Context) (err error) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 	} {
-		cmd := exec.CommandContext(ctx, "go", "run", "sigs.k8s.io/kind@v0.24.0", "load", "docker-image", image, "--name", kindClusterName)
+		cmd := exec.CommandContext(ctx, "go", "tool", "kind", "load", "docker-image", image, "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -154,14 +154,14 @@ func initKindCluster(ctx context.Context) (err error) {
 func cleanupKindCluster(testsFailed bool) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
-		cmd := exec.Command("go", "run", "sigs.k8s.io/kind@v0.24.0", "export", "logs", "--name", kindClusterName, kindLogDir)
+		cmd := exec.Command("go", "tool", "kind", "export", "logs", "--name", kindClusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		cmd := exec.Command("go", "run", "sigs.k8s.io/kind@v0.24.0", "delete", "cluster", "--name", kindClusterName)
+		cmd := exec.Command("go", "tool", "kind", "delete", "cluster", "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
