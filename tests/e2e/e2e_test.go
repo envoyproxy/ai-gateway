@@ -233,11 +233,11 @@ func initAIGateway(ctx context.Context) (err error) {
 	if err = helm.Run(); err != nil {
 		return
 	}
-	// Restart the controller to pick up the new changes in the AI Gateway.
-	initLog("\tRestart AI Gateway controller")
-	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
-		return
-	}
+	//// Restart the controller to pick up the new changes in the AI Gateway.
+	//initLog("\tRestart AI Gateway controller")
+	//if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+	//	return
+	//}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
