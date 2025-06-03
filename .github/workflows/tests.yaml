@@ -206,7 +206,11 @@ jobs:
     # if: github.event_name == 'push'
     # TODO: Uncomment this
     # needs: [helm_push]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false  # don't fail fast as sometimes failures are arch/OS specific
+      matrix: # Use versions consistent with wazero's Go support policy.
+        os: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
