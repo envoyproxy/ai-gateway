@@ -66,9 +66,9 @@ controller:
     ports:
       - name: mutating-webhook
         protocol: TCP
-        port: 443
+        port: 9443
         appProtocol: http
-        targetPort: 443
+        targetPort: 9443
       - name: grpc
         protocol: TCP
         port: 1063
