@@ -37,7 +37,7 @@ spec:
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           ports:
-            - containerPort: 443
+            - containerPort: 9443
             - containerPort: 1063
             - containerPort: 9090
           args:

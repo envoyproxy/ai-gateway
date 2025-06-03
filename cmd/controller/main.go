@@ -159,7 +159,7 @@ func main() {
 			CertDir:  flags.tlsCertDir,
 			CertName: flags.tlsCertName,
 			KeyName:  flags.tlsKeyName,
-			Port:     443,
+			Port:     9443,
 		}),
 	}
 	mgr, err := ctrl.NewManager(k8sConfig, mgrOpts)
