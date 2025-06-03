@@ -208,9 +208,9 @@ jobs:
     # needs: [helm_push]
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # don't fail fast as sometimes failures are arch/OS specific
-      matrix: # Use versions consistent with wazero's Go support policy.
-        os: [ubuntu-22.04, macos-14]
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
