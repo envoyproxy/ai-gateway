@@ -135,19 +135,19 @@ func initKindCluster(ctx context.Context) (err error) {
 		return
 	}
 
-	//initLog("\tLoading Docker images into kind cluster")
-	//for _, image := range []string{
-	//	"docker.io/envoyproxy/ai-gateway-controller:latest",
-	//	"docker.io/envoyproxy/ai-gateway-extproc:latest",
-	//	"docker.io/envoyproxy/ai-gateway-testupstream:latest",
-	//} {
-	//	cmd := exec.CommandContext(ctx, "go", "tool", "kind", "load", "docker-image", image, "--name", kindClusterName)
-	//	cmd.Stdout = os.Stdout
-	//	cmd.Stderr = os.Stderr
-	//	if err = cmd.Run(); err != nil {
-	//		return
-	//	}
-	//}
+	initLog("\tLoading Docker images into kind cluster")
+	for _, image := range []string{
+		"docker.io/envoyproxy/ai-gateway-controller:latest",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest",
+		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
+	} {
+		cmd := exec.CommandContext(ctx, "go", "tool", "kind", "load", "docker-image", image, "--name", kindClusterName)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err = cmd.Run(); err != nil {
+			return
+		}
+	}
 	return nil
 }
 
@@ -233,11 +233,11 @@ func initAIGateway(ctx context.Context) (err error) {
 	if err = helm.Run(); err != nil {
 		return
 	}
-	//// Restart the controller to pick up the new changes in the AI Gateway.
-	//initLog("\tRestart AI Gateway controller")
-	//if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
-	//	return
-	//}
+	// Restart the controller to pick up the new changes in the AI Gateway.
+	initLog("\tRestart AI Gateway controller")
+	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+		return
+	}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
