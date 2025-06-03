@@ -217,7 +217,7 @@ func initAIGateway(ctx context.Context) (err error) {
 	}()
 	initLog("\tHelm Install")
 	helm_crd := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
-		"../../manifests/charts/ai-gateway-crds-helm",
+		"oci://docker.io/envoyproxy/ai-gateway-crds-helm", "--version", "v0.0.0-latest",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm_crd.Stdout = os.Stdout
 	helm_crd.Stderr = os.Stderr
@@ -226,7 +226,7 @@ func initAIGateway(ctx context.Context) (err error) {
 	}
 
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
-		"../../manifests/charts/ai-gateway-helm",
+		"oci://docker.io/envoyproxy/ai-gateway-helm", "--version", "v0.0.0-latest",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
