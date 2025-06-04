@@ -30,9 +30,14 @@ The Control Plane configures the Data Plane through several paths:
 ```mermaid
 graph TB
     subgraph "Control Plane"
-        K8s[Kubernetes API Server] --> Controller[AI Gateway Controller]
-        Controller <-->|Translate
-                        xDS fine-tune| EGController[Envoy Gateway Controller]
+        K8s[Kubernetes API Server]
+        Controller[AI Gateway Controller]
+        EGController[Envoy Gateway Controller]
+
+        Controller --> |GWAPI/EG resources|K8s
+        K8s -->|AI Gateway resources| Controller
+        K8s -->|GWAPI/EG resources| EGController
+        Controller <-->|xDS fine-tune| EGController
 
         style Controller fill:#f9f,stroke:#333,stroke-width:2px
         style EGController fill:#ddf,stroke:#333
