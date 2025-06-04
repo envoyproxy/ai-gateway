@@ -59,7 +59,7 @@ graph TB
     ExtProcConfigSecret -.->AIExtProc
 
     EnvoyGateway -.->xDS
-    AIGateway -.->|fine-tuning|xDS
+    AIGateway <-.->|Extension Server protocol|EnvoyGateway
     xDS -.->EnvoyProxy
     AIGateway -.->|Inserting ExtProc as Sidecar|AIExtProc
 ```
@@ -70,7 +70,7 @@ The control plane operates through a chain of components that work together to m
 
 1. The Envoy AI Gateway controller watches AI Gateway Custom Resources (CRs)
 2. When changes are detected, it updates/generates the Envoy Gateway configuration
-3. Envoy Gateway then updates the Envoy Proxy configuration while talking to the Envoy AI Gateway controller to fine-tune the configuration through [Envoy Gateway Extension Server](https://gateway.envoyproxy.io/docs/tasks/extensibility/extension-server/) protocol.
+3. The Envoy Gateway communicates with the Envoy AI Gateway controller via the [Envoy Gateway Extension server](https://gateway.envoyproxy.io/docs/tasks/extensibility/extension-server/) protocol, and the Envoy AI Gateway controller then fine-tunes the xDS configuration before the Envoy Gateway applies it to the Envoy Proxy.
 4. The data plane (Envoy Proxy) processes AI traffic based on this configuration where the AI Gateway ExtProc runs as a sidecar to handle AI-specific processing. The sidecar container is inserted by the AI Gateway controller into the Envoy Proxy Pod.
 
 This architecture ensures a clear separation of concerns, where the AI Gateway controller focuses on AI-specific configuration while leveraging Envoy Gateway for general proxy management.
