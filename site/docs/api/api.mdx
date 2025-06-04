@@ -468,7 +468,7 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   type="integer"
   required="false"
   defaultValue="0"
-  description="Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.<br />See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority<br />Default is 0."
+  description="Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.<br />See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority<br />Note: This will override the `faillback` property of the underlying Envoy Gateway Backend<br />Default is 0."
 />
 
 
