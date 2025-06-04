@@ -291,7 +291,11 @@ func buildPriorityAnnotation(rules []aigv1a1.AIGatewayRouteRule) string {
 	priorities := make([]string, 0, len(rules))
 	for i, rule := range rules {
 		for _, br := range rule.BackendRefs {
-			priorities = append(priorities, fmt.Sprintf("%d:%s:%d", i, br.Name, *br.Priority))
+			var priority uint32
+			if br.Priority != nil {
+				priority = *br.Priority
+			}
+			priorities = append(priorities, fmt.Sprintf("%d:%s:%d", i, br.Name, priority))
 		}
 	}
 	return strings.Join(priorities, ",")
