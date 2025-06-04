@@ -2,6 +2,12 @@
 
 Envoy AI Gateway supports provider fallback to ensure high availability and reliability for AI/LLM workloads. With fallback, you can configure multiple upstream providers for a single route, so that if the primary provider fails (due to network errors, 5xx responses, or other health check failures), traffic is automatically routed to a healthy fallback provider.
 
+## When to Use Fallback
+
+- To ensure uninterrupted service when a primary AI/LLM provider is unavailable.
+- To provide redundancy across multiple cloud or on-premise model providers.
+- To implement active-active or active-passive failover strategies for critical AI workloads.
+
 ## How Fallback Works
 
 - **Primary and Fallback Backends:** You can specify a prioritized list of backends in your `AIGatewayRoute` using `backendRefs`. The first backend is treated as primary, and subsequent backends are considered fallbacks.
@@ -76,7 +82,7 @@ spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: provider-fallback
+      name: provider-fallback # HTTPRoute is created with the same name as AIGatewayRoute
   retry:
     numRetries: 5
     perRetry:
@@ -100,12 +106,6 @@ spec:
       consecutiveLocalOriginFailures: 1
       splitExternalLocalOriginErrors: false
 ```
-
-## When to Use Fallback
-
-- To ensure uninterrupted service when a primary AI/LLM provider is unavailable.
-- To provide redundancy across multiple cloud or on-premise model providers.
-- To implement active-active or active-passive failover strategies for critical AI workloads.
 
 ## References
 
