@@ -82,7 +82,7 @@ The AI Gateway Controller manages AI-specific components and configurations:
 
 #### ExtProc Management
 - Creates and updates ExtProc Secrets with processing rules as well as credentials
-- Inserts the AI Gateway ExtProc as a sidecar container in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/)
+- Inserts the AI Gateway ExtProc as a sidecar container in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). The container mounts the ExtProc config secret and communicates with the Envoy Proxy to process AI traffic.
 
 #### Resource Management
 - Watches AI Gateway Custom Resources (CRs)
