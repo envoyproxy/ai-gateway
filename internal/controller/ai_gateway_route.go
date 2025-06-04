@@ -29,10 +29,13 @@ import (
 )
 
 const (
-	managedByLabel                           = "app.kubernetes.io/managed-by"
-	selectedRouteHeaderKey                   = "x-ai-eg-selected-route"
-	hostRewriteHTTPFilterName                = "ai-eg-host-rewrite"
-	aigatewayUUIDAnnotationKey               = "aigateway.envoyproxy.io/uuid"
+	managedByLabel             = "app.kubernetes.io/managed-by"
+	selectedRouteHeaderKey     = "x-ai-eg-selected-route"
+	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
+	aigatewayUUIDAnnotationKey = "aigateway.envoyproxy.io/uuid"
+	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
+	// This will result in metadata being added to the underling Envoy route
+	// @see https://gateway.envoyproxy.io/contributions/design/metadata/
 	httpRouteBackendRefPriorityAnnotationKey = "gateway.envoyproxy.io/backend-ref-priority"
 	egOwningGatewayNameLabel                 = "gateway.envoyproxy.io/owning-gateway-name"
 	egOwningGatewayNamespaceLabel            = "gateway.envoyproxy.io/owning-gateway-namespace"
