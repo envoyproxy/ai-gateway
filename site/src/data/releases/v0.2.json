@@ -19,7 +19,7 @@
         { "text": "CLI Tools", "type": "feature" },
         { "text": "Cross-Backend Failover and Retry", "type": "feature" }
       ],
-      "overview": "Envoy AI Gateway v0.2.0 builds upon the solid foundation of v0.1.0 with focus on expanding provider ecosystem support, improving reliability and performance through architectural changes, and providing more flexible authentication mechanisms.",
+      "overview": "Envoy AI Gateway v0.2.0 builds upon the solid foundation of v0.1.0 with focus on expanding provider ecosystem support, improving reliability and performance through architectural changes, and enterprise-grade authentication support for Azure OpenAI.",
       "features": [
         {
           "title": "Azure OpenAI Integration",
