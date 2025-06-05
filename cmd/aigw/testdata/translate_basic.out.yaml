@@ -182,6 +182,7 @@ stringData:
       - auth:
           apiKey:
             key: apiKey
+        modelName: ""
         name: envoy-ai-gateway-basic-openai.default
         schema:
           name: OpenAI
@@ -199,17 +200,19 @@ stringData:
               aws_access_key_id = AWS_ACCESS_KEY_ID
               aws_secret_access_key = AWS_SECRET_ACCESS_KEY
             region: us-east-1
+        modelName: us.meta.llama3-2-1b-instruct-v1:0
         name: envoy-ai-gateway-basic-aws.default
         schema:
           name: AWSBedrock
       headers:
       - name: x-ai-eg-model
-        value: us.meta.llama3-2-1b-instruct-v1:0
+        value: llama3-2-1b-instruct-v1
       modelsCreatedAt: "2025-05-23T00:00:00Z"
       modelsOwnedBy: aws
       name: envoy-ai-gateway-basic-rule-1
     - backends:
-      - name: envoy-ai-gateway-basic-testupstream.default
+      - modelName: ""
+        name: envoy-ai-gateway-basic-testupstream.default
         schema:
           name: OpenAI
       headers:

@@ -32,4 +32,21 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			})
 		}
 	})
+	t.Run("model override", func(t *testing.T) {
+		modelName := "gpt-4-turbo-2024-04-09"
+		originalReq := &openai.ChatCompletionRequest{Model: "gpt-4-turbo", Stream: false}
+		o := &openAIToAzureOpenAITranslatorV1ChatCompletion{
+			apiVersion: "some-version",
+			openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
+				modelName: modelName,
+			},
+		}
+		hm, bm, err := o.RequestBody(nil, originalReq, false)
+		require.Nil(t, bm)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.Len(t, hm.SetHeaders, 1)
+		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+		require.Equal(t, "/openai/deployments/"+modelName+"/chat/completions?api-version=some-version", string(hm.SetHeaders[0].Header.RawValue))
+	})
 }

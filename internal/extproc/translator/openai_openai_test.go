@@ -37,6 +37,21 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			})
 		}
 	})
+	t.Run("model name override", func(t *testing.T) {
+		originalReq := &openai.ChatCompletionRequest{Model: "gpt-4o-mini", Stream: false}
+		var newReq openai.ChatCompletionRequest
+		rawReq, err := json.Marshal(originalReq)
+		require.NoError(t, err)
+		modelName := "gpt-4o-mini-2024-07-18" // Example model name override
+		o := &openAIToOpenAITranslatorV1ChatCompletion{modelName: modelName}
+		hm, bm, err := o.RequestBody(rawReq, originalReq, false)
+		require.NoError(t, err)
+		require.Nil(t, hm)
+		require.NotNil(t, bm)
+		err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
+		require.NoError(t, err)
+		require.Equal(t, modelName, newReq.Model)
+	})
 }
 
 func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {

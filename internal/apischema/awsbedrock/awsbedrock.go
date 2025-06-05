@@ -147,28 +147,6 @@ type ConverseInput struct {
 	// Messages is a required field
 	Messages []*Message `json:"messages"`
 
-	// The identifier for the model that you want to call.
-	//
-	// The modelId to provide depends on the type of model that you use:
-	//
-	//    * If you use a base model, specify the model ID or its ARN. For a list
-	//    of model IDs for base models, see Amazon Bedrock base model IDs (on-demand
-	//    throughput) (https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns)
-	//    in the Amazon Bedrock User Guide.
-	//
-	//    * If you use a provisioned model, specify the ARN of the Provisioned Throughput.
-	//    For more information, see Run inference using a Provisioned Throughput
-	//    (https://docs.aws.amazon.com/bedrock/latest/userguide/prov-thru-use.html)
-	//    in the Amazon Bedrock User Guide.
-	//
-	//    * If you use a custom model, first purchase Provisioned Throughput for
-	//    it. Then specify the ARN of the resulting provisioned model. For more
-	//    information, see Use a custom model in Amazon Bedrock (https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-use.html)
-	//    in the Amazon Bedrock User Guide.
-	//
-	// ModelId is a required field
-	ModelID *string `json:"modelId"`
-
 	// A system prompt to pass to the model.
 	System []*SystemContentBlock `json:"system,omitempty"`
 
