@@ -422,7 +422,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
 /><ApiField
   name="timeouts"
-  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
 /><ApiField
@@ -580,12 +580,12 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
-  type="[LocalObjectReference](#localobjectreference)"
+  type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
   description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to."
 /><ApiField
   name="timeouts"
-  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or<br />AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and<br />AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored."
 />
