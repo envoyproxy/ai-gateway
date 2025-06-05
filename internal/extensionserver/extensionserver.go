@@ -187,6 +187,9 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		backendRef := httpRouteRule.BackendRefs[i]
 		name := backendRef.Name
 		namespace := aigwRoute.Namespace
+		if backendRef.Priority != nil {
+			endpoints.Priority = *backendRef.Priority
+		}
 		// We populate the same metadata for all endpoints in the LoadAssignment.
 		// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
 		for _, endpoint := range endpoints.LbEndpoints {

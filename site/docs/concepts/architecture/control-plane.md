@@ -8,74 +8,98 @@ sidebar_position: 3
 
 The control plane is responsible for configuring and managing the system. It consists of several key components working together to manage the AI Gateway configuration.
 
-![Control Plane Architecture](/img/control_plane.png)
+```mermaid
+graph TB
+    classDef aiGatewayStyle fill:#D6EAF8,stroke:#2E86C1,color:#000
+    classDef envoyGatewayStyle fill:#D5F5E3,stroke:#27AE60,color:#000
+
+    subgraph "User Applied Resources"
+            subgraph "AI Gateway Resources"
+                AIGatewayRoute
+                AIServiceBackend
+                BackendSecurityPolicy
+            end
+            subgraph "Envoy Gateway resources"
+                Gateway
+                Backend
+                EGDots[...]
+            end
+        end
+        AIGateway((Envoy AI Gateway
+                        Controller)):::aiGatewayStyle
+        EnvoyGateway((Envoy Gateway
+                        Controller)):::envoyGatewayStyle
+        subgraph "Generated Resources"
+            HTTPRoute
+            EnvoyExtensionPolicy
+            ExtProcConfigSecret[ExtProc Config Secret]
+        end
+
+        subgraph Envoy Proxy Pod
+            EnvoyProxy[Envoy Proxy]
+            AIExtProc[AI Gateway ExtProc]
+        end
+        xDS[xDS Config]
+
+
+    AIGatewayRoute -.->AIGateway
+    AIServiceBackend -.->AIGateway
+    BackendSecurityPolicy -.->AIGateway
+    Gateway -.->|Watching|AIGateway
+
+    Gateway -.->EnvoyGateway
+    Backend -.->EnvoyGateway
+    EGDots -.->EnvoyGateway
+
+    AIGateway -.->HTTPRoute
+    AIGateway -.->EnvoyExtensionPolicy
+    AIGateway -.->ExtProcConfigSecret
+    HTTPRoute -.->EnvoyGateway
+    EnvoyExtensionPolicy -.->EnvoyGateway
+    ExtProcConfigSecret -.->AIExtProc
+
+    EnvoyGateway -.->xDS
+    AIGateway <-.->|Extension Server protocol|EnvoyGateway
+    xDS -.->EnvoyProxy
+    AIGateway -.->|Inserting ExtProc as Sidecar|AIExtProc
+```
 
 ## How It Works
 
 The control plane operates through a chain of components that work together to manage the configuration:
 
 1. The Envoy AI Gateway controller watches AI Gateway Custom Resources (CRs)
-2. When changes are detected, it updates the Envoy Gateway configuration
-3. Envoy Gateway then updates the Envoy Proxy configuration
-4. The data plane (Envoy Proxy) processes AI traffic based on this configuration
+2. When changes are detected, it updates/generates the Envoy Gateway configuration
+3. The Envoy Gateway communicates with the Envoy AI Gateway controller via the [Envoy Gateway Extension server](https://gateway.envoyproxy.io/docs/tasks/extensibility/extension-server/) protocol, and the Envoy AI Gateway controller then fine-tunes the xDS configuration before the Envoy Gateway applies it to the Envoy Proxy.
+4. The data plane (Envoy Proxy) processes AI traffic based on this configuration where the AI Gateway ExtProc runs as a sidecar to handle AI-specific processing. The sidecar container is inserted by the AI Gateway controller into the Envoy Proxy Pod.
 
 This architecture ensures a clear separation of concerns, where the AI Gateway controller focuses on AI-specific configuration while leveraging Envoy Gateway for general proxy management.
 
 ## Components
 
-### AI Gateway Controller
+### 1. Envoy AI Gateway Controller
 The AI Gateway Controller manages AI-specific components and configurations:
 
 #### ExtProc Management
-- Deploys and configures the External Processor (ExtProc) service
-- Creates and updates ExtProc ConfigMaps with processing rules
-- Configures ExtProc security policies and authentication
-- Manages ExtProc deployments and their lifecycle
+- Creates and updates ExtProc Secrets with processing rules as well as credentials
+- Inserts the AI Gateway ExtProc as a sidecar container in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). The container mounts the ExtProc config secret and communicates with the Envoy Proxy to process AI traffic.
 
 #### Resource Management
 - Watches AI Gateway Custom Resources (CRs)
-- Creates and manages `EnvoyExtensionPolicy` resources
-- Configures `HTTPRoute` resources for request routing
-- Manages backend security policies and authentication
+- Creates and manages `HTTPRoute` and `EnvoyExtensionPolicy` resources
+- Manages backend security policies and authentication, including the credentials rotation
 
 #### Integration with Envoy Gateway
 - Works alongside Envoy Gateway Controller (not directly configuring Envoy)
-- Creates resources that Envoy Gateway translates into Envoy configuration
-- Manages AI-specific extensions and filters
+- Creates resources, such as `HTTPRoute`, that Envoy Gateway translates into Envoy configuration with AI-specific processing rules
+- Serves the [Envoy Gateway Extension Server](https://gateway.envoyproxy.io/docs/tasks/extensibility/extension-server/) to fine-tune the Envoy configuration (xDS)
 - Enables token-based rate limiting through metadata
 
-### Envoy Gateway Controller
+### 2. Envoy Gateway Controller
 - Manages the core Envoy configuration through xDS
 - Handles service discovery and load balancing
 - Manages TLS certificates
 - Translates Gateway API resources into Envoy configuration
-
-## Configuration Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant K8s as Kubernetes API
-    participant Controller as AI Gateway Controller
-    participant EG as Envoy Gateway
-    participant Envoy as Envoy Proxy
-
-    User->>K8s: Apply AI Gateway CR
-    K8s->>Controller: Notify of new/updated CR
-    Controller->>K8s: Create/Update ExtProc Resources
-    Controller->>K8s: Create EnvoyExtensionPolicy
-    Controller->>K8s: Create HTTPRoute
-    EG->>K8s: Watch Gateway Resources
-    EG->>Envoy: Push xDS Configuration
-```
-
-The configuration flow shows how changes propagate through the system:
-1. Users apply AI Gateway Custom Resources (CRs)
-2. The AI Gateway Controller processes these CRs
-3. It creates or updates necessary resources (ExtProc, EnvoyExtensionPolicy, HTTPRoute)
-4. Envoy Gateway watches these resources
-5. Finally, it pushes the configuration to Envoy Proxy via xDS
-
 
 ## Next Steps
 
