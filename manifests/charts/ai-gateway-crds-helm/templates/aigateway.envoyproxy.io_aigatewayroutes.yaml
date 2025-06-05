@@ -302,6 +302,17 @@ spec:
                             description: Name is the name of the AIServiceBackend.
                             minLength: 1
                             type: string
+                          priority:
+                            default: 0
+                            description: |-
+                              Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+                              See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
+                              Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+
+                              Default is 0.
+                            format: int32
+                            minimum: 0
+                            type: integer
                           weight:
                             default: 1
                             description: |-

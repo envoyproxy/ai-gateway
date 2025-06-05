@@ -176,9 +176,9 @@ func Test_newHTTPRoute(t *testing.T) {
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-								{Name: "orange", Weight: ptr.To[int32](100)},
-								{Name: "apple", Weight: ptr.To[int32](100)},
-								{Name: "pineapple", Weight: ptr.To[int32](100)},
+								{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
+								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
+								{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
 							},
 						},
 						{
@@ -315,4 +315,18 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, "ok", updatedRoute.Status.Conditions[0].Message)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
+func Test_buildPriorityAnnotation(t *testing.T) {
+	rules := []aigv1a1.AIGatewayRouteRule{
+		{
+			BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+				{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
+				{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
+				{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
+			},
+		},
+	}
+	annotation := buildPriorityAnnotation(rules)
+	require.Equal(t, "0:orange:0,0:apple:1,0:pineapple:2", annotation)
 }

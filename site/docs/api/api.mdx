@@ -463,6 +463,12 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   required="false"
   defaultValue="1"
   description="Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in<br />the BackendRef in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef<br />Default is 1."
+/><ApiField
+  name="priority"
+  type="integer"
+  required="false"
+  defaultValue="0"
+  description="Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.<br />See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority<br />Note: This will override the `faillback` property of the underlying Envoy Gateway Backend<br />Default is 0."
 />
 
 
