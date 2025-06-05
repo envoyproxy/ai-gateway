@@ -54,8 +54,12 @@
               "description": "Increased external processor buffer limits from 32 KiB to 50 MiB for larger AI requests. Users can now configure CPU and memory resource limits via <code>filterConfig.externalProcessor.resources</code> for better resource management."
             },
             {
+              "title": "Multiple <code>AIGatewayRoute</code> Support",
+              "description": "Support for multiple <code>AIGatewayRoute</code> resources per gateway, removing the previous single-route limitation. This enables better organization, scalability, and management of complex routing configurations across teams."
+            },
+            {
               "title": "Certificate Manager Integration",
-              "description": "Enabled cert-manager for mutating webhook server for improved security"
+              "description": "Integrated cert-manager for automated TLS certificate provisioning and rotation for the mutating webhook server that injects AI Gateway sidecar containers into Envoy Gateway pods. This enables enterprise-grade certificate management, eliminating manual certificate handling and improving security."
             }
           ]
         },
@@ -68,7 +72,7 @@
             },
             {
               "title": "Backend Retry Support",
-              "description": "Configurable retry policies for improved reliability and resilience against transient failures."
+              "description": "Configurable retry policies for improved reliability and resilience against AI provider transient failures. Features include exponential backoff with jitter, configurable retry triggers (5xx errors, connection failures, rate limiting), customizable retry counts and timeouts, and integration with Envoy Gateway's <code>BackendTrafficPolicy</code>."
             },
             {
               "title": "Weight-Based Routing",
