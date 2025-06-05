@@ -19,7 +19,7 @@ import releaseData from '../../data/releases/v0.1.json';
 
 export const { series, releases, navigation } = releaseData;
 export const mainRelease = releases[0]; // v0.1.0
-export const patchReleases = releases.slice(1); // v0.1.1 - v0.1.5
+export const patchReleases = releases.slice(1).reverse(); // v0.1.5 - v0.1.1 (newest first)
 
 <ReleaseSeriesLayout
   title={series.title}

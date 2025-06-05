@@ -34,11 +34,7 @@ export const generateTimelineData = () => {
   ];
 
   // Sort by date (newest first)
-  return allReleases.sort((a, b) => {
-    const dateA = new Date(a.date);
-    const dateB = new Date(b.date);
-    return dateB - dateA;
-  });
+  return allReleases.sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
 export const getReleaseSeries = () => [
