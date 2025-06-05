@@ -315,16 +315,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		if isGzip {
 			var buf bytes.Buffer
 			gz := gzip.NewWriter(&buf)
-			if _, err = gz.Write(responseBody); err != nil {
-				logger.Println("failed to write the response body to gzip writer")
-				http.Error(w, "failed to write the response body to gzip writer", http.StatusInternalServerError)
-				return
-			}
-			if err = gz.Close(); err != nil {
-				logger.Println("failed to close the gzip writer")
-				http.Error(w, "failed to close the gzip writer", http.StatusInternalServerError)
-				return
-			}
+			_, _ = gz.Write(responseBody)
+			_ = gz.Close()
 			responseBody = buf.Bytes()
 		}
 		_, _ = w.Write(responseBody)
