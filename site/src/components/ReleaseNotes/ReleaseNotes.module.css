@@ -723,6 +723,16 @@
   line-height: 1.5;
 }
 
+.featureSectionItemDescription code {
+  font-family: monospace;
+  color: var(--ifm-color-emphasis-900);
+  display: inline;
+  background: #fff;
+  padding: 0.01rem 0.5rem;
+  word-break: break-word;
+  white-space: normal;
+}
+
 /* Patch Release Component */
 .patchRelease {
   background: var(--ifm-card-background-color);
