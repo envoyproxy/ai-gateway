@@ -272,11 +272,15 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	}()
 	var br io.Reader
 	switch c.responseEncoding {
+	var removeHeaders []string
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode gzip: %w", err)
 		}
+		// TODO: this is a hotfix, we should update this to recompress since its in the header
+		// If the response was gzipped, ensure we remove the content-encoding header
+		removeHeaders = append(removeHeaders, "content-encoding")
 	default:
 		br = bytes.NewReader(body.Body)
 	}
@@ -285,6 +289,10 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
+	if headerMutation == nil {
+		headerMutation = &extprocv3.HeaderMutation{}
+	}
+	headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, removeHeaders...)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
