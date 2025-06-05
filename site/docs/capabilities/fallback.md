@@ -39,7 +39,9 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: provider-fallback-always-failing-upstream  # Primary backend (expected to fail)
+          priority: 0
         - name: provider-fallback-aws                      # Fallback backend
+          priority: 1
 ```
 
 The corresponding `Backend` resources:
@@ -62,7 +64,6 @@ metadata:
   name: provider-fallback-aws
   namespace: default
 spec:
-  fallback: true
   endpoints:
     - fqdn:
         hostname: bedrock-runtime.us-east-1.amazonaws.com
