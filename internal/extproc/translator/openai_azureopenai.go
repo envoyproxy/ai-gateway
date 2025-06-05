@@ -19,8 +19,13 @@ import (
 // Except RequestBody method requires modification to satisfy Microsoft Azure OpenAI spec
 // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chat-completions, other interface methods
 // are identical to NewChatCompletionOpenAIToOpenAITranslator's interface implementations.
-func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string) OpenAIChatCompletionTranslator {
-	return &openAIToAzureOpenAITranslatorV1ChatCompletion{apiVersion: apiVersion}
+func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelName string) OpenAIChatCompletionTranslator {
+	return &openAIToAzureOpenAITranslatorV1ChatCompletion{
+		apiVersion: apiVersion,
+		openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
+			modelName: modelName,
+		},
+	}
 }
 
 type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
@@ -31,13 +36,18 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
+	modelName := req.Model
+	if o.modelName != "" {
+		// If modelName is set we override the model to be used for the request.
+		modelName = o.modelName
+	}
 	// Assume deployment_id is same as model name.
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: []byte(fmt.Sprintf(pathTemplate, req.Model, o.apiVersion)),
+				RawValue: []byte(fmt.Sprintf(pathTemplate, modelName, o.apiVersion)),
 			}},
 		},
 	}

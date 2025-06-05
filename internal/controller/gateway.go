@@ -210,6 +210,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				backendRef := &rule.BackendRefs[j]
 				b := &backends[j]
 				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+				b.ModelName = backendRef.ModelName
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {

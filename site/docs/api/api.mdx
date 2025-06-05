@@ -458,6 +458,11 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   required="true"
   description="Name is the name of the AIServiceBackend."
 /><ApiField
+  name="modelName"
+  type="string"
+  required="true"
+  description="Name of the model in the backend. If provided this will override the name provided in the request."
+/><ApiField
   name="weight"
   type="integer"
   required="false"

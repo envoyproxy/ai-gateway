@@ -267,6 +267,10 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
+	// Name of the model in the backend. If provided this will override the name provided in the request.
+	// +kubebuilder:validation:MinLength=1
+	ModelName string `json:"modelName,omitempty"`
+
 	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef

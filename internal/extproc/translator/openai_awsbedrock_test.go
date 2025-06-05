@@ -737,6 +737,22 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			}
 		})
 	}
+
+	t.Run("model override", func(t *testing.T) {
+		modelName := "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0"
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{modelName: modelName}
+		originalReq := openai.ChatCompletionRequest{
+			Model:    "claude-3-5-sonnet",
+			Messages: []openai.ChatCompletionMessageParamUnion{},
+		}
+		hm, _, err := o.RequestBody(nil, &originalReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.NotNil(t, hm.SetHeaders)
+		require.Len(t, hm.SetHeaders, 2)
+		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+		require.Equal(t, "/model/"+modelName+"/converse", string(hm.SetHeaders[0].Header.RawValue))
+	})
 }
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {

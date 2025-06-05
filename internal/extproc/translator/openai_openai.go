@@ -19,12 +19,13 @@ import (
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func NewChatCompletionOpenAIToOpenAITranslator() OpenAIChatCompletionTranslator {
-	return &openAIToOpenAITranslatorV1ChatCompletion{}
+func NewChatCompletionOpenAIToOpenAITranslator(modelName string) OpenAIChatCompletionTranslator {
+	return &openAIToOpenAITranslatorV1ChatCompletion{modelName: modelName}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
+	modelName     string
 	stream        bool
 	buffered      []byte
 	bufferingDone bool
@@ -36,6 +37,16 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 ) {
 	if req.Stream {
 		o.stream = true
+	}
+	var newBody *[]byte
+	if o.modelName != "" {
+		// If modelName is set we override the model to be used for the request.
+		req.Model = o.modelName
+		out, err := json.Marshal(req)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		newBody = &out
 	}
 	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
 	if onRetry {
@@ -51,10 +62,15 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 				}},
 			},
 		}
+		newBody = &raw
+	}
+
+	if newBody != nil {
 		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: raw},
+			Mutation: &extprocv3.BodyMutation_Body{Body: *newBody},
 		}
 	}
+
 	return
 }
 
