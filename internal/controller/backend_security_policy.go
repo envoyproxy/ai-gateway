@@ -7,7 +7,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -41,18 +41,18 @@ const (
 //
 // Exported for testing purposes.
 type BackendSecurityPolicyController struct {
-	client               client.Client
-	kube                 kubernetes.Interface
-	logger               logr.Logger
-	syncAIServiceBackend syncAIServiceBackendFn
+	client                    client.Client
+	kube                      kubernetes.Interface
+	logger                    logr.Logger
+	aiServiceBackendEventChan chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, syncAIServiceBackend syncAIServiceBackendFn) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
-		client:               client,
-		kube:                 kube,
-		logger:               logger,
-		syncAIServiceBackend: syncAIServiceBackend,
+		client:                    client,
+		kube:                      kube,
+		logger:                    logger,
+		aiServiceBackendEventChan: aiServiceBackendEventChan,
 	}
 }
 
@@ -109,34 +109,47 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			return ctrl.Result{}, nil
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		secretRef := bsp.Spec.AzureCredentials.ClientSecretRef
-		if secretRef == nil {
-			return ctrl.Result{}, fmt.Errorf("azure credentials secret ref is nil, namespace %s name %s", bsp.Namespace, bsp.Name)
-		}
-		secretNamespace := bsp.Namespace
-		if secretRef.Namespace != nil {
-			secretNamespace = string(*secretRef.Namespace)
-		}
-		secretName := string(secretRef.Name)
-		var secret *corev1.Secret
-		secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
-		if err != nil {
-			c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
-			return ctrl.Result{}, err
-		}
-		secretValue, exists := secret.Data[clientSecretKey]
-		if !exists {
-			return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
-		}
-		clientSecret := string(secretValue)
-		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
 		var provider tokenprovider.TokenProvider
-		provider, err = tokenprovider.NewAzureTokenProvider(tenantID, clientID, clientSecret, options)
-		if err != nil {
-			return ctrl.Result{}, err
+		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
+
+		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		if oidc != nil {
+			var oidcProvider tokenprovider.TokenProvider
+			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			provider, err = tokenprovider.NewAzureTokenProvider(ctx, tenantID, clientID, oidcProvider, options)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else if secretRef := bsp.Spec.AzureCredentials.ClientSecretRef; secretRef != nil {
+			secretNamespace := bsp.Namespace
+			if secretRef.Namespace != nil {
+				secretNamespace = string(*secretRef.Namespace)
+			}
+			secretName := string(secretRef.Name)
+			var secret *corev1.Secret
+			secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
+			if err != nil {
+				c.logger.Error(err, "failed to lookup azure client secret", "namespace", secretNamespace, "name", secretName)
+				return ctrl.Result{}, err
+			}
+			secretValue, exists := secret.Data[clientSecretKey]
+			if !exists {
+				return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", clientSecretKey)
+			}
+			clientSecret := string(secretValue)
+			provider, err = tokenprovider.NewAzureClientSecretTokenProvider(tenantID, clientID, clientSecret, options)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, fmt.Errorf("one of secret ref or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
+
 		rotator, err = rotators.NewAzureTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, provider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -190,6 +203,9 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		if spec.AzureCredentials != nil && spec.AzureCredentials.OIDCExchangeToken != nil {
+			return &spec.AzureCredentials.OIDCExchangeToken.OIDC
+		}
 		return nil
 	}
 	return nil
@@ -207,17 +223,10 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 	if err != nil {
 		return fmt.Errorf("failed to list AIServiceBackendList: %w", err)
 	}
-
-	var errs []error
 	for i := range aiServiceBackends.Items {
 		aiBackend := &aiServiceBackends.Items[i]
 		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-		if err = c.syncAIServiceBackend(ctx, aiBackend); err != nil {
-			errs = append(errs, fmt.Errorf("%s/%s: %w", aiBackend.Namespace, aiBackend.Name, err))
-		}
-	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
 	}
 	return nil
 }

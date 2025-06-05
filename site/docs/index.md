@@ -13,10 +13,7 @@ limiting and policy control.
 
 ## **Project Overview**
 
-The **Envoy AI Gateway** was created to address the complexity of connecting applications to GenAI
-services by leveraging Envoy's flexibility and Kubernetes-native features. The project has evolved
-through contributions from the Envoy community, fostering a collaborative approach to solving
-real-world challenges.
+The **Envoy AI Gateway** was created to address the complexity of connecting applications to GenAI services by leveraging Envoy's flexibility and Kubernetes-native features. The project has evolved through contributions from the Envoy community, fostering a collaborative approach to solving real-world challenges.
 
 ### **Key Objectives**
 
@@ -26,28 +23,27 @@ real-world challenges.
 - Implement a policy framework to support usage limiting use cases.
 - Foster an open-source community to address GenAI-specific routing and quality of service needs.
 
-## **Release Goals**
+## **Project Goals**
 
-The initial release focuses on key foundational features to provide LLM/AI traffic management:
+The Envoy AI Gateway project is designed to address the critical challenges of AI/LLM integration in enterprise environments through the following core goals:
 
-- **Request Routing**: Directs API requests to appropriate GenAI services
-- **Authentication and Authorization**: Implement API key validation to secure communication.
-- **Backend Security Policy**: Introduces fine-grained access control for backend services.
-  This also controls LLM/AI backend usage using token-per-second (TPS) policies to prevent overuse.
-- **Multi-Upstream Provider Support for LLM/AI Services**: The ability to receive requests in the
-  format of one LLM provider and route them to different upstream providers, ensuring compatibility
-  with their expected formats. This is made possible through built-in transformation capabilities that
-  adapt requests and responses accordingly.
-- **AWS Request Signing**: Supports external processing for secure communication with AWS-hosted
-  LLM/AI services.
+- **Resilient Connectivity Across Providers and Self-Hosted Models**: Create robust, fault-tolerant connections that integrate with LLM providers (such as OpenAI, Anthropic, AWS Bedrock, etc.) and self-hosted models, ensuring high availability through intelligent routing and automatic failover.
 
-Documentation for installation, setup, and contribution guidelines is included to help new users and
-contributors get started easily.
+- **Comprehensive Observability for Performance and Cost Management**: Provide visibility into traffic performance, usage patterns, and cost analytics, enabling organizations to optimize their GenAI usage and monitor service quality.
+
+- **Enterprise-Grade Security Features**: Implement security controls including fine-grained access control, authorization policies, rate limiting, to access services, as well as ensure secure egress connection to external providers from the gateway via [Upstream Authentication](capabilities/upstream-auth.mdx).
+
+- **Extensible Architecture**: Leverage Envoy's proven extensibility framework to enable rapid development of custom features, allowing organizations to adapt the gateway to their specific AI infrastructure needs.
+
+- **Reliable Foundation with Envoy Proxy**: Build upon Envoy's battle-tested proxy technology to provide a stable, performant, and production-ready foundation that enterprises can rely on for their traffic handling needs.
+
+These goals guide the development of features and capabilities that make AI/LLM integration secure, scalable, and operationally excellent for enterprise environments.
+
+Documentation for installation, setup, and contribution guidelines is included to help new users and contributors get started easily.
 
 ## **Community Collaboration**
 
-[Weekly community meetings][meeting-notes] are held every Thursday to discuss updates, address
-issues, and review contributions.
+[Weekly community meetings][meeting-notes] are held every Thursday to discuss updates, address issues, and review contributions.
 
 ## **Architecture Overview**
 

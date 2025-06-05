@@ -85,7 +85,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
 
-	defaultCfg, _ := filterapi.MustLoadDefaultConfig()
+	defaultCfg := filterapi.MustLoadDefaultConfig()
 	require.NoError(t, err)
 
 	// Verify the default config has been loaded.
@@ -106,7 +106,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-ai-eg-selected-backend
+selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-model-name
 rules:
 - backends:
@@ -142,7 +142,7 @@ rules:
 	cfg = `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-ai-eg-selected-backend
+selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-model-name
 rules:
 - backends:
@@ -162,67 +162,12 @@ rules:
 	}, 1*time.Second, tickInterval)
 	require.NotEqual(t, firstCfg, rcv.getConfig())
 
-	secondConfig := rcv.getConfig()
-
 	// Verify the buffer contains the updated loading.
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "loading a new config")
 	}, 1*time.Second, tickInterval, buf.String())
 
-	// Verify the buffer contains the config line changed.
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "config line changed")
-	}, 1*time.Second, tickInterval, buf.String())
-
 	// Wait for a couple ticks to verify config is not reloaded if file does not change.
 	time.Sleep(2 * tickInterval)
 	require.Equal(t, int32(3), rcv.loadCount.Load())
-
-	// Change it to the dynamic load balancing config.
-	cfg = `
-schema:
-  name: OpenAI
-selectedBackendHeaderKey: x-ai-eg-selected-backend
-modelNameHeaderKey: x-model-name
-rules:
-- backends:
-  - name: openai
-    dynamicLoadBalancing: {} # This should force the reload regardless of the config change.
-    schema:
-      name: OpenAI
-  headers:
-  - name: x-model-name
-    value: gpt4.4444
-`
-	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
-
-	// Verify the config has been updated.
-	require.Eventually(t, func() bool {
-		return rcv.getConfig() != secondConfig
-	}, 1*time.Second, tickInterval)
-	require.NotEqual(t, firstCfg, rcv.getConfig())
-	require.Equal(t, int32(4), rcv.loadCount.Load())
-
-	// Then waits for the 10 counts of the config to be loaded.
-	require.Eventually(t, func() bool {
-		return rcv.loadCount.Load() == 10
-	}, 5*time.Second, tickInterval)
-}
-
-func TestDiff(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
-	cw := &configWatcher{
-		l: logger,
-	}
-
-	oldConfig := `schema:
-	name: Foo`
-	newConfig := `schema:
-	name: Bar`
-
-	expectedLog := `msg="config line changed" line=2 path="" old="name: Foo" new="name: Bar"`
-	cw.diff(oldConfig, newConfig)
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), expectedLog)
-	}, 1*time.Second, 100*time.Millisecond, buf.String())
 }

@@ -1,0 +1,134 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+{{- if .Values.controller.mutatingWebhook.certManager.enable }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Values.controller.mutatingWebhook.certManager.certificateName}}
+{{- end }}
+  name: envoy-ai-gateway-gateway-pod-mutator.{{ .Release.Namespace }}
+webhooks:
+  - name:  {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+    clientConfig:
+      service:
+        name:  {{ include "ai-gateway-helm.controller.fullname" . }}
+        namespace: {{ .Release.Namespace }}
+        port: 9443
+        path: /mutate
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        app.kubernetes.io/managed-by: envoy-gateway
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: 10
+    failurePolicy: Ignore
+---
+{{- if .Values.controller.mutatingWebhook.certManager.enable }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.controller.mutatingWebhook.certManager.certificateName }}
+spec:
+  commonName: {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc
+  dnsNames:
+    - {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: {{ .Values.controller.mutatingWebhook.certManager.issuerName }}
+  secretName: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.controller.mutatingWebhook.certManager.issuerName }}
+spec:
+  selfSigned: {}
+{{- else }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+stringData:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDOzCCAiOgAwIBAgIUU+g1Upp1Qtfpk87zY5H2/EY55QUwDQYJKoZIhvcNAQEL
+    BQAwLTELMAkGA1UEBhMCQVUxHjAcBgNVBAMMFWFpLWdhdGV3YXktY29udHJvbGxl
+    cjAeFw0yNTA1MjAxNjQzNTJaFw0zNTA1MTgxNjQzNTJaMC0xCzAJBgNVBAYTAkFV
+    MR4wHAYDVQQDDBVhaS1nYXRld2F5LWNvbnRyb2xsZXIwggEiMA0GCSqGSIb3DQEB
+    AQUAA4IBDwAwggEKAoIBAQDKN5YmMh7TgGqNpedC0DWBWdn2pMiHtCeRlTkluDjK
+    l+ZeleiR7rooNUXc6gE02RAaRCEaNMSZL3m6BkZ1Xoo92Mvabu+ORkwApO+OTIvj
+    NsYb3/blsST1qHXApm7n886Ed80CG3Jczi7AioXsAhTv+SoJeQJsoKLeVYV5m5l/
+    j4xoJl9fY+lzpmgdcALBm7FDrAbsEgjKwmFEQAxTNxWowZDiARW21io45saC411S
+    m/ZhthSxDQpqSzPwYcXwR04syZxGUewYrpIE54hRsM8KwpqNEZVnjlaKBssiEgG8
+    97sx9wDb3HLzep7FShKz4LslePAc8DmvdYjnooZaxzsfAgMBAAGjUzBRMB0GA1Ud
+    DgQWBBS9puJ0i+zKW4Y3FY2NvRKAb0ONYzAfBgNVHSMEGDAWgBS9puJ0i+zKW4Y3
+    FY2NvRKAb0ONYzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCZ
+    ZgPCQnaXt/xSJ7oUFBMba5TLeqvzIKPeDvS0ii64tZeQ75R7nQvSVt2QnGDjpyJ+
+    00ERja7jWpjL3IWijmE199vv40ZY4pajhBAL3y8wPf6vRh8d7TO4XmN7hser2tci
+    denNGPxu1bX2tLE8FAGM8SUarVy6veHdiUyoMlJWpvjWYNgaVE5Yx/839WmxRhnS
+    2IOljAsTwaIkI0wms51lZXGPhRgES9AoLPuywsgq7GcjIhYHpfso/3DgS8/MTR5B
+    iWqiXpgjD6ZOzTQyp8zpnGzYGdxSKaxd1I0LhLTuawdLQ+DS3zvR5S5V5vLQUZ1r
+    0Un8E68n7s8EplV8N6xl
+    -----END CERTIFICATE-----
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDaTCCAlGgAwIBAgIUHUaEt6oW5HaBSAc/DZZ39PclDaUwDQYJKoZIhvcNAQEL
+    BQAwLTELMAkGA1UEBhMCQVUxHjAcBgNVBAMMFWFpLWdhdGV3YXktY29udHJvbGxl
+    cjAeFw0yNTA1MjAxNjQ1MzNaFw0zNTA1MTgxNjQ1MzNaMC0xCzAJBgNVBAYTAkFV
+    MR4wHAYDVQQDDBVhaS1nYXRld2F5LWNvbnRyb2xsZXIwggEiMA0GCSqGSIb3DQEB
+    AQUAA4IBDwAwggEKAoIBAQDHhlhQBR2pplNbgA5Q0lvqimzUylfGAeTVPrSQs73L
+    Fj2Lqi/ROtyFHdfruRzVMnmWfMWbh57kIv6KEXHkhJngD4rjcWjLQvKZjUKUe9s7
+    P1tQ0S9rIzMeBk8dQ3vrm+XcFy9zhuROccpmaXOTjanW9I7Uxl0/fINfc2++nIUx
+    8LSJPf845iHJlHF7uuzhRIMD3M0ShXSS8SnPQPicq18mqufczN+8SC5jwDeCAUEM
+    67ter1OnXdjuJSSHpRY9Rj32jyIGYEjFTgqV1tU+ut86xzzRMGilcXio1NubJxfH
+    IwOWCG82qyddZpGLVHAUapgaW4H5Lce+uELhShc0HiRpAgMBAAGjgYAwfjA8BgNV
+    HREENTAzgjFhaS1nYXRld2F5LWNvbnRyb2xsZXIuZW52b3ktYWktZ2F0ZXdheS1z
+    eXN0ZW0uc3ZjMB0GA1UdDgQWBBTHtH9TzxZK9i29+djfBe6foVNN4jAfBgNVHSME
+    GDAWgBS9puJ0i+zKW4Y3FY2NvRKAb0ONYzANBgkqhkiG9w0BAQsFAAOCAQEAmOKx
+    ws4huAPawx1hcZQNNz6TTv6BwxGAVG4WX69Pb3ZWXB/vxPIIPkbhP23oumtn0N7l
+    ehy6K89FPDCCeuz9kibsDHQWjl349jPSyGULMVYT2DoI9KKxwFdjgVwF8pOOvBe3
+    8tTiPcCoYbssMpmYQKGXiqENrIKTq9dzzqMxkN9a4XNyk2xB9P8RSiv/6sQqE5Ni
+    bY6TeD4T8AgaGdHteCeRNBJxaiKPttv9D62zd02lJ9w7BKsphNRDH1dNCNgM8KJE
+    Rxf1TRtGZTXfz6y7gFYK1w7RwI9v5JUiRH28RyexeNKmAYlP6pbKN6wM4S0OktyY
+    znuy770iwgvtVaugwQ==
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDHhlhQBR2pplNb
+    gA5Q0lvqimzUylfGAeTVPrSQs73LFj2Lqi/ROtyFHdfruRzVMnmWfMWbh57kIv6K
+    EXHkhJngD4rjcWjLQvKZjUKUe9s7P1tQ0S9rIzMeBk8dQ3vrm+XcFy9zhuROccpm
+    aXOTjanW9I7Uxl0/fINfc2++nIUx8LSJPf845iHJlHF7uuzhRIMD3M0ShXSS8SnP
+    QPicq18mqufczN+8SC5jwDeCAUEM67ter1OnXdjuJSSHpRY9Rj32jyIGYEjFTgqV
+    1tU+ut86xzzRMGilcXio1NubJxfHIwOWCG82qyddZpGLVHAUapgaW4H5Lce+uELh
+    Shc0HiRpAgMBAAECggEAAe3u5zExeP1Cg5lAqi/qkyFNDZ66TBAjIBvH37lZPcBE
+    jpfx9+4/iSsBdkZXPMmM6vNgbtFYLEEZYIjsJsdQfJ3x3CKx3ntSgMEgsnJjK5bA
+    gY7QTFMuEJ2DgNcw+NWMWr0/qHiWtxp7GFPvOe9OA+XgBrc3WiCQXakuXLPDRvkW
+    SbSurGfzhlPNVSlqRAK/uYYeRFUvjjvuFB77+ozVPCqMxqMDW9ez7y/oMK5Rphl7
+    GbBSHjv/aCfN4OKno/xtPup3xaYHXkNLP1ktGCplJoyx6JSqBqYoKXP9sGsbhlif
+    xNI2zhB7VRfjQzclS+26zUIK2GhNd4/LI4ZvzB4bjQKBgQDse6MPqrkW2YFJSQOd
+    bpghzHfv3P7VCJi5pgneOeH+qgYvWHtXASC6XmHgd7RjIAkmIkI01VGhIQW1Lwzh
+    /K/qmmNgyP1MVIpAedYaMBFFV6q9qWaT+AojFp+PnHjuQHtFP9Lx0dtMwvafb821
+    mN1i3ZDWmD7wFt1D6nBetDm2tQKBgQDX/d0HjexwhLILboAzgTWgOPjks60+uh4k
+    zf/SxdRE6wHaeUuT5disUJD70G52jGQRR5EMazJvSCPDffIsHdId5qM/H1+LuRs9
+    RvPttxyZACgghV+M2cOCkQkbwpMe8O7+SHtSQt2hNnkXu9QUOrU01qgXJrSF6WQn
+    vCWiDwczZQKBgH5A/+yEXC7bzs9+gMSTX/tje4D+/rpjzY4IHGqdgo+A3K54UdlA
+    i+WUMDM0FYV6fAf08F3eqacZxz9VME6SpqTc6kOo6rrOw8TqhykSEpZv2INLpq1H
+    FrpnAKcehd3FZUqyaX+bZ7aSvDKg8TWLuF5pJkO7opZxzo3M41NcaxelAoGADnfc
+    5HKnUeoxmv5t7AVNuEvYsEkw47DH8CM0bcP+shcj6qSRYXjWCMTk0Vlm7N3+ngGz
+    P6e2mymz65Z2MGpW9tXKPaI2Xj+qCXLFSDkp2z3dckA85Ex6AjcA6zEfdcUh3Tqx
+    uBLukav6dJKKZEiCduWiINrg4M9/fAHoa3CiRNkCgYEAnEn9gCO4e0raIREBFMRW
+    9uiRLb1cc4GvZxYDj4xf0AR99bL599GMe/yMbtaeqhC5z2pVgyRGwxPCmoY5KQrB
+    i4X6Yrl37GEpCf94kpkdM6AtzA2DZ9Tfzoai61RKvP1W93vWohjXtv1OZWDuDB+H
+    SJhKidoVRcKlB8eLvnwIh+g=
+    -----END PRIVATE KEY-----
+{{- end }}

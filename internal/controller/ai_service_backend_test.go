@@ -25,8 +25,8 @@ import (
 
 func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	syncFn := internaltesting.NewSyncFnImpl[aigv1a1.AIGatewayRoute]()
-	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, syncFn.Sync)
+	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
 	originals := []*aigv1a1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
@@ -73,7 +73,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
-	require.Equal(t, originals, syncFn.GetItems())
+	require.Equal(t, originals, eventChan.RequireItemsEventually(t, 2))
 
 	// Check that the status was updated.
 	var backend aigv1a1.AIServiceBackend

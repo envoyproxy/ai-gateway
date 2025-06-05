@@ -23,21 +23,20 @@ import (
 // on the output schema of the AIServiceBackend while doing the other necessary jobs like
 // upstream authentication, rate limit, etc.
 //
-// For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+// Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 //
-//   - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-//     The name of these resources are `ai-eg-route-extproc-${name}`.
 //   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
 //     The name of the HTTPRoute is the same as the AIGatewayRoute.
-//   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-//     The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+//   - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the target Gateways.
+//     This will be created per Gateway, and its name is `ai-eg-eep-${gateway-name}`.
 //   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
 //     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 //
 // All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
 // detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
 // resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
-// Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+// Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
+// BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -193,6 +192,11 @@ type AIGatewayRouteSpec struct {
 	//	                namespace: io.envoy.ai_gateway
 	//	                key: llm_total_token
 	// ```
+	//
+	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
+	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
+	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
@@ -205,6 +209,11 @@ type AIGatewayRouteRule struct {
 	//
 	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
 	//
+	// By configuring multiple backends, you can achieve the fallback behavior in the case of
+	// the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
+	// Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
+	// https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
+	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	BackendRefs []AIGatewayRouteRuleBackendRef `json:"backendRefs,omitempty"`
@@ -216,32 +225,42 @@ type AIGatewayRouteRule struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=128
 	Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
+
+	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// +optional
+	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
+
+	// ModelsOwnedBy represents the owner of the running models serving by the backends,
+	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same owner.
+	//
+	// Default to "Envoy AI Gateway" if not set.
+	//
+	// +optional
+	// +kubebuilder:default="Envoy AI Gateway"
+	ModelsOwnedBy *string `json:"modelsOwnedBy,omitempty"`
+
+	// ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
+	// which will be exported as the field of "Created" in openai-compatible API "/models".
+	// It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same creation time.
+	//
+	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	//
+	// +optional
+	// +kubebuilder:validation:Format=date-time
+	ModelsCreatedAt *metav1.Time `json:"modelsCreatedAt,omitempty"`
 }
-
-// AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
-type AIGatewayRouteRuleBackendRefKind string
-
-const (
-	// AIGatewayRouteRuleBackendRefAIServiceBackend is the kind of the AIServiceBackend.
-	AIGatewayRouteRuleBackendRefAIServiceBackend AIGatewayRouteRuleBackendRefKind = "AIServiceBackend"
-	// AIGatewayRouteRuleBackendRefInferencePool is the kind of the InferencePool in the Gateway API Inference Extension.
-	// https://github.com/kubernetes-sigs/gateway-api-inference-extension
-	AIGatewayRouteRuleBackendRefInferencePool AIGatewayRouteRuleBackendRefKind = "InferencePool"
-)
 
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 type AIGatewayRouteRuleBackendRef struct {
-	// Kind is the kind of the backend, which is either "AIServiceBackend" or "InferencePool" in Gateway API Inference Extension.
-	//
-	// When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-	// that can serve the same model sets that the InferencePool binds.
-	//
-	// Default is AIServiceBackend.
-	//
-	// +kubebuilder:validation:Enum=AIServiceBackend;InferencePool
-	// +kubebuilder:default=AIServiceBackend
-	Kind *AIGatewayRouteRuleBackendRefKind `json:"kind,omitempty"`
-
 	// Name is the name of the AIServiceBackend.
 	//
 	// +kubebuilder:validation:Required
@@ -257,7 +276,17 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=1
-	Weight int `json:"weight,omitempty"`
+	Weight *int32 `json:"weight,omitempty"`
+	// Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+	// See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
+	// Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+	//
+	// Default is 0.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=0
+	Priority *uint32 `json:"priority,omitempty"`
 }
 
 type AIGatewayRouteRuleMatch struct {
@@ -302,15 +331,18 @@ const (
 type AIGatewayFilterConfigExternalProcessor struct {
 	// Replicas is the number of desired pods of the external processor deployment.
 	//
+	// Deprecated: This field is no longer used.
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
+	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
+	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
+	// to configure the resource requirements of the external processor container.
+	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// TODO: maybe adding the option not to deploy the external processor filter and let the user deploy it manually?
-	// 	Not sure if it is worth it as we are migrating to dynamic modules.
 }
 
 // AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
@@ -356,7 +388,8 @@ type AIServiceBackendSpec struct {
 	APISchema VersionedAPISchema `json:"schema"`
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
-	// A backend can be of either k8s Service or Backend resource of Envoy Gateway.
+	// A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
+	// as a backend in the future.
 	//
 	// This is required to be set.
 	//
@@ -370,6 +403,10 @@ type AIServiceBackendSpec struct {
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
 	// Timeouts defines the timeouts that can be configured for an HTTP request.
+	//
+	// Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
+	// AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and
+	// AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored.
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
@@ -486,7 +523,29 @@ type BackendSecurityPolicyAPIKey struct {
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
 
+// BackendSecurityPolicyOIDC specifies OIDC related fields.
+type BackendSecurityPolicyOIDC struct {
+	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials.
+	//
+	// +kubebuilder:validation:Required
+	OIDC egv1a1.OIDC `json:"oidc"`
+
+	// GrantType is the method application gets access token.
+	//
+	// +optional
+	GrantType string `json:"grantType,omitempty"`
+
+	// Aud defines the audience that this ID Token is intended for.
+	//
+	// +optional
+	Aud string `json:"aud,omitempty"`
+}
+
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+// neither are set.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
@@ -503,7 +562,23 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of secret should be "client-secret".
-	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+	//
+	// +optional
+	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef,omitempty"`
+
+	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
+	// used to obtain temporary credentials to access Azure.
+	//
+	// +optional
+	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+}
+
+// AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+// For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+// and store them in a secret.
+type AzureOIDCExchangeToken struct {
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 }
 
 // BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
@@ -543,20 +618,8 @@ type AWSCredentialsFile struct {
 // For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
 // and store them in a temporary credentials file.
 type AWSOIDCExchangeToken struct {
-	// OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials.
-	//
-	// +kubebuilder:validation:Required
-	OIDC egv1a1.OIDC `json:"oidc"`
-
-	// GrantType is the method application gets access token.
-	//
-	// +optional
-	GrantType string `json:"grantType,omitempty"`
-
-	// Aud defines the audience that this ID Token is intended for.
-	//
-	// +optional
-	Aud string `json:"aud,omitempty"`
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 
 	// AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account
 	// which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider.

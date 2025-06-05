@@ -790,6 +790,6 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	if err != nil {
 		return err
 	}
-	*(*time.Time)(t) = time.Unix(q, 0)
+	*(*time.Time)(t) = time.Unix(q, 0).UTC()
 	return nil
 }

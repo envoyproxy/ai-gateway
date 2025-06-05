@@ -34,8 +34,12 @@ type CredentialsContext struct {
 	OpenAIAPIKey string
 	// OpenAIAPIKeyFilePath is the path to the temporary file containing the OpenAIAPIKey.
 	OpenAIAPIKeyFilePath string
+	// AWSFileLiteral contains the AWS credentials in the format of a file literal.
+	AWSFileLiteral string
 	// AWSFilePath is the path to the temporary file containing the AWS credentials (or dummy credentials).
 	AWSFilePath string
+	// AzureAccessToken is the Azure access token. This defaults to "dummy-azure-access-token" if not set.
+	AzureAccessToken string
 	// AzureAccessTokenFilePath is the path to the temporary file containing the Azure access token (or dummy token).
 	AzureAccessTokenFilePath string
 }
@@ -66,11 +70,12 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	require.NoError(t, err)
 
 	// Set up credential file for Azure.
-	azureAccessToken := os.Getenv("TEST_AZURE_ACCESS_TOKEN")
+	azureAccessTokenEnv := os.Getenv("TEST_AZURE_ACCESS_TOKEN")
+	azureAccessToken := cmp.Or(azureAccessTokenEnv, "dummy-azure-access-token")
 	azureAccessTokenFilePath := t.TempDir() + "/azureAccessToken"
 	azureFile, err := os.Create(azureAccessTokenFilePath)
 	require.NoError(t, err)
-	_, err = azureFile.WriteString(cmp.Or(azureAccessToken, "dummy-azure-access-token"))
+	_, err = azureFile.WriteString(azureAccessToken)
 	require.NoError(t, err)
 
 	// Set up credential file for AWS.
@@ -95,10 +100,12 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	return CredentialsContext{
 		OpenAIValid:              openAIAPIKeyEnv != "",
 		AWSValid:                 awsAccessKeyID != "" && awsSecretAccessKey != "",
-		AzureValid:               azureAccessToken != "",
+		AzureValid:               azureAccessTokenEnv != "",
 		OpenAIAPIKey:             openAIAPIKeyVal,
 		OpenAIAPIKeyFilePath:     openAIAPIKeyFilePath,
+		AWSFileLiteral:           awsCredentialsBody,
 		AWSFilePath:              awsFilePath,
+		AzureAccessToken:         azureAccessToken,
 		AzureAccessTokenFilePath: azureAccessTokenFilePath,
 	}
 }

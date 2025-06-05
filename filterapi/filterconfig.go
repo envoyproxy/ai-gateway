@@ -16,6 +16,7 @@ package filterapi
 
 import (
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -26,7 +27,7 @@ import (
 const DefaultConfig = `
 schema:
   name: OpenAI
-selectedBackendHeaderKey: x-ai-eg-selected-backend
+selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-ai-eg-model
 `
 
@@ -36,40 +37,43 @@ modelNameHeaderKey: x-ai-eg-model
 //
 //	schema:
 //	  name: OpenAI
-//	selectedBackendHeaderKey: x-envoy-ai-gateway-selected-backend
+//	selectedRouteHeaderKey: x-envoy-ai-gateway-selected-route
 //	modelNameHeaderKey: x-ai-eg-model
 //	llmRequestCosts:
 //	- metadataKey: token_usage_key
 //	  type: OutputToken
 //	rules:
-//	- backends:
-//	  - name: kserve
-//	    weight: 1
+//	- name: llama3-route
+//	  headers:
+//	  - name: x-ai-eg-model
+//	    value: llama3.3333
+//	  backends:
+//	  - name: openai-backend.mynamespace
 //	    schema:
 //	      name: OpenAI
 //	  - name: awsbedrock
 //	    weight: 10
 //	    schema:
 //	      name: AWSBedrock
-//	  headers:
-//	  - name: x-ai-eg-model
-//	    value: llama3.3333
-//	- backends:
-//	  - name: openai
-//	    schema:
-//	      name: OpenAI
+//	- name: gpt4-route
 //	  headers:
 //	  - name: x-ai-eg-model
 //	    value: gpt4.4444
+//	  backends:
+//	  - name: openai
+//	    schema:
+//	      name: OpenAI
 //
 // where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-ai-eg-model,
 // The model name header `x-ai-eg-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
-// the selected backend name is populated in the header `x-ai-eg-selected-backend`. For example, when the model name is `llama3.3333`,
-// the request is routed to either backends `kserve` or `awsbedrock` with weights 1 and 10 respectively, and the selected
-// backend, say `awsbedrock`, is populated in the header `x-ai-eg-selected-backend`.
+// the selected route name is populated in the header `x-ai-eg-selected-route`. For example, when the model name is `llama3.3333`,
+// the request is routed to a route named `llama3-route`.
 //
-// From Envoy configuration perspective, configuring the header matching based on `x-ai-eg-selected-backend` is enough to route the request to the selected backend.
-// That is because the matching decision is made by the filter and the selected backend is populated in the header `x-ai-eg-selected-backend`.
+// From the Envoy configuration perspective, the extproc expects there are corresponding routes in the envoy configuration as well as
+// each cluster must configure the upstream filter to talk to the experoc to perform the corresponding authn/z as well as the transformation.
+// See tests/extproc/envoy.yaml for the example configuration.
+//
+// Note that this contains literal credentials inlined.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
@@ -82,9 +86,9 @@ type Config struct {
 	Schema VersionedAPISchema `json:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
-	// SelectedBackendHeaderKey is the header key to be populated with the backend name by the filter
+	// SelectedRouteHeaderKey is the header key to be populated with the route name by the filter
 	// **after** the routing decision is made by the filter using Rules.
-	SelectedBackendHeaderKey string `json:"selectedBackendHeaderKey"`
+	SelectedRouteHeaderKey string `json:"selectedRouteHeaderKey"`
 	// Rules is the routing rules to be used by the filter to make the routing decision.
 	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
 	Rules []RouteRule `json:"rules"`
@@ -145,12 +149,36 @@ type HeaderMatch = gwapiv1.HTTPHeaderMatch
 // besides the `Backends` field is modified to abstract the concept of a backend
 // at Envoy Gateway level to a simple name.
 type RouteRule struct {
+	// Name is the name of the route rule.
+	Name RouteRuleName `json:"name"`
 	// Headers is the list of headers to match for the routing decision.
 	// Currently, only exact match is supported.
 	Headers []HeaderMatch `json:"headers"`
 	// Backends is the list of backends to which the request should be routed to when the headers match.
 	Backends []Backend `json:"backends"`
+	// ModelsOwnedBy represents the owner of the running models serving by the backends,
+	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same owner.
+	//
+	// Default to "Envoy AI Gateway" if not set.
+	ModelsOwnedBy string `json:"modelsOwnedBy"`
+	// ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
+	// which will be exported as the field of "Created" in openai-compatible API "/models".
+	// It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+	//
+	// This is used only when this rule contains "x-ai-eg-model" in its header matching
+	// where the header value will be recognized as a "model" in "/models" endpoint.
+	// All the matched models will share the same creation time.
+	//
+	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	ModelsCreatedAt time.Time `json:"modelsCreatedAt"`
 }
+
+// RouteRuleName is the name of the route rule.
+type RouteRuleName string
 
 // Backend corresponds to AIGatewayRouteRuleBackendRef in api/v1alpha1/api.go
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
@@ -160,51 +188,8 @@ type Backend struct {
 	Name string `json:"name"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
-	// Weight is the weight of the backend in the routing decision.
-	//
-	// When DynamicLoadBalancing is specified, the weight is ignored.
-	Weight int `json:"weight"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	Auth *BackendAuth `json:"auth,omitempty"`
-	// DynamicLoadBalancing is the dynamic backend configuration which forces the AI filter to
-	// route the request to a specific endpoint (ip:port) instead of the normal cluster routing.
-	//
-	// When this is specified, the AI Gateway filter assume that the ORIGINAL_DST cluster is configured
-	// to route the request to an endpoint from `x-ai-eg-original-dst` header.
-	DynamicLoadBalancing *DynamicLoadBalancing `json:"dynamicLoadBalancing,omitempty"`
-}
-
-// DynamicLoadBalancing corresponds to InferencePool and InferenceModels belonging to the same pool.
-type DynamicLoadBalancing struct {
-	// Models that can be served by this backend. If not matched, the 404 is returned to the client.
-	//
-	// If multiple models are provided, the request is routed to the backend based on the weights, criticality, etc.
-	Models []DynamicLoadBalancingModel `json:"models,omitempty"`
-	// Backends can be either ip:port or hostname:port.
-	Backends []DynamicLoadBalancingBackend `json:"backends,omitempty"`
-}
-
-// DynamicLoadBalancingModel corresponds to InferenceModel in the Inference Extension.
-type DynamicLoadBalancingModel struct {
-	// Name is the name of the model.
-	Name string `json:"name"`
-	// Weight is the weight of the model in the routing decision when multiple models are provided.
-	Weight *int `json:"weight,omitempty"`
-	// TODO: Criticality?
-}
-
-// DynamicLoadBalancingBackend corresponds to a single AIServiceBackend that is selected by the
-// InferencePool. It is basically a wrapper of Backend with additional information to do
-// the IP address level dynamic load balancing.
-type DynamicLoadBalancingBackend struct {
-	Backend
-	// Hostnames is the hostname of this backend. The filter will resolve the hostname to the IP address
-	// asynchronously and use the resolved IP address to route the request.
-	Hostnames []string `json:"hostNames,omitempty"`
-	// IP is the IP address of the endpoint.
-	IPs []string `json:"ips,omitempty"`
-	// Port is the port of the endpoint.
-	Port int32 `json:"port"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -219,39 +204,43 @@ type BackendAuth struct {
 
 // AWSAuth defines the credentials needed to access AWS.
 type AWSAuth struct {
-	CredentialFileName string `json:"credentialFileName,omitempty"`
-	Region             string `json:"region"`
+	// CredentialFileLiteral is the literal string of the AWS credential file. E.g.
+	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>
+	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
+	Region                string `json:"region"`
 }
 
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
-	Filename string `json:"filename"`
+	// Key is the API key as a literal string.
+	Key string `json:"key"`
 }
 
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
-	Filename string `json:"filename"`
+	// AccessToken is the access token as a literal string.
+	AccessToken string `json:"accessToken"`
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
-func UnmarshalConfigYaml(path string) (*Config, []byte, error) {
+func UnmarshalConfigYaml(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return &cfg, raw, nil
+	return &cfg, nil
 }
 
 // MustLoadDefaultConfig loads the default configuration.
 // This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() (*Config, []byte) {
+func MustLoadDefaultConfig() *Config {
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
 		panic(err)
 	}
-	return &cfg, []byte(DefaultConfig)
+	return &cfg
 }

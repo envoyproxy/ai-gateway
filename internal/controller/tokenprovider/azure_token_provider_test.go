@@ -8,34 +8,36 @@ package tokenprovider
 import (
 	"context"
 	"net/http"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewAzureTokenProvider(t *testing.T) {
-	_, err := NewAzureTokenProvider("tenantID", "clientID", "", policy.TokenRequestOptions{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "secret can't be empty string")
+	mockProvider := NewMockTokenProvider("mock-token", time.Now().Add(1*time.Hour), nil)
+	_, err := NewAzureTokenProvider(t.Context(), "tenantID", "clientID", mockProvider, policy.TokenRequestOptions{})
+	require.NoError(t, err)
 }
 
 func TestAzureTokenProvider_GetToken(t *testing.T) {
 	t.Run("missing azure scope", func(t *testing.T) {
-		provider, err := NewAzureTokenProvider("tenantID", "clientID", "clientSecret", policy.TokenRequestOptions{})
+		mockProvider := NewMockTokenProvider("mock-token", time.Now().Add(1*time.Hour), nil)
+		provider, err := NewAzureTokenProvider(t.Context(), "tenantID", "clientID", mockProvider, policy.TokenRequestOptions{})
 		require.NoError(t, err)
 
 		tokenExpiry, err := provider.GetToken(context.Background())
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "ClientSecretCredential.GetToken() requires at least one scope")
+		require.Contains(t, err.Error(), "ClientAssertionCredential.GetToken() requires at least one scope")
 		require.Empty(t, tokenExpiry.Token)
 		require.True(t, tokenExpiry.ExpiresAt.IsZero())
 	})
 
 	t.Run("invalid azure credential info", func(t *testing.T) {
 		scopes := []string{"some-azure-scope"}
-		provider, err := NewAzureTokenProvider("invalidTenantID", "invalidClientID", "invalidClientSecret", policy.TokenRequestOptions{Scopes: scopes})
+		mockProvider := NewMockTokenProvider("mock-token", time.Now().Add(1*time.Hour), nil)
+		provider, err := NewAzureTokenProvider(t.Context(), "invalidTenantID", "invalidClientID", mockProvider, policy.TokenRequestOptions{Scopes: scopes})
 		require.NoError(t, err)
 
 		_, err = provider.GetToken(context.Background())
@@ -46,10 +48,9 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 	t.Run("azure proxy url", func(t *testing.T) {
 		// Set environment variable for the test
 		mockProxyURL := "http://localhost:8888"
-		os.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
-		defer os.Unsetenv("AI_GATEWAY_AZURE_PROXY_URL")
+		t.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
 
-		opts := GetClientSecretCredentialOptions()
+		opts := GetClientAssertionCredentialOptions()
 
 		require.NotNil(t, opts)
 		require.NotNil(t, opts.ClientOptions.Transport)

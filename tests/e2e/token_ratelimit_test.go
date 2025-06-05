@@ -30,11 +30,11 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	const modelName = "rate-limit-funky-model"
 	makeRequest := func(usedID string, input, output, total int, expStatus int) {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
@@ -103,7 +103,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.kill()
-		const query = `sum(gen_ai_client_token_usage_sum{app = "ai-eg-route-extproc-envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+		const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -142,5 +142,5 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		// We should see input, output, and total token types.
 		require.ElementsMatch(t, []string{"input", "output", "total"}, actualTypes)
 		return true
-	}, 20*time.Second, 1*time.Second)
+	}, 2*time.Minute, 1*time.Second)
 }

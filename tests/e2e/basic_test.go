@@ -26,7 +26,7 @@ func Test_Examples_Basic(t *testing.T) {
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
-	requireWaitForPodReady(t, egNamespace, egSelector)
+	requireWaitForGatewayPodReady(t, egSelector)
 
 	testUpstreamCase := examplesBasicTestCase{name: "testupsream", modelName: "some-cool-self-hosted-model"}
 	testUpstreamCase.run(t, egNamespace, egSelector)
@@ -72,7 +72,7 @@ func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string
 			t.Skip("skipped due to missing credentials")
 		}
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultPort)
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

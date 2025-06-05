@@ -37,21 +37,20 @@ spec:
           on the output schema of the AIServiceBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
 
-          For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+          Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
-            - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-              The name of these resources are `ai-eg-route-extproc-${name}`.
             - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
               The name of the HTTPRoute is the same as the AIGatewayRoute.
-            - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-              The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+            - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the target Gateways.
+              This will be created per Gateway, and its name is `ai-eg-eep-${gateway-name}`.
             - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
               The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 
           All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
           detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
           resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
-          Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+          Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
+          BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
         properties:
           apiVersion:
             description: |-
@@ -89,14 +88,20 @@ spec:
                       This is optional, and if not set, the default values of Deployment spec will be used.
                     properties:
                       replicas:
-                        description: Replicas is the number of desired pods of the
-                          external processor deployment.
+                        description: |-
+                          Replicas is the number of desired pods of the external processor deployment.
+
+                          Deprecated: This field is no longer used.
                         format: int32
                         type: integer
                       resources:
                         description: |-
                           Resources required by the external processor container.
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+
+                          Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
+                          AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
+                          to configure the resource requirements of the external processor container.
                         properties:
                           claims:
                             description: |-
@@ -213,7 +218,11 @@ spec:
                   \           unit: Hour\n\t          cost:\n\t            request:\n\t
                   \             from: Number\n\t              number: 0\n\t            response:\n\t
                   \             from: Metadata\n\t              metadata:\n\t                namespace:
-                  io.envoy.ai_gateway\n\t                key: llm_total_token\n```"
+                  io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
+                  that when multiple AIGatewayRoute resources are attached to the
+                  same Gateway, and\ndifferent costs are configured for the same metadata
+                  key, the ai-gateway will pick one of them\nto configure the metadata
+                  key in the generated HTTPRoute, and ignore the rest."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
@@ -280,27 +289,30 @@ spec:
                         Each backend can have a weight that determines the traffic distribution.
 
                         The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+
+                        By configuring multiple backends, you can achieve the fallback behavior in the case of
+                        the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
+                        Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
+                        https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
                       items:
                         description: AIGatewayRouteRuleBackendRef is a reference to
                           a backend with a weight.
                         properties:
-                          kind:
-                            default: AIServiceBackend
-                            description: |-
-                              Kind is the kind of the backend, which is either "AIServiceBackend" or "InferencePool" in Gateway API Inference Extension.
-
-                              When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)
-                              that can serve the same model sets that the InferencePool binds.
-
-                              Default is AIServiceBackend.
-                            enum:
-                            - AIServiceBackend
-                            - InferencePool
-                            type: string
                           name:
                             description: Name is the name of the AIServiceBackend.
                             minLength: 1
                             type: string
+                          priority:
+                            default: 0
+                            description: |-
+                              Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+                              See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
+                              Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+
+                              Default is 0.
+                            format: int32
+                            minimum: 0
+                            type: integer
                           weight:
                             default: 1
                             description: |-
@@ -309,6 +321,7 @@ spec:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 
                               Default is 1.
+                            format: int32
                             minimum: 0
                             type: integer
                         required:
@@ -392,6 +405,91 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
+                    modelsCreatedAt:
+                      description: |-
+                        ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
+                        which will be exported as the field of "Created" in openai-compatible API "/models".
+                        It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
+
+                        This is used only when this rule contains "x-ai-eg-model" in its header matching
+                        where the header value will be recognized as a "model" in "/models" endpoint.
+                        All the matched models will share the same creation time.
+
+                        Default to the creation timestamp of the AIGatewayRoute if not set.
+                      format: date-time
+                      type: string
+                    modelsOwnedBy:
+                      default: Envoy AI Gateway
+                      description: |-
+                        ModelsOwnedBy represents the owner of the running models serving by the backends,
+                        which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
+
+                        This is used only when this rule contains "x-ai-eg-model" in its header matching
+                        where the header value will be recognized as a "model" in "/models" endpoint.
+                        All the matched models will share the same owner.
+
+                        Default to "Envoy AI Gateway" if not set.
+                      type: string
+                    timeouts:
+                      description: Timeouts defines the timeouts that can be configured
+                        for an HTTP request.
+                      properties:
+                        backendRequest:
+                          description: |-
+                            BackendRequest specifies a timeout for an individual request from the gateway
+                            to a backend. This covers the time from when the request first starts being
+                            sent from the gateway to when the full response has been received from the backend.
+
+                            Setting a timeout to the zero duration (e.g. "0s") SHOULD disable the timeout
+                            completely. Implementations that cannot completely disable the timeout MUST
+                            instead interpret the zero duration as the longest possible value to which
+                            the timeout can be set.
+
+                            An entire client HTTP transaction with a gateway, covered by the Request timeout,
+                            may result in more than one call from the gateway to the destination backend,
+                            for example, if automatic retries are supported.
+
+                            The value of BackendRequest must be a Gateway API Duration string as defined by
+                            GEP-2257.  When this field is unspecified, its behavior is implementation-specific;
+                            when specified, the value of BackendRequest must be no more than the value of the
+                            Request timeout (since the Request timeout encompasses the BackendRequest timeout).
+
+                            Support: Extended
+                          pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                          type: string
+                        request:
+                          description: |-
+                            Request specifies the maximum duration for a gateway to respond to an HTTP request.
+                            If the gateway has not been able to respond before this deadline is met, the gateway
+                            MUST return a timeout error.
+
+                            For example, setting the `rules.timeouts.request` field to the value `10s` in an
+                            `HTTPRoute` will cause a timeout if a client request is taking longer than 10 seconds
+                            to complete.
+
+                            Setting a timeout to the zero duration (e.g. "0s") SHOULD disable the timeout
+                            completely. Implementations that cannot completely disable the timeout MUST
+                            instead interpret the zero duration as the longest possible value to which
+                            the timeout can be set.
+
+                            This timeout is intended to cover as close to the whole request-response transaction
+                            as possible although an implementation MAY choose to start the timeout after the entire
+                            request stream has been received instead of immediately after the transaction is
+                            initiated by the client.
+
+                            The value of Request is a Gateway API Duration string as defined by GEP-2257. When this
+                            field is unspecified, request timeout behavior is implementation-specific.
+
+                            Support: Extended
+                          pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                          type: string
+                      type: object
+                      x-kubernetes-validations:
+                      - message: backendRequest timeout cannot be longer than request
+                          timeout
+                        rule: '!(has(self.request) && has(self.backendRequest) &&
+                          duration(self.request) != duration(''0s'') && duration(self.backendRequest)
+                          > duration(self.request))'
                   type: object
                 maxItems: 128
                 type: array

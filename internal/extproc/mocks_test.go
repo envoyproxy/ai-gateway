@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 )
 
@@ -41,6 +42,11 @@ type mockProcessor struct {
 	expBody               *extprocv3.HttpBody
 	retProcessingResponse *extprocv3.ProcessingResponse
 	retErr                error
+}
+
+// SetBackend implements [Processor.SetBackend].
+func (m mockProcessor) SetBackend(context.Context, *filterapi.Backend, backendauth.Handler, Processor) error {
+	return nil
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -80,7 +86,7 @@ type mockTranslator struct {
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) RequestBody(body *openai.ChatCompletionRequest) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+func (m mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
@@ -113,19 +119,16 @@ func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool
 
 // mockRouter implements [router.Router] for testing.
 type mockRouter struct {
-	t                     *testing.T
-	expHeaders            map[string]string
-	retBackendName        string
-	retVersionedAPISchema filterapi.VersionedAPISchema
-	retBackendDynamicLB   *filterapi.DynamicLoadBalancing
-	retErr                error
+	t            *testing.T
+	expHeaders   map[string]string
+	retRouteName string
+	retErr       error
 }
 
 // Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (*filterapi.Backend, error) {
+func (m mockRouter) Calculate(headers map[string]string) (filterapi.RouteRuleName, error) {
 	require.Equal(m.t, m.expHeaders, headers)
-	b := &filterapi.Backend{Name: m.retBackendName, Schema: m.retVersionedAPISchema, DynamicLoadBalancing: m.retBackendDynamicLB}
-	return b, m.retErr
+	return filterapi.RouteRuleName(m.retRouteName), m.retErr
 }
 
 // mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.
@@ -209,9 +212,13 @@ func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, s
 	}
 }
 
-// RequireModelAndBackendSet asserts the model and backend set on the metrics.
-func (m *mockChatCompletionMetrics) RequireSelected(t *testing.T, model, backend string) {
+// RequireSelectedModel asserts the model and backend set on the metrics.
+func (m *mockChatCompletionMetrics) RequireSelectedModel(t *testing.T, model string) {
 	require.Equal(t, model, m.model)
+}
+
+// RequireModelAndBackendSet asserts the model and backend set on the metrics.
+func (m *mockChatCompletionMetrics) RequireSelectedBackend(t *testing.T, backend string) {
 	require.Equal(t, backend, m.backend)
 }
 
@@ -240,16 +247,3 @@ func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count in
 }
 
 var _ x.ChatCompletionMetrics = &mockChatCompletionMetrics{}
-
-// mockDynamicLB implements dynlb.DynamicLoadBalancer for testing.
-type mockDynamicLB struct {
-	backedName string
-	headers    []*corev3.HeaderValueOption
-}
-
-// SelectChatCompletionsEndpoint implements dynlb.DynamicLoadBalancer.
-func (m *mockDynamicLB) SelectChatCompletionsEndpoint(string, x.ChatCompletionMetrics) (
-	selected *filterapi.Backend, headers []*corev3.HeaderValueOption, err error,
-) {
-	return &filterapi.Backend{Name: m.backedName}, m.headers, nil
-}

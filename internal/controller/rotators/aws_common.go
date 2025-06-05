@@ -35,8 +35,8 @@ import (
 const (
 	// awsSessionNameFormat is the format string for AWS session names.
 	awsSessionNameFormat = "ai-gateway-%s"
-	// awsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
-	awsCredentialsKey = "credentials"
+	// AwsCredentialsKey is the key used to store AWS credentials in Kubernetes secrets.
+	AwsCredentialsKey = "credentials"
 )
 
 // defaultAWSConfig returns an AWS config with adaptive retry mode enabled.
@@ -122,5 +122,5 @@ func updateAWSCredentialsInSecret(secret *corev1.Secret, creds *awsCredentialsFi
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[awsCredentialsKey] = []byte(formatAWSCredentialsFile(creds))
+	secret.Data[AwsCredentialsKey] = []byte(formatAWSCredentialsFile(creds))
 }

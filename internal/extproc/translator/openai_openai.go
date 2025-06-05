@@ -12,6 +12,7 @@ import (
 	"io"
 	"strconv"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -29,14 +30,32 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	bufferingDone bool
 }
 
-// RequestBody implements [Translator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
+// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	if req.Stream {
 		o.stream = true
 	}
-	return nil, nil, nil
+	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
+	if onRetry {
+		headerMutation = &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{
+				{Header: &corev3.HeaderValue{
+					Key:      ":path",
+					RawValue: []byte("/v1/chat/completions"),
+				}},
+				{Header: &corev3.HeaderValue{
+					Key:      "content-length",
+					RawValue: []byte(strconv.Itoa(len(raw))),
+				}},
+			},
+		}
+		bodyMutation = &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{Body: raw},
+		}
+	}
+	return
 }
 
 // ResponseError implements [Translator.ResponseError]

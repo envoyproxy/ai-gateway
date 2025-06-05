@@ -60,7 +60,8 @@ spec:
                 description: |-
                   BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 
-                  A backend can be of either k8s Service or Backend resource of Envoy Gateway.
+                  A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
+                  as a backend in the future.
 
                   This is required to be set.
                 properties:
@@ -184,8 +185,12 @@ spec:
                 - name
                 type: object
               timeouts:
-                description: Timeouts defines the timeouts that can be configured
-                  for an HTTP request.
+                description: |-
+                  Timeouts defines the timeouts that can be configured for an HTTP request.
+
+                  Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
+                  AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and
+                  AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored.
                 properties:
                   backendRequest:
                     description: |-

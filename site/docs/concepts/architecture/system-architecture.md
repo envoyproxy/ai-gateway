@@ -24,14 +24,20 @@ The architecture is divided into two main planes:
    - Rate Limit Service manages token-based rate limiting
 
 The Control Plane configures the Data Plane through several paths:
-- AI Gateway Controller configures the External Processor and Rate Limit Service
-- Envoy Gateway Controller configures Envoy Proxy through xDS
+- AI Gateway Controller configures the External Processor as well as fine-tuning xDS configurations via Envoy Gateway extension server mechanism.
+- Envoy Gateway Controller configures Envoy Proxy through xDS as well as Rate Limit Service.
 
 ```mermaid
 graph TB
     subgraph "Control Plane"
-        K8s[Kubernetes API Server] --> Controller[AI Gateway Controller]
-        Controller --> EGController[Envoy Gateway Controller]
+        K8s[Kubernetes API Server]
+        Controller[AI Gateway Controller]
+        EGController[Envoy Gateway Controller]
+
+        Controller --> |GWAPI/EG resources|K8s
+        K8s -->|AI Gateway resources| Controller
+        K8s -->|GWAPI/EG resources| EGController
+        Controller <-->|xDS fine-tune| EGController
 
         style Controller fill:#f9f,stroke:#333,stroke-width:2px
         style EGController fill:#ddf,stroke:#333
@@ -42,8 +48,8 @@ graph TB
         ExtProc[External Processor]
         RateLimit[Rate Limit Service]
 
-        Envoy --> ExtProc
         Envoy --> RateLimit
+        Envoy --> ExtProc
 
         style Envoy fill:#f9f,stroke:#333,stroke-width:2px
         style ExtProc fill:#f9f,stroke:#333,stroke-width:2px
@@ -51,7 +57,7 @@ graph TB
     end
 
     Controller -.->|Configures| ExtProc
-    Controller -.->|Configures| RateLimit
+    EGController -.->|Configures| RateLimit
     EGController -.->|Updates Config| Envoy
 ```
 
@@ -63,11 +69,12 @@ The system operates through a series of interactions between components:
    - Kubernetes API Server receives configuration changes
    - AI Gateway Controller processes these changes and:
      - Creates resources for Envoy Gateway to consume
-     - Configures the External Processor for AI request handling
-     - Configures the Rate Limit Service for token-based limiting
-   - Envoy Gateway Controller watches gateway resources and:
+     - Configures the External Processor for AI request handling, including token usage extraction.
+   - Envoy Gateway Controller watches Gateway API and its Custom resources and:
      - Translates them into Envoy configuration
+     - Talk to AI Gateway Controller to fine-tune the configuration.
      - Pushes updates to Envoy Proxy via xDS protocol
+     - Configures the Rate Limit Service for token-based limiting
 
 2. **Request Flow**
    - Clients send requests to Envoy Proxy
@@ -80,7 +87,7 @@ The system operates through a series of interactions between components:
    - Rate Limit Service enforces token-based limits
 
 3. **Rate Limiting**
-   - External Processor extracts token usage from requests/responses
+   - External Processor extracts token usage from responses
    - Rate Limit Service receives token usage data
    - Rate limits are enforced based on configured policies
    - Helps manage resource utilization and costs

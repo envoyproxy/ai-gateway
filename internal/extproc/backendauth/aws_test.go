@@ -6,7 +6,6 @@
 package backendauth
 
 import (
-	"os"
 	"sync"
 	"testing"
 
@@ -18,32 +17,16 @@ import (
 )
 
 func TestNewAWSHandler(t *testing.T) {
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
-
 	handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{})
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
 
 func TestAWSHandler_Do(t *testing.T) {
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
-
-	// Test AWS credential file.
 	awsFileBody := "[default]\nAWS_ACCESS_KEY_ID=test\nAWS_SECRET_ACCESS_KEY=secret\n"
-	awsCredentialFile := t.TempDir() + "/aws_handler"
-
-	file, err := os.Create(awsCredentialFile)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, file.Close()) }()
-	_, err = file.WriteString(awsFileBody)
-	require.NoError(t, err)
-	require.NoError(t, file.Sync())
-
 	credentialFileHandler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
-		CredentialFileName: awsCredentialFile,
-		Region:             "us-east-1",
+		CredentialFileLiteral: awsFileBody,
+		Region:                "us-east-1",
 	})
 	require.NoError(t, err)
 

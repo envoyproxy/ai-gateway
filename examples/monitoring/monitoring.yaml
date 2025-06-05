@@ -18,22 +18,21 @@ data:
     global:
       scrape_interval: 3s
     scrape_configs:
-      - job_name: 'kubernetes-pods'
+      - job_name: 'envoy-gateway-pods'
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          # Only scrape Envoy Gateway pods.
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            regex: "envoy"
             action: keep
-            regex: true
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-            action: replace
-            target_label: __metrics_path__
-            regex: (.+)
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:$2
-            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_managed_by]
+            regex: "envoy-gateway"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+            regex: "proxy"
+            action: keep
+          # Add labels to the metrics.
           - action: labelmap
             regex: __meta_kubernetes_pod_label_(.+)
           - source_labels: [__meta_kubernetes_namespace]
@@ -42,6 +41,21 @@ data:
           - source_labels: [__meta_kubernetes_pod_name]
             action: replace
             target_label: kubernetes_pod_name
+          # "metrics" is the port name for Envoy Proxy's prometheus metrics.
+          # https://github.com/envoyproxy/gateway/blob/eb7266c042f4573d7e67c9ea02a19e0deff6e17f/internal/infrastructure/kubernetes/proxy/resource.go#L92
+          # "aigw-metrics" is the port name for AI Gateway filter's prometheus metrics.
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: "metrics|aigw-metrics"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            # https://github.com/envoyproxy/gateway/blob/eb7266c042f4573d7e67c9ea02a19e0deff6e17f/internal/infrastructure/kubernetes/proxy/resource_provider.go#L576-L578
+            replacement: /stats/prometheus
+            target_label: __metrics_path__
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: aigw-metrics
+            replacement: /metrics
+            target_label: __metrics_path__
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -105,6 +119,7 @@ spec:
         image: prom/prometheus:v2.47.0
         args:
         - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--log.level=debug"
         volumeMounts:
         - name: prometheus-config
           mountPath: /etc/prometheus/
@@ -121,6 +136,8 @@ kind: Service
 metadata:
   name: prometheus
   namespace: monitoring
+  labels:
+    app: prometheus
 spec:
   selector:
     app: prometheus

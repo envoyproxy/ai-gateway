@@ -7,6 +7,7 @@ package translator
 
 import (
 	"fmt"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -27,7 +28,7 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 	openAIToOpenAITranslatorV1ChatCompletion
 }
 
-func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.ChatCompletionRequest) (
+func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	// Assume deployment_id is same as model name.
@@ -43,5 +44,16 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(req *openai.
 	if req.Stream {
 		o.stream = true
 	}
-	return headerMutation, nil, nil
+
+	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
+	if onRetry {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(strconv.Itoa(len(raw))),
+		}})
+		bodyMutation = &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{Body: raw},
+		}
+	}
+	return
 }

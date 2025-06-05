@@ -711,7 +711,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, err := o.RequestBody(&originalReq)
+			hm, bm, err := o.RequestBody(nil, &originalReq, false)
 			var expPath string
 			require.Equal(t, tt.input.Stream, o.stream)
 			if tt.input.Stream {

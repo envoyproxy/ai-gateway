@@ -97,7 +97,7 @@ tidy:
 .PHONY: apigen
 apigen:
 	@echo "apigen => ./api/v1alpha1/..."
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -167,13 +167,15 @@ test-controller: apigen
         ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
     done
 
-# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
-#
-# This requires the docker images to be built.
-.PHONY: test-e2e
-test-e2e:
+# This builds the docker images for the controller, extproc and testupstream for the e2e tests.
+.PHONY: build-e2e
+build-e2e:
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+
+# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e
+test-e2e: build-e2e
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
@@ -268,7 +270,7 @@ docker-build.%:
 docker-build:
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) docker-build.$(COMMAND_NAME);)
 
-HELM_DIR := ./manifests/charts/ai-gateway-helm
+HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 
 # This lints the helm chart, ensuring that it is for packaging.
 .PHONY: helm-lint
@@ -301,4 +303,5 @@ helm-test: helm-package
 .PHONY: helm-push
 helm-push: helm-package
 	@echo "helm-push => .${HELM_DIR}"
+	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
 	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}

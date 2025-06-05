@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	// azureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
-	azureAccessTokenKey = "azureAccessToken"
+	// AzureAccessTokenKey is the key used to store Azure access token in Kubernetes secrets.
+	AzureAccessTokenKey = "azureAccessToken"
 )
 
 // azureTokenRotator implements Rotator interface for Azure access token exchange.
@@ -139,5 +139,5 @@ func populateAzureAccessToken(secret *corev1.Secret, token *tokenprovider.TokenE
 	if secret.Data == nil {
 		secret.Data = make(map[string][]byte)
 	}
-	secret.Data[azureAccessTokenKey] = []byte(token.Token)
+	secret.Data[AzureAccessTokenKey] = []byte(token.Token)
 }

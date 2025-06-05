@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,9 +23,9 @@ import (
 )
 
 const (
-	egLatest      = "v0.0.0-latest" // This defaults to the latest dev version.
-	egNamespace   = "envoy-gateway-system"
-	egDefaultPort = 10080
+	egDefaultVersion     = "v1.4.0"
+	egNamespace          = "envoy-gateway-system"
+	egDefaultServicePort = 80
 
 	kindClusterName = "envoy-ai-gateway"
 	kindLogDir      = "./logs"
@@ -34,7 +35,7 @@ var egVersion = func() string {
 	if v, ok := os.LookupEnv("EG_VERSION"); ok {
 		return v
 	} else {
-		return egLatest
+		return egDefaultVersion
 	}
 }()
 
@@ -215,8 +216,16 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
+	helm_crd := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"../../manifests/charts/ai-gateway-crds-helm",
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helm_crd.Stdout = os.Stdout
+	helm_crd.Stderr = os.Stderr
+	if err = helm_crd.Run(); err != nil {
+		return
+	}
+
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
-		"--set", "controller.enableInferenceExtension=true",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -305,39 +314,47 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	return
 }
 
-func requireWaitForPodReady(t *testing.T, namespace, labelSelector string) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
-	requireWaitForPodReadyWithTimeout(t, namespace, labelSelector, 3*time.Minute)
-}
-
-func requireWaitForPodReadyWithTimeout(t *testing.T, namespace, labelSelector string, timeout time.Duration) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
+func requireWaitForGatewayPodReady(t *testing.T, selector string) {
+	// Wait for the Envoy Gateway pod containing the extproc container.
 	require.Eventually(t, func() bool {
-		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", namespace,
-			"pods", "--for=condition=Ready", "-l", labelSelector)
-		return cmd.Run() == nil
-	}, timeout, 5*time.Second)
-}
-
-func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
-	f, err := newPodPortForwarder(t.Context(), namespace, selector, port)
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		conn, err := http.Get(f.address())
+		cmd := kubectl(t.Context(), "get", "pod", "-n", egNamespace,
+			"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
+		cmd.Stdout = nil // To ensure that we can capture the output by Output().
+		out, err := cmd.Output()
 		if err != nil {
 			t.Logf("error: %v", err)
 			return false
 		}
-		_ = conn.Body.Close()
+		return strings.Contains(string(out), "ai-gateway-extproc")
+	}, 2*time.Minute, 1*time.Second)
+
+	// This repeats the wait subcommand in order to be able to wait for the
+	// resources not created yet.
+	require.Eventually(t, func() bool {
+		cmd := kubectl(t.Context(), "wait", "--timeout=2s", "-n", egNamespace,
+			"pods", "--for=condition=Ready", "-l", selector)
+		return cmd.Run() == nil
+	}, 3*time.Minute, 5*time.Second)
+}
+
+// requireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
+func requireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) portForwarder {
+	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		res, err := http.Get(f.address())
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		_ = res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
 	return f
 }
 
-// newPodPortForwarder creates a new local port forwarder for the namespace and selector.
-func newPodPortForwarder(ctx context.Context, namespace, selector string, podPort int) (f portForwarder, err error) {
+// newServicePortForwarder creates a new local port forwarder for the namespace and selector.
+func newServicePortForwarder(ctx context.Context, namespace, selector string, podPort int) (f portForwarder, err error) {
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return portForwarder{}, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
@@ -348,7 +365,7 @@ func newPodPortForwarder(ctx context.Context, namespace, selector string, podPor
 	}
 	f.localPort = l.Addr().(*net.TCPAddr).Port
 
-	cmd := kubectl(ctx, "get", "pod", "-n", namespace,
+	cmd := kubectl(ctx, "get", "svc", "-n", namespace,
 		"--selector="+selector, "-o", "jsonpath='{.items[0].metadata.name}'")
 	cmd.Stdout = nil // To ensure that we can capture the output by Output().
 	out, err := cmd.Output()
@@ -358,7 +375,7 @@ func newPodPortForwarder(ctx context.Context, namespace, selector string, podPor
 	serviceName := string(out[1 : len(out)-1]) // Remove the quotes.
 
 	cmd = kubectl(ctx, "port-forward",
-		"-n", namespace, "pod/"+serviceName,
+		"-n", namespace, "svc/"+serviceName,
 		fmt.Sprintf("%d:%d", f.localPort, podPort),
 	)
 	if err := cmd.Start(); err != nil {

@@ -40,21 +40,20 @@ receive. And then the Gateway will route the traffic to the appropriate AIServic
 on the output schema of the AIServiceBackend while doing the other necessary jobs like
 upstream authentication, rate limit, etc.
 
-For Advanced Users: Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
-  - Deployment, Service, and ConfigMap of the k8s API for the AI Gateway filter.
-    The name of these resources are `ai-eg-route-extproc-${name}`.
   - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
     The name of the HTTPRoute is the same as the AIGatewayRoute.
-  - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the HTTPRoute.
-    The name of the EnvoyExtensionPolicy is `ai-eg-route-extproc-${name}` which is the same as the Deployment, etc.
+  - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the target Gateways.
+    This will be created per Gateway, and its name is `ai-eg-eep-${gateway-name}`.
   - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
     The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 
 All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
 detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
 resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
-Gateway to patch the generated resources. For example, you can insert a custom filter into the filter chain.
+Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
+BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 
 ##### Fields
 
@@ -300,7 +299,6 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AIGatewayFilterConfigType](#aigatewayfilterconfigtype)
 - [AIGatewayRouteRule](#aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIGatewayRouteRuleBackendRefKind](#aigatewayrouterulebackendrefkind)
 - [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
 - [AIGatewayRouteSpec](#aigatewayroutespec)
 - [AIGatewayRouteStatus](#aigatewayroutestatus)
@@ -309,9 +307,11 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
@@ -364,12 +364,12 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   name="replicas"
   type="integer"
   required="false"
-  description="Replicas is the number of desired pods of the external processor deployment."
+  description="Replicas is the number of desired pods of the external processor deployment.<br />Deprecated: This field is no longer used."
 /><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
 />
 
 
@@ -414,12 +414,28 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
   required="false"
-  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute."
+  description="BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />By configuring multiple backends, you can achieve the fallback behavior in the case of<br />the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
   type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
   required="false"
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
+/><ApiField
+  name="timeouts"
+  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  required="false"
+  description="Timeouts defines the timeouts that can be configured for an HTTP request."
+/><ApiField
+  name="modelsOwnedBy"
+  type="string"
+  required="false"
+  defaultValue="Envoy AI Gateway"
+  description="ModelsOwnedBy represents the owner of the running models serving by the backends,<br />which will be exported as the field of `OwnedBy` in openai-compatible API `/models`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same owner.<br />Default to `Envoy AI Gateway` if not set."
+/><ApiField
+  name="modelsCreatedAt"
+  type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
+  required="false"
+  description="ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same creation time.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
 />
 
 
@@ -437,12 +453,6 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 
 
 <ApiField
-  name="kind"
-  type="[AIGatewayRouteRuleBackendRefKind](#aigatewayrouterulebackendrefkind)"
-  required="true"
-  defaultValue="AIServiceBackend"
-  description="Kind is the kind of the backend, which is either `AIServiceBackend` or `InferencePool` in Gateway API Inference Extension.<br />When this references InferencePool, the selector of the InferencePool is used to select (multiple) AIServiceBackend(s)<br />that can serve the same model sets that the InferencePool binds.<br />Default is AIServiceBackend."
-/><ApiField
   name="name"
   type="string"
   required="true"
@@ -453,33 +463,15 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   required="false"
   defaultValue="1"
   description="Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in<br />the BackendRef in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef<br />Default is 1."
-/>
-
-
-#### AIGatewayRouteRuleBackendRefKind
-
-**Underlying type:** string
-
-**Appears in:**
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-
-AIGatewayRouteRuleBackendRefKind specifies the kind of the backend reference.
-
-
-
-##### Possible Values
-
-<ApiField
-  name="AIServiceBackend"
-  type="enum"
-  required="false"
-  description="AIGatewayRouteRuleBackendRefAIServiceBackend is the kind of the AIServiceBackend.<br />"
 /><ApiField
-  name="InferencePool"
-  type="enum"
+  name="priority"
+  type="integer"
   required="false"
-  description="AIGatewayRouteRuleBackendRefInferencePool is the kind of the InferencePool in the Gateway API Inference Extension.<br />https://github.com/kubernetes-sigs/gateway-api-inference-extension<br />"
+  defaultValue="0"
+  description="Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.<br />See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority<br />Note: This will override the `faillback` property of the underlying Envoy Gateway Backend<br />Default is 0."
 />
+
+
 #### AIGatewayRouteRuleMatch
 
 
@@ -538,7 +530,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="llmRequestCosts"
   type="[LLMRequestCost](#llmrequestcost) array"
   required="false"
-  description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-user-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```"
+  description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-user-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, the ai-gateway will pick one of them<br />to configure the metadata key in the generated HTTPRoute, and ignore the rest."
 />
 
 
@@ -585,7 +577,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendRef"
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
-  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend can be of either k8s Service or Backend resource of Envoy Gateway.<br />This is required to be set."
+  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
@@ -595,7 +587,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or<br />AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and<br />AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored."
 />
 
 
@@ -696,7 +688,7 @@ and store them in a temporary credentials file.
   name="oidc"
   type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
   required="true"
-  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for temporary AWS credentials."
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
 /><ApiField
   name="grantType"
   type="string"
@@ -712,6 +704,39 @@ and store them in a temporary credentials file.
   type="string"
   required="true"
   description="AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account<br />which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider."
+/>
+
+
+#### AzureOIDCExchangeToken
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+
+AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+and store them in a secret.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
 />
 
 
@@ -775,6 +800,8 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+neither are set.
 
 ##### Fields
 
@@ -793,8 +820,45 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 /><ApiField
   name="clientSecretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
+  required="false"
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+/><ApiField
+  name="oidcExchangeToken"
+  type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
+  required="false"
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
+/>
+
+
+#### BackendSecurityPolicyOIDC
+
+
+
+**Appears in:**
+- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
+
+BackendSecurityPolicyOIDC specifies OIDC related fields.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
 />
 
 

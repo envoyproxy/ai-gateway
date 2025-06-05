@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -27,6 +26,7 @@ import (
 // Since it returns an immediate response after processing the headers, the rest of the methods of the
 // Processor are not implemented. Those should never be called.
 type modelsProcessor struct {
+	passThroughProcessor
 	logger *slog.Logger
 	models openai.ModelList
 }
@@ -34,17 +34,20 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger) (Processor, error) {
+func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	if isUpstreamFilter {
+		return passThroughProcessor{}, nil
+	}
 	models := openai.ModelList{
 		Object: "list",
 		Data:   make([]openai.Model, 0, len(config.declaredModels)),
 	}
 	for _, m := range config.declaredModels {
 		models.Data = append(models.Data, openai.Model{
-			ID:      m,
+			ID:      m.name,
 			Object:  "model",
-			OwnedBy: "Envoy AI Gateway",              // TODO(nacx): make this configurable when we need more flexibility
-			Created: openai.JSONUNIXTime(time.Now()), // TODO(nacx): does this really matter here?
+			OwnedBy: m.ownedBy,
+			Created: openai.JSONUNIXTime(m.createdAt),
 		})
 	}
 	return &modelsProcessor{logger: logger, models: models}, nil

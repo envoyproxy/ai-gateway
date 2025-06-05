@@ -16,12 +16,13 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
-// dummyCustomRouter implements [filterapi.Router].
+// dummyCustomRouter implements [x.Router].
 type dummyCustomRouter struct{ called bool }
 
-func (c *dummyCustomRouter) Calculate(map[string]string) (*filterapi.Backend, error) {
+// Calculate implements [x.Router.Calculate].
+func (c *dummyCustomRouter) Calculate(map[string]string) (filterapi.RouteRuleName, error) {
 	c.called = true
-	return nil, nil
+	return "", nil
 }
 
 func TestRouter_NewRouter_Custom(t *testing.T) {
@@ -41,39 +42,28 @@ func TestRouter_NewRouter_Custom(t *testing.T) {
 }
 
 func TestRouter_Calculate(t *testing.T) {
-	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 	_r, err := New(&filterapi.Config{
 		Rules: []filterapi.RouteRule{
 			{
-				Backends: []filterapi.Backend{
-					{Name: "cat", Schema: outSchema},
-				},
+				Name: "cat",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-some-random-non-model-header", Value: "dog"},
 				},
 			},
 			{
-				Backends: []filterapi.Backend{
-					{Name: "foo", Schema: outSchema, Weight: 1},
-					{Name: "bar", Schema: outSchema, Weight: 3},
-				},
+				Name: "foo",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "llama3.3333"},
 				},
 			},
 			{
-				Backends: []filterapi.Backend{
-					{Name: "baz", Schema: outSchema},
-					{Name: "qux", Schema: outSchema},
-				},
+				Name: "baz",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "o1"},
 				},
 			},
 			{
-				Backends: []filterapi.Backend{
-					{Name: "openai", Schema: outSchema},
-				},
+				Name: "openai",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "gpt4.4444"},
 				},
@@ -85,183 +75,35 @@ func TestRouter_Calculate(t *testing.T) {
 	require.True(t, ok)
 
 	t.Run("no matching rule", func(t *testing.T) {
-		b, err := r.Calculate(map[string]string{"x-model-name": "something-quirky"})
+		_, err := r.Calculate(map[string]string{"x-model-name": "something-quirky"})
 		require.Error(t, err)
-		require.Nil(t, b)
 	})
 	t.Run("matching rule - single backend choice", func(t *testing.T) {
 		b, err := r.Calculate(map[string]string{"x-model-name": "gpt4.4444"})
 		require.NoError(t, err)
-		require.Equal(t, "openai", b.Name)
-		require.Equal(t, outSchema, b.Schema)
+		require.Equal(t, filterapi.RouteRuleName("openai"), b)
 	})
-	t.Run("matching rule - multiple unweighted backend choices", func(t *testing.T) {
-		chosenNames := make(map[string]int)
-		for i := 0; i < 1000; i++ {
-			b, err := r.Calculate(map[string]string{"x-model-name": "o1"})
-			require.NoError(t, err)
-			chosenNames[b.Name]++
-			require.Contains(t, []string{"baz", "qux"}, b.Name)
-			require.Equal(t, outSchema, b.Schema)
-		}
-		require.InDelta(t, 500, chosenNames["qux"], 50)
-		require.InDelta(t, 500, chosenNames["baz"], 50)
-	})
-	t.Run("matching rule - multiple backend choices", func(t *testing.T) {
-		chosenNames := make(map[string]int)
-		for i := 0; i < 1000; i++ {
-			b, err := r.Calculate(map[string]string{"x-model-name": "llama3.3333"})
-			require.NoError(t, err)
-			chosenNames[b.Name]++
-			require.Contains(t, []string{"foo", "bar"}, b.Name)
-			require.Equal(t, outSchema, b.Schema)
-		}
-		require.Greater(t, chosenNames["bar"], chosenNames["foo"])
-		require.Greater(t, chosenNames["bar"], 700)
-		require.Greater(t, chosenNames["foo"], 200)
-	})
-
 	t.Run("first match win", func(t *testing.T) {
 		b, err := r.Calculate(map[string]string{"x-some-random-non-model-header": "dog", "x-model-name": "llama3.3333"})
 		require.NoError(t, err)
-		require.Equal(t, "cat", b.Name)
+		require.Equal(t, filterapi.RouteRuleName("cat"), b)
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1000)
 
-		var foo atomic.Int32
-		var bar atomic.Int32
+		var count atomic.Int32
 		for range 1000 {
 			go func() {
 				defer wg.Done()
 				b, err := r.Calculate(map[string]string{"x-model-name": "llama3.3333"})
 				require.NoError(t, err)
 				require.NotNil(t, b)
-
-				if b.Name == "foo" {
-					foo.Add(1)
-				} else {
-					bar.Add(1)
-				}
+				count.Add(1)
 			}()
 		}
 		wg.Wait()
-		require.Equal(t, int32(1000), bar.Load()+foo.Load())
-		require.Greater(t, bar.Load(), foo.Load())
-		require.Greater(t, bar.Load(), int32(700))
-		require.Greater(t, foo.Load(), int32(200))
+		require.Greater(t, count.Load(), int32(200))
 	})
-}
-
-func TestRouter_selectBackendFromRule(t *testing.T) {
-	_r, err := New(&filterapi.Config{}, nil)
-	require.NoError(t, err)
-	r, ok := _r.(*router)
-	require.True(t, ok)
-
-	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
-	type expectedSelectionsWithMaxDelta map[string]struct {
-		expectedSelections int
-		maxDelta           float64
-	}
-
-	tests := []struct {
-		name                           string
-		rule                           *filterapi.RouteRule
-		expectedSelectionsWithMaxDelta expectedSelectionsWithMaxDelta
-	}{
-		{
-			name: "single backend should always choose that backend",
-			rule: &filterapi.RouteRule{
-				Backends: []filterapi.Backend{
-					{
-						Name:   "foo",
-						Schema: outSchema,
-					},
-				},
-			},
-			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
-				"foo": {
-					expectedSelections: 1000,
-					maxDelta:           0,
-				},
-			},
-		},
-		{
-			name: "multiple backends without weights should choose one randomly",
-			rule: &filterapi.RouteRule{
-				Backends: []filterapi.Backend{
-					{Name: "foo", Schema: outSchema},
-					{Name: "bar", Schema: outSchema},
-					{Name: "baz", Schema: outSchema},
-				},
-			},
-			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
-				"foo": {
-					expectedSelections: 333,
-					maxDelta:           100,
-				},
-				"bar": {
-					expectedSelections: 333,
-					maxDelta:           100,
-				},
-				"baz": {
-					expectedSelections: 333,
-					maxDelta:           100,
-				},
-			},
-		},
-		{
-			name: "multiple backends with weights should choose based on weights",
-			rule: &filterapi.RouteRule{
-				Backends: []filterapi.Backend{
-					{Name: "foo", Schema: outSchema, Weight: 1},
-					{Name: "bar", Schema: outSchema, Weight: 3},
-				},
-			},
-			expectedSelectionsWithMaxDelta: expectedSelectionsWithMaxDelta{
-				"foo": {
-					expectedSelections: 250,
-					maxDelta:           100,
-				},
-				"bar": {
-					expectedSelections: 750,
-					maxDelta:           100,
-				},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			chosenNames := make(map[string]int)
-			for i := 0; i < 1000; i++ {
-				b := r.selectBackendFromRule(test.rule)
-				chosenNames[b.Name]++
-			}
-
-			for backendName, expectedSelectionsWithMaxDelta := range test.expectedSelectionsWithMaxDelta {
-				require.InDelta(t, expectedSelectionsWithMaxDelta.expectedSelections, chosenNames[backendName], expectedSelectionsWithMaxDelta.maxDelta)
-			}
-		})
-	}
-}
-
-func TestRouter_selectBackendFromRule_negativeWeight(t *testing.T) {
-	_r, err := New(&filterapi.Config{}, nil)
-	require.NoError(t, err)
-	r, ok := _r.(*router)
-	require.True(t, ok)
-
-	outSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
-
-	rule := &filterapi.RouteRule{
-		Backends: []filterapi.Backend{
-			{Name: "foo", Schema: outSchema, Weight: -1},
-		},
-	}
-	b := r.selectBackendFromRule(rule)
-	require.Equal(t, "foo", b.Name)
 }

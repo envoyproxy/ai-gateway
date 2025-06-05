@@ -66,9 +66,20 @@ spec:
   schema:
     name: OpenAI
   backendRef:
-    name: testupstream
-    kind: Service
-    port: 80
+    name: envoy-ai-gateway-token-ratelimit-testupstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-token-ratelimit-testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy

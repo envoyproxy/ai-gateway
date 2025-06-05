@@ -48,10 +48,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "no_target_refs.yaml",
 			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
 		},
-		{
-			name:   "invalid_backendref.yaml",
-			expErr: `AIGatewayRoute.aigateway.envoyproxy.io "invalid-backendref" is invalid: [spec.rules[0].backendRefs[0].kind: Unsupported value: "Foo": supported values: "AIServiceBackend", "InferencePool"`,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
@@ -134,6 +130,15 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "azure_credentials_missing_tenant_id.yaml",
 			expErr: "spec.azureCredentials.tenantID in body should be at least 1 chars long",
 		},
+		{
+			name:   "azure_missing_auth.yaml",
+			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		{
+			name:   "azure_multiple_auth.yaml",
+			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},

@@ -70,6 +70,8 @@ linters-settings:
         alias: routev3
       - pkg: github.com/envoyproxy/gateway/proto/extension
         alias: egextension
+      - pkg: github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3
+        alias: httpconnectionmanagerv3
   gci:
     sections:
       # Captures all standard packages if they do not match another section.

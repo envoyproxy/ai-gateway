@@ -6,13 +6,22 @@
 package mainlib
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -89,13 +98,17 @@ failed to unmarshal log level: slog: level string "invalid": unknown name`)
 }
 
 func TestListenAddress(t *testing.T) {
+	unixPath := t.TempDir() + "/extproc.sock"
+	// Create a stale file to ensure that removing the file works correctly.
+	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0o600))
+
 	tests := []struct {
 		addr        string
 		wantNetwork string
 		wantAddress string
 	}{
 		{":8080", "tcp", ":8080"},
-		{"unix:///var/run/ai-gateway/extproc.sock", "unix", "/var/run/ai-gateway/extproc.sock"},
+		{"unix://" + unixPath, "unix", unixPath},
 	}
 
 	for _, tt := range tests {
@@ -105,6 +118,8 @@ func TestListenAddress(t *testing.T) {
 			assert.Equal(t, tt.wantAddress, address)
 		})
 	}
+	_, err := os.Stat(unixPath)
+	require.ErrorIs(t, err, os.ErrNotExist, "expected the stale socket file to be removed")
 }
 
 func TestStartMetricsServer(t *testing.T) {
@@ -121,4 +136,51 @@ func TestStartMetricsServer(t *testing.T) {
 
 	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil)
 	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, "target_info{")
+}
+
+func TestStartHealthCheckServer(t *testing.T) {
+	for _, tc := range []string{"unix", "tcp"} {
+		t.Run(tc, func(t *testing.T) {
+			var grpcLis net.Listener
+			var err error
+			if tc == "unix" {
+				_ = os.Remove("/tmp/ext_proc.sock")
+				grpcLis, err = net.Listen("unix", "/tmp/ext_proc.sock")
+			} else {
+				grpcLis, err = net.Listen("tcp", "localhost:1063")
+			}
+			require.NoError(t, err)
+
+			hs := health.NewServer()
+			hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+			grpcSrv := grpc.NewServer()
+			grpc_health_v1.RegisterHealthServer(grpcSrv, hs)
+			go func() {
+				_ = grpcSrv.Serve(grpcLis)
+			}()
+			defer grpcSrv.Stop()
+			time.Sleep(time.Millisecond * 100)
+
+			httpSrv := startHealthCheckServer(
+				"", // addr unused when invoking Handler directly.
+				slog.Default(),
+				grpcLis,
+			)
+
+			req := httptest.NewRequest("GET", "/", nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			httpSrv.Handler.ServeHTTP(rr, req)
+			res := rr.Result()
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			fmt.Println(string(body))
+			require.Equal(t, http.StatusOK, res.StatusCode)
+		})
+	}
 }

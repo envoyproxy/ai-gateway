@@ -40,7 +40,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [Translator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(openAIReq *openai.ChatCompletionRequest) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var pathTemplate string
