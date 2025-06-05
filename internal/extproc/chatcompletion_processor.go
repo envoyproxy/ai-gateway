@@ -271,8 +271,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		c.metrics.RecordRequestCompletion(ctx, err == nil)
 	}()
 	var br io.Reader
-	switch c.responseEncoding {
 	var removeHeaders []string
+	switch c.responseEncoding {
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
