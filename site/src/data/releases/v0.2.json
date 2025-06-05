@@ -12,12 +12,12 @@
       "date": "June 5, 2025",
       "type": "minor",
       "tags": [
-        { "text": "Minor Release", "type": "release" },
-        { "text": "Azure OpenAI", "type": "feature" },
+        { "text": "Azure OpenAI Integration", "type": "feature" },
         { "text": "Sidecar Architecture", "type": "feature" },
-        { "text": "Performance", "type": "feature" },
+        { "text": "Performance Improvements", "type": "feature" },
         { "text": "CLI Tools", "type": "feature" },
-        { "text": "Cross-Backend Failover and Retry", "type": "feature" }
+        { "text": "Model Failover and Retry", "type": "feature" },
+        { "text": "Certificate Manager Integration", "type": "feature" }
       ],
       "overview": "Envoy AI Gateway v0.2.0 builds upon the solid foundation of v0.1.0 with focus on expanding provider ecosystem support, improving reliability and performance through architectural changes, and enterprise-grade authentication support for Azure OpenAI.",
       "features": [

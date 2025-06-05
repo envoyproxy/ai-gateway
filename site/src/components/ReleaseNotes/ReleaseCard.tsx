@@ -32,7 +32,10 @@ export default function ReleaseCard({
   versions,
 }: ReleaseCardProps) {
   return (
-    <div className={`${styles.releaseCard} ${featured ? styles.featured : ''}`}>
+    <Link
+      to={linkTo}
+      className={`${styles.releaseCard} ${featured ? styles.featured : ''} ${styles.clickableCard}`}
+    >
       <div className={styles.releaseHeader}>
         <Heading as="h2" className={styles.releaseVersion}>
           {version}
@@ -60,9 +63,9 @@ export default function ReleaseCard({
         </div>
       )}
 
-      <Link className={styles.releaseLink} to={linkTo}>
+      <div className={styles.releaseLink}>
         {linkText}
-      </Link>
-    </div>
+      </div>
+    </Link>
   );
 }

@@ -12,10 +12,12 @@
       "date": "February 25, 2025",
       "type": "minor",
       "tags": [
-        { "text": "First Release", "type": "release" },
         { "text": "OpenAI", "type": "feature" },
         { "text": "AWS Bedrock", "type": "feature" },
-        { "text": "Rate Limiting", "type": "feature" }
+        { "text": "Rate Limiting", "type": "feature" },
+        { "text": "Unified API", "type": "feature" },
+        { "text": "Upstream Authentication", "type": "feature" },
+        { "text": "Token-Based Rate Limiting", "type": "feature" }
       ],
       "overview": "🎉 The inaugural release of Envoy AI Gateway! This milestone release establishes the foundation for unified AI service management with support for major LLM providers, comprehensive rate limiting, and Kubernetes-native integration.",
       "features": [

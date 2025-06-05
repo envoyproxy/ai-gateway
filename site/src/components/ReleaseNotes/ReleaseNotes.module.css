@@ -309,14 +309,29 @@
   border: 1px solid var(--ifm-color-emphasis-300);
   border-radius: 8px;
   padding: 2rem;
+  padding-bottom: 4rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
 }
 
-.releaseCard:hover {
+.releaseCard.clickableCard {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.releaseCard.clickableCard:hover {
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* .releaseCard:hover {
   border-color: var(--ifm-color-emphasis-400);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
+} */
 
 .releaseCard.featured {
   border: 2px solid var(--ifm-color-primary);
@@ -410,9 +425,13 @@
 }
 
 .releaseLink {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 2rem;
   color: var(--ifm-color-primary);
   text-decoration: none;
   font-weight: 600;
+  font-size: 0.9rem;
   transition: color 0.2s ease;
 }
 
