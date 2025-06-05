@@ -73,6 +73,7 @@ For users upgrading from v0.1.x to v0.2.0:
 
 1. **Review usage of any deprecated API fields** (particularly `AIServiceBackend.Timeouts`).
 1. **Update deployment configurations** if using custom replica configurations - the `replicas` field in `AIGatewayFilterConfigExternalProcessor` is now deprecated due to the new sidecar architecture.
+1. **Remove routing to Kubernetes services** - currently, Envoy AI Gateway does not support routing to Kubernetes services. This is a known limitation and will be addressed in a future release.
 
 ## 📦 Dependencies Versions
 
@@ -98,6 +99,7 @@ We're already working on exciting features:
 - **Google Gemini & Vertex Integration**
 - **Anthropic Integration**
 - **Support for the Gateway API Inference Extension**
+- **Endpoint picker support for Pod routing**
 - **What else do you want to see?** Get involved and [open an issue](https://github.com/envoyproxy/ai-gateway/issues/new?template=feature_request.md) and let us know!
 
 

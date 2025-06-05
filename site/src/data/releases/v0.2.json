@@ -148,6 +148,10 @@
         {
           "title": "Timeout Configuration",
           "description": "Deprecated timeout fields require migration to new configuration format."
+        },
+        {
+          "title": "Routing to Kubernetes Services",
+          "description": "Routing to Kubernetes services is not supported in Envoy AI Gateway v0.2.0. This is a known limitation and will be addressed in a future release."
         }
       ],
       "dependencies": [
