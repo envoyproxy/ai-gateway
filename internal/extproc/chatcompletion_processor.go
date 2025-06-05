@@ -271,12 +271,14 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		c.metrics.RecordRequestCompletion(ctx, err == nil)
 	}()
 	var br io.Reader
+	var isGzip bool
 	switch c.responseEncoding {
 	case "gzip":
 		br, err = gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode gzip: %w", err)
 		}
+		isGzip = true
 	default:
 		br = bytes.NewReader(body.Body)
 	}
@@ -284,6 +286,18 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
+	}
+	if bodyMutation != nil && isGzip {
+		if headerMutation == nil {
+			headerMutation = &extprocv3.HeaderMutation{}
+		}
+		// TODO: this is a hotfix, we should update this to recompress since its in the header
+		// If the response was gzipped, ensure we remove the content-encoding header.
+		//
+		// This is only needed when the transformation is actually modifying the body. When the backend
+		// is in OpenAI format (and it's the first try before any retry), the response body is not modified,
+		// so we don't need to remove the header in that case.
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
 	}
 
 	resp := &extprocv3.ProcessingResponse{

@@ -165,6 +165,18 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 		{
+			name:            "openai - /v1/chat/completions - gzip",
+			backend:         "openai",
+			responseType:    "gzip",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
 			name:            "azure-openai - /v1/chat/completions",
 			backend:         "azure-openai",
 			path:            "/v1/chat/completions",
