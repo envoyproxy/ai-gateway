@@ -68,7 +68,7 @@
           "items": [
             {
               "title": "Provider Fallback Logic",
-              "description": "Automatic failover between AI providers when primary provider is unavailable, ensuring high availability and fault tolerance."
+              "description": "Priority-based failover system that automatically routes traffic to lower priority AI providers as higher priority endpoints become unhealthy, ensuring high availability and fault tolerance through intelligent traffic distribution."
             },
             {
               "title": "Backend Retry Support",
