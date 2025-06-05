@@ -50,8 +50,8 @@
               "description": "Switched to sidecar deployment model with Unix Domain Sockets for improved performance and resource efficiency"
             },
             {
-              "title": "Enhanced ExtProc Limits",
-              "description": "Configurable external processor resource limits for better resource management"
+              "title": "Enhanced ExtProc Buffer Limits",
+              "description": "Increased external processor buffer limits from 32 KiB to 50 MiB for larger AI requests. Users can now configure CPU and memory resource limits via <code>filterConfig.externalProcessor.resources</code> for better resource management."
             },
             {
               "title": "Certificate Manager Integration",
