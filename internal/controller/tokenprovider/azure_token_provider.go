@@ -18,14 +18,20 @@ import (
 
 // azureTokenProvider is a provider implements TokenProvider interface for Azure access tokens.
 type azureTokenProvider struct {
-	credential  *azidentity.ClientSecretCredential
+	credential  *azidentity.ClientAssertionCredential
 	tokenOption policy.TokenRequestOptions
 }
 
-// NewAzureTokenProvider creates a new TokenProvider with the given tenant ID, client ID, client secret, and token request options.
-func NewAzureTokenProvider(tenantID, clientID, clientSecret string, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
-	clientOptions := GetClientSecretCredentialOptions()
-	credential, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, clientOptions)
+// NewAzureTokenProvider creates a new TokenProvider with the given tenant ID, client ID, tokenProvider, and token request options.
+func NewAzureTokenProvider(_ context.Context, tenantID, clientID string, tokenProvider TokenProvider, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
+	clientOptions := GetClientAssertionCredentialOptions()
+	credential, err := azidentity.NewClientAssertionCredential(tenantID, clientID, func(ctx context.Context) (string, error) {
+		token, err := tokenProvider.GetToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		return token.Token, nil
+	}, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -41,13 +47,13 @@ func (a *azureTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) 
 	return TokenExpiry{Token: azureToken.Token, ExpiresAt: azureToken.ExpiresOn}, nil
 }
 
-func GetClientSecretCredentialOptions() *azidentity.ClientSecretCredentialOptions {
+func GetClientAssertionCredentialOptions() *azidentity.ClientAssertionCredentialOptions {
 	if azureProxyURL := os.Getenv("AI_GATEWAY_AZURE_PROXY_URL"); azureProxyURL != "" {
 		proxyURL, err := url.Parse(azureProxyURL)
 		if err == nil {
 			customTransport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 			customHTTPClient := &http.Client{Transport: customTransport}
-			return &azidentity.ClientSecretCredentialOptions{
+			return &azidentity.ClientAssertionCredentialOptions{
 				ClientOptions: azcore.ClientOptions{
 					Transport: customHTTPClient,
 				},

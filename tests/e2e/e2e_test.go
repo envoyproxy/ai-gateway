@@ -226,7 +226,6 @@ func initAIGateway(ctx context.Context) (err error) {
 	}
 
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
-		"--set", "controller.enableInferenceExtension=true",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout

@@ -307,6 +307,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [APISchema](#apischema)
 - [AWSCredentialsFile](#awscredentialsfile)
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
@@ -421,7 +422,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
 /><ApiField
   name="timeouts"
-  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request."
 /><ApiField
@@ -462,6 +463,12 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   required="false"
   defaultValue="1"
   description="Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in<br />the BackendRef in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef<br />Default is 1."
+/><ApiField
+  name="priority"
+  type="integer"
+  required="false"
+  defaultValue="0"
+  description="Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.<br />See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority<br />Note: This will override the `faillback` property of the underlying Envoy Gateway Backend<br />Default is 0."
 />
 
 
@@ -573,12 +580,12 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
 /><ApiField
   name="backendSecurityPolicyRef"
-  type="[LocalObjectReference](#localobjectreference)"
+  type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
   description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to."
 /><ApiField
   name="timeouts"
-  type="[HTTPRouteTimeouts](#httproutetimeouts)"
+  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
   description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or<br />AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and<br />AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored."
 />
@@ -700,6 +707,39 @@ and store them in a temporary credentials file.
 />
 
 
+#### AzureOIDCExchangeToken
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+
+AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+and store them in a secret.
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
+/>
+
+
 #### BackendSecurityPolicyAPIKey
 
 
@@ -760,6 +800,8 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+neither are set.
 
 ##### Fields
 
@@ -778,8 +820,13 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 /><ApiField
   name="clientSecretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
+  required="false"
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
+/><ApiField
+  name="oidcExchangeToken"
+  type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
+  required="false"
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
 />
 
 
@@ -789,6 +836,7 @@ BackendSecurityPolicyAzureCredentials contains the supported authentication mech
 
 **Appears in:**
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 

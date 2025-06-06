@@ -277,6 +277,16 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=1
 	Weight *int32 `json:"weight,omitempty"`
+	// Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+	// See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
+	// Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+	//
+	// Default is 0.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=0
+	Priority *uint32 `json:"priority,omitempty"`
 }
 
 type AIGatewayRouteRuleMatch struct {
@@ -532,6 +542,10 @@ type BackendSecurityPolicyOIDC struct {
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
+// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
+// neither are set.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//
@@ -548,7 +562,23 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of secret should be "client-secret".
-	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+	//
+	// +optional
+	ClientSecretRef *gwapiv1.SecretObjectReference `json:"clientSecretRef,omitempty"`
+
+	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
+	// used to obtain temporary credentials to access Azure.
+	//
+	// +optional
+	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+}
+
+// AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
+// For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
+// and store them in a secret.
+type AzureOIDCExchangeToken struct {
+	// BackendSecurityPolicyOIDC is the generic OIDC fields.
+	BackendSecurityPolicyOIDC `json:",inline"`
 }
 
 // BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
