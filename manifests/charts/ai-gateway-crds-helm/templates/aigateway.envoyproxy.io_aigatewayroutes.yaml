@@ -301,7 +301,6 @@ spec:
                           modelName:
                             description: Name of the model in the backend. If provided
                               this will override the name provided in the request.
-                            minLength: 1
                             type: string
                           name:
                             description: Name is the name of the AIServiceBackend.
