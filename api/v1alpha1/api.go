@@ -268,7 +268,6 @@ type AIGatewayRouteRuleBackendRef struct {
 	Name string `json:"name"`
 
 	// Name of the model in the backend. If provided this will override the name provided in the request.
-	// +kubebuilder:validation:MinLength=1
 	ModelName string `json:"modelName,omitempty"`
 
 	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
