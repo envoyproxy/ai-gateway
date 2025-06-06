@@ -1,0 +1,240 @@
+{
+  "series": {
+    "version": "v0.1",
+    "title": "Envoy AI Gateway v0.1.x",
+    "subtitle": "The first official release of Envoy AI Gateway! This milestone includes unified API for LLM providers, token-based rate limiting, traffic management, and Kubernetes native integration.",
+    "badge": "First Release",
+    "badgeType": "Minor"
+  },
+  "releases": [
+    {
+      "version": "v0.1.0",
+      "date": "February 25, 2025",
+      "type": "minor",
+      "tags": [
+        { "text": "OpenAI", "type": "feature" },
+        { "text": "AWS Bedrock", "type": "feature" },
+        { "text": "Rate Limiting", "type": "feature" },
+        { "text": "Unified API", "type": "feature" },
+        { "text": "Upstream Authentication", "type": "feature" },
+        { "text": "Token-Based Rate Limiting", "type": "feature" }
+      ],
+      "overview": "🎉 The inaugural release of Envoy AI Gateway! This milestone release establishes the foundation for unified AI service management with support for major LLM providers, comprehensive rate limiting, and Kubernetes-native integration.",
+      "features": [
+        {
+          "title": "Unified LLM Provider API",
+          "items": [
+            {
+              "title": "OpenAI Integration",
+              "description": "Complete support for OpenAI's GPT models with chat completions and embeddings"
+            },
+            {
+              "title": "AWS Bedrock Support",
+              "description": "Native integration with AWS Bedrock for Claude, Titan, and other foundation models"
+            },
+            {
+              "title": "Request/Response Transformation",
+              "description": "Automatic translation between different provider APIs for consistent experience"
+            }
+          ]
+        },
+        {
+          "title": "Traffic Management & Rate Limiting",
+          "items": [
+            {
+              "title": "Token-Based Rate Limiting",
+              "description": "Intelligent rate limiting based on actual token consumption rather than request count"
+            },
+            {
+              "title": "Backend Load Balancing",
+              "description": "Weighted routing and load balancing across multiple AI service backends"
+            },
+            {
+              "title": "Route-Level Controls",
+              "description": "Fine-grained traffic management at the route level with flexible matching"
+            }
+          ]
+        },
+        {
+          "title": "Kubernetes Native Integration",
+          "items": [
+            {
+              "title": "Custom Resource Definitions",
+              "description": "Native Kubernetes CRDs for AIGateway, AIServiceBackend, and routing configuration"
+            },
+            {
+              "title": "Operator Pattern",
+              "description": "Kubernetes operator for automated lifecycle management and configuration"
+            },
+            {
+              "title": "RBAC Integration",
+              "description": "Full integration with Kubernetes RBAC for secure access control"
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "Initial API Design",
+          "description": "Core CRDs including AIGateway, AIServiceBackend, and AIGatewayRoute"
+        },
+        {
+          "title": "Gateway API Integration",
+          "description": "Built on top of Kubernetes Gateway API specifications"
+        },
+        {
+          "title": "OpenAPI Schema",
+          "description": "Complete OpenAPI v3 schema for all custom resources"
+        }
+      ],
+      "deprecations": [],
+      "bugFixes": [],
+      "breakingChanges": [],
+      "dependencies": [
+        { "title": "Go 1.22", "description": "Built with Go 1.22 for optimal performance and security" },
+        { "title": "Envoy Gateway v1.2", "description": "Built on Envoy Gateway for proven data plane capabilities" },
+        { "title": "Envoy v1.30", "description": "Leveraging Envoy Proxy's battle-tested networking capabilities" },
+        { "title": "Gateway API v1.1", "description": "Implementing latest Gateway API standards" }
+      ]
+    },
+    {
+      "version": "v0.1.1",
+      "date": "February 28, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" },
+        { "text": "AWS", "type": "feature" }
+      ],
+      "overview": "Quick bug fix release addressing AWS tooling issues discovered in the initial release.",
+      "features": [],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "AWS CLI Tools",
+          "description": "Fixed authentication issues with AWS Bedrock integration"
+        },
+        {
+          "title": "Configuration Validation",
+          "description": "Improved validation for AWS-specific configuration parameters"
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
+    },
+    {
+      "version": "v0.1.2",
+      "date": "March 5, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" },
+        { "text": "Images", "type": "feature" }
+      ],
+      "overview": "Container image and deployment fixes for improved reliability.",
+      "features": [],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "Image Tag Fixes",
+          "description": "Fixed rotator and ExtProc container image tag synchronization"
+        },
+        {
+          "title": "Deployment Stability",
+          "description": "Improved deployment reliability and image pulling"
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
+    },
+    {
+      "version": "v0.1.3",
+      "date": "March 14, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" },
+        { "text": "Streaming", "type": "feature" },
+        { "text": "Metrics", "type": "feature" }
+      ],
+      "overview": "Streaming improvements and enhanced observability with GenAI metrics.",
+      "features": [
+        {
+          "title": "Observability Enhancements",
+          "items": [
+            {
+              "title": "GenAI Metrics",
+              "description": "Added comprehensive metrics for AI service performance and usage tracking"
+            }
+          ]
+        }
+      ],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "Chat Completion Streaming",
+          "description": "Fixed streaming response handling for chat completions"
+        },
+        {
+          "title": "Metrics Collection",
+          "description": "Resolved issues with metrics collection and reporting"
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
+    },
+    {
+      "version": "v0.1.4",
+      "date": "March 20, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" },
+        { "text": "AWS", "type": "feature" }
+      ],
+      "overview": "Additional AWS validation and error handling improvements.",
+      "features": [],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "AWS Validation",
+          "description": "Fixed validation error handling for AWS Bedrock requests"
+        },
+        {
+          "title": "Error Response Format",
+          "description": "Improved error response formatting for better debugging"
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
+    },
+    {
+      "version": "v0.1.5",
+      "date": "April 3, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" },
+        { "text": "ExtProc", "type": "feature" }
+      ],
+      "overview": "Final patch in the v0.1.x series addressing ExtProc image synchronization.",
+      "features": [],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "ExtProc Image Syncing",
+          "description": "Fixed external processor image synchronization issues"
+        },
+        {
+          "title": "Container Registry",
+          "description": "Improved container image handling and registry integration"
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
+    }
+  ],
+  "navigation": {
+    "next": { "version": "v0.2.x Series", "path": "/release-notes/v0.2" }
+  }
+}

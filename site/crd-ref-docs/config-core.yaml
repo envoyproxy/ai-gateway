@@ -31,6 +31,12 @@ render:
     - name: PolicyStatus
       package: sigs.k8s.io/gateway-api/apis/v1alpha2
       link: https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.PolicyStatus
+    - name: HTTPRouteTimeouts
+      package: sigs.k8s.io/gateway-api/apis/v1
+      link: https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts
+    - name: LocalObjectReference
+      package: sigs.k8s.io/gateway-api/apis/v1
+      link: https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference
     - name: ExtProc
       package: github.com/envoyproxy/gateway/api/v1alpha1
       link: https://gateway.envoyproxy.io/docs/api/extension_types/#extproc

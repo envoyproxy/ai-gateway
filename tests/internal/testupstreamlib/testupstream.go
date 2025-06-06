@@ -12,6 +12,7 @@ const (
 	// 	Each line in x-response-body is treated as a separate [data] payload.
 	//	* If this is "aws-event-stream", the response body is expected to be an AWS Event Stream.
 	// 	Each line in x-response-body is treated as a separate event payload.
+	//	* If this is gzip, the response body is expected to be a regular JSON response compressed with gzip.
 	//	* If this is empty, the response body is expected to be a regular JSON response.
 	ResponseTypeKey = "x-response-type"
 	// ExpectedHeadersKey is the key for the expected headers in the request.

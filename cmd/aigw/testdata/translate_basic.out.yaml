@@ -66,6 +66,8 @@ kind: HTTPRoute
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
+  annotations:
+    gateway.envoyproxy.io/backend-ref-priority: 0:envoy-ai-gateway-basic-openai:0,1:envoy-ai-gateway-basic-aws:0,2:envoy-ai-gateway-basic-testupstream:0
   ownerReferences:
     - apiVersion: aigateway.envoyproxy.io/v1alpha1
       blockOwnerDeletion: true

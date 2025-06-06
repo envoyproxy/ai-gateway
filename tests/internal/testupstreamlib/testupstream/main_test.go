@@ -218,30 +218,37 @@ func Test_main(t *testing.T) {
 
 	t.Run("fake response", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
-			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
-		require.NoError(t, err)
+		for _, isGzip := range []bool{false, true} {
+			t.Run(fmt.Sprintf("gzip=%t", isGzip), func(t *testing.T) {
+				request, err := http.NewRequest("GET",
+					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
+				require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
-			base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
-			base64.StdEncoding.EncodeToString([]byte("expected request body")))
+				request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+					base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+				request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+					base64.StdEncoding.EncodeToString([]byte("expected request body")))
+				if isGzip {
+					request.Header.Set(testupstreamlib.ResponseTypeKey, "gzip")
+				}
 
-		response, err := http.DefaultClient.Do(request)
-		require.NoError(t, err)
-		defer func() {
-			_ = response.Body.Close()
-		}()
+				response, err := http.DefaultClient.Do(request)
+				require.NoError(t, err)
+				defer func() {
+					_ = response.Body.Close()
+				}()
 
-		require.Equal(t, http.StatusOK, response.StatusCode)
+				require.Equal(t, http.StatusOK, response.StatusCode)
 
-		responseBody, err := io.ReadAll(response.Body)
-		require.NoError(t, err)
+				responseBody, err := io.ReadAll(response.Body)
+				require.NoError(t, err)
 
-		var chat openai.ChatCompletion
-		require.NoError(t, chat.UnmarshalJSON(responseBody))
-		// Ensure that the response is one of the fake responses.
-		require.Contains(t, chatCompletionFakeResponses, chat.Choices[0].Message.Content)
+				var chat openai.ChatCompletion
+				require.NoError(t, chat.UnmarshalJSON(responseBody))
+				// Ensure that the response is one of the fake responses.
+				require.Contains(t, chatCompletionFakeResponses, chat.Choices[0].Message.Content)
+			})
+		}
 	})
 
 	t.Run("fake response for unknown path", func(t *testing.T) {

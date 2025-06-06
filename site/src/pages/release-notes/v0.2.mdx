@@ -1,0 +1,106 @@
+---
+title: Envoy AI Gateway v0.2.x Release Series
+description: Release version introducing Azure OpenAI integration, sidecar architecture, cross-backend failover, and enhanced CLI tools
+toc_min_heading_level: 2
+toc_max_heading_level: 2
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  InfoBox,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v0.2.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0]; // v0.2.0
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+### Deprecations
+{mainRelease.deprecations.length > 0 && (
+  <ItemList items={mainRelease.deprecations} />
+)}
+
+## 🐛 Bug Fixes
+
+<ItemList items={mainRelease.bugFixes} />
+
+## ⚠️ Breaking Changes
+
+{mainRelease.breakingChanges.length > 0 && (
+  <ItemList items={mainRelease.breakingChanges} />
+)}
+
+## 📖 Upgrade Guidance
+
+For users upgrading from v0.1.x to v0.2.0:
+
+1. **Review usage of any deprecated API fields** (particularly `AIServiceBackend.Timeouts`).
+1. **Update deployment configurations** if using custom replica configurations - the `replicas` field in `AIGatewayFilterConfigExternalProcessor` is now deprecated due to the new sidecar architecture.
+1. **Remove routing to Kubernetes services** - currently, Envoy AI Gateway does not support routing to Kubernetes services. This is a known limitation and will be addressed in a future release.
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+:::info
+Future v0.2.x patch releases will be added here as they become available.
+:::
+
+## 🙏 Acknowledgements
+
+This release represents the collaborative effort of our growing community. Special thanks to contributors from **Tetrate**, **Bloomberg**, **Google**, and our independent contributors who made this release possible through their code contributions, testing, feedback, and community participation.
+
+There are those who engage in conversations, provide feedback, and contribute to the project in other ways than code, and we appreciate them greatly. Ideas, suggestions, and feedback are always welcome.
+
+
+## 🔮 What's Next (beyond v0.2)
+
+We're already working on exciting features:
+
+- **Google Gemini & Vertex Integration**
+- **Anthropic Integration**
+- **Support for the Gateway API Inference Extension**
+- **Endpoint picker support for Pod routing**
+- **What else do you want to see?** Get involved and [open an issue](https://github.com/envoyproxy/ai-gateway/issues/new?template=feature_request.md) and let us know!
+
+
+</ReleaseSeriesLayout>

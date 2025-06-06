@@ -1,0 +1,86 @@
+---
+title: Release Notes
+description: Release Notes for Envoy AI Gateway
+---
+
+import Link from '@docusaurus/Link';
+import { ReleaseCard } from '../../components/ReleaseNotes';
+import v01Data from '../../data/releases/v0.1.json';
+import v02Data from '../../data/releases/v0.2.json';
+import indexData from '../../data/releases/index.json';
+import styles from '../../components/ReleaseNotes/ReleaseNotes.module.css';
+
+export const allReleases = [
+  ...v02Data.releases,
+  ...v01Data.releases
+].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+export const getMarkerStyle = (type) => {
+  switch (type) {
+    case 'major':
+      return styles.major;
+    case 'minor':
+      return styles.minor;
+    default:
+      return styles.patch;
+  }
+};
+
+# Release Notes
+
+Stay up-to-date with the latest improvements, features, and fixes in Envoy AI Gateway.
+
+<div className={styles.releaseNotesGrid}>
+  <ReleaseCard
+    version="v0.2.x"
+    date="June 5, 2025 - Current"
+    summary={v02Data.series.subtitle}
+    tags={v02Data.releases[0].tags.slice(0, 10)}
+    linkTo="/release-notes/v0.2"
+    linkText="View Release Notes →"
+    badge={v02Data.series.badge}
+    featured={true}
+    versions="v0.2.0"
+  />
+
+  <ReleaseCard
+    version="v0.1.x"
+    date="Feb 25 - Apr 3, 2025"
+    summary={v01Data.series.subtitle}
+    tags={v01Data.releases[0].tags.slice(0, 10)}
+    linkTo="/release-notes/v0.1"
+    linkText="View Release Notes →"
+    badge={v01Data.series.badge}
+    featured={false}
+    versions="v0.1.0, v0.1.1, v0.1.2, v0.1.3, v0.1.4, v0.1.5"
+  />
+</div>
+
+---
+
+## Release Timeline
+
+<div className={styles.timeline}>
+  {allReleases.map((release, index) => (
+    <div key={index} className={styles.timelineItem}>
+      <div className={`${styles.timelineMarker} ${getMarkerStyle(release.type)}`}></div>
+      <div className={`${styles.timelineContent} ${getMarkerStyle(release.type)}`}>
+        <div className={styles.timelineHeader}>
+          <strong>{release.version}</strong>
+          <span className={styles.timelineDate}>{release.date}</span>
+        </div>
+        <p>{release.overview}</p>
+      </div>
+    </div>
+  ))}
+</div>
+
+---
+
+## Community and Support
+
+Envoy AI Gateway is a community-driven project. We welcome your contributions and feedback!
+
+- 💬 Join our <a href={indexData.community.slack}>Slack channel</a>
+- 📅 Attend our <a href={indexData.community.meetings}>weekly community meetings</a>
+- 🐛 Report issues or contribute on <a href={indexData.community.github}>GitHub</a>

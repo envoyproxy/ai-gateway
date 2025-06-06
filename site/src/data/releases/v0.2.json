@@ -1,0 +1,168 @@
+{
+  "series": {
+    "version": "v0.2",
+    "title": "Envoy AI Gateway v0.2.x",
+    "subtitle": "Release version introducing Azure OpenAI integration, sidecar architecture, cross-backend failover, and a CLI tool.",
+    "badge": "Latest",
+    "badgeType": "milestone"
+  },
+  "releases": [
+    {
+      "version": "v0.2.0",
+      "date": "June 5, 2025",
+      "type": "minor",
+      "tags": [
+        { "text": "Azure OpenAI Integration", "type": "feature" },
+        { "text": "Sidecar Architecture", "type": "feature" },
+        { "text": "Performance Improvements", "type": "feature" },
+        { "text": "CLI Tools", "type": "feature" },
+        { "text": "Model Failover and Retry", "type": "feature" },
+        { "text": "Certificate Manager Integration", "type": "feature" }
+      ],
+      "overview": "Envoy AI Gateway v0.2.0 builds upon the solid foundation of v0.1.0 with focus on expanding provider ecosystem support, improving reliability and performance through architectural changes, and enterprise-grade authentication support for Azure OpenAI.",
+      "features": [
+        {
+          "title": "Azure OpenAI Integration",
+          "items": [
+            {
+              "title": "Full Azure OpenAI Support",
+              "description": "Complete integration with Azure OpenAI services with request/response transformation for the unified OpenAI compatiple completions API."
+            },
+            {
+              "title": "Upstream Authentication for Azure Enterprise Integration",
+              "description": "Support for accessing Azure via OIDC tokens and Entra ID for enterprise-grade authentication for secure and compliant upstream authentication."
+            },
+            {
+              "title": "Enterprise Proxy URL Support for Azure Authentication",
+              "description": "Enhanced Azure authentication with proxy URL configuration options for enterprise proxy support."
+            },
+            {
+              "title": "Flexible Token Providers",
+              "description": "Generalized token provider architecture supporting both client secret and federated token flows"
+            }
+          ]
+        },
+        {
+          "title": "Architecture Improvements",
+          "items": [
+            {
+              "title": "Sidecar + UDS External Processor",
+              "description": "Switched to sidecar deployment model with Unix Domain Sockets for improved performance and resource efficiency"
+            },
+            {
+              "title": "Enhanced ExtProc Buffer Limits",
+              "description": "Increased external processor buffer limits from 32 KiB to 50 MiB for larger AI requests. Users can now configure CPU and memory resource limits via <code>filterConfig.externalProcessor.resources</code> for better resource management."
+            },
+            {
+              "title": "Multiple <code>AIGatewayRoute</code> Support",
+              "description": "Support for multiple <code>AIGatewayRoute</code> resources per gateway, removing the previous single-route limitation. This enables better organization, scalability, and management of complex routing configurations across teams."
+            },
+            {
+              "title": "Certificate Manager Integration",
+              "description": "Integrated cert-manager for automated TLS certificate provisioning and rotation for the mutating webhook server that injects AI Gateway sidecar containers into Envoy Gateway pods. This enables enterprise-grade certificate management, eliminating manual certificate handling and improving security."
+            }
+          ]
+        },
+        {
+          "title": "Cross-Backend Failover and Retry",
+          "items": [
+            {
+              "title": "Provider Fallback Logic",
+              "description": "Priority-based failover system that automatically routes traffic to lower priority AI providers as higher priority endpoints become unhealthy, ensuring high availability and fault tolerance."
+            },
+            {
+              "title": "Backend Retry Support",
+              "description": "Configurable retry policies for improved reliability and resilience against AI provider transient failures. Features include exponential backoff with jitter, configurable retry triggers (5xx errors, connection failures, rate limiting), customizable retry counts and timeouts, and integration with Envoy Gateway's <code>BackendTrafficPolicy</code>."
+            },
+            {
+              "title": "Weight-Based Routing",
+              "description": "Enhanced backend routing with weighted traffic distribution, enabling gradual rollouts, cost optimization, and A/B testing across multiple AI providers"
+            }
+          ]
+        },
+        {
+          "title": "Enhanced CLI Tools",
+          "items": [
+            {
+              "title": "<code>aigw run</code> Command",
+              "description": "New CLI command for local development and testing of Envoy AI Gateway resources."
+            },
+            {
+              "title": "Configuration Translation",
+              "description": "<code>aigw translate</code> for translating Envoy AI Gateway Resources to Envoy Gateway and Kubernetes CRDs."
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "AIGatewayRoute Metadata",
+          "description": "Added <code>ownedBy</code> and <code>createdAt</code> fields for better resource tracking."
+        },
+        {
+          "title": "Backend Configuration",
+          "description": "Moved <code>Backend</code> configuration back to <code>RouteRule</code> for improved flexibility."
+        },
+        {
+          "title": "OIDC Field Types",
+          "description": "Specific typing for OIDC-related configuration fields."
+        },
+        {
+          "title": "Weight Type Changes",
+          "description": "Updated Weight field type to match Gateway API specifications."
+        }
+      ],
+      "deprecations": [
+        {
+          "title": "<code>AIServiceBackend.Timeouts</code>",
+          "description": "Deprecated in favor of more granular timeout configuration."
+        }
+      ],
+      "bugFixes": [
+        {
+          "title": "ExtProc Image Syncing",
+          "description": "Fixed issue where external processor image wouldn't sync properly."
+        },
+        {
+          "title": "Router Weight Validation",
+          "description": "Fixed negative weight validation in routing logic."
+        },
+        {
+          "title": "Content Body Handling",
+          "description": "Fixed empty content body issues causing AWS validation errors."
+        },
+        {
+          "title": "First Match Routing",
+          "description": "Fixed router logic to ensure first match wins as expected."
+        }
+      ],
+      "breakingChanges": [
+        {
+          "title": "Sidecar Architecture",
+          "description": "The switch to sidecar + UDS model may require configuration updates for existing deployments."
+        },
+        {
+          "title": "API Field Changes",
+          "description": "Some API fields have been moved or renamed - see migration guide for details. Please review the migration guide for details."
+        },
+        {
+          "title": "Timeout Configuration",
+          "description": "Deprecated timeout fields require migration to new configuration format."
+        },
+        {
+          "title": "Routing to Kubernetes Services",
+          "description": "Routing to Kubernetes services is not supported in Envoy AI Gateway v0.2.0. This is a known limitation and will be addressed in a future release."
+        }
+      ],
+      "dependencies": [
+        { "title": "Go 1.24.2", "description": "Updated to latest Go version for improved performance and security." },
+        { "title": "Envoy Gateway v1.4", "description": "Built on Envoy Gateway for proven data plane capabilities." },
+        { "title": "Envoy v1.34", "description": "Leveraging Envoy Proxy's battle-tested networking capabilities." },
+        { "title": "Gateway API v1.3", "description": "Support for latest Gateway API specifications." }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "v0.1.x Series", "path": "/release-notes/v0.1" }
+  }
+}

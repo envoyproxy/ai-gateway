@@ -17,6 +17,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -108,7 +109,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "aaa"},
+						{Name: "aaa", Priority: ptr.To[uint32](0)},
+						{Name: "bbb", Priority: ptr.To[uint32](1)},
 					},
 				},
 			},
@@ -156,6 +158,11 @@ func Test_maybeModifyCluster(t *testing.T) {
 							{},
 						},
 					},
+					{
+						LbEndpoints: []*endpointv3.LbEndpoint{
+							{},
+						},
+					},
 				},
 			},
 		}
@@ -164,8 +171,10 @@ func Test_maybeModifyCluster(t *testing.T) {
 		s.maybeModifyCluster(cluster)
 		require.Empty(t, buf.String())
 
-		require.Len(t, cluster.LoadAssignment.Endpoints, 1)
+		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
 		require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
+		require.Equal(t, uint32(0), cluster.LoadAssignment.Endpoints[0].Priority)
+		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[1].Priority)
 		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
 		require.NotNil(t, md)
 		require.Len(t, md.FilterMetadata, 1)

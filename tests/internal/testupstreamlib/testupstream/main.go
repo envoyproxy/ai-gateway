@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -287,8 +288,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("response sent")
 		r.Context().Done()
 	default:
-		w.Header().Set("Content-Type", "application/json")
-
+		isGzip := r.Header.Get(testupstreamlib.ResponseTypeKey) == "gzip"
+		if isGzip {
+			w.Header().Set("content-encoding", "gzip")
+		}
+		w.Header().Set("content-type", "application/json")
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); expResponseBody == "" {
 			// If the expected response body is not set, get the fake response if the path is known.
@@ -308,6 +312,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(status)
+		if isGzip {
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+			_, _ = gz.Write(responseBody)
+			_ = gz.Close()
+			responseBody = buf.Bytes()
+		}
 		_, _ = w.Write(responseBody)
 		logger.Println("response sent:", string(responseBody))
 	}
