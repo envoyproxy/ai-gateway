@@ -361,11 +361,6 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 
 
 <ApiField
-  name="replicas"
-  type="integer"
-  required="false"
-  description="Replicas is the number of desired pods of the external processor deployment.<br />Deprecated: This field is no longer used."
-/><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
@@ -583,11 +578,6 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
   description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to."
-/><ApiField
-  name="timeouts"
-  type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
-  required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or<br />AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and<br />AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored."
 />
 
 

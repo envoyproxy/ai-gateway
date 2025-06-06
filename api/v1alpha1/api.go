@@ -329,11 +329,6 @@ const (
 )
 
 type AIGatewayFilterConfigExternalProcessor struct {
-	// Replicas is the number of desired pods of the external processor deployment.
-	//
-	// Deprecated: This field is no longer used.
-	// +optional
-	Replicas *int32 `json:"replicas,omitempty"`
 	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
@@ -401,15 +396,6 @@ type AIServiceBackendSpec struct {
 	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
-
-	// Timeouts defines the timeouts that can be configured for an HTTP request.
-	//
-	// Deprecated: Use the `BackendTrafficPolicySpec` for a backend-specific timeout configuration, or
-	// AIGatewayRouteSpec.Rules[].Timeouts for a route-specific timeout configuration. When both this field and
-	// AIGatewayRouteSpec.Rules[].Timeouts are set, the latter will take precedence, i.e., this field will be ignored.
-	//
-	// +optional
-	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
 
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.

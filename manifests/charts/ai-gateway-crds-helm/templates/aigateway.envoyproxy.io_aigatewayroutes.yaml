@@ -87,13 +87,6 @@ spec:
                       ExternalProcessor is the configuration for the external processor filter.
                       This is optional, and if not set, the default values of Deployment spec will be used.
                     properties:
-                      replicas:
-                        description: |-
-                          Replicas is the number of desired pods of the external processor deployment.
-
-                          Deprecated: This field is no longer used.
-                        format: int32
-                        type: integer
                       resources:
                         description: |-
                           Resources required by the external processor container.
