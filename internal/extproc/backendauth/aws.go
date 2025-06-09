@@ -112,7 +112,6 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, h
 	// The reason why we want to avoid this is that the ExtProc filter will remove the content-length header
 	// from the request currently. Envoy will instead do "transfer-encoding: chunked" for the request body,
 	// which should be acceptable for AWS Bedrock or any modern HTTP service.
-	//
 	// https://github.com/envoyproxy/envoy/blob/60b2b5187cf99db79ecfc54675354997af4765ea/source/extensions/filters/http/ext_proc/processor_state.cc#L180-L183
 	req.ContentLength = -1
 
