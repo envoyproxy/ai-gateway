@@ -10,7 +10,7 @@ import {
   ReleaseSeriesLayout,
   ReleaseHeader,
   FeatureSectionCard,
-  InfoBox,
+  PatchRelease,
   ItemList,
   Dependencies
 } from '../../components/ReleaseNotes';
@@ -19,6 +19,7 @@ import React from 'react';
 
 export const { series, releases, navigation } = releaseData;
 export const mainRelease = releases[0]; // v0.2.0
+export const patchReleases = releases.slice(1).reverse(); // v0.1.5 - v0.1.1 (newest first)
 
 <ReleaseSeriesLayout
   title={series.title}
@@ -81,9 +82,18 @@ For users upgrading from v0.1.x to v0.2.0:
 
 ## ⏩ Patch Releases
 
-:::info
-Future v0.2.x patch releases will be added here as they become available.
-:::
+{patchReleases.map((release, index) => (
+    <PatchRelease
+        key={index}
+        version={release.version}
+        date={release.date}
+        type={release.type}
+        tags={release.tags}
+        overview={release.overview}
+        features={release.features}
+        bugFixes={release.bugFixes}
+    />
+))}
 
 ## 🙏 Acknowledgements
 
