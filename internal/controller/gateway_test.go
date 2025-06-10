@@ -318,19 +318,19 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	egNamespace := "envoy-gateway-system"
+	gwName, gwNamepsace := "gw2", "ns2"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: gwNamepsace,
+	}
+
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
 		egNamespace, "/foo/bar/uds.sock", v2Container)
-
 	t.Run("pod with extproc", func(t *testing.T) {
-		gwName, gwNamepsace := "gw", "ns"
-		labels := map[string]string{
-			egOwningGatewayNameLabel:      gwName,
-			egOwningGatewayNamespaceLabel: gwNamepsace,
-		}
 		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod1",
@@ -354,11 +354,6 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 
 	t.Run("pod without extproc", func(t *testing.T) {
-		gwName, gwNamepsace := "gw2", "ns2"
-		labels := map[string]string{
-			egOwningGatewayNameLabel:      gwName,
-			egOwningGatewayNamespaceLabel: gwNamepsace,
-		}
 		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod2",
@@ -392,11 +387,6 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 
 	t.Run("pod with extproc but old version", func(t *testing.T) {
-		gwName, gwNamepsace := "gw2", "ns2"
-		labels := map[string]string{
-			egOwningGatewayNameLabel:      gwName,
-			egOwningGatewayNamespaceLabel: gwNamepsace,
-		}
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod3",
