@@ -33,7 +33,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"envoy-gateway-system", "/foo/bar/uds.sock")
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
 
 	const namespace = "ns"
 	t.Run("not found must be non error", func(t *testing.T) {
@@ -137,7 +137,8 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		"envoy-gateway-system", "/foo/bar/uds.sock")
+		"envoy-gateway-system", "/foo/bar/uds.sock",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest")
 
 	const namespace = "ns"
 	routes := []aigv1a1.AIGatewayRoute{
@@ -212,7 +213,8 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		"envoy-gateway-system", "/foo/bar/uds.sock")
+		"envoy-gateway-system", "/foo/bar/uds.sock",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest")
 
 	const namespace = "ns"
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -316,18 +318,19 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	egNamespace := "envoy-gateway-system"
+	gwName, gwNamepsace := "gw", "ns"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: gwNamepsace,
+	}
+
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		egNamespace, "/foo/bar/uds.sock")
-
+		egNamespace, "/foo/bar/uds.sock", v2Container)
 	t.Run("pod with extproc", func(t *testing.T) {
-		gwName, gwNamepsace := "gw", "ns"
-		labels := map[string]string{
-			egOwningGatewayNameLabel:      gwName,
-			egOwningGatewayNamespaceLabel: gwNamepsace,
-		}
 		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod1",
@@ -351,11 +354,6 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 
 	t.Run("pod without extproc", func(t *testing.T) {
-		gwName, gwNamepsace := "gw2", "ns2"
-		labels := map[string]string{
-			egOwningGatewayNameLabel:      gwName,
-			egOwningGatewayNamespaceLabel: gwNamepsace,
-		}
 		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod2",
@@ -384,6 +382,58 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("pod with extproc but old version", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod3",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				// The old v1 container image is used here to simulate the pod without extproc.
+				{Name: extProcContainerName, Image: "ai-gateway-extproc:v1"},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// We also need to create a parent deployment for the pod.
+		_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment2",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = c.annotateGatewayPods(t.Context(), &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamepsace},
+		}, "some-uuid")
+		require.NoError(t, err)
+
+		// Check the deployment's pod template has the annotation.
+		deployment, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+
+		// Simulate the pod's container image is updated to the new version.
+		pod.Spec.Containers[0].Image = v2Container
+		_, err = kube.CoreV1().Pods(egNamespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+		require.NoError(t, err)
+
+		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
+		err = c.annotateGatewayPods(t.Context(), &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamepsace},
+		}, "another-uuid")
+		require.NoError(t, err)
+
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 	})

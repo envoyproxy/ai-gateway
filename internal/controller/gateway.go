@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -40,9 +39,12 @@ const (
 )
 
 // NewGatewayController creates a new reconcile.TypedReconciler for gwapiv1.Gateway.
+//
+// extProcImage is the image of the external processor sidecar container which will be used
+// to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewayNamespace, udsPath string,
+	envoyGatewayNamespace, udsPath, extProcImage string,
 ) *GatewayController {
 	return &GatewayController{
 		client:                client,
@@ -50,6 +52,7 @@ func NewGatewayController(
 		logger:                logger,
 		envoyGatewayNamespace: envoyGatewayNamespace,
 		udsPath:               udsPath,
+		extProcImage:          extProcImage,
 	}
 }
 
@@ -60,6 +63,7 @@ type GatewayController struct {
 	logger                logr.Logger
 	envoyGatewayNamespace string
 	udsPath               string
+	extProcImage          string // The image of the external processor sidecar container.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -403,7 +407,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
 		for i := range podSpec.Containers {
-			if strings.Contains(podSpec.Containers[i].Name, mutationNamePrefix) {
+			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
+			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
 				rollout = false
 				break
 			}

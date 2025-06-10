@@ -214,7 +214,7 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		envoyGatewayNamespace, extProcUDSPath,
+		envoyGatewayNamespace, extProcUDSPath, "docker.io/envoyproxy/ai-gateway-extproc:latest",
 	)
 	// Create and reconcile the custom resources to store the translated objects.
 	// Note that the order of creation is important as some objects depend on others.

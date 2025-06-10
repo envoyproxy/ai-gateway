@@ -80,7 +80,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath)
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
