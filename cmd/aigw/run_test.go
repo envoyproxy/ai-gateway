@@ -132,6 +132,7 @@ func TestRun(t *testing.T) {
 			}
 			defer func() { _ = resp.Body.Close() }()
 			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
 			t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
 			return resp.StatusCode == http.StatusOK
 		}, 2*time.Minute, 1*time.Second)
