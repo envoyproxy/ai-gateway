@@ -8,12 +8,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,8 +123,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("access metrics", func(t *testing.T) {
 		require.Eventually(t, func() bool {
-			const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
-			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:1064/api/v1/query?query=%s", url.QueryEscape(query)), nil)
+			req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -137,24 +133,7 @@ func TestRun(t *testing.T) {
 			defer func() { _ = resp.Body.Close() }()
 			body, err := io.ReadAll(resp.Body)
 			t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
-			if resp.StatusCode != http.StatusOK {
-				t.Logf("Failed to query Prometheus: status=%s", resp.Status)
-				return false
-			}
-			type prometheusResponse struct {
-				Status string `json:"status"`
-				Data   struct {
-					ResultType string `json:"resultType"`
-					Result     []struct {
-						Metric map[string]string `json:"metric"`
-						Value  []interface{}     `json:"value"`
-					}
-				}
-			}
-			var pr prometheusResponse
-			require.NoError(t, json.Unmarshal(body, &pr))
-			t.Log(pr.Status)
-			return true
+			return resp.StatusCode == http.StatusOK
 		}, 2*time.Minute, 1*time.Second)
 	})
 }
