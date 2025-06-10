@@ -318,7 +318,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	egNamespace := "envoy-gateway-system"
-	gwName, gwNamepsace := "gw2", "ns2"
+	gwName, gwNamepsace := "gw", "ns"
 	labels := map[string]string{
 		egOwningGatewayNameLabel:      gwName,
 		egOwningGatewayNamespaceLabel: gwNamepsace,
