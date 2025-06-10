@@ -8,13 +8,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +123,40 @@ func TestRun(t *testing.T) {
 			}, 30*time.Second, 2*time.Second)
 		})
 	}
+
+	t.Run("access metrics", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:1064/api/v1/query?query=%s", url.QueryEscape(query)), nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("Failed to query Prometheus: %v", err)
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, err := io.ReadAll(resp.Body)
+			t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
+			if resp.StatusCode != http.StatusOK {
+				t.Logf("Failed to query Prometheus: status=%s", resp.Status)
+				return false
+			}
+			type prometheusResponse struct {
+				Status string `json:"status"`
+				Data   struct {
+					ResultType string `json:"resultType"`
+					Result     []struct {
+						Metric map[string]string `json:"metric"`
+						Value  []interface{}     `json:"value"`
+					}
+				}
+			}
+			var pr prometheusResponse
+			require.NoError(t, json.Unmarshal(body, &pr))
+			t.Log(pr.Status)
+			return true
+		}, 2*time.Minute, 1*time.Second)
+	})
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
@@ -160,12 +195,4 @@ func Test_mustStartExtProc(t *testing.T) {
 	cancel()
 	// Wait for the external processor to stop.
 	time.Sleep(1 * time.Second)
-}
-
-func Test_mustGetAvailablePort(t *testing.T) {
-	p := mustGetAvailablePort()
-	require.Positive(t, p)
-	l, err := net.Listen("tcp", ":"+strconv.Itoa(int(p)))
-	require.NoError(t, err)
-	require.NoError(t, l.Close())
 }
