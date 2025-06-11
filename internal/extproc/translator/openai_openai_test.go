@@ -43,7 +43,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 		rawReq, err := json.Marshal(originalReq)
 		require.NoError(t, err)
 		modelName := "gpt-4o-mini-2024-07-18" // Example model name override
-		o := &openAIToOpenAITranslatorV1ChatCompletion{modelName: modelName}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName}
 		hm, bm, err := o.RequestBody(rawReq, originalReq, false)
 		require.NoError(t, err)
 		require.Nil(t, hm)

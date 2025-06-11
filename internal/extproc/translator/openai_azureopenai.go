@@ -19,11 +19,11 @@ import (
 // Except RequestBody method requires modification to satisfy Microsoft Azure OpenAI spec
 // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chat-completions, other interface methods
 // are identical to NewChatCompletionOpenAIToOpenAITranslator's interface implementations.
-func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelName string) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
 	return &openAIToAzureOpenAITranslatorV1ChatCompletion{
 		apiVersion: apiVersion,
 		openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
-			modelName: modelName,
+			modelNameOverride: modelNameOverride,
 		},
 	}
 }
@@ -37,9 +37,9 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	modelName := req.Model
-	if o.modelName != "" {
+	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		modelName = o.modelName
+		modelName = o.modelNameOverride
 	}
 	// Assume deployment_id is same as model name.
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"

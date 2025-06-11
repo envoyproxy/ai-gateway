@@ -187,7 +187,7 @@ type Backend struct {
 	// matching the header key specified in the [filterapi.Config.BackendRoutingHeaderKey].
 	Name string `json:"name"`
 	// Name of the model in the backend. If provided this will override the name provided in the request.
-	ModelName string `json:"modelName"`
+	ModelNameOverride string `json:"modelNameOverride"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
 	// Auth is the authn/z configuration for the backend. Optional.

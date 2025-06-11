@@ -25,16 +25,16 @@ import (
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func NewChatCompletionOpenAIToAWSBedrockTranslator(modelName string) OpenAIChatCompletionTranslator {
-	return &openAIToAWSBedrockTranslatorV1ChatCompletion{modelName: modelName}
+func NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToAWSBedrockTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
 type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
-	modelName    string
-	stream       bool
-	bufferedBody []byte
-	events       []awsbedrock.ConverseStreamEvent
+	modelNameOverride string
+	stream            bool
+	bufferedBody      []byte
+	events            []awsbedrock.ConverseStreamEvent
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams
 	role string
@@ -53,9 +53,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	}
 
 	modelName := openAIReq.Model
-	if o.modelName != "" {
+	if o.modelNameOverride != "" {
 		// Use modelName override if set.
-		modelName = o.modelName
+		modelName = o.modelNameOverride
 	}
 
 	headerMutation = &extprocv3.HeaderMutation{

@@ -156,7 +156,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
-	modelName              string
+	modelNameOverride      string
 	handler                backendauth.Handler
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
@@ -176,11 +176,11 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 	// TODO: currently, we ignore the LLMAPISchema."Version" field.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(c.modelName)
+		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(c.modelNameOverride)
 	case filterapi.APISchemaAWSBedrock:
-		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelName)
+		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelName)
+		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -346,7 +346,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	}
 	rp.upstreamFilterCount++
 	c.metrics.SetBackend(b)
-	c.modelName = b.ModelName
+	c.modelNameOverride = b.ModelNameOverride
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}

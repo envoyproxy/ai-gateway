@@ -739,8 +739,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 	}
 
 	t.Run("model override", func(t *testing.T) {
-		modelName := "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0"
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{modelName: modelName}
+		modelNameOverride := "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0"
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 		originalReq := openai.ChatCompletionRequest{
 			Model:    "claude-3-5-sonnet",
 			Messages: []openai.ChatCompletionMessageParamUnion{},
@@ -751,7 +751,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		require.NotNil(t, hm.SetHeaders)
 		require.Len(t, hm.SetHeaders, 2)
 		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/model/"+modelName+"/converse", string(hm.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "/model/"+modelNameOverride+"/converse", string(hm.SetHeaders[0].Header.RawValue))
 	})
 }
 

@@ -51,7 +51,7 @@ spec:
               value: llama3-2-1b-instruct-v1
       backendRefs:
         - name: envoy-ai-gateway-basic-aws
-          modelName: us.meta.llama3-2-1b-instruct-v1:0
+          modelNameOverride: us.meta.llama3-2-1b-instruct-v1:0
       modelsOwnedBy: "aws"
       modelsCreatedAt: "2025-05-23T00:00:00Z"
     - matches:

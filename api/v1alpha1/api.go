@@ -268,7 +268,7 @@ type AIGatewayRouteRuleBackendRef struct {
 	Name string `json:"name"`
 
 	// Name of the model in the backend. If provided this will override the name provided in the request.
-	ModelName string `json:"modelName,omitempty"`
+	ModelNameOverride string `json:"modelNameOverride,omitempty"`
 
 	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:

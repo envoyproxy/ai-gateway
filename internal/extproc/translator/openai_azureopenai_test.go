@@ -38,7 +38,7 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		o := &openAIToAzureOpenAITranslatorV1ChatCompletion{
 			apiVersion: "some-version",
 			openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
-				modelName: modelName,
+				modelNameOverride: modelName,
 			},
 		}
 		hm, bm, err := o.RequestBody(nil, originalReq, false)

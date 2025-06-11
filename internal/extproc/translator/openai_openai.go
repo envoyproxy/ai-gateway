@@ -19,16 +19,16 @@ import (
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func NewChatCompletionOpenAIToOpenAITranslator(modelName string) OpenAIChatCompletionTranslator {
-	return &openAIToOpenAITranslatorV1ChatCompletion{modelName: modelName}
+func NewChatCompletionOpenAIToOpenAITranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
-	modelName     string
-	stream        bool
-	buffered      []byte
-	bufferingDone bool
+	modelNameOverride string
+	stream            bool
+	buffered          []byte
+	bufferingDone     bool
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
@@ -39,9 +39,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		o.stream = true
 	}
 	var newBody *[]byte
-	if o.modelName != "" {
+	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		req.Model = o.modelName
+		req.Model = o.modelNameOverride
 		out, err := json.Marshal(req)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
