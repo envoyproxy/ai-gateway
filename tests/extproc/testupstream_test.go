@@ -74,6 +74,13 @@ func TestWithTestUpstream(t *testing.T) {
 				},
 			},
 			{
+				Name:    "testupstream-modelname-override-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "modelname-override"}},
+				Backends: []filterapi.Backend{
+					testUpstreamModelNameOverride,
+				},
+			},
+			{
 				Name: "not-used-for-completion",
 				Headers: []filterapi.HeaderMatch{
 					{Name: "x-model-name", Value: "some-model1"},
@@ -183,6 +190,18 @@ func TestWithTestUpstream(t *testing.T) {
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
 			expPath:         "/openai/deployments/something/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "modelname-override - /v1/chat/completions",
+			backend:         "modelname-override",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expRequestBody:  `{"messages":[{"role":"system","content":"You are a chatbot."}], "model":"some-model"}`,
+			expPath:         "/v1/chat/completions",
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
