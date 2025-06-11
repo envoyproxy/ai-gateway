@@ -6,7 +6,6 @@
 package controller
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -187,7 +186,6 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	for i, rule := range aiGatewayRoute.Spec.Rules {
 		routeName := routeName(aiGatewayRoute, i)
 		var backendRefs []gwapiv1.HTTPBackendRef
-		timeouts := rule.Timeouts
 		for i := range rule.BackendRefs {
 			br := &rule.BackendRefs[i]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
@@ -201,9 +199,6 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 					Weight:                 br.Weight,
 				}},
 			)
-			// If the rule level timeout is not set AND there are multiple backends with deprecated timeouts,
-			// use the first one.
-			timeouts = cmp.Or(timeouts, backend.Spec.Timeouts)
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
@@ -211,7 +206,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
 			},
 			Filters:  rewriteFilters,
-			Timeouts: timeouts,
+			Timeouts: rule.Timeouts,
 		})
 	}
 

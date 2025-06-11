@@ -85,7 +85,6 @@ func TestWithRealProviders(t *testing.T) {
 	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
-		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
 			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
@@ -93,26 +92,7 @@ func TestWithRealProviders(t *testing.T) {
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
-				require.Eventually(t, func() bool {
-					chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-						Messages: []openai.ChatCompletionMessageParamUnion{
-							openai.UserMessage("Say this is a test"),
-						},
-						Model: tc.modelName,
-					})
-					if err != nil {
-						t.Logf("error: %v", err)
-						return false
-					}
-					nonEmptyCompletion := false
-					for _, choice := range chatCompletion.Choices {
-						t.Logf("choice: %s", choice.Message.Content)
-						if choice.Message.Content != "" {
-							nonEmptyCompletion = true
-						}
-					}
-					return nonEmptyCompletion
-				}, eventuallyTimeout, eventuallyInterval)
+				requireEventuallyNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
 			})
 		}
 	})
@@ -322,6 +302,11 @@ func TestWithRealProviders(t *testing.T) {
 			"o1",
 		}, models)
 	})
+	t.Run("aws-bedrock-large-body", func(t *testing.T) {
+		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
+		requireEventuallyNonStreamingRequestOK(t,
+			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
+	})
 }
 
 // realProvidersTestCase is a base test case for the real providers, which is mainly for the centralization of the
@@ -330,4 +315,28 @@ type realProvidersTestCase struct {
 	name      string
 	modelName string
 	required  internaltesting.RequiredCredential
+}
+
+func requireEventuallyNonStreamingRequestOK(t *testing.T, modelName, msg string) {
+	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+	require.Eventually(t, func() bool {
+		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(msg),
+			},
+			Model: modelName,
+		})
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		nonEmptyCompletion := false
+		for _, choice := range chatCompletion.Choices {
+			t.Logf("choice: %s", choice.Message.Content)
+			if choice.Message.Content != "" {
+				nonEmptyCompletion = true
+			}
+		}
+		return nonEmptyCompletion
+	}, eventuallyTimeout, eventuallyInterval)
 }

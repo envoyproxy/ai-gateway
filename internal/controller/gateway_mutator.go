@@ -71,7 +71,10 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 	return nil
 }
 
-const mutationNamePrefix = "ai-gateway-"
+const (
+	mutationNamePrefix   = "ai-gateway-"
+	extProcContainerName = mutationNamePrefix + "extproc"
+)
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
 	var routes aigv1a1.AIGatewayRouteList
@@ -124,7 +127,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
 	podspec.Containers = append(podspec.Containers, corev1.Container{
-		Name:            mutationNamePrefix + "extproc",
+		Name:            extProcContainerName,
 		Image:           g.extProcImage,
 		ImagePullPolicy: g.extProcImagePullPolicy,
 		Ports: []corev1.ContainerPort{
