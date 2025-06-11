@@ -68,9 +68,10 @@ var (
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 
-	testUpstreamOpenAIBackend = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
-	testUpstreamAAWSBackend   = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
-	testUpstreamAzureBackend  = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
+	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelName: "some-model", Schema: openAISchema}
+	testUpstreamAAWSBackend       = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
+	testUpstreamAzureBackend      = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
 	// This always failing backend is configured to have AWS Bedrock schema so that
 	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
 	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
