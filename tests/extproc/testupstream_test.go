@@ -200,7 +200,7 @@ func TestWithTestUpstream(t *testing.T) {
 			path:            "/v1/chat/completions",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
-			expRequestBody:  `{"messages":[{"role":"system","content":"You are a chatbot."}], "model":"some-model"}`,
+			expRequestBody:  `{"messages":[{"content":"You are a chatbot.","role":"system"}],"model":"some-model"}`,
 			expPath:         "/v1/chat/completions",
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,

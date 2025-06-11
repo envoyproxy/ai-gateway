@@ -191,7 +191,7 @@ type StringOrArray struct {
 	Value interface{}
 }
 
-func (s StringOrArray) UnmarshalJSON(data []byte) error {
+func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 	var str string
 	err := json.Unmarshal(data, &str)
 	if err == nil {
@@ -210,7 +210,7 @@ func (s StringOrArray) UnmarshalJSON(data []byte) error {
 }
 
 // Marshal StringOrArray to JSON
-func (s *StringOrArray) MarshalJSON() ([]byte, error) {
+func (s StringOrArray) MarshalJSON() ([]byte, error) {
 	if s.Value == nil {
 		return nil, fmt.Errorf("cannot marshal StringOrArray with nil value")
 	}
