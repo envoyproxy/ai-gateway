@@ -39,7 +39,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	if req.Stream {
 		o.stream = true
 	}
-	var newBody *[]byte
+	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
@@ -49,7 +49,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
-		newBody = &out
+		newBody = out
 	}
 	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
 	if onRetry {
