@@ -16,6 +16,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/tidwall/sjson"
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
@@ -41,10 +42,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	var newBody *[]byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		req.Model = o.modelNameOverride
-		out, err := json.Marshal(req)
+		out, err := sjson.SetBytes(raw, "model", o.modelNameOverride)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
 		newBody = &out
 	}

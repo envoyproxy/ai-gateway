@@ -172,21 +172,6 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 	return errors.New("cannot unmarshal JSON data as string or assistant content parts")
 }
 
-// Marshal StringOrAssistantRoleContentUnion to JSON
-func (s *StringOrAssistantRoleContentUnion) MarshalJSON() ([]byte, error) {
-	if s.Value == nil {
-		return nil, fmt.Errorf("cannot marshal StringOrAssistantRoleContentUnion with nil value")
-	}
-	if _, ok := s.Value.(string); ok {
-		return json.Marshal(s.Value)
-	}
-	if content, ok := s.Value.(ChatCompletionAssistantMessageParamContent); ok {
-		// Marshal as ChatCompletionAssistantMessageParamContentType
-		return json.Marshal(content)
-	}
-	return nil, fmt.Errorf("cannot marshal StringOrAssistantRoleContentUnion with value of type %T", s.Value)
-}
-
 type StringOrArray struct {
 	Value interface{}
 }
@@ -209,21 +194,6 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of string")
 }
 
-// Marshal StringOrArray to JSON
-func (s StringOrArray) MarshalJSON() ([]byte, error) {
-	if s.Value == nil {
-		return nil, fmt.Errorf("cannot marshal StringOrArray with nil value")
-	}
-	if _, ok := s.Value.(string); ok {
-		return json.Marshal(s.Value)
-	}
-	if arr, ok := s.Value.([]ChatCompletionContentPartTextParam); ok {
-		// Marshal as an array of StringOrUserRoleContentUnion
-		return json.Marshal(arr)
-	}
-	return nil, fmt.Errorf("cannot marshal StringOrArray with value of type %T", s.Value)
-}
-
 type StringOrUserRoleContentUnion struct {
 	Value interface{}
 }
@@ -244,21 +214,6 @@ func (s *StringOrUserRoleContentUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of content parts")
-}
-
-// Marshal StringOrUserRoleContentUnion to JSON
-func (s *StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
-	if s.Value == nil {
-		return nil, fmt.Errorf("cannot marshal StringOrUserRoleContentUnion with nil value")
-	}
-	if _, ok := s.Value.(string); ok {
-		return json.Marshal(s.Value)
-	}
-	if arr, ok := s.Value.([]ChatCompletionContentPartUserUnionParam); ok {
-		// Marshal as an array of content participants
-		return json.Marshal(arr)
-	}
-	return nil, fmt.Errorf("cannot marshal StringOrUserRoleContentUnion with value of type %T", s.Value)
 }
 
 type ChatCompletionMessageParamUnion struct {
@@ -319,14 +274,6 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("unknown ChatCompletionMessageParam type: %v", role)
 	}
 	return nil
-}
-
-// This function marshals the ChatCompletionMessageParamUnion into JSON.
-func (c *ChatCompletionMessageParamUnion) MarshalJSON() ([]byte, error) {
-	if c.Value == nil {
-		return nil, fmt.Errorf("cannot marshal ChatCompletionMessageParamUnion with nil value")
-	}
-	return json.Marshal(c.Value)
 }
 
 // ChatCompletionUserMessageParam Messages sent by an end user, containing prompts or additional context

@@ -69,7 +69,7 @@ var (
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 
 	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
-	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "some-model", Schema: openAISchema}
+	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
 	testUpstreamAAWSBackend       = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
 	testUpstreamAzureBackend      = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
 	// This always failing backend is configured to have AWS Bedrock schema so that
