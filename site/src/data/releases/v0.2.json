@@ -160,6 +160,26 @@
         { "title": "Envoy v1.34", "description": "Leveraging Envoy Proxy's battle-tested networking capabilities." },
         { "title": "Gateway API v1.3", "description": "Support for latest Gateway API specifications." }
       ]
+    },
+    {
+      "version": "v0.2.1",
+      "date": "June 9, 2025",
+      "type": "patch",
+      "tags": [
+        { "text": "Bug Fix", "type": "patch" }
+      ],
+      "overview": "Quick bug fix release addressing an AWS authentication issue discovered in the v0.2.0 release.",
+      "features": [],
+      "apiChanges": [],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "AWS Request Authentication",
+          "description": "Fixed the authentication issues with AWS Bedrock integration for larger payloads."
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": []
     }
   ],
   "navigation": {
