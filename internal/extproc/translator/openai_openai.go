@@ -65,12 +65,12 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 				}},
 			},
 		}
-		newBody = &raw
+		newBody = raw
 	}
 
-	if newBody != nil {
+	if len(newBody) > 0 {
 		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: *newBody},
+			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
 		}
 	}
 
