@@ -176,13 +176,13 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 	// TODO: currently, we ignore the LLMAPISchema."Version" field.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(c.modelNameOverride)
+		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(out, c.modelNameOverride)
 	case filterapi.APISchemaAWSBedrock:
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
 	default:
-		return fmt.Errorf("unsupported API schema: backend=%s", out)
+		return fmt.Errorf("unsupported API schema: backend=%v", out)
 	}
 	return nil
 }

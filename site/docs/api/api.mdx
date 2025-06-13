@@ -317,6 +317,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
+- [OpenAISchemaConfig](#openaischemaconfig)
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
@@ -1011,6 +1012,27 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
+#### OpenAISchemaConfig
+
+
+
+**Appears in:**
+- [VersionedAPISchema](#versionedapischema)
+
+OpenAISchemaConfig is the configuration for the OpenAI API schema.
+
+##### Fields
+
+
+
+<ApiField
+  name="pathPrefix"
+  type="string"
+  required="true"
+  description="PathPrefix is the path prefix for the OpenAI API.<br />For example, `$\{pathPrefix\}/chat/completions` will be the path for the chat completions API."
+/>
+
+
 #### VersionedAPISchema
 
 
@@ -1041,6 +1063,11 @@ the ai-gateway, but by the vendor via proper versioning.
   type="string"
   required="true"
   description="Version is the version of the API schema."
+/><ApiField
+  name="openAIConfig"
+  type="[OpenAISchemaConfig](#openaischemaconfig)"
+  required="true"
+  description="OpenAIConfig is the configuration for the OpenAI API schema.<br />Only used when name is set to `OpenAI`.<br />This is optional, and if not set, the default value will be used.<br />For example, `/v1/` will be the path prefix for the OpenAI API.<br />For example, Gemini API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix."
 />
 
 

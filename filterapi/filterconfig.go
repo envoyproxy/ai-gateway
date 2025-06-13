@@ -131,6 +131,16 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
+	// OpenAIConfig contains the OpenAI-specific configuration for the API schema.
+	OpenAIConfig *OpenAISchemaConfig `json:"openaiConfig,omitempty"`
+}
+
+// OpenAISchemaConfig contains the OpenAI-specific configuration for the API schema.
+type OpenAISchemaConfig struct {
+	// PathPrefix is the path prefix for the OpenAI API.
+	//
+	// For example, "${pathPrefix}/chat/completions" will be the path for the chat completions API.
+	PathPrefix string `json:"pathPrefix"`
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.

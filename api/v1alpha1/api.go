@@ -419,6 +419,26 @@ type VersionedAPISchema struct {
 
 	// Version is the version of the API schema.
 	Version string `json:"version,omitempty"`
+
+	// OpenAIConfig is the configuration for the OpenAI API schema.
+	// Only used when name is set to "OpenAI".
+	//
+	// This is optional, and if not set, the default value will be used.
+	// For example, "/v1/" will be the path prefix for the OpenAI API.
+	//
+	// For example, Gemini API (https://ai.google.dev/gemini-api/docs/openai) uses
+	// "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
+	// uses "/compatibility/v1" prefix.
+	OpenAIConfig *OpenAISchemaConfig `json:"openAIConfig,omitempty"`
+}
+
+// OpenAISchemaConfig is the configuration for the OpenAI API schema.
+type OpenAISchemaConfig struct {
+	// PathPrefix is the path prefix for the OpenAI API.
+	//
+	// For example, "${pathPrefix}/chat/completions" will be the path for the chat completions API.
+	// +required
+	PathPrefix string `json:"pathPrefix"`
 }
 
 // APISchema defines the API schema.

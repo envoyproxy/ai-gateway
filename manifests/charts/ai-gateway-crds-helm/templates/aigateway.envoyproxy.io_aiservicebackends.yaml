@@ -178,6 +178,27 @@ spec:
                     - AWSBedrock
                     - AzureOpenAI
                     type: string
+                  openAIConfig:
+                    description: |-
+                      OpenAIConfig is the configuration for the OpenAI API schema.
+                      Only used when name is set to "OpenAI".
+
+                      This is optional, and if not set, the default value will be used.
+                      For example, "/v1/" will be the path prefix for the OpenAI API.
+
+                      For example, Gemini API (https://ai.google.dev/gemini-api/docs/openai) uses
+                      "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
+                      uses "/compatibility/v1" prefix.
+                    properties:
+                      pathPrefix:
+                        description: |-
+                          PathPrefix is the path prefix for the OpenAI API.
+
+                          For example, "${pathPrefix}/chat/completions" will be the path for the chat completions API.
+                        type: string
+                    required:
+                    - pathPrefix
+                    type: object
                   version:
                     description: Version is the version of the API schema.
                     type: string
