@@ -24,6 +24,8 @@ const (
 	RequiredCredentialAWS
 	// RequiredCredentialAzure is the bit flag for the Azure access token.
 	RequiredCredentialAzure
+	// RequiredCredentialGemini is the bit flag for the Gemini API key.
+	RequiredCredentialGemini
 )
 
 // CredentialsContext holds the context for the credentials used in the tests.
@@ -42,6 +44,8 @@ type CredentialsContext struct {
 	AzureAccessToken string
 	// AzureAccessTokenFilePath is the path to the temporary file containing the Azure access token (or dummy token).
 	AzureAccessTokenFilePath string
+	// GeminiAPIKey is the API key for Gemini API. https://ai.google.dev/gemini-api/docs/openai
+	GeminiAPIKey string
 }
 
 // MaybeSkip skips the test if the required credentials are not set.
@@ -54,6 +58,9 @@ func (c CredentialsContext) MaybeSkip(t *testing.T, required RequiredCredential)
 	}
 	if required&RequiredCredentialAzure != 0 && !c.AzureValid {
 		t.Skip("skipping test as Azure credentials are not set in TEST_AZURE_ACCESS_TOKEN")
+	}
+	if required&RequiredCredentialGemini != 0 && c.GeminiAPIKey == "" {
+		t.Skip("skipping test as Gemini API key is not set in TEST_GEMINI_API_KEY")
 	}
 }
 
@@ -68,6 +75,10 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 	require.NoError(t, err)
 	_, err = openaiFile.WriteString(openAIAPIKeyVal)
 	require.NoError(t, err)
+
+	// Set up credential file for Gemini API.
+	geminiAPIKeyEnv := os.Getenv("TEST_GEMINI_API_KEY")
+	geminiAPIKey := cmp.Or(geminiAPIKeyEnv, "dummy-gemini-api-key")
 
 	// Set up credential file for Azure.
 	azureAccessTokenEnv := os.Getenv("TEST_AZURE_ACCESS_TOKEN")
@@ -107,5 +118,6 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 		AWSFilePath:              awsFilePath,
 		AzureAccessToken:         azureAccessToken,
 		AzureAccessTokenFilePath: azureAccessTokenFilePath,
+		GeminiAPIKey:             geminiAPIKey,
 	}
 }

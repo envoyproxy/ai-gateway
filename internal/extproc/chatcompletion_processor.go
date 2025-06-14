@@ -182,7 +182,7 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
 	default:
-		return fmt.Errorf("unsupported API schema: backend=%v", out)
+		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
 	return nil
 }

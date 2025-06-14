@@ -52,7 +52,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 	c := &chatCompletionProcessorUpstreamFilter{}
 	t.Run("unsupported", func(t *testing.T) {
 		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: "Bar", Version: "v123"})
-		require.ErrorContains(t, err, "unsupported API schema: backend={Bar v123}")
+		require.ErrorContains(t, err, "unsupported API schema: backend=Bar@v123")
 	})
 	t.Run("supported openai", func(t *testing.T) {
 		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI})
@@ -287,7 +287,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		Name:   "some-backend",
 		Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 	}, nil, &chatCompletionProcessorRouterFilter{})
-	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
+	require.ErrorContains(t, err, "unsupported API schema: backend=some-schema@v10.0")
 	mm.RequireRequestFailure(t)
 	mm.RequireTokensRecorded(t, 0)
 	mm.RequireSelectedBackend(t, "some-backend")

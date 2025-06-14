@@ -80,7 +80,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		}
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
 			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(raw))),
+			RawValue: []byte(strconv.Itoa(len(newBody))),
 		}})
 	}
 	return

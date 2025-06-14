@@ -132,7 +132,20 @@ type VersionedAPISchema struct {
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
 	// OpenAIConfig contains the OpenAI-specific configuration for the API schema.
+	// Only used when the Name is APISchemaOpenAI.
 	OpenAIConfig *OpenAISchemaConfig `json:"openaiConfig,omitempty"`
+}
+
+// String implements fmt.Stringer for VersionedAPISchema for better debugging and logging.
+func (v VersionedAPISchema) String() string {
+	ret := string(v.Name)
+	if v.Version != "" {
+		ret += "@" + v.Version
+	}
+	if v.OpenAIConfig != nil && v.OpenAIConfig.PathPrefix != "" {
+		ret += " (pathPrefix: " + v.OpenAIConfig.PathPrefix + ")"
+	}
+	return ret
 }
 
 // OpenAISchemaConfig contains the OpenAI-specific configuration for the API schema.
