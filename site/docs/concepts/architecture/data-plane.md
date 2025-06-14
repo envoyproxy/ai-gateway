@@ -81,20 +81,28 @@ The data plane processes requests through several key steps:
 
 ```mermaid
 sequenceDiagram
-    participant Client
+    participant Client as Client (OpenAI SDK)
     participant Envoy as Envoy Proxy
-    participant Processor as External Processor
-    participant Provider as AI Provider
+    participant Processor as AI Gateway External Processor
+    participant Provider as AI Provider / Upstream
 
     Client->>Envoy: Request
-    Envoy->>Processor: Process Request
-    Note over Processor: Transform & Validate
-    Processor-->>Envoy: Add Provider Auth
-    Envoy->>Provider: Forward Request
-    Provider-->>Envoy: Response
+    Note over Envoy: Check Rate Limit
+    Envoy->>Processor: Router-level ExtProc Request
+    Note over Processor: Extract Model Name & Routing
+    Processor-->>Envoy: ;
+    loop Retry/Fallback loop
+        Note over Envoy: Select Upstream/Endpoint
+        Envoy->>Processor: Upstream-level ExtProc Request
+        Note over Processor: Transform & Upstream Authentication
+        Processor-->>Envoy: ;
+        Envoy->>Provider: Forward Request
+        Provider-->>Envoy: Response
+    end
     Envoy->>Processor: Process Response
     Note over Processor: Extract Token Usage
     Processor-->>Envoy: Add Usage Metadata
+    Note over Envoy: Reduce Rate Limit budget
     Envoy->>Client: Response
 ```
 
