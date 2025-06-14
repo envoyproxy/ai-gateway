@@ -279,7 +279,6 @@ func (runCtx *runCmdContext) mustStartExtProc(
 	args := []string{
 		"--configPath", configPath,
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
-		"--metricsPort", fmt.Sprintf("%d", mustGetAvailablePort()),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
@@ -291,20 +290,6 @@ func (runCtx *runCmdContext) mustStartExtProc(
 			runCtx.stderrLogger.Error("Failed to run external processor", "error", err)
 		}
 	}()
-}
-
-// This function panics if it fails to find an available port. This should not happen in practice.
-func mustGetAvailablePort() int32 {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		panic(fmt.Errorf("failed to lookup an available local port: %w", err))
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	err = l.Close()
-	if err != nil {
-		panic(fmt.Errorf("failed to close listener: %w", err))
-	}
-	return int32(port) // nolint:gosec
 }
 
 // mustClearSetOwnerReferencesAndStatusAndWriteObj clears the owner references and status of the given object, marshals it

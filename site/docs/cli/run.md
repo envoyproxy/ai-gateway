@@ -12,6 +12,10 @@ This command runs the Envoy AI Gateway locally as a standalone proxy with a give
 Since the project is primarily focused on the Kubernetes environment, this command is useful for testing the configuration locally before deploying it to a Kubernetes cluster.
 Not only does it help in testing the configuration, but it is also useful in a local development environment of the provider-agnostic AI applications.
 
+:::warning
+Currently, `aigw run` only properly works on Linux. macOS support is pending due to the Envoy v1.34+ binary not available for macOS yet. That will be resolved with https://github.com/Homebrew/homebrew-core/pull/223051.
+:::
+
 ## Default Proxy
 
 By default, `aigw run` runs the AI Gateway with a default configuration that includes a proxy that listens on port `1975`.
@@ -106,3 +110,7 @@ Now, the AI Gateway is running locally with the custom configuration serving at 
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
     -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
+
+### Note
+
+* The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/metrics.md).

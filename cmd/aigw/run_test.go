@@ -10,11 +10,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +120,23 @@ func TestRun(t *testing.T) {
 			}, 30*time.Second, 2*time.Second)
 		})
 	}
+
+	t.Run("access metrics", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("Failed to query Prometheus: %v", err)
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
+			return resp.StatusCode == http.StatusOK
+		}, 2*time.Minute, 1*time.Second)
+	})
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
@@ -160,12 +175,4 @@ func Test_mustStartExtProc(t *testing.T) {
 	cancel()
 	// Wait for the external processor to stop.
 	time.Sleep(1 * time.Second)
-}
-
-func Test_mustGetAvailablePort(t *testing.T) {
-	p := mustGetAvailablePort()
-	require.Positive(t, p)
-	l, err := net.Listen("tcp", ":"+strconv.Itoa(int(p)))
-	require.NoError(t, err)
-	require.NoError(t, l.Close())
 }
