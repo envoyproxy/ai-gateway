@@ -173,10 +173,9 @@ type chatCompletionProcessorUpstreamFilter struct {
 
 // selectTranslator selects the translator based on the output schema.
 func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
-	// TODO: currently, we ignore the LLMAPISchema."Version" field.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(c.modelNameOverride)
+		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(out.Version, c.modelNameOverride)
 	case filterapi.APISchemaAWSBedrock:
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:

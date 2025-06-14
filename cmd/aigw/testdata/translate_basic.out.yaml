@@ -186,6 +186,7 @@ stringData:
         name: envoy-ai-gateway-basic-openai.default
         schema:
           name: OpenAI
+          version: v1
       headers:
       - name: x-ai-eg-model
         value: gpt-4o-mini
@@ -215,6 +216,7 @@ stringData:
         name: envoy-ai-gateway-basic-testupstream.default
         schema:
           name: OpenAI
+          version: v1
       headers:
       - name: x-ai-eg-model
         value: some-cool-self-hosted-model
@@ -223,6 +225,7 @@ stringData:
       name: envoy-ai-gateway-basic-rule-2
     schema:
       name: OpenAI
+      version: v1
     selectedRouteHeaderKey: x-ai-eg-selected-route
     uuid: envoy-ai-gateway-basic
 ---

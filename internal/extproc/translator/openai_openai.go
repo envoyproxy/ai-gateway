@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -20,16 +21,18 @@ import (
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func NewChatCompletionOpenAIToOpenAITranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
-	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
+func NewChatCompletionOpenAIToOpenAITranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "chat/completions")}
 }
 
-// openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /v1/chat/completions.
+// openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
 	modelNameOverride string
 	stream            bool
 	buffered          []byte
 	bufferingDone     bool
+	// The path of the chat completions endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
+	path string
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
@@ -51,20 +54,19 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		}
 		newBody = out
 	}
-	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
+
+	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
+	headerMutation = &extprocv3.HeaderMutation{
+		SetHeaders: []*corev3.HeaderValueOption{
+			{Header: &corev3.HeaderValue{
+				Key:      ":path",
+				RawValue: []byte(o.path),
+			}},
+		},
+	}
+
 	if onRetry {
-		headerMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{
-					Key:      ":path",
-					RawValue: []byte("/v1/chat/completions"),
-				}},
-				{Header: &corev3.HeaderValue{
-					Key:      "content-length",
-					RawValue: []byte(strconv.Itoa(len(raw))),
-				}},
-			},
-		}
+		// On retry, the body might have changed to a different provider's format.
 		newBody = raw
 	}
 
@@ -72,8 +74,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		bodyMutation = &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
 		}
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(strconv.Itoa(len(newBody))),
+		}})
 	}
-
 	return
 }
 

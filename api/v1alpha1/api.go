@@ -418,7 +418,20 @@ type VersionedAPISchema struct {
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
-	Version string `json:"version,omitempty"`
+	//
+	// When the name is set to "OpenAI", this equals to the prefix of the OpenAI API endpoints, and
+	// this defaults to "v1" if not set. For example, "chat completions" API endpoint will be
+	// "/v1/chat/completions" if the version is set to "v1".
+	//
+	// This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
+	// versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
+	// "/v1beta/openai" version prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
+	// uses "/compatibility/v1" version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
+	// use version prefix, so the version can be set to an empty string.
+	//
+	// When the name is set to AzureOpenAI, this version maps to "API Version" in the
+	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
+	Version *string `json:"version,omitempty"`
 }
 
 // APISchema defines the API schema.

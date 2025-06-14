@@ -192,14 +192,26 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 	return
 }
 
+// schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
+func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPISchema {
+	ret := filterapi.VersionedAPISchema{}
+	ret.Name = filterapi.APISchemaName(schema.Name)
+	var defaultVersion string
+	if schema.Name == aigv1a1.APISchemaOpenAI {
+		// When the schema is OpenAI, we default to the v1 version if not specified.
+		defaultVersion = "v1"
+	}
+	ret.Version = ptr.Deref(schema.Version, defaultVersion)
+	return ret
+}
+
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	input := aiGatewayRoutes[0].Spec.APISchema
 
 	ec := &filterapi.Config{UUID: uuid}
-	ec.Schema.Name = filterapi.APISchemaName(input.Name)
-	ec.Schema.Version = input.Version
+	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
@@ -220,8 +232,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				if err != nil {
 					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
 				}
-				b.Schema.Name = filterapi.APISchemaName(backendObj.Spec.APISchema.Name)
-				b.Schema.Version = backendObj.Spec.APISchema.Version
+				b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
 					if err != nil {

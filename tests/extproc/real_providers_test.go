@@ -79,6 +79,15 @@ func TestWithRealProviders(t *testing.T) {
 					}},
 				},
 			},
+			{
+				Name:    "gemini-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gemini-2.0-flash-lite"}},
+				Backends: []filterapi.Backend{
+					{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
+					}},
+				},
+			},
 		},
 	})
 
@@ -89,6 +98,7 @@ func TestWithRealProviders(t *testing.T) {
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
 			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
 			{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
+			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -300,6 +310,7 @@ func TestWithRealProviders(t *testing.T) {
 			"us.meta.llama3-2-1b-instruct-v1:0",
 			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
 			"o1",
+			"gemini-2.0-flash-lite",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {

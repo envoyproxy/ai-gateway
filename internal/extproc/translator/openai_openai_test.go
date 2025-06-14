@@ -27,13 +27,15 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
-				o := &openAIToOpenAITranslatorV1ChatCompletion{}
+				o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
 				hm, bm, err := o.RequestBody(nil, originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
-
-				require.Nil(t, hm)
+				require.NotNil(t, hm)
+				require.Len(t, hm.SetHeaders, 1)
+				require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+				require.Equal(t, "/foo/v1/chat/completions", string(hm.SetHeaders[0].Header.RawValue))
 			})
 		}
 	})
@@ -43,14 +45,19 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 		rawReq, err := json.Marshal(originalReq)
 		require.NoError(t, err)
 		modelName := "gpt-4o-mini-2024-07-18" // Example model name override
-		o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName}
+		o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName, path: "/v1/chat/completions"}
 		hm, bm, err := o.RequestBody(rawReq, originalReq, false)
 		require.NoError(t, err)
-		require.Nil(t, hm)
 		require.NotNil(t, bm)
 		err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
 		require.NoError(t, err)
 		require.Equal(t, modelName, newReq.Model)
+		require.NotNil(t, hm)
+		require.Len(t, hm.SetHeaders, 2)
+		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+		require.Equal(t, o.path, string(hm.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
+		require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
 	})
 }
 
