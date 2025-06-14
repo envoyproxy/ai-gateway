@@ -514,7 +514,7 @@ spec:
                       This is optional, and if not set, the default value will be used.
                       For example, "/v1/" will be the path prefix for the OpenAI API.
 
-                      For example, Gemini API (https://ai.google.dev/gemini-api/docs/openai) uses
+                      For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
                       "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
                       uses "/compatibility/v1" prefix.
                     properties:

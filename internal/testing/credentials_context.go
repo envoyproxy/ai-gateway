@@ -59,7 +59,7 @@ func (c CredentialsContext) MaybeSkip(t *testing.T, required RequiredCredential)
 	if required&RequiredCredentialAzure != 0 && !c.AzureValid {
 		t.Skip("skipping test as Azure credentials are not set in TEST_AZURE_ACCESS_TOKEN")
 	}
-	if required&RequiredCredentialGemini != 0 && c.GeminiAPIKey == "" {
+	if required&RequiredCredentialGemini != 0 && c.GeminiValid {
 		t.Skip("skipping test as Gemini API key is not set in TEST_GEMINI_API_KEY")
 	}
 }
