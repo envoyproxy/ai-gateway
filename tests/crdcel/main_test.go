@@ -82,9 +82,14 @@ func TestAIServiceBackends(t *testing.T) {
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
+		{name: "openai-schema-config.yaml"},
 		{
 			name:   "openai-schema-config-invalid.yaml",
 			expErr: "spec.schema: Invalid value: \"object\": openAIConfig can be set only when 'name' is set to OpenAI",
+		},
+		{
+			name:   "openai-schema-config-invalid-prefix.yaml",
+			expErr: `spec.schema.openAIConfig.pathPrefix: Invalid value: "not-beginning-with-slash": spec.schema.openAIConfig.pathPrefix in body should match '^/'`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
