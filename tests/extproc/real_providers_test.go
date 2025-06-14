@@ -310,6 +310,7 @@ func TestWithRealProviders(t *testing.T) {
 			"us.meta.llama3-2-1b-instruct-v1:0",
 			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
 			"o1",
+			"gemini-2.0-flash-lite",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {

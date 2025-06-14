@@ -31,7 +31,7 @@ const (
 // CredentialsContext holds the context for the credentials used in the tests.
 type CredentialsContext struct {
 	// OpenAIValid, AWSValid, AzureValid are true if the credentials are set and ready to use the real services.
-	OpenAIValid, AWSValid, AzureValid bool
+	OpenAIValid, AWSValid, AzureValid, GeminiValid bool
 	// OpenAIAPIKey is the OpenAI API key. This defaults to "dummy-openai-api-key" if not set.
 	OpenAIAPIKey string
 	// OpenAIAPIKeyFilePath is the path to the temporary file containing the OpenAIAPIKey.
@@ -112,6 +112,7 @@ func RequireNewCredentialsContext(t *testing.T) (ctx CredentialsContext) {
 		OpenAIValid:              openAIAPIKeyEnv != "",
 		AWSValid:                 awsAccessKeyID != "" && awsSecretAccessKey != "",
 		AzureValid:               azureAccessTokenEnv != "",
+		GeminiValid:              geminiAPIKeyEnv != "",
 		OpenAIAPIKey:             openAIAPIKeyVal,
 		OpenAIAPIKeyFilePath:     openAIAPIKeyFilePath,
 		AWSFileLiteral:           awsCredentialsBody,
