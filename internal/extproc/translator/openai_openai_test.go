@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
@@ -28,9 +27,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
-				o := NewChatCompletionOpenAIToOpenAITranslator(filterapi.VersionedAPISchema{
-					Version: "foo/v1",
-				}, "").(*openAIToOpenAITranslatorV1ChatCompletion)
+				o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
 				hm, bm, err := o.RequestBody(nil, originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)

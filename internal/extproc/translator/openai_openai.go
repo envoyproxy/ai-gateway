@@ -17,13 +17,12 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
-func NewChatCompletionOpenAIToOpenAITranslator(c filterapi.VersionedAPISchema, modelNameOverride string) OpenAIChatCompletionTranslator {
-	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: path.Join("/", c.Version, "chat/completions")}
+func NewChatCompletionOpenAIToOpenAITranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "chat/completions")}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /chat/completions.
