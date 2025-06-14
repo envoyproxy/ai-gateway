@@ -429,7 +429,7 @@ type VersionedAPISchema struct {
 	// uses "/compatibility/v1" version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
 	// use version prefix, so the version can be set to an empty string.
 	//
-	// When this is Azure OpenAI, this is the version of the AzureOpenAI, then this version maps to "API Version" in the
+	// When the name is set to AzureOpenAI, this version maps to "API Version" in the
 	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
 	Version *string `json:"version,omitempty"`
 }
