@@ -82,6 +82,10 @@ func TestAIServiceBackends(t *testing.T) {
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
+		{
+			name:   "openai-schema-config-invalid.yaml",
+			expErr: "spec.schema: Invalid value: \"object\": openAIConfig can be set only when 'name' is set to OpenAI",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))

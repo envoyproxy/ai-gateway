@@ -205,6 +205,9 @@ spec:
                 required:
                 - name
                 type: object
+                x-kubernetes-validations:
+                - message: openAIConfig can be set only when 'name' is set to OpenAI
+                  rule: '!has(self.openAIConfig) || self.name == ''OpenAI'''
             required:
             - backendRef
             - schema

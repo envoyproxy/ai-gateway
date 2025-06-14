@@ -411,6 +411,8 @@ type AIServiceBackendSpec struct {
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.openAIConfig) || self.name == 'OpenAI'", message="openAIConfig can be set only when 'name' is set to OpenAI"
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//

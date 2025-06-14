@@ -223,10 +223,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				schema := &backendObj.Spec.APISchema
 				b.Schema.Name = filterapi.APISchemaName(schema.Name)
 				b.Schema.Version = schema.Version
-				if schema.Name == aigv1a1.APISchemaOpenAI && schema.OpenAIConfig != nil {
-					b.Schema.OpenAIConfig = &filterapi.OpenAISchemaConfig{
-						PathPrefix: schema.OpenAIConfig.PathPrefix,
-					}
+				if schema.OpenAIConfig != nil {
+					b.Schema.OpenAIConfig = &filterapi.OpenAISchemaConfig{PathPrefix: schema.OpenAIConfig.PathPrefix}
 				}
 				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))

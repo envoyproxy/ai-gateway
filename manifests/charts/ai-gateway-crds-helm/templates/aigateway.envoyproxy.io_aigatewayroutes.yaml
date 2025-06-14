@@ -535,6 +535,8 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - rule: self.name == 'OpenAI'
+                - message: openAIConfig can be set only when 'name' is set to OpenAI
+                  rule: '!has(self.openAIConfig) || self.name == ''OpenAI'''
               targetRefs:
                 description: TargetRefs are the names of the Gateway resources this
                   AIGatewayRoute is being attached to.
