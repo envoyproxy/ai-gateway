@@ -554,6 +554,7 @@ static_resources:
     - name: gemini
       connect_timeout: 30s
       type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s

@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 var envoyYamlBase string
 
 var (
-	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "/v1beta/openai"}
