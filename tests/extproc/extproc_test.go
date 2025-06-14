@@ -67,9 +67,7 @@ var (
 	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
-	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, OpenAIConfig: &filterapi.OpenAISchemaConfig{
-		PathPrefix: "/v1beta/openai",
-	}}
+	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "/v1beta/openai"}
 
 	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}

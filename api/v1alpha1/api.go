@@ -411,8 +411,6 @@ type AIServiceBackendSpec struct {
 //
 // Note that this is vendor specific, and the stability of the API schema is not guaranteed by
 // the ai-gateway, but by the vendor via proper versioning.
-//
-// +kubebuilder:validation:XValidation:rule="!has(self.openAIConfig) || self.name == 'OpenAI'", message="openAIConfig can be set only when 'name' is set to OpenAI"
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
@@ -420,30 +418,20 @@ type VersionedAPISchema struct {
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
-	Version string `json:"version,omitempty"`
-
-	// OpenAIConfig is the configuration for the OpenAI API schema.
-	// Only used when name is set to "OpenAI".
 	//
-	// This is optional, and if not set, the default value will be used.
-	// For example, "/v1/" will be the path prefix for the OpenAI API.
+	// When the name is set to "OpenAI", this equals to the prefix of the OpenAI API endpoints, and
+	// this defaults to "v1" if not set. For example, "chat completions" API endpoint will be
+	// "/v1/chat/completions" if the version is set to "v1".
 	//
-	// For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
-	// "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
-	// uses "/compatibility/v1" prefix.
-	OpenAIConfig *OpenAISchemaConfig `json:"openAIConfig,omitempty"`
-}
-
-// OpenAISchemaConfig is the configuration for the OpenAI API schema.
-type OpenAISchemaConfig struct {
-	// PathPrefix is the path prefix for the OpenAI API.
+	// This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
+	// versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
+	// "/v1beta/openai" version prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
+	// uses "/compatibility/v1" version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
+	// use version prefix, so the version can be set to an empty string.
 	//
-	// For example, "${pathPrefix}/chat/completions" will be the path for the chat completions API.
-	//
-	// +required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:Pattern=`^/`
-	PathPrefix string `json:"pathPrefix"`
+	// When this is Azure OpenAI, this is the version of the AzureOpenAI, then this version maps to "API Version" in the
+	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
+	Version *string `json:"version,omitempty"`
 }
 
 // APISchema defines the API schema.

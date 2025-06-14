@@ -317,7 +317,6 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
-- [OpenAISchemaConfig](#openaischemaconfig)
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
@@ -1012,27 +1011,6 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
-#### OpenAISchemaConfig
-
-
-
-**Appears in:**
-- [VersionedAPISchema](#versionedapischema)
-
-OpenAISchemaConfig is the configuration for the OpenAI API schema.
-
-##### Fields
-
-
-
-<ApiField
-  name="pathPrefix"
-  type="string"
-  required="true"
-  description="PathPrefix is the path prefix for the OpenAI API.<br />For example, `$\{pathPrefix\}/chat/completions` will be the path for the chat completions API."
-/>
-
-
 #### VersionedAPISchema
 
 
@@ -1062,12 +1040,7 @@ the ai-gateway, but by the vendor via proper versioning.
   name="version"
   type="string"
   required="true"
-  description="Version is the version of the API schema."
-/><ApiField
-  name="openAIConfig"
-  type="[OpenAISchemaConfig](#openaischemaconfig)"
-  required="true"
-  description="OpenAIConfig is the configuration for the OpenAI API schema.<br />Only used when name is set to `OpenAI`.<br />This is optional, and if not set, the default value will be used.<br />For example, `/v1/` will be the path prefix for the OpenAI API.<br />For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix."
+  description="Version is the version of the API schema.<br />When the name is set to `OpenAI`, this equals to the prefix of the OpenAI API endpoints, and<br />this defaults to `v1` if not set. For example, `chat completions` API endpoint will be<br />`/v1/chat/completions` if the version is set to `v1`.<br />This is especially useful when routing to the backend that has an OpenAI compatible API but has a different<br />versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` version prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use version prefix, so the version can be set to an empty string.<br />When this is Azure OpenAI, this is the version of the AzureOpenAI, then this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning)."
 />
 
 

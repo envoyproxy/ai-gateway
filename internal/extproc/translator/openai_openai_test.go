@@ -29,9 +29,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := NewChatCompletionOpenAIToOpenAITranslator(filterapi.VersionedAPISchema{
-					OpenAIConfig: &filterapi.OpenAISchemaConfig{
-						PathPrefix: "/foo/v1",
-					},
+					Version: "foo/v1",
 				}, "").(*openAIToOpenAITranslatorV1ChatCompletion)
 				hm, bm, err := o.RequestBody(nil, originalReq, false)
 				require.Nil(t, bm)

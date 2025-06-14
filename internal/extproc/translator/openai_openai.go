@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -22,11 +23,7 @@ import (
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
 func NewChatCompletionOpenAIToOpenAITranslator(c filterapi.VersionedAPISchema, modelNameOverride string) OpenAIChatCompletionTranslator {
-	prefix := "/v1"
-	if c.OpenAIConfig != nil {
-		prefix = c.OpenAIConfig.PathPrefix
-	}
-	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: prefix + "/chat/completions"}
+	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: path.Join("/", c.Version, "chat/completions")}
 }
 
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /chat/completions.
