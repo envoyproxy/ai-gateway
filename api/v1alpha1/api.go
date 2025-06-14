@@ -414,7 +414,7 @@ type AIServiceBackendSpec struct {
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;GCPGemini;GCPAnthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -450,6 +450,15 @@ const (
 	//
 	// https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs
 	APISchemaAzureOpenAI APISchema = "AzureOpenAI"
+	// APISchemaGeminiVertexAI is the schema followed by Gemini models hosted on GCP's Vertex AI platform.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en
+	APISchemaGeminiVertexAI APISchema = "GeminiVertexAI"
+	// APISchemaAnthropicVertexAI is the schema followed by Anthropic models hosted on GCP's Vertex AI platform.
+	// This is majorly the Anthropic API with some GCP specific parameters as described in below URL.
+	//
+	// https://docs.anthropic.com/en/api/claude-on-vertex-ai
+	APISchemaAnthropicVertexAI APISchema = "AnthropicVertexAI"
 )
 
 const (
@@ -465,6 +474,7 @@ const (
 	BackendSecurityPolicyTypeAPIKey           BackendSecurityPolicyType = "APIKey"
 	BackendSecurityPolicyTypeAWSCredentials   BackendSecurityPolicyType = "AWSCredentials"
 	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
+	BackendSecurityPolicyTypeGCPCredentials   BackendSecurityPolicyType = "GCPCredentials"
 )
 
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
@@ -487,9 +497,9 @@ type BackendSecurityPolicy struct {
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=2
 type BackendSecurityPolicySpec struct {
-	// Type specifies the auth mechanism used to access the provider. Currently, only "APIKey", "AWSCredentials", and "AzureCredentials" are supported.
+	// Type specifies the type of the backend security policy.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -506,6 +516,10 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AzureCredentials *BackendSecurityPolicyAzureCredentials `json:"azureCredentials,omitempty"`
+	// GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied.
+	//
+	// +optional
+	GCPCredentials *BackendSecurityPolicyGCPCredentials `json:"gcpCredentials,omitempty"`
 }
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
@@ -541,6 +555,72 @@ type BackendSecurityPolicyOIDC struct {
 	//
 	// +optional
 	Aud string `json:"aud,omitempty"`
+}
+
+type GCPWorkLoadIdentityFederationConfig struct {
+	// ProjectID is the GCP project ID.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ProjectID string `json:"projectID"`
+
+	// WorkloadIdentityProvider is the external auth provider to be used to authenticate against GCP.
+	// https://cloud.google.com/iam/docs/workload-identity-federation?hl=en
+	// Currently only OIDC is supported.
+	//
+	// +kubebuilder:validation:Required
+	WorkloadIdentityProvider GCPWorkloadIdentityProvider `json:"workloadIdentityProvider"`
+
+	// WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.
+	// https://cloud.google.com/iam/docs/workload-identity-federation?hl=en
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	WorkloadIdentityPoolName string `json:"workloadIdentityPoolName"`
+
+	// ServiceAccountImpersonation is the service account impersonation configuration.
+	// This is used to impersonate a service account when getting access token.
+	//
+	// +optional
+	ServiceAccountImpersonation *GCPServiceAccountImpersonationConfig `json:"serviceAccountImpersonation,omitempty"`
+}
+
+// GCPWorkloadIdentityProvider specifies the external identity provider to be used to authenticate against GCP.
+// The external identity provider can be AWS, Microsoft, etc but must be pre-registered in the GCP project
+//
+// https://cloud.google.com/iam/docs/workload-identity-federation
+type GCPWorkloadIdentityProvider struct {
+	// Name of the external identity provider as registered on Google Cloud Platform.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// OIDCProvider is the generic OIDCProvider fields.
+	//
+	// +kubebuilder:validation:Required
+	OIDCProvider BackendSecurityPolicyOIDC `json:"OIDCProvider"`
+}
+
+type GCPServiceAccountImpersonationConfig struct {
+	// ServiceAccountName is the name of the service account to impersonate.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ServiceAccountName string `json:"serviceAccountName"`
+	// ServiceAccountProjectName is the project name in which the service account is registered.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ServiceAccountProjectName string `json:"serviceAccountProjectName"`
+}
+
+// BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+type BackendSecurityPolicyGCPCredentials struct {
+	// WorkLoadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation.
+	//
+	// +kubebuilder:validation:Required
+	WorkLoadIdentityFederationConfig GCPWorkLoadIdentityFederationConfig `json:"workLoadIdentityFederationConfig"`
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.

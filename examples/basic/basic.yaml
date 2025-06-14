@@ -91,6 +91,24 @@ spec:
     kind: BackendSecurityPolicy
     group: aigateway.envoyproxy.io
 ---
+# GCP Example
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  schema:
+    name: GCPGemini
+  backendRef:
+    name: envoy-ai-gateway-basic-gcp
+    kind: Backend
+    group: gateway.envoyproxy.io
+  backendSecurityPolicyRef:
+    name: envoy-ai-gateway-basic-gcp-credentials
+    kind: BackendSecurityPolicy
+    group: aigateway.envoyproxy.io
+---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
@@ -148,6 +166,28 @@ spec:
       secretRef:
         name: envoy-ai-gateway-basic-aws-credentials
 ---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-credentials
+  namespace: default
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    workLoadIdentityFederationConfig:
+      projectID: GCP_PROJECT_ID  # Replace with your GCP project ID
+      workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL  # Replace with your workload identity pool name
+      workloadIdentityProvider:
+        name: GCP_IDENTITY_PROVIDER_NAME  # Replace with the identity provider configured with GCP
+        OIDCProvider:
+          oidc:
+            provider:
+              issuer: GCP_OIDC_PROVIDER_ISSUER  # Replace with your OIDC provider issuer
+            clientID: GCP_OIDC_CLIENT_ID  # Replace with your OIDC client ID
+            clientSecret:
+              name: envoy-ai-gateway-basic-gcp-client-secret
+              namespace: default
+---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
@@ -168,6 +208,17 @@ spec:
   endpoints:
     - fqdn:
         hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-central1-aiplatform.googleapis.com
         port: 443
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -208,6 +259,20 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: bedrock-runtime.us-east-1.amazonaws.com
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: envoy-ai-gateway-basic-gcp
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: us-central1-aiplatform.googleapis.com
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
@@ -253,6 +318,14 @@ stringData:
     [default]
     aws_access_key_id = AWS_ACCESS_KEY_ID
     aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-gcp-client-secret
+  namespace: default
+stringData:
+  client-secret: "GCP_OIDC_CLIENT_SECRET"  # Replace with your OIDC client secret
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
