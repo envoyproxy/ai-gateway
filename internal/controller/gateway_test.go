@@ -7,6 +7,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -437,4 +438,26 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 	})
+}
+
+func Test_schemaToFilterAPI(t *testing.T) {
+	for i, tc := range []struct {
+		in       aigv1a1.VersionedAPISchema
+		expected filterapi.VersionedAPISchema
+	}{
+		{
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}},
+		{
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}},
+		{
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaAWSBedrock},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
+		})
+	}
 }

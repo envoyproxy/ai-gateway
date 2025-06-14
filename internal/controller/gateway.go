@@ -6,7 +6,6 @@
 package controller
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 
@@ -193,14 +192,16 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 	return
 }
 
+// schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
 func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	ret.Version = ptr.Deref(schema.Version, "")
+	var defaultVersion string
 	if schema.Name == aigv1a1.APISchemaOpenAI {
 		// When the schema is OpenAI, we default to the v1 version if not specified.
-		ret.Version = cmp.Or(ret.Version, "v1")
+		defaultVersion = "v1"
 	}
+	ret.Version = ptr.Deref(schema.Version, defaultVersion)
 	return ret
 }
 
