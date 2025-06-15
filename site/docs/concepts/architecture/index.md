@@ -22,28 +22,21 @@ A control plane is a component that manages the configuration of the data plane.
 ### Data Plane
 The data plane is the component that sits in the request path and processes the requests. In the context of Envoy AI Gateway, the data plane consists of Envoy Proxy and the AI Gateway external processor that processes the AI requests.
 
-### Token Rate Limiting
-The major AI model endpoints return usage metrics called "tokens" per HTTP request. These tokens represent the computational resources consumed by the request. One of the major features of Envoy AI Gateway is rate limiting based on token usage instead of standard "requests per second" style rate limiting.
-
-We call such rate limiting "Token Rate Limiting" in our context, and the metrics that represent the token usage are called "Token Usage" or "Used Tokens".
-
 ## In This Section
 
 1. [System Architecture Overview](./system-architecture.md)
    - High-level architecture overview
    - Control and data plane separation
-   - Component interactions
 
-2. [Control Plane](./control-plane.md)
+2. [Control Plane Explained](./control-plane.md)
    - AI Gateway Controller
    - Envoy Gateway Controller
    - Configuration management
    - Resource orchestration
 
-3. [Data Plane](./data-plane.md)
+3. [Data Plane and Traffic Flow](./data-plane.md)
    - External Processor functionality
    - Request processing flow
-   - Provider integration
 
 ## What's Next
 

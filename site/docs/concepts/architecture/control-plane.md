@@ -40,7 +40,7 @@ graph TB
     subgraph "Generated Resources"
         HTTPRoute:::generatedResourceStyle
         EnvoyExtensionPolicy:::generatedResourceStyle
-        ExtProcConfigSecret[AI Gatewaay ExtProc Secret]:::aiGatewayExtProcStyle
+        ExtProcConfigSecret[AI Gateway ExtProc Secret]:::aiGatewayExtProcStyle
     end
 
     subgraph "EnvoyProxyPod"[Envoy Proxy Pod]

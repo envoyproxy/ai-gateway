@@ -10,37 +10,44 @@ The control plane is responsible for configuring and managing the system. It con
 
 ```mermaid
 graph TB
-    classDef aiGatewayStyle fill:#D6EAF8,stroke:#2E86C1,color:#000
-    classDef envoyGatewayStyle fill:#D5F5E3,stroke:#27AE60,color:#000
+    %% Define styles for different component categories
+    classDef aiGatewayStyle fill:#f9f,stroke:#E74C3C,color:#000
+    classDef envoyGatewayStyle fill:#ddf,stroke:#none,color:#000
+    classDef aiGatewayResourceStyle fill:#f9f,stroke:#E74C3C,color:#000
+    classDef envoyGatewayResourceStyle fill:#ddf,stroke:#none,color:#000
+    classDef generatedResourceStyle fill:#ddf,stroke:#none,color:#000
+    classDef envoyProxyStyle fill:#F5CBA7,stroke:#D35400,color:#000
+    classDef aiGatewayExtProcStyle fill:#f9f,stroke:#E74C3C,color:#000
 
-    subgraph "User Applied Resources"
-            subgraph "AI Gateway Resources"
-                AIGatewayRoute
-                AIServiceBackend
-                BackendSecurityPolicy
-            end
-            subgraph "Envoy Gateway resources"
-                Gateway
-                Backend
-                EGDots[...]
-            end
+    subgraph "UserAppliedResources"["User Applied Resources"]
+        subgraph "AI Gateway Resources"
+            AIGatewayRoute:::aiGatewayResourceStyle
+            AIServiceBackend:::aiGatewayResourceStyle
+            BackendSecurityPolicy:::aiGatewayResourceStyle
         end
-        AIGateway((Envoy AI Gateway
-                        Controller)):::aiGatewayStyle
-        EnvoyGateway((Envoy Gateway
-                        Controller)):::envoyGatewayStyle
-        subgraph "Generated Resources"
-            HTTPRoute
-            EnvoyExtensionPolicy
-            ExtProcConfigSecret[ExtProc Config Secret]
+        subgraph "Envoy Gateway resources"
+            Gateway:::envoyGatewayResourceStyle
+            Backend:::envoyGatewayResourceStyle
+            EGDots[...]:::envoyGatewayResourceStyle
         end
+    end
+    style UserAppliedResources fill:none,stroke-dasharray:5
 
-        subgraph Envoy Proxy Pod
-            EnvoyProxy[Envoy Proxy]
-            AIExtProc[AI Gateway ExtProc]
-        end
-        xDS[xDS Config]
+    AIGateway((Envoy AI Gateway
+                    Controller)):::aiGatewayStyle
+    EnvoyGateway((Envoy Gateway
+                    Controller)):::envoyGatewayStyle
+    subgraph "Generated Resources"
+        HTTPRoute:::generatedResourceStyle
+        EnvoyExtensionPolicy:::generatedResourceStyle
+        ExtProcConfigSecret[AI Gateway ExtProc Secret]:::aiGatewayExtProcStyle
+    end
 
+    subgraph "EnvoyProxyPod"[Envoy Proxy Pod]
+        EnvoyProxy[Envoy Proxy]:::envoyProxyStyle
+        AIExtProc[AI Gateway ExtProc]:::aiGatewayExtProcStyle
+    end
+    style EnvoyProxyPod fill:none,stroke:5
 
     AIGatewayRoute -.->AIGateway
     AIServiceBackend -.->AIGateway
@@ -58,9 +65,8 @@ graph TB
     EnvoyExtensionPolicy -.->EnvoyGateway
     ExtProcConfigSecret -.->AIExtProc
 
-    EnvoyGateway -.->xDS
+    EnvoyGateway -.->|xDS/Envoy config|EnvoyProxy
     AIGateway <-.->|Extension Server protocol|EnvoyGateway
-    xDS -.->EnvoyProxy
     AIGateway -.->|Inserting ExtProc as Sidecar|AIExtProc
 ```
 
