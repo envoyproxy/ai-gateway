@@ -110,5 +110,5 @@ spec:
 
 ## References
 
-- [Provider Fallback Example](https://github.com/envoyproxy/ai-gateway/tree/main/examples/provider_fallback)
+- [Provider Fallback Example](https://github.com/envoyproxy/ai-gateway/tree/release/v0.2/examples/provider_fallback)
 - [`BackendTrafficPolicy` API Design](https://gateway.envoyproxy.io/contributions/design/backend-traffic-policy/)

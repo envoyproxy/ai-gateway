@@ -44,6 +44,11 @@ helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
   --namespace envoy-gateway-system \
   --create-namespace
 
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --version v0.0.0-latest \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
+
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
   --namespace envoy-ai-gateway-system \

@@ -28,7 +28,7 @@ Before you begin, you'll need to complete the basic setup from the [Basic Usage]
 Then, you can install the prometheus using the following commands:
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/monitoring/monitoring.yaml
+kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/examples/monitoring/monitoring.yaml
 ```
 
 Let's wait for a while until the Prometheus is up and running.
