@@ -1,0 +1,26 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-credentials
+  namespace: default
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    workLoadIdentityFederationConfig:
+      projectID: GCP_PROJECT_ID
+      workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL
+      workloadIdentityProvider:
+        name: GCP_IDENTITY_PROVIDER_NAME
+        OIDCProvider:
+          oidc:
+            provider:
+              issuer: GCP_OIDC_PROVIDER_ISSUER
+            clientID: GCP_OIDC_CLIENT_ID
+            clientSecret:
+              name: envoy-ai-gateway-basic-gcp-client-secret
+              namespace: default

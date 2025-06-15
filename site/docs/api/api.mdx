@@ -311,10 +311,14 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
+- [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
+- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
 - [VersionedAPISchema](#versionedapischema)
@@ -635,6 +639,16 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaAzureOpenAI APISchemaAzure is the Azure OpenAI schema.<br />https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#api-specs<br />"
+/><ApiField
+  name="GeminiVertexAI"
+  type="enum"
+  required="false"
+  description="APISchemaGeminiVertexAI is the schema followed by Gemini models hosted on GCP's Vertex AI platform.<br />https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en<br />"
+/><ApiField
+  name="AnthropicVertexAI"
+  type="enum"
+  required="false"
+  description="APISchemaAnthropicVertexAI is the schema followed by Anthropic models hosted on GCP's Vertex AI platform.<br />This is majorly the Anthropic API with some GCP specific parameters as described in below URL.<br />https://docs.anthropic.com/en/api/claude-on-vertex-ai<br />"
 />
 #### AWSCredentialsFile
 
@@ -825,6 +839,27 @@ neither are set.
 />
 
 
+#### BackendSecurityPolicyGCPCredentials
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+
+##### Fields
+
+
+
+<ApiField
+  name="workLoadIdentityFederationConfig"
+  type="[GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
+  required="true"
+  description="WorkLoadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation."
+/>
+
+
 #### BackendSecurityPolicyOIDC
 
 
@@ -832,6 +867,7 @@ neither are set.
 **Appears in:**
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#azureoidcexchangetoken)
+- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -877,7 +913,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="type"
   type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
   required="true"
-  description="Type specifies the auth mechanism used to access the provider. Currently, only `APIKey`, `AWSCredentials`, and `AzureCredentials` are supported."
+  description="Type specifies the type of the backend security policy."
 /><ApiField
   name="apiKey"
   type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
@@ -893,6 +929,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
   required="false"
   description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
+/><ApiField
+  name="gcpCredentials"
+  type="[BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)"
+  required="false"
+  description="GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied."
 />
 
 
@@ -945,7 +986,103 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   type="enum"
   required="false"
   description=""
+/><ApiField
+  name="GCPCredentials"
+  type="enum"
+  required="false"
+  description=""
 />
+#### GCPServiceAccountImpersonationConfig
+
+
+
+**Appears in:**
+- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="serviceAccountName"
+  type="string"
+  required="true"
+  description="ServiceAccountName is the name of the service account to impersonate."
+/><ApiField
+  name="serviceAccountProjectName"
+  type="string"
+  required="true"
+  description="ServiceAccountProjectName is the project name in which the service account is registered."
+/>
+
+
+#### GCPWorkLoadIdentityFederationConfig
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="projectID"
+  type="string"
+  required="true"
+  description="ProjectID is the GCP project ID."
+/><ApiField
+  name="workloadIdentityProvider"
+  type="[GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)"
+  required="true"
+  description="WorkloadIdentityProvider is the external auth provider to be used to authenticate against GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en<br />Currently only OIDC is supported."
+/><ApiField
+  name="workloadIdentityPoolName"
+  type="string"
+  required="true"
+  description="WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en"
+/><ApiField
+  name="serviceAccountImpersonation"
+  type="[GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)"
+  required="false"
+  description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
+/>
+
+
+#### GCPWorkloadIdentityProvider
+
+
+
+**Appears in:**
+- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+
+GCPWorkloadIdentityProvider specifies the external identity provider to be used to authenticate against GCP.
+The external identity provider can be AWS, Microsoft, etc but must be pre-registered in the GCP project
+
+https://cloud.google.com/iam/docs/workload-identity-federation
+
+##### Fields
+
+
+
+<ApiField
+  name="name"
+  type="string"
+  required="true"
+  description="Name of the external identity provider as registered on Google Cloud Platform."
+/><ApiField
+  name="OIDCProvider"
+  type="[BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)"
+  required="true"
+  description="OIDCProvider is the generic OIDCProvider fields."
+/>
+
+
 #### LLMRequestCost
 
 
