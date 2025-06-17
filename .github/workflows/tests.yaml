@@ -97,7 +97,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.34
+          - name: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             envoy_version: envoyproxy/envoy:v1.34-latest
           - name: latest
             envoy_version: envoyproxy/envoy-dev:latest
