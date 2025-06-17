@@ -345,7 +345,7 @@ func TestServer_setBackend(t *testing.T) {
 			require.NoError(t, err)
 			s, _ := requireNewServerWithMockProcessor(t)
 			s.config.backends = map[string]*processorConfigBackend{"openai": {}}
-			_, err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
+			err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
 				Attributes: map[string]*structpb.Struct{
 					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
 						"xds.upstream_host_metadata": {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
