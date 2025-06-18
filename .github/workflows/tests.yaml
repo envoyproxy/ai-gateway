@@ -128,7 +128,7 @@ jobs:
         run: |
           go install github.com/tetratelabs/func-e@6a0f4e4780761107295d186eb434823d69a61897
           func-e use ${{ matrix.version }}
-          echo $HOME/.func-e/versions/${{ matrix.envoy_version }}/bin >> $GITHUB_PATH
+          echo $HOME/.func-e/versions/${{ matrix.version }}/bin >> $GITHUB_PATH
       - name: Install latest Envoy
         if: matrix.version == 'latest'
         run: |
