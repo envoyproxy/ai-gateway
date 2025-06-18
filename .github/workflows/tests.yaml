@@ -39,8 +39,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
-        - ubuntu-latest
-        - macos-latest
+          - ubuntu-latest
+          - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -103,19 +103,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
-            envoy_version: envoyproxy/envoy:v1.34-latest
-          - name: latest
-            envoy_version: envoyproxy/envoy-dev:latest
-    runs-on: ubuntu-latest
+          - version: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+            os: ubuntu-latest
+          - version: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+            os: macos-latest
+          - version: latest
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name != 'pull_request_target'
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-        if: github.event_name == 'pull_request_target'
       - uses: actions/setup-go@v5
         with:
           cache: false
@@ -127,7 +123,14 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Install Envoy
+      - name: Install stable Envoy via func-e
+        if: matrix.version != 'latest'
+        run: |
+          go install github.com/tetratelabs/func-e@6a0f4e4780761107295d186eb434823d69a61897
+          func-e use ${{ matrix.version }}
+          echo $HOME/.func-e/versions/${{ matrix.envoy_version }}/bin >> $GITHUB_PATH
+      - name: Install latest Envoy
+        if: matrix.version == 'latest'
         run: |
           export ENVOY_BIN_DIR=$HOME/envoy/bin
           mkdir -p $ENVOY_BIN_DIR
@@ -155,12 +158,6 @@ jobs:
             envoy_gateway_version: 1.4.0
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name != 'pull_request_target'
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-        if: github.event_name == 'pull_request_target'
       - uses: actions/setup-go@v5
         with:
           cache: false
