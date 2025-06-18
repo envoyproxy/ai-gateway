@@ -210,7 +210,7 @@ func (e *embeddingProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Con
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (e *embeddingProcessorUpstreamFilter) ProcessRequestBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (e *embeddingProcessorUpstreamFilter) ProcessRequestBody(_ context.Context, _ *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	// This should not be called since we set RequestBodyMode to SKIP in ProcessRequestHeaders
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}, nil
 }
@@ -247,7 +247,15 @@ func (e *embeddingProcessorUpstreamFilter) ProcessResponseBody(ctx context.Conte
 
 	// Record token usage metrics if available
 	if tokenUsage != nil {
-		e.metrics.RecordTokenUsage(ctx, uint32(tokenUsage.PromptTokens), uint32(tokenUsage.TotalTokens)) // Embeddings don't have completion tokens
+		// Safe conversion from int to uint32 with bounds checking
+		var promptTokens, totalTokens uint32
+		if tokenUsage.PromptTokens >= 0 && tokenUsage.PromptTokens <= int(^uint32(0)) {
+			promptTokens = uint32(tokenUsage.PromptTokens)
+		}
+		if tokenUsage.TotalTokens >= 0 && tokenUsage.TotalTokens <= int(^uint32(0)) {
+			totalTokens = uint32(tokenUsage.TotalTokens)
+		}
+		e.metrics.RecordTokenUsage(ctx, promptTokens, totalTokens)
 	}
 
 	if bodyMutation != nil && isGzip {

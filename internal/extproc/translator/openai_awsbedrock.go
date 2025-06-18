@@ -737,7 +737,7 @@ type openAIToAWSBedrockTranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(raw []byte, req *openai.EmbeddingRequest, onRetry bool) (
+func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ []byte, _ *openai.EmbeddingRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	// AWS Bedrock doesn't support embeddings through the Converse API
@@ -745,14 +745,14 @@ func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(raw []byte, req *o
 }
 
 // ResponseHeaders implements [OpenAIEmbeddingTranslator.ResponseHeaders].
-func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseHeaders(headers map[string]string) (
+func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	return nil, fmt.Errorf("embeddings are not supported for AWS Bedrock backend")
 }
 
 // ResponseBody implements [OpenAIEmbeddingTranslator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage *openai.EmbeddingUsage, err error,
 ) {
 	return nil, nil, nil, fmt.Errorf("embeddings are not supported for AWS Bedrock backend")

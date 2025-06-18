@@ -116,14 +116,14 @@ func (o *openAIToAzureOpenAITranslatorV1Embedding) RequestBody(raw []byte, req *
 }
 
 // ResponseHeaders implements [OpenAIEmbeddingTranslator.ResponseHeaders].
-func (o *openAIToAzureOpenAITranslatorV1Embedding) ResponseHeaders(headers map[string]string) (
+func (o *openAIToAzureOpenAITranslatorV1Embedding) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	return nil, nil
 }
 
 // ResponseBody implements [OpenAIEmbeddingTranslator.ResponseBody].
-func (o *openAIToAzureOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToAzureOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage *openai.EmbeddingUsage, err error,
 ) {
 	// For Azure OpenAI, the response format is the same as OpenAI, so we can just pass through

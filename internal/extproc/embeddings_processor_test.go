@@ -220,7 +220,7 @@ type mockEmbeddingTranslator struct {
 }
 
 // RequestBody implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) RequestBody(raw []byte, body *openai.EmbeddingRequest, onRetry bool) (
+func (m mockEmbeddingTranslator) RequestBody(_ []byte, body *openai.EmbeddingRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	if m.expRequestBody != nil {
@@ -231,14 +231,14 @@ func (m mockEmbeddingTranslator) RequestBody(raw []byte, body *openai.EmbeddingR
 }
 
 // ResponseHeaders implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (
+func (m mockEmbeddingTranslator) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseBody implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+func (m mockEmbeddingTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage *openai.EmbeddingUsage, err error,
 ) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retErr

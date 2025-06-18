@@ -198,7 +198,7 @@ type openAIToOpenAITranslatorV1Embedding struct {
 	path              string
 }
 
-func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, req *openai.EmbeddingRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.EmbeddingRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
