@@ -459,6 +459,7 @@ tool (
 	github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker
 	github.com/elastic/crd-ref-docs
 	github.com/golangci/golangci-lint/cmd/golangci-lint
+	github.com/tetratelabs/func-e
 	github.com/vladopajic/go-test-coverage/v2
 	helm.sh/helm/v3/cmd/helm
 	mvdan.cc/gofumpt
