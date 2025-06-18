@@ -128,12 +128,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	metricsServer, meter := startMetricsServer(fmt.Sprintf(":%d", flags.metricsPort), l)
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
+	embeddingMetrics := metrics.NewEmbedding(meter, x.NewCustomEmbeddingMetrics)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
+	server.Register("/v1/embeddings", extproc.EmbeddingProcessorFactory(embeddingMetrics))
 	server.Register("/v1/models", extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

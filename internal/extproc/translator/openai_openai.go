@@ -25,6 +25,11 @@ func NewChatCompletionOpenAIToOpenAITranslator(apiVersion string, modelNameOverr
 	return &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "chat/completions")}
 }
 
+// NewEmbeddingOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI embeddings translation.
+func NewEmbeddingOpenAIToOpenAITranslator(apiVersion string, modelNameOverride string) OpenAIEmbeddingTranslator {
+	return &openAIToOpenAITranslatorV1Embedding{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "embeddings")}
+}
+
 // openAIToOpenAITranslatorV1ChatCompletion implements [Translator] for /chat/completions.
 type openAIToOpenAITranslatorV1ChatCompletion struct {
 	modelNameOverride string
@@ -185,4 +190,104 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			return
 		}
 	}
+}
+
+// openAIToOpenAITranslatorV1Embedding implements OpenAIEmbeddingTranslator for /embeddings.
+type openAIToOpenAITranslatorV1Embedding struct {
+	modelNameOverride string
+	path              string
+}
+
+func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, req *openai.EmbeddingRequest, onRetry bool) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	var newBody []byte
+	if o.modelNameOverride != "" {
+		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
+			Optimistic:     true,
+			ReplaceInPlace: true,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
+		}
+		newBody = out
+	}
+
+	headerMutation = &extprocv3.HeaderMutation{
+		SetHeaders: []*corev3.HeaderValueOption{
+			{Header: &corev3.HeaderValue{
+				Key:      ":path",
+				RawValue: []byte(o.path),
+			}},
+		},
+	}
+
+	if onRetry {
+		newBody = raw
+	}
+
+	if len(newBody) > 0 {
+		bodyMutation = &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
+		}
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(strconv.Itoa(len(newBody))),
+		}})
+	}
+	return
+}
+
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+	return nil, nil
+}
+
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage *openai.EmbeddingUsage, err error,
+) {
+	if v, ok := respHeaders[statusHeaderName]; ok {
+		if v, err := strconv.Atoi(v); err == nil {
+			if !isGoodStatusCode(v) {
+				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
+				return headerMutation, bodyMutation, nil, err
+			}
+		}
+	}
+
+	var resp openai.EmbeddingResponse
+	if err := json.NewDecoder(body).Decode(&resp); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to unmarshal body: %w", err)
+	}
+	tokenUsage = &resp.Usage
+	return
+}
+
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseError(respHeaders map[string]string, body io.Reader) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	statusCode := respHeaders[statusHeaderName]
+	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
+		var openaiError openai.Error
+		buf, err := io.ReadAll(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+		}
+		openaiError = openai.Error{
+			Type: "error",
+			Error: openai.ErrorType{
+				Type:    openAIBackendError,
+				Message: string(buf),
+				Code:    &statusCode,
+			},
+		}
+		mut := &extprocv3.BodyMutation_Body{}
+		mut.Body, err = json.Marshal(openaiError)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+		}
+		headerMutation = &extprocv3.HeaderMutation{}
+		setContentLength(headerMutation, mut.Body)
+		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	}
+	return nil, nil, nil
 }
