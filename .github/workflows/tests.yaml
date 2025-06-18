@@ -98,14 +98,14 @@ jobs:
       - run: make test-controller
 
   test_extproc:
-    name: External Processor Test (Envoy ${{ matrix.name }})
+    name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - version: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.34.1  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: ubuntu-latest
-          - version: v1.34  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.34.1  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: macos-latest
           - version: latest
             os: ubuntu-latest
