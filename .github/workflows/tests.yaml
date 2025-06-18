@@ -35,7 +35,13 @@ permissions:
 jobs:
   unittest:
     name: Unit Test
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -48,7 +54,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.platform.arch }}
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}

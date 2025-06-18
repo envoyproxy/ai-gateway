@@ -357,7 +357,7 @@ require (
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/telepresenceio/watchable v0.0.0-20220726211108-9bb86f92afa7 // indirect
 	github.com/tetafro/godot v1.5.0 // indirect
-	github.com/tetratelabs/func-e v1.1.5-0.20250320201954-b46a029a6395 // indirect
+	github.com/tetratelabs/func-e v1.1.5-0.20250618051429-6a0f4e478076 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
