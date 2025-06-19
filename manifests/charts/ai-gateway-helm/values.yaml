@@ -7,7 +7,7 @@
 
 extProc:
   repository: docker.io/envoyproxy/ai-gateway-extproc
-  pullPolicy: IfNotPresent
+  imagePullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
@@ -111,3 +111,4 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
