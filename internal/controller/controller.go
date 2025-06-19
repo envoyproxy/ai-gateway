@@ -56,6 +56,8 @@ type Options struct {
 	ExtProcLogLevel string
 	// ExtProcImage is the image for the external processor set on Deployment.
 	ExtProcImage string
+	// ExtProcImagePullPolicy is the image pull policy for the external processor set on Deployment.
+	ExtProcImagePullPolicy corev1.PullPolicy
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
@@ -143,7 +145,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if !options.DisableMutatingWebhook {
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
 			logger.WithName("gateway-mutator"),
-			options.ExtProcImage, options.ExtProcLogLevel,
+			options.ExtProcImage,
+			options.ExtProcImagePullPolicy,
+			options.ExtProcLogLevel,
 			options.EnvoyGatewayNamespace,
 			options.UDSPath,
 		))

@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -21,6 +22,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		f, err := parseAndValidateFlags([]string{})
 		require.Equal(t, "info", f.extProcLogLevel)
 		require.Equal(t, "docker.io/envoyproxy/ai-gateway-extproc:latest", f.extProcImage)
+		require.Equal(t, corev1.PullIfNotPresent, f.extProcImagePullPolicy)
 		require.True(t, f.enableLeaderElection)
 		require.Equal(t, "info", f.logLevel.String())
 		require.Equal(t, ":1063", f.extensionServerPort)
@@ -42,6 +44,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args := []string{
 					tc.dash + "extProcLogLevel=debug",
 					tc.dash + "extProcImage=example.com/extproc:latest",
+					tc.dash + "extProcImagePullPolicy=Always",
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
@@ -49,6 +52,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
 				require.Equal(t, "example.com/extproc:latest", f.extProcImage)
+				require.Equal(t, corev1.PullAlways, f.extProcImagePullPolicy)
 				require.False(t, f.enableLeaderElection)
 				require.Equal(t, "debug", f.logLevel.String())
 				require.Equal(t, ":8080", f.extensionServerPort)
@@ -72,6 +76,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid logLevel",
 				flags:  []string{"--logLevel=invalid"},
 				expErr: "invalid log level: \"invalid\"",
+			},
+			{
+				name:   "invalid extProcImagePullPolicy",
+				flags:  []string{"--extProcImagePullPolicy=invalid"},
+				expErr: "invalid external processor pull policy: \"invalid\"",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
