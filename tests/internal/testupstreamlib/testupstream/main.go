@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -158,6 +159,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Println("failed to read the request body")
 		http.Error(w, "failed to read the request body", http.StatusInternalServerError)
+		return
+	}
+
+	// At least for the endpoints we want to support, all requests should have a Content-Length header
+	// and should not use chunked transfer encoding.
+	if r.Header.Get("Content-Length") == "" {
+		logger.Println("no Content-Length header, using request body length:", len(requestBody))
+		http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
+		return
+	}
+	if slices.Contains(r.TransferEncoding, "chunked") {
+		logger.Println("chunked transfer encoding detected")
+		http.Error(w, "chunked transfer encoding is not supported", http.StatusBadRequest)
 		return
 	}
 
