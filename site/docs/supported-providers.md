@@ -27,10 +27,10 @@ Below is a table of currently supported providers and their respective configura
 | [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |                        N/A                         |                            N/A                            |   🚧   | Work-in-progress: [issue#609]                                                                                                                          |
 | Self-hosted-models                                                                                    |         `{"name":"OpenAI","version":"v1"}`         |                            N/A                            |   ⚠️   | Depending on the API schema spoken by self-hosted servers. For example, [vLLM] speaks the OpenAI format. Also, API Key auth can be configured as well. |
 
-[AIServiceBackend]: ../api/api.mdx#aiservicebackendspec
-[BackendSecurityPolicy]: ../api/api.mdx#backendsecuritypolicyspec
-[API Key]: ../api/api.mdx#backendsecuritypolicyapikey
-[AWS Bedrock Credentials]: ../api/api.mdx#backendsecuritypolicyawscredentials
-[Azure Credentials]: ../api/api.mdx#backendsecuritypolicyazurecredentials
+[AIServiceBackend]: api/api.mdx#aiservicebackendspec
+[BackendSecurityPolicy]: api/api.mdx#backendsecuritypolicyspec
+[API Key]: api/api.mdx#backendsecuritypolicyapikey
+[AWS Bedrock Credentials]: api/api.mdx#backendsecuritypolicyawscredentials
+[Azure Credentials]: api/api.mdx#backendsecuritypolicyazurecredentials
 [issue#609]: https://github.com/envoyproxy/ai-gateway/issues/609
 [vLLM]: https://docs.vllm.ai/en/v0.8.3/serving/openai_compatible_server.html
