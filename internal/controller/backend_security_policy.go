@@ -156,7 +156,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		}
 	default:
 		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", bsp.Spec.Type)
-		c.logger.Error(err, "namespace", bsp.Namespace, "name", bsp.Name)
+		c.logger.Error(err, "unsupported backend security type", "namespace", bsp.Namespace, "name", bsp.Name)
 		return ctrl.Result{}, err
 	}
 	return c.executeRotation(ctx, rotator, bsp)
