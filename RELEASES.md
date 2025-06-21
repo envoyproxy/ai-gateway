@@ -12,7 +12,7 @@ Especially when we have a first stable control plane API, we will cut the major 
 
 The patch version will be incremented when we have a bug fix or a security fix. The end of life for the version will be 2 releases after the release of the version. For example, if we release the version v0.1.0, the end of life for the version will be when we release the version v0.3.0.
 
-The main branch will always use the latest version of the Envoy Gateway hence the latest version of the Envoy, and the main version will be available just like the tagged released versions in the GitHub Container Registry where we also host the helm chart.
+The main branch will always use the latest version of the Envoy Gateway, hence the latest version of the Envoy, and the main version will be available just like the tagged released versions in the Docker Hub where we also host the helm chart.
 
 ## Support Policy
 
@@ -73,7 +73,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
     git push origin v0.50.0-rc1
     ```
    Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
-   The release candidate image will be available in the GitHub Container Registry.
+   The release candidate image will be available in the Docker Hub.
 
 3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
   and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
@@ -89,7 +89,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
     git push origin v0.50.0
     ```
    Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag.
-   The release image will be available in the GitHub Container Registry.
+   The release image will be available in the Docker Hub.
 2. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
 3. Announce the release in the community.
@@ -108,7 +108,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
     git push origin v0.50.1
     ```
    Pushing a tag will trigger the pipeline to build the patch release image and the helm chart tagged with the patch release tag.
-   The patch release image will be available in the GitHub Container Registry.
+   The patch release image will be available in the Docker Hub.
 4. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
 5. Update the documentation on the main branch to reflect the new version. This has the following items:
