@@ -89,6 +89,9 @@ kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 
 Open a new terminal and send a test request to the AI Gateway using the `GATEWAY_URL` we set up:
 
+<Tabs>
+<TabItem value="chat-completions" label="Chat Completions">
+
 ```shell
 curl -H "Content-Type: application/json" \
     -d '{
@@ -103,6 +106,21 @@ curl -H "Content-Type: application/json" \
     $GATEWAY_URL/v1/chat/completions
 ```
 
+</TabItem>
+<TabItem value="embeddings" label="Embeddings">
+
+```shell
+curl -H "Content-Type: application/json" \
+    -d '{
+        "model": "some-cool-embedding-model",
+        "input": "Hello world"
+    }' \
+    $GATEWAY_URL/v1/embeddings
+```
+
+</TabItem>
+</Tabs>
+
 :::tip
 
 If you're opening a new terminal, you'll need to set the `GATEWAY_URL` variable again.
@@ -112,6 +130,9 @@ If you're opening a new terminal, you'll need to set the `GATEWAY_URL` variable 
 ### Expected Response
 
 You should receive a response like:
+
+<Tabs>
+<TabItem value="chat-completions" label="Chat Completions">
 
 ```json
 {
@@ -125,6 +146,30 @@ You should receive a response like:
 }
 ```
 
+</TabItem>
+<TabItem value="embeddings" label="Embeddings">
+
+```json
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "embedding",
+            "embedding": [0.1, 0.2, 0.3, ...],
+            "index": 0
+        }
+    ],
+    "model": "some-cool-embedding-model",
+    "usage": {
+        "prompt_tokens": 2,
+        "total_tokens": 2
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
 :::note
 
 This response comes from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
@@ -134,12 +179,21 @@ For real AI model responses, see the [Connect Providers](./connect-providers) gu
 
 ### Understanding the Response Format
 
-The basic setup includes a mock backend that demonstrates the API structure but doesn't provide real AI responses. The response format follows the standard chat completion format with:
+The basic setup includes a mock backend that demonstrates the API structure but doesn't provide real AI responses. The response formats follow the standard OpenAI API specifications:
+
+**Chat Completions:**
 - A `choices` array containing responses
 - Each message having a `role` and `content`
+
+**Embeddings:**
+- A `data` array containing embedding objects
+- Each embedding object has an `embedding` vector and `index`
+- Usage information showing token counts
 
 ## Next Steps
 
 Now that you've tested the basic setup, you can:
-- Configure [real AI model backends](./connect-providers) like OpenAI or AWS Bedrock
+
+- Configure [real AI model backends](./connect-providers) like OpenAI or AWS Bedrock for both chat completions and embeddings
 - Explore the [API Reference](../api/) for more details about available endpoints
+- Learn about advanced features like [fallback](../capabilities/fallback), [metrics](../capabilities/metrics), and [rate limiting](../capabilities/usage-based-ratelimiting)

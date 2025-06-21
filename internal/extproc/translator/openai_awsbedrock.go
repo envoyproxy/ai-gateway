@@ -29,6 +29,11 @@ func NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride string) Ope
 	return &openAIToAWSBedrockTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
+// NewEmbeddingOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock embeddings translation.
+func NewEmbeddingOpenAIToAWSBedrockTranslator(modelNameOverride string) OpenAIEmbeddingTranslator {
+	return &openAIToAWSBedrockTranslatorV1Embedding{modelNameOverride: modelNameOverride}
+}
+
 // openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
 type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	modelNameOverride string
@@ -722,4 +727,33 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		return chunk, false
 	}
 	return chunk, true
+}
+
+// openAIToAWSBedrockTranslatorV1Embedding implements [OpenAIEmbeddingTranslator] for AWS Bedrock embeddings.
+// Note: AWS Bedrock doesn't have a direct embeddings API like OpenAI, so this implementation
+// returns an error indicating that embeddings are not supported for AWS Bedrock.
+type openAIToAWSBedrockTranslatorV1Embedding struct {
+	modelNameOverride string
+}
+
+// RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
+func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ []byte, _ *openai.EmbeddingRequest, _ bool) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	// AWS Bedrock doesn't support embeddings through the Converse API
+	return nil, nil, fmt.Errorf("embeddings are not supported for AWS Bedrock backend")
+}
+
+// ResponseHeaders implements [OpenAIEmbeddingTranslator.ResponseHeaders].
+func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseHeaders(_ map[string]string) (
+	headerMutation *extprocv3.HeaderMutation, err error,
+) {
+	return nil, fmt.Errorf("embeddings are not supported for AWS Bedrock backend")
+}
+
+// ResponseBody implements [OpenAIEmbeddingTranslator.ResponseBody].
+func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage *openai.EmbeddingUsage, err error,
+) {
+	return nil, nil, nil, fmt.Errorf("embeddings are not supported for AWS Bedrock backend")
 }

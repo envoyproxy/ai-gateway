@@ -1,5 +1,5 @@
 # Envoy AI Gateway
-Envoy AI Gateway is an open source project for using [Envoy Gateway](https://github.com/envoyproxy/gateway) to handle request traffic from application clients to Generative AI services.
+Envoy AI Gateway is an open source project for using [Envoy Gateway](https://github.com/envoyproxy/gateway) to handle request traffic from application clients to Generative AI services. It supports both chat completions and embeddings endpoints, providing a unified interface for various AI providers.
 
 ## Contact
 

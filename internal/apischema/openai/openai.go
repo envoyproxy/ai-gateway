@@ -776,6 +776,108 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
+// EmbeddingEncodingFormat is the format of the embeddings data.
+type EmbeddingEncodingFormat string
+
+const (
+	// EmbeddingEncodingFormatFloat is the default format for embeddings.
+	EmbeddingEncodingFormatFloat EmbeddingEncodingFormat = "float"
+	// EmbeddingEncodingFormatBase64 is the base64 format for embeddings.
+	EmbeddingEncodingFormatBase64 EmbeddingEncodingFormat = "base64"
+)
+
+// EmbeddingRequest represents a request structure for embeddings API.
+// https://platform.openai.com/docs/api-reference/embeddings/create
+type EmbeddingRequest struct {
+	// Input is the input text to embed, encoded as a string or array of strings.
+	// To embed multiple inputs in a single request, pass an array of strings.
+	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
+	// cannot be an empty string, and any array must be 2048 dimensions or less.
+	Input EmbeddingInput `json:"input"`
+
+	// Model is the ID of the model to use.
+	Model string `json:"model"`
+
+	// EncodingFormat is the format to return the embeddings in. Can be either float or base64.
+	// Defaults to float.
+	EncodingFormat EmbeddingEncodingFormat `json:"encoding_format,omitempty"`
+
+	// Dimensions is the number of dimensions the resulting output embeddings should have.
+	// Only supported in text-embedding-3 and later models.
+	Dimensions *int `json:"dimensions,omitempty"`
+
+	// User is a unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
+	User string `json:"user,omitempty"`
+}
+
+// EmbeddingInput represents the input for an embedding request.
+// It can be either a string or an array of strings.
+type EmbeddingInput struct {
+	Value interface{}
+}
+
+// UnmarshalJSON implements json.Unmarshaler for EmbeddingInput.
+func (e *EmbeddingInput) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		e.Value = str
+		return nil
+	}
+
+	// Try to unmarshal as array of strings
+	var strArray []string
+	if err := json.Unmarshal(data, &strArray); err == nil {
+		e.Value = strArray
+		return nil
+	}
+
+	return fmt.Errorf("input must be either a string or an array of strings")
+}
+
+// MarshalJSON implements json.Marshaler for EmbeddingInput.
+func (e EmbeddingInput) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.Value)
+}
+
+// EmbeddingResponse represents a response structure for embeddings API.
+// https://platform.openai.com/docs/api-reference/embeddings/object
+type EmbeddingResponse struct {
+	// Object is the object type, which is always "list".
+	Object string `json:"object"`
+
+	// Data is the list of embedding objects.
+	Data []Embedding `json:"data"`
+
+	// Model is the ID of the model used to generate the embeddings.
+	Model string `json:"model"`
+
+	// Usage is the usage information for the request.
+	Usage EmbeddingUsage `json:"usage"`
+}
+
+// Embedding represents an embedding vector.
+type Embedding struct {
+	// Object is the object type, which is always "embedding".
+	Object string `json:"object"`
+
+	// Embedding is the embedding vector, which is a list of floats.
+	// The length of vector depends on the model as listed in the embedding guide.
+	Embedding []float64 `json:"embedding"`
+
+	// Index is the index of the embedding in the list of embeddings.
+	Index int `json:"index"`
+}
+
+// EmbeddingUsage represents the usage information for an embeddings request.
+type EmbeddingUsage struct {
+	// PromptTokens is the number of tokens in the prompt.
+	PromptTokens int `json:"prompt_tokens"`
+
+	// TotalTokens is the total number of tokens used in the request (prompt).
+	TotalTokens int `json:"total_tokens"`
+}
+
 // JSONUNIXTime is a helper type to marshal/unmarshal time.Time UNIX timestamps.
 type JSONUNIXTime time.Time
 
