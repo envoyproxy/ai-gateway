@@ -314,10 +314,7 @@ metadata:
 type: Opaque
 stringData:
   # Replace with your AWS credentials.
-  credentials: |
-    [default]
-    aws_access_key_id = AWS_ACCESS_KEY_ID
-    aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+  apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
 ---
 apiVersion: v1
 kind: Secret
