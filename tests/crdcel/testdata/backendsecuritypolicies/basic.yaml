@@ -10,3 +10,6 @@ metadata:
   namespace: default
 spec:
   type: APIKey
+  apiKey:
+    secretRef:
+      name: api-key-secret
