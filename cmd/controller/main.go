@@ -23,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	clientcfg "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -163,10 +162,7 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: flags.logLevel})))
-	k8sConfig, err := ctrl.GetConfig()
-	if err != nil {
-		setupLog.Error(err, "failed to get k8s config")
-	}
+	k8sConfig := ctrl.GetConfigOrDie()
 
 	lis, err := net.Listen("tcp", flags.extensionServerPort)
 	if err != nil {
@@ -192,7 +188,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cli, err := client.New(clientcfg.GetConfigOrDie(), client.Options{Scheme: controller.Scheme})
+	cli, err := client.New(k8sConfig, client.Options{Scheme: controller.Scheme})
 	if err != nil {
 		setupLog.Error(err, "failed to create client")
 		os.Exit(1)
