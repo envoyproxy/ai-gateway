@@ -138,6 +138,36 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "azure_multiple_auth.yaml",
 			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
 		},
+		// CEL validation test cases - these should fail due to type mismatch
+		{
+			name:   "apikey_with_aws_credentials.yaml",
+			expErr: "When type is APIKey, only apiKey field should be set",
+		},
+		{
+			name:   "apikey_with_azure_credentials.yaml",
+			expErr: "When type is APIKey, only apiKey field should be set",
+		},
+		{
+			name:   "apikey_with_gcp_credentials.yaml",
+			expErr: "When type is APIKey, only apiKey field should be set",
+		},
+		{
+			name:   "apikey_with_nil_configuration.yaml",
+			expErr: "When type is APIKey, only apiKey field should be set",
+		},
+		{
+			name:   "aws_with_azure_credentials.yaml",
+			expErr: "When type is AWSCredentials, only awsCredentials field should be set",
+		},
+		{
+			name:   "azure_with_gcp_credentials.yaml",
+			expErr: "When type is AzureCredentials, only azureCredentials field should be set",
+		},
+		{
+			name:   "gcp_with_apikey.yaml",
+			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
+		},
+		// Valid test cases - these should pass
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},

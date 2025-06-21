@@ -6,7 +6,7 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
-  name: dog-provider-policy
+  name: aws-oidc-policy
   namespace: default
 spec:
   type: AWSCredentials
