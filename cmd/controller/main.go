@@ -20,9 +20,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	clientcfg "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -31,16 +31,27 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel       string
-	extProcImage          string
-	enableLeaderElection  bool
-	logLevel              zapcore.Level
-	extensionServerPort   string
-	tlsCertDir            string
-	tlsCertName           string
-	tlsKeyName            string
-	caBundleName          string
-	envoyGatewayNamespace string
+	extProcLogLevel        string
+	extProcImage           string
+	extProcImagePullPolicy corev1.PullPolicy
+	enableLeaderElection   bool
+	logLevel               zapcore.Level
+	extensionServerPort    string
+	tlsCertDir             string
+	tlsCertName            string
+	tlsKeyName             string
+	caBundleName           string
+	envoyGatewayNamespace  string
+}
+
+// parsePullPolicy parses string into a k8s PullPolicy.
+func parsePullPolicy(s string) (corev1.PullPolicy, error) {
+	switch corev1.PullPolicy(s) {
+	case corev1.PullAlways, corev1.PullNever, corev1.PullIfNotPresent:
+		return corev1.PullPolicy(s), nil
+	default:
+		return "", fmt.Errorf("invalid external processor pull policy: %q", s)
+	}
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -57,6 +68,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"extProcImage",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"The image for the external processor",
+	)
+	extProcImagePullPolicyPtr := fs.String(
+		"extProcImagePullPolicy",
+		"IfNotPresent",
+		"The image pull policy for the external processor. One of 'Always', 'Never', 'IfNotPresent'",
 	)
 	enableLeaderElectionPtr := fs.Bool(
 		"enableLeaderElection",
@@ -115,17 +131,24 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
 		return flags{}, err
 	}
+
+	extProcPullPolicy, err := parsePullPolicy(*extProcImagePullPolicyPtr)
+	if err != nil {
+		return flags{}, err
+	}
+
 	return flags{
-		extProcLogLevel:       *extProcLogLevelPtr,
-		extProcImage:          *extProcImagePtr,
-		enableLeaderElection:  *enableLeaderElectionPtr,
-		logLevel:              zapLogLevel,
-		extensionServerPort:   *extensionServerPortPtr,
-		tlsCertDir:            *tlsCertDir,
-		tlsCertName:           *tlsCertName,
-		tlsKeyName:            *tlsKeyName,
-		caBundleName:          *caBundleName,
-		envoyGatewayNamespace: *envoyGatewayNamespace,
+		extProcLogLevel:        *extProcLogLevelPtr,
+		extProcImage:           *extProcImagePtr,
+		extProcImagePullPolicy: extProcPullPolicy,
+		enableLeaderElection:   *enableLeaderElectionPtr,
+		logLevel:               zapLogLevel,
+		extensionServerPort:    *extensionServerPortPtr,
+		tlsCertDir:             *tlsCertDir,
+		tlsCertName:            *tlsCertName,
+		tlsKeyName:             *tlsKeyName,
+		caBundleName:           *caBundleName,
+		envoyGatewayNamespace:  *envoyGatewayNamespace,
 	}, nil
 }
 
@@ -139,10 +162,7 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: flags.logLevel})))
-	k8sConfig, err := ctrl.GetConfig()
-	if err != nil {
-		setupLog.Error(err, "failed to get k8s config")
-	}
+	k8sConfig := ctrl.GetConfigOrDie()
 
 	lis, err := net.Listen("tcp", flags.extensionServerPort)
 	if err != nil {
@@ -168,7 +188,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cli, err := client.New(clientcfg.GetConfigOrDie(), client.Options{Scheme: controller.Scheme})
+	cli, err := client.New(k8sConfig, client.Options{Scheme: controller.Scheme})
 	if err != nil {
 		setupLog.Error(err, "failed to create client")
 		os.Exit(1)
@@ -196,11 +216,12 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:          flags.extProcImage,
-		ExtProcLogLevel:       flags.extProcLogLevel,
-		EnableLeaderElection:  flags.enableLeaderElection,
-		EnvoyGatewayNamespace: flags.envoyGatewayNamespace,
-		UDSPath:               extProcUDSPath,
+		ExtProcImage:           flags.extProcImage,
+		ExtProcImagePullPolicy: flags.extProcImagePullPolicy,
+		ExtProcLogLevel:        flags.extProcLogLevel,
+		EnableLeaderElection:   flags.enableLeaderElection,
+		EnvoyGatewayNamespace:  flags.envoyGatewayNamespace,
+		UDSPath:                extProcUDSPath,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

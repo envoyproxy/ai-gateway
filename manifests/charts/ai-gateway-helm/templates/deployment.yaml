@@ -35,14 +35,15 @@ spec:
           securityContext:
             {{- toYaml .Values.controller.securityContext | nindent 12 }}
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
           ports:
             - containerPort: 9443
             - containerPort: 1063
             - containerPort: 9090
           args:
             - -logLevel={{ .Values.controller.logLevel }}
-            - --extProcImage={{ .Values.extProc.repository }}:{{ .Values.extProc.tag | default .Chart.AppVersion }}
+            - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
+            - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}

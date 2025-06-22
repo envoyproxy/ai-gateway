@@ -6,9 +6,11 @@
 # Default values for ai-gateway-helm.
 
 extProc:
-  repository: docker.io/envoyproxy/ai-gateway-extproc
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  image:
+    repository: docker.io/envoyproxy/ai-gateway-extproc
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+  imagePullPolicy: IfNotPresent
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
@@ -37,9 +39,9 @@ controller:
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller
-    pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
+  imagePullPolicy: IfNotPresent
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}

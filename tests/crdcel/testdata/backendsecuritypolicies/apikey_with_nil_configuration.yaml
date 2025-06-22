@@ -6,12 +6,7 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
-  name: azure-valid-credentials-policy
+  name: apikey-with-nil-policy
   namespace: default
 spec:
-  type: AzureCredentials
-  azureCredentials:
-    clientID: dummy_azure_client_id
-    tenantID: dummy_azure_tenant_id
-    clientSecretRef:
-      name: dummy_azure_secret_ref_name
+  type: APIKey

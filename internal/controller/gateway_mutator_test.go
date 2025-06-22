@@ -26,7 +26,7 @@ func TestGatewayMutator_Default(t *testing.T) {
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
-		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "envoy-gateway-system", "/tmp/extproc.sock",
 	)
 	pod := &corev1.Pod{
@@ -49,7 +49,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
-		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "envoy-gateway-system", "/tmp/extproc.sock",
 	)
 
