@@ -7,7 +7,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1
 	github.com/alecthomas/kong v1.11.0
 	github.com/aws/aws-sdk-go-v2 v1.36.5
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0
 	github.com/coreos/go-oidc/v3 v3.14.1
