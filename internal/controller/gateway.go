@@ -12,6 +12,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	"github.com/hashicorp/go-multierror"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -214,7 +215,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
-	var err error
+	var multierr error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
@@ -224,21 +225,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 			backends := make([]filterapi.Backend, len(rule.BackendRefs))
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
-				b := &backends[j]
+				b := filterapi.Backend{}
 				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
 				b.ModelNameOverride = backendRef.ModelNameOverride
-				var backendObj *aigv1a1.AIServiceBackend
-				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+				backendObj, err := c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
+					multierr = multierror.Append(multierr, err)
+					c.logger.Error(err, "failed to get AIServiceBackend", "name", b.Name)
+					continue
 				}
 				b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
 					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
 					if err != nil {
-						return fmt.Errorf("failed to create backend auth: %w", err)
+						multierr = multierror.Append(multierr, err)
+						c.logger.Error(err, "failed to create backend auth")
+						continue
 					}
 				}
+				backends = append(backends, b)
 			}
 			configRule := filterapi.RouteRule{Backends: backends}
 			configRule.Name = routeName(aiGatewayRoute, i)
@@ -271,19 +276,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					fc.Type = filterapi.LLMRequestCostTypeCEL
 					expr := *cost.CEL
 					// Sanity check the CEL expression.
-					_, err = llmcostcel.NewProgram(expr)
+					_, err := llmcostcel.NewProgram(expr)
 					if err != nil {
-						return fmt.Errorf("invalid CEL expression: %w", err)
+						multierr = multierror.Append(multierr, err)
+						c.logger.Error(err, "invalid CEL expression")
+						continue
 					}
 					fc.CEL = expr
 				default:
-					return fmt.Errorf("unknown request cost type: %s", cost.Type)
+					err := fmt.Errorf("unknown request cost type: %s", cost.Type)
+					multierr = multierror.Append(multierr, err)
+					c.logger.Error(err, "unknown request cost type")
+					continue
 				}
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 				llmCosts[cost.MetadataKey] = struct{}{}
 			}
 		}
 	}
+	c.logger.Error(multierr, "invalid AIGatewayRouteRule")
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 
