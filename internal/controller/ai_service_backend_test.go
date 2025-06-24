@@ -15,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -26,7 +27,7 @@ import (
 func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
-	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch, make(chan event.GenericEvent))
 	originals := []*aigv1a1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
