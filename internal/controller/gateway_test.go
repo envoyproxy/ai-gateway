@@ -454,6 +454,10 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
 		},
 		{
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("")},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		},
+		{
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},
