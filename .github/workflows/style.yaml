@@ -13,7 +13,13 @@ permissions:
 jobs:
   style:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
