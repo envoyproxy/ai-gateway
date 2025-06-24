@@ -33,6 +33,6 @@ jobs:
             ~/.cache/golangci-lint
             ~/go/pkg/mod
             ~/go/bin
-          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - name: Ensure `make precommit` is executed
         run: make check
