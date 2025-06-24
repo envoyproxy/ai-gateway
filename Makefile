@@ -42,7 +42,12 @@ help:
 	@echo "Usage:\n  make \033[36m<Target>\033[0m \n\nTargets:"
 	@awk 'BEGIN {FS = ":.*##"; printf ""} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ Lint
+##@ Precommit: Usually, targets here do not need to be run individually, but run `make precommit` to run all of them at once. CI will fail if `precommit` is not run before committing.
+
+# This runs all necessary steps to prepare for a commit.
+.PHONY: precommit
+precommit: ## Run all necessary steps to prepare for a commit.
+precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
@@ -80,11 +85,6 @@ tidy: ## Run go mod tidy on every module.
 	| xargs -I {} bash -c 'dirname {}' \
 	| xargs -I {} bash -c 'echo "tidy => {}"; cd {}; go mod tidy -v; '
 
-# This runs all necessary steps to prepare for a commit.
-.PHONY: precommit
-precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
-
 # This runs precommit and checks for any differences in the codebase, failing if there are any.
 .PHONY: check
 check: precommit ## Run all necessary steps to prepare for a commit and check for any differences in the codebase.
@@ -99,8 +99,6 @@ check: precommit ## Run all necessary steps to prepare for a commit and check fo
 editorconfig:
 	@echo "running editorconfig-checker"
 	@go tool editorconfig-checker
-
-##@ API
 
 # This re-generates the CRDs for the API defined in the api/v1alpha1 directory.
 .PHONY: apigen
@@ -127,6 +125,13 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 test: ## Run the unit tests for the codebase.
 	@echo "test => ./..."
 	@go test $(GO_TEST_ARGS) ./...
+
+# This runs the unit tests for the codebase with coverage check.
+.PHONY: test-coverage
+test-coverage: ## Run the unit tests for the codebase with coverage check.
+	@mkdir -p $(OUTPUT_DIR)
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
+	@go tool go-test-coverage --config=.testcoverage.yml
 
 ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 
@@ -166,12 +171,6 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
 	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
-# This runs the unit tests for the codebase with coverage check.
-.PHONY: test-coverage
-test-coverage: ## Run the unit tests for the codebase with coverage check.
-	@mkdir -p $(OUTPUT_DIR)
-	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
-	@go tool go-test-coverage --config=.testcoverage.yml
 
 
 ##@ Common
