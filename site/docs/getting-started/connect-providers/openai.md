@@ -98,7 +98,9 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field. For example, to use [o1]
+To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field.
+
+For example, for chat completion models, to use [o1], for embedding models, to use [text-embedding-ada-002](https://platform.openai.com/docs/models/text-embedding-ada-002):
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -119,6 +121,11 @@ spec:
             - type: Exact
               name: x-ai-eg-model
               value: o1
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: text-embedding-ada-002
       backendRefs:
         - name: envoy-ai-gateway-basic-openai
 ```
