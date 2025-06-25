@@ -26,9 +26,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        language:
-        - go
 
     steps:
     - name: Checkout repository
@@ -43,7 +40,7 @@ jobs:
     - name: Initialize CodeQL
       uses: github/codeql-action/init@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858  # v3.29.0
       with:
-        languages: ${{ matrix.language }}
+        languages: go
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858  # v3.29.0
@@ -51,4 +48,4 @@ jobs:
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858  # v3.29.0
       with:
-        category: "/language:${{matrix.language}}"
+        category: "/language:go"
