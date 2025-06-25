@@ -1,7 +1,7 @@
 **Description**
 
 <!--
-Please write the description here, which typically talks about the description / what this PR does / why we need it.
+Please provide a clear and concise summary of what this PR changes and why these changes are needed here.
 After the PR is merged, the message here will be included in the commit message after the PR title (which is in the format of "<tag>: add foo for bar").
 
 Example:
