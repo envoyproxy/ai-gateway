@@ -1,8 +1,8 @@
-**Commit Message**
+**Description**
 
 <!--
-Please write the commit message here, which typically talks about the description / what this PR does / why we need it.
-After the PR is merged, the message here will be included after the PR title (which is in the format of "<tag>: add foo for bar").
+Please write the description here, which typically talks about the description / what this PR does / why we need it.
+After the PR is merged, the message here will be included in the commit message after the PR title (which is in the format of "<tag>: add foo for bar").
 
 Example:
 
