@@ -2,7 +2,6 @@
 
 This directory contains various examples demonstrating different features and use cases of Envoy AI Gateway.
 
-## Getting Started
 
 ### [Basic Setup](./basic/)
 A comprehensive example showing how to set up Envoy AI Gateway with multiple providers including OpenAI, AWS Bedrock, and Azure OpenAI.
