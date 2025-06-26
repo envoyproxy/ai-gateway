@@ -367,25 +367,29 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 }
 
 func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(c.config.requestCosts))
-	for i := range c.config.requestCosts {
-		rc := &c.config.requestCosts[i]
+	return buildDynamicMetadata(c.config, &c.costs, c.requestHeaders)
+}
+
+func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(config.requestCosts))
+	for i := range config.requestCosts {
+		rc := &config.requestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
-			cost = c.costs.InputTokens
+			cost = costs.InputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = c.costs.OutputTokens
+			cost = costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = c.costs.TotalTokens
+			cost = costs.TotalTokens
 		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
-				c.requestHeaders[c.config.modelNameHeaderKey],
-				c.requestHeaders[c.config.selectedRouteHeaderKey],
-				c.costs.InputTokens,
-				c.costs.OutputTokens,
-				c.costs.TotalTokens,
+				requestHeaders[config.modelNameHeaderKey],
+				requestHeaders[config.selectedRouteHeaderKey],
+				costs.InputTokens,
+				costs.OutputTokens,
+				costs.TotalTokens,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -394,7 +398,6 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
 		}
-		c.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 	if len(metadata) == 0 {
@@ -402,7 +405,7 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 	}
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			c.config.metadataNamespace: {
+			config.metadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{Fields: metadata},
 				},

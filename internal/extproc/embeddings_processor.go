@@ -25,7 +25,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
-	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
@@ -340,48 +339,7 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 }
 
 func (e *embeddingsProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(e.config.requestCosts))
-	for i := range e.config.requestCosts {
-		rc := &e.config.requestCosts[i]
-		var cost uint32
-		switch rc.Type {
-		case filterapi.LLMRequestCostTypeInputToken:
-			cost = e.costs.InputTokens
-		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = e.costs.OutputTokens
-		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = e.costs.TotalTokens
-		case filterapi.LLMRequestCostTypeCEL:
-			costU64, err := llmcostcel.EvaluateProgram(
-				rc.celProg,
-				e.requestHeaders[e.config.modelNameHeaderKey],
-				e.requestHeaders[e.config.selectedRouteHeaderKey],
-				e.costs.InputTokens,
-				e.costs.OutputTokens,
-				e.costs.TotalTokens,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-			}
-			cost = uint32(costU64) //nolint:gosec
-		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
-		}
-		e.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
-		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
-	}
-	if len(metadata) == 0 {
-		return nil, nil
-	}
-	return &structpb.Struct{
-		Fields: map[string]*structpb.Value{
-			e.config.metadataNamespace: {
-				Kind: &structpb.Value_StructValue{
-					StructValue: &structpb.Struct{Fields: metadata},
-				},
-			},
-		},
-	}, nil
+	return buildDynamicMetadata(e.config, &e.costs, e.requestHeaders)
 }
 
 func parseOpenAIEmbeddingBody(body *extprocv3.HttpBody) (modelName string, rb *openai.EmbeddingRequest, err error) {
