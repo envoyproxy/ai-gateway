@@ -29,6 +29,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
+const (
+	ModelNameOverride = "model_name_override"
+)
+
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
@@ -397,6 +401,11 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 		c.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
+
+	if c.modelNameOverride != "" {
+		metadata[ModelNameOverride] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: c.modelNameOverride}}
+	}
+
 	if len(metadata) == 0 {
 		return nil, nil
 	}
