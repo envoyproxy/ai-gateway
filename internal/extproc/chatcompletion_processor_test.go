@@ -283,14 +283,14 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage", CEL: "15"}},
 			},
 		},
-		requestHeaders:    headers,
-		logger:            slog.Default(),
-		metrics:           mm,
-		modelNameOverride: "ai_gateway_llm",
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
 	}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:   "some-backend",
-		Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+		Name:              "some-backend",
+		Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+		ModelNameOverride: "ai_gateway_llm",
 	}, nil, &chatCompletionProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	mm.RequireRequestFailure(t)
@@ -302,7 +302,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	md, err := p.maybeBuildDynamicMetadata()
 	require.NoError(t, err)
 	require.NotNil(t, md)
-	require.Equal(t, "", md.Fields["model_name_override"].GetStringValue())
+	require.Equal(t, "ai_gateway_llm", md.Fields["model_name_override"].GetStringValue())
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
