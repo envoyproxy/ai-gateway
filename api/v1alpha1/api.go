@@ -419,9 +419,9 @@ type VersionedAPISchema struct {
 
 	// Version is the version of the API schema.
 	//
-	// When the name is set to "OpenAI", this equals to the prefix of the OpenAI API endpoints, and
-	// this defaults to "v1" if not set. For example, "chat completions" API endpoint will be
-	// "/v1/chat/completions" if the version is set to "v1".
+	// When the name is set to "OpenAI", this equals to the prefix of the OpenAI API endpoints. This defaults to "v1"
+	// if not set or empty string. For example, "chat completions" API endpoint will be "/v1/chat/completions"
+	// if the version is set to "v1".
 	//
 	// This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
 	// versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
