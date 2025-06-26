@@ -297,12 +297,28 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	mm.RequireTokensRecorded(t, 0)
 	mm.RequireSelectedBackend(t, "some-backend")
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
+}
 
-	// Check model name override after setting it in setBackend
+func Test_chatCompletionProcessorUpstreamFilter_maybeBuildDynamicMetadata(t *testing.T) {
+	headers := map[string]string{":path": "/foo"}
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		config: &processorConfig{
+			requestCosts:      []processorConfigRequestCost{},
+			metadataNamespace: "ai_gateway_llm_ns",
+		},
+		requestHeaders:    headers,
+		logger:            slog.Default(),
+		metrics:           mm,
+		modelNameOverride: "ai_gateway_llm",
+	}
+
+	require.Equal(t, "ai_gateway_llm", p.modelNameOverride)
 	md, err := p.maybeBuildDynamicMetadata()
 	require.NoError(t, err)
 	require.NotNil(t, md)
-	require.Equal(t, "ai_gateway_llm", md.Fields["model_name_override"].GetStringValue())
+
+	require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
