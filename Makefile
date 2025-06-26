@@ -47,7 +47,7 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
+precommit: tidy codespell apigen apidoc clientgen format lint editorconfig yamllint helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
@@ -117,6 +117,17 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 		--output-path site/docs/api/api.mdx \
 		--renderer=markdown
 
+# This generates the clientset for the API defined in the api/v1alpha1 directory.
+.PHONY: clientgen
+clientgen: ## Generate clientset for the API defined in the api directory.
+	@echo "client-gen => ./api/v1alpha1  → ./pkg/client/clientset/versioned"
+	@go tool client-gen \
+		--clientset-name versioned \
+		--input-base "github.com/envoyproxy/ai-gateway" \
+		--input "api/v1alpha1" \
+		--output-pkg "github.com/envoyproxy/ai-gateway/pkg/client/clientset" \
+		--output-dir "./pkg/client/clientset" \
+		--go-header-file "./tools/boilerplate/boilerplate.go.txt"
 
 ##@ Testing
 

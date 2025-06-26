@@ -38,6 +38,7 @@ import (
 // Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
 // BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 //
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -352,6 +353,7 @@ type AIGatewayFilterConfigExternalProcessor struct {
 // HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
 // the backend specific logic in the final HTTPRoute.
 //
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -482,6 +484,7 @@ const (
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 // exiting the gateway to the backend.
 //
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
