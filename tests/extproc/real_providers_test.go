@@ -32,7 +32,7 @@ func TestWithRealProviders(t *testing.T) {
 	requireRunEnvoy(t, accessLogPath)
 	configPath := t.TempDir() + "/extproc-config.yaml"
 
-	cc := internaltesting.RequireNewCredentialsContext(t)
+	cc := internaltesting.RequireNewCredentialsContext()
 
 	requireWriteFilterConfig(t, configPath, &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
