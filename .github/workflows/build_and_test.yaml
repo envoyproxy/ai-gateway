@@ -1,4 +1,4 @@
-name: Tests
+name: Build and Test
 on:
   pull_request:
     branches:
@@ -33,8 +33,34 @@ permissions:
   packages: write
 
 jobs:
+  style:
+    name: Check
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Ensure `make precommit` is executed
+        run: make check
   unittest:
     name: Unit Test
+    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +89,7 @@ jobs:
 
   test_crdcel:
     name: CRD CEL Validation Test
+    needs: [style]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +108,7 @@ jobs:
 
   test_controller:
     name: Controller Test
+    needs: [style]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +127,7 @@ jobs:
 
   test_extproc:
     name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
+    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -149,6 +178,7 @@ jobs:
   test_e2e:
     # Not all the cases in E2E require secrets, so we run for all the events.
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
+    needs: [style]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -186,7 +216,7 @@ jobs:
     if: github.event_name == 'push'
     name: Push Docker Images
     needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
-    uses: ./.github/workflows/docker_builds_template.yaml
+    uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
   helm_push:
