@@ -69,13 +69,6 @@ type ChatCompletionMetrics interface {
 	RecordTokenLatency(ctx context.Context, tokens uint32, extraAttrs ...attribute.KeyValue)
 }
 
-// NewCustomEmbeddingsMetrics is the function to create a custom embeddings AI Gateway metrics over
-// the default metrics. This is nil by default and can be set by the custom build of external processor.
-var NewCustomEmbeddingsMetrics NewCustomEmbeddingsMetricsFn
-
-// NewCustomEmbeddingsMetricsFn is the function to create a custom embeddings AI Gateway metrics.
-type NewCustomEmbeddingsMetricsFn func(meter metric.Meter) EmbeddingsMetrics
-
 // EmbeddingsMetrics is the interface for the embeddings AI Gateway metrics.
 type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.

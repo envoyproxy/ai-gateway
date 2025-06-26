@@ -25,8 +25,8 @@ type baseMetrics struct {
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string) *baseMetrics {
-	return &baseMetrics{
+func newBaseMetrics(meter metric.Meter, operation string) baseMetrics {
+	return baseMetrics{
 		metrics:   newGenAI(meter),
 		operation: operation,
 		model:     "unknown",

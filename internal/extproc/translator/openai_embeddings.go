@@ -100,7 +100,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[strin
 	tokenUsage = LLMTokenUsage{
 		InputTokens: uint32(resp.Usage.PromptTokens), //nolint:gosec
 		TotalTokens: uint32(resp.Usage.TotalTokens),  //nolint:gosec
-		// Embeddings don't have output tokens, only input and total
+		// Embeddings don't have output tokens, only input and total.
 		OutputTokens: 0,
 	}
 	return

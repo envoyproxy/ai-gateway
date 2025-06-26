@@ -184,7 +184,7 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// Try to unmarshal as array of strings (for embeddings)
+	// Try to unmarshal as array of strings (for embeddings).
 	var strArr []string
 	err = json.Unmarshal(data, &strArr)
 	if err == nil {
@@ -192,7 +192,7 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// Try to unmarshal as array of ChatCompletionContentPartTextParam (for chat completion)
+	// Try to unmarshal as array of ChatCompletionContentPartTextParam (for chat completion).
 	var arr []ChatCompletionContentPartTextParam
 	err = json.Unmarshal(data, &arr)
 	if err == nil {

@@ -17,7 +17,7 @@ import (
 
 // chatCompletion is the implementation for the chat completion AI Gateway metrics.
 type chatCompletion struct {
-	*baseMetrics
+	baseMetrics
 	firstTokenSent bool
 	lastTokenTime  time.Time
 }

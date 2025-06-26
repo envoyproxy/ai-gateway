@@ -16,19 +16,11 @@ import (
 
 // embeddings is the implementation for the embeddings AI Gateway metrics.
 type embeddings struct {
-	*baseMetrics
+	baseMetrics
 }
 
 // NewEmbeddings creates a new Embeddings instance.
-func NewEmbeddings(meter metric.Meter, newCustomFn x.NewCustomEmbeddingsMetricsFn) x.EmbeddingsMetrics {
-	if newCustomFn != nil {
-		return newCustomFn(meter)
-	}
-	return DefaultEmbeddings(meter)
-}
-
-// DefaultEmbeddings creates a new default Embeddings instance.
-func DefaultEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
+func NewEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
 	return &embeddings{
 		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding),
 	}

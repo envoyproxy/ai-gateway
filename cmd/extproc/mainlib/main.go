@@ -128,7 +128,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	metricsServer, meter := startMetricsServer(fmt.Sprintf(":%d", flags.metricsPort), l)
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
-	embeddingsMetrics := metrics.NewEmbeddings(meter, x.NewCustomEmbeddingsMetrics)
+	embeddingsMetrics := metrics.NewEmbeddings(meter)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {

@@ -11,44 +11,26 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 )
 
 func TestNewEmbeddings(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
 		mr := sdkmetric.NewManualReader()
 		meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-		em := NewEmbeddings(meter, nil)
+		em := NewEmbeddings(meter).(*embeddings)
 
 		assert.NotNil(t, em)
 		assert.IsType(t, &embeddings{}, em)
-	})
-
-	t.Run("custom", func(t *testing.T) {
-		mr := sdkmetric.NewManualReader()
-		meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-
-		customCalled := false
-		customFn := func(m metric.Meter) x.EmbeddingsMetrics {
-			customCalled = true
-			return DefaultEmbeddings(m)
-		}
-
-		em := NewEmbeddings(meter, customFn)
-
-		assert.True(t, customCalled)
-		assert.NotNil(t, em)
 	})
 }
 
 func TestDefaultEmbeddings(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	assert.NotNil(t, em)
 	assert.NotNil(t, em.metrics)
@@ -60,7 +42,7 @@ func TestDefaultEmbeddings(t *testing.T) {
 func TestEmbeddings_StartRequest(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	before := time.Now()
 	em.StartRequest(map[string]string{"test": "value"})
@@ -73,7 +55,7 @@ func TestEmbeddings_StartRequest(t *testing.T) {
 func TestEmbeddings_SetModel(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	em.SetModel("text-embedding-ada-002")
 	assert.Equal(t, "text-embedding-ada-002", em.model)
@@ -85,7 +67,7 @@ func TestEmbeddings_SetModel(t *testing.T) {
 func TestEmbeddings_SetBackend(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	tests := []struct {
 		name     string
@@ -129,7 +111,7 @@ func TestEmbeddings_SetBackend(t *testing.T) {
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	extra := attribute.Key("extra").String("value")
 	attrs := []attribute.KeyValue{
@@ -158,7 +140,7 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	em.SetModel("text-embedding-3-small")
 	em.SetBackend(&filterapi.Backend{
@@ -193,7 +175,7 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 func TestEmbeddings_RecordRequestCompletion(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	extra := attribute.Key("extra").String("value")
 	attrs := []attribute.KeyValue{
@@ -227,7 +209,7 @@ func TestEmbeddings_RecordRequestCompletion(t *testing.T) {
 func TestEmbeddings_RecordRequestCompletion_WithoutStartRequest(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := DefaultEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter).(*embeddings)
 
 	em.SetModel("test-model")
 	em.SetBackend(&filterapi.Backend{Name: "test-backend"})
