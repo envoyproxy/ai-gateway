@@ -26,30 +26,3 @@ Example of implementing custom metrics collection using the external processor i
 ### [Custom Router](./extproc_custom_router/)
 Shows how to implement custom routing logic using the external processor interface.
 
-## Quick Start Guide
-
-1. **Choose an example** based on your use case
-2. **Follow the README** in each example directory
-3. **Apply the configuration** to your Kubernetes cluster
-4. **Test the setup** using the provided curl commands
-
-## Prerequisites
-
-All examples assume you have:
-- Kubernetes cluster with Envoy Gateway installed
-- `kubectl` configured to access your cluster
-- Appropriate API keys for the providers you want to use
-
-## Example Structure
-
-Each example typically includes:
-- `README.md` - Detailed instructions and explanation
-- `*.yaml` - Kubernetes manifests for the configuration
-- Test commands and expected responses
-
-## Support
-
-For questions or issues with these examples:
-- Check the [documentation](../site/docs/)
-- Join the [Envoy AI Gateway Slack channel](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
-- Open an issue on [GitHub](https://github.com/envoyproxy/ai-gateway/issues)
