@@ -66,14 +66,17 @@ yamllint: $(YAMLLINT) ## Lint yaml files.
 	@echo "yamllint => ./..."
 	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
+FORMAT_IGNORED_DIR := ./pkg/client/clientset
+FORMAT_FIND = find . \( $(foreach D,$(FORMAT_IGNORED_DIR),-path $(D) -prune -o) -false \) -o -name '*.go' -print
+
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
 format: ## Format the codebase.
 	@echo "format => *.go"
-	@find . -type f -name '*.go' | xargs gofmt -s -w
-	@find . -type f -name '*.go' | xargs go tool gofumpt -l -w
+	@$$($(FORMAT_FIND)) | xargs gofmt -s -w
+	@$$($(FORMAT_FIND)) | xargs go tool gofumpt -l -w
 	@echo "gci => *.go"
-	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
+	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $$($(FORMAT_FIND))
 	@echo "licenses => **"
 	@go tool license-eye header fix
 

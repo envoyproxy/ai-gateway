@@ -1,7 +1,5 @@
 run:
   timeout: 10m
-  skip-dirs:
-    - pkg/client/clientset
 
 linters:
   enable:
