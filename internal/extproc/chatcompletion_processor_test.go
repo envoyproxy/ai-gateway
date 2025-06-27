@@ -133,6 +133,19 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 }
 
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{metrics: mm}
+	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},
+	})
+	require.NoError(t, err)
+	_, ok := res.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+	require.True(t, ok)
+	require.NotZero(t, mm.requestStart)
+	mm.RequireRequestNotCompleted(t)
+}
+
 func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mm := &mockChatCompletionMetrics{}
@@ -243,6 +256,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 					},
 				},
 			},
+			backendName:       "some_backend",
+			modelNameOverride: "ai_gateway_llm",
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
@@ -262,6 +277,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["cel_int"].GetNumberValue())
 		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
+		require.Equal(t, "ai_gateway_llm", md.Fields["route"].GetStructValue().Fields["model_name_override"].GetStringValue())
+		require.Equal(t, "some_backend", md.Fields["route"].GetStructValue().Fields["backend_name"].GetStringValue())
 	})
 }
 
@@ -299,31 +316,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
 }
 
-func Test_chatCompletionProcessorUpstreamFilter_maybeBuildDynamicMetadata(t *testing.T) {
-	headers := map[string]string{":path": "/foo"}
-	mm := &mockChatCompletionMetrics{}
-	p := &chatCompletionProcessorUpstreamFilter{
-		config: &processorConfig{
-			requestCosts:      []processorConfigRequestCost{},
-			metadataNamespace: "ai_gateway_llm_ns",
-		},
-		requestHeaders:    headers,
-		logger:            slog.Default(),
-		metrics:           mm,
-		modelNameOverride: "ai_gateway_llm",
-		backendName:       "some_backend",
-	}
-
-	require.Equal(t, "ai_gateway_llm", p.modelNameOverride)
-	md, err := p.maybeBuildDynamicMetadata()
-	require.NoError(t, err)
-	require.NotNil(t, md)
-
-	require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
-	require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["backend_name"].GetStringValue())
-}
-
-func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestBody(t *testing.T) {
 	const modelKey = "x-ai-gateway-model-key"
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream%v", stream), func(t *testing.T) {
@@ -344,13 +337,13 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					translator:             tr,
 					originalRequestBodyRaw: someBody,
 					originalRequestBody:    &body,
-					stream:                 stream,
 				}
-				_, err := p.ProcessRequestHeaders(t.Context(), nil)
+				_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
 				require.ErrorContains(t, err, "failed to transform request: test error")
 				mm.RequireRequestFailure(t)
 				mm.RequireTokensRecorded(t, 0)
 				mm.RequireSelectedModel(t, "some-model")
+				require.False(t, p.stream) // On error, stream should be false regardless of the input.
 			})
 			t.Run("ok", func(t *testing.T) {
 				someBody := bodyFromModel(t, "some-model", stream)
@@ -373,13 +366,12 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					translator:             mt,
 					originalRequestBodyRaw: someBody,
 					originalRequestBody:    &expBody,
-					stream:                 stream,
 				}
-				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
 				require.NoError(t, err)
 				require.Equal(t, mt, p.translator)
 				require.NotNil(t, resp)
-				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response
 				require.Equal(t, headerMut, commonRes.HeaderMutation)
 				require.Equal(t, bodyMut, commonRes.BodyMutation)
 

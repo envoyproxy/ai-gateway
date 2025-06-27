@@ -44,7 +44,7 @@ jobs:
             echo "PR description contains markdown format link. Please remove all of them."
             echo "If you want to refer to a link, please use the following format where you place the link at the end of the PR description:"
             echo ""
-            echo "**Commit Message**:"
+            echo "**Description**:"
             echo "This modifies foo bar. The official documentation can be found at [1] and [2]. Please refer to them for more details."
             echo ""
             echo "1: https://example.com"

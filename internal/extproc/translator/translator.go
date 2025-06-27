@@ -76,6 +76,42 @@ func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
 	})
 }
 
+// OpenAIEmbeddingTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/embeddings endpoint of OpenAI.
+//
+// This is created per request and is not thread-safe.
+type OpenAIEmbeddingTranslator interface {
+	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
+	// 	- `body` is the request body parsed into the [openai.EmbeddingRequest].
+	//	- `onRetry` is true if this is a retry request.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *openai.EmbeddingRequest, onRetry bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- `headers` is the response headers.
+	//	- This returns `headerMutation` that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body.
+	// 	- `body` is the response body.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		err error,
+	)
+}
+
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.
 type LLMTokenUsage struct {
 	// InputTokens is the number of tokens consumed from the input.

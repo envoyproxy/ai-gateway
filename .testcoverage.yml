@@ -18,7 +18,8 @@ exclude:
     - cmd/
     # Generated code should not be tested.
     - zz_generated.deepcopy.go
-    # This is the test library.
+    # They are test-only libraries.
     - tests/internal/envtest.go
+    - internal/testing/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go

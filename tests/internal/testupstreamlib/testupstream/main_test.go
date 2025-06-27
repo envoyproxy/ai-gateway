@@ -43,7 +43,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("sse", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/sse", nil)
+		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
@@ -271,7 +271,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("aws-event-stream", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/", nil)
+		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
