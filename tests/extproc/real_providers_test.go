@@ -138,8 +138,7 @@ func TestWithRealProviders(t *testing.T) {
 			{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
 			{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
 			{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-			// TODO: enable after we confirm the payment info.
-			// {name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+			{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
