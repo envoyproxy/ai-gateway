@@ -67,7 +67,11 @@ var (
 	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
-	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "/v1beta/openai"}
+	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
+	groqSchema        = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
+	grokSchema        = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	sambaNovaSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	deepInfraSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1/openai"}
 
 	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
@@ -88,7 +92,7 @@ func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath strin
 	cmd := exec.CommandContext(t.Context(), executable)
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Args = append(cmd.Args, "-configPath", configPath, "-logLevel", "warn")
 	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 }

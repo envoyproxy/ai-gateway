@@ -88,6 +88,42 @@ func TestWithRealProviders(t *testing.T) {
 					}},
 				},
 			},
+			{
+				Name:    "groq-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "llama-3.1-8b-instant"}},
+				Backends: []filterapi.Backend{
+					{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
+					}},
+				},
+			},
+			{
+				Name:    "grok-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "grok-3"}},
+				Backends: []filterapi.Backend{
+					{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
+					}},
+				},
+			},
+			{
+				Name:    "sambanova-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "Meta-Llama-3.1-8B-Instruct"}},
+				Backends: []filterapi.Backend{
+					{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
+					}},
+				},
+			},
+			{
+				Name:    "deepinfra-route",
+				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "meta-llama/Meta-Llama-3-8B-Instruct"}},
+				Backends: []filterapi.Backend{
+					{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
+						APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
+					}},
+				},
+			},
 		},
 	})
 
@@ -99,8 +135,13 @@ func TestWithRealProviders(t *testing.T) {
 			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
 			{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
 			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+			{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
+			{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
+			{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+			// TODO: enable after we confirm the payment info.
+			// {name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
 		} {
-			t.Run(tc.modelName, func(t *testing.T) {
+			t.Run(tc.name, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
 				requireEventuallyNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
 			})

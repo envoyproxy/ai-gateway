@@ -74,16 +74,16 @@ func (c CredentialsContext) MaybeSkip(t *testing.T, required RequiredCredential)
 	if required&RequiredCredentialGemini != 0 && !c.GeminiValid {
 		t.Skip("skipping test as Gemini API key is not set in TEST_GEMINI_API_KEY")
 	}
-	if required&RequiredCredentialGroq != 0 {
+	if required&RequiredCredentialGroq != 0 && !c.GroqValid {
 		t.Skip("skipping test as Groq API key is not set in TEST_GROQ_API_KEY")
 	}
-	if required&RequiredCredentialGrok != 0 {
+	if required&RequiredCredentialGrok != 0 && !c.GrokValid {
 		t.Skip("skipping test as Grok API key is not set in TEST_GROK_API_KEY")
 	}
-	if required&RequiredCredentialSambaNova != 0 {
+	if required&RequiredCredentialSambaNova != 0 && !c.SambaNovaValid {
 		t.Skip("skipping test as SambaNova API key is not set in TEST_SAMBANOVA_API_KEY")
 	}
-	if required&RequiredCredentialDeepInfra != 0 {
+	if required&RequiredCredentialDeepInfra != 0 && !c.DeepInfraValid {
 		t.Skip("skipping test as DeepInfra API key is not set in TEST_DEEPINFRA_API_KEY")
 	}
 }
