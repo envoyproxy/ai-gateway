@@ -32,8 +32,8 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 	// Set up the credential substitution.
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	awsCredTmpFile := filepath.Join(t.TempDir(), credCtx.AWSFileLiteral)
-	err := os.WriteFile(awsCredTmpFile, []byte(aiGatewayDefaultResources), 0o600)
+	awsCredTmpFile := filepath.Join(t.TempDir(), "aws-credentials")
+	err := os.WriteFile(awsCredTmpFile, []byte(credCtx.AWSFileLiteral), 0o600)
 	require.NoError(t, err)
 	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", awsCredTmpFile)
 	err = os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
