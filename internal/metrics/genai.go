@@ -22,13 +22,14 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" // #nosec G101: Potential hardcoded credentials
 	genaiAttributeErrorType     = "error.type"
 
-	genaiOperationChat     = "chat"
-	genaiSystemOpenAI      = "openai"
-	genAISystemAWSBedrock  = "aws.bedrock"
-	genaiTokenTypeInput    = "input"
-	genaiTokenTypeOutput   = "output"
-	genaiTokenTypeTotal    = "total"
-	genaiErrorTypeFallback = "_OTHER"
+	genaiOperationChat      = "chat"
+	genaiOperationEmbedding = "embedding"
+	genaiSystemOpenAI       = "openai"
+	genAISystemAWSBedrock   = "aws.bedrock"
+	genaiTokenTypeInput     = "input"
+	genaiTokenTypeOutput    = "output"
+	genaiTokenTypeTotal     = "total"
+	genaiErrorTypeFallback  = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.

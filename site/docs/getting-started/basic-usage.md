@@ -85,9 +85,11 @@ kubectl port-forward -n envoy-gateway-system svc/$ENVOY_SERVICE 8080:80
 
 ## Testing the Gateway
 
-### Making a Test Request
+### Making Test Requests
 
-Open a new terminal and send a test request to the AI Gateway using the `GATEWAY_URL` we set up:
+Open a new terminal and send test requests to the AI Gateway using the `GATEWAY_URL` we set up:
+
+#### Test Chat Completions
 
 ```shell
 curl -H "Content-Type: application/json" \
@@ -103,13 +105,26 @@ curl -H "Content-Type: application/json" \
     $GATEWAY_URL/v1/chat/completions
 ```
 
+#### Test Embeddings
+
+```shell
+curl -H "Content-Type: application/json" \
+    -d '{
+        "model": "some-cool-self-hosted-model",
+        "input": "Hello, world!"
+    }' \
+    $GATEWAY_URL/v1/embeddings
+```
+
 :::tip
 
 If you're opening a new terminal, you'll need to set the `GATEWAY_URL` variable again.
 
 :::
 
-### Expected Response
+### Expected Responses
+
+#### Chat Completions Response
 
 You should receive a response like:
 
@@ -125,18 +140,47 @@ You should receive a response like:
 }
 ```
 
+#### Embeddings Response
+
+For embeddings requests, you should receive a response like:
+
+```json
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "embedding",
+            "embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "index": 0
+        }
+    ],
+    "model": "some-cool-self-hosted-model",
+    "usage": {
+        "prompt_tokens": 3,
+        "total_tokens": 3
+    }
+}
+```
+
 :::note
 
-This response comes from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
+These responses come from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
 For real AI model responses, see the [Connect Providers](./connect-providers) guide.
 
 :::
 
-### Understanding the Response Format
+### Understanding the Response Formats
 
-The basic setup includes a mock backend that demonstrates the API structure but doesn't provide real AI responses. The response format follows the standard chat completion format with:
+The basic setup includes a mock backend that demonstrates the API structure but doesn't provide real AI responses. The response formats follow the standard OpenAI API formats:
+
+**Chat Completions:**
 - A `choices` array containing responses
 - Each message having a `role` and `content`
+
+**Embeddings:**
+- A `data` array containing embedding objects
+- Each embedding having a vector array and index
+- Usage information showing token consumption
 
 ## Next Steps
 

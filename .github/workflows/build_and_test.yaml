@@ -1,4 +1,4 @@
-name: Tests
+name: Build and Test
 on:
   pull_request:
     branches:
@@ -33,8 +33,34 @@ permissions:
   packages: write
 
 jobs:
+  style:
+    name: Check
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Ensure `make precommit` is executed
+        run: make check
   unittest:
     name: Unit Test
+    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +89,14 @@ jobs:
 
   test_crdcel:
     name: CRD CEL Validation Test
-    runs-on: ubuntu-latest
+    needs: [style]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -76,12 +109,19 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-crdcel
 
   test_controller:
     name: Controller Test
-    runs-on: ubuntu-latest
+    needs: [style]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -94,11 +134,12 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-controller
 
   test_extproc:
     name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
+    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -144,11 +185,20 @@ jobs:
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
+          TEST_GROQ_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROQ_API_KEY }}
+          TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
+          TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
+          TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
         run: make test-extproc
 
   test_e2e:
     # Not all the cases in E2E require secrets, so we run for all the events.
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
+    # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
+    # virtualization is not supported on macOS runners.
+    # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
+    # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
+    needs: [style]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -186,7 +236,7 @@ jobs:
     if: github.event_name == 'push'
     name: Push Docker Images
     needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
-    uses: ./.github/workflows/docker_builds_template.yaml
+    uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
   helm_push:
