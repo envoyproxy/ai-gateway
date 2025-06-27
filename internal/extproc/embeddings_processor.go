@@ -18,7 +18,6 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -306,7 +305,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = e.maybeBuildDynamicMetadata()
+		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -336,10 +335,6 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	e.onRetry = rp.upstreamFilterCount > 1
 	rp.upstreamFilter = e
 	return
-}
-
-func (e *embeddingsProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	return buildDynamicMetadata(e.config, &e.costs, e.requestHeaders)
 }
 
 func parseOpenAIEmbeddingBody(body *extprocv3.HttpBody) (modelName string, rb *openai.EmbeddingRequest, err error) {

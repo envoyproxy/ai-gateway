@@ -325,7 +325,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
+		resp.DynamicMetadata, err = buildDynamicMetadata(c.config, &c.costs, c.requestHeaders)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -364,10 +364,6 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	return openAIReq.Model, &openAIReq, nil
-}
-
-func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	return buildDynamicMetadata(c.config, &c.costs, c.requestHeaders)
 }
 
 func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string) (*structpb.Struct, error) {
