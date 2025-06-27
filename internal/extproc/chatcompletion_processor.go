@@ -29,10 +29,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
-const (
-	ModelNameOverride = "model_name_override"
-)
-
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
@@ -161,6 +157,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      string
+	backendName            string
 	handler                backendauth.Handler
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
@@ -350,6 +347,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	rp.upstreamFilterCount++
 	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
+	c.backendName = b.Name
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
@@ -403,7 +401,8 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 	}
 
 	if c.modelNameOverride != "" {
-		metadata[ModelNameOverride] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: c.modelNameOverride}}
+		metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: c.modelNameOverride}}
+		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: c.backendName}}
 	}
 
 	if len(metadata) == 0 {

@@ -311,6 +311,7 @@ func Test_chatCompletionProcessorUpstreamFilter_maybeBuildDynamicMetadata(t *tes
 		logger:            slog.Default(),
 		metrics:           mm,
 		modelNameOverride: "ai_gateway_llm",
+		backendName:       "some_backend",
 	}
 
 	require.Equal(t, "ai_gateway_llm", p.modelNameOverride)
@@ -319,6 +320,7 @@ func Test_chatCompletionProcessorUpstreamFilter_maybeBuildDynamicMetadata(t *tes
 	require.NotNil(t, md)
 
 	require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
+	require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["backend_name"].GetStringValue())
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
