@@ -101,11 +101,11 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
+To use more models, add more [AIRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
@@ -126,6 +126,6 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ```
 
-[AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
+[AIRouteRule]: ../../api/api.mdx#AIRouterule
 [model ID]: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
 [Claude 3 Sonnet]: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table

@@ -98,13 +98,13 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field.
+To use more models, add more [AIRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field.
 
 For example, let's add [o1] as a chat completion model, and [text-embedding-ada-002](https://platform.openai.com/docs/models/text-embedding-ada-002) as embedding models:
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
@@ -136,6 +136,6 @@ After configuring OpenAI:
 
 - [Connect AWS Bedrock](./aws-bedrock.md) to add another provider
 
-[AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
+[AIRouteRule]: ../../api/api.mdx#AIRouterule
 [model alias]: https://platform.openai.com/docs/models#current-model-aliases
 [o1]: https://platform.openai.com/docs/models#o1

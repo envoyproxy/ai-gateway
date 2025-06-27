@@ -19,70 +19,70 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// AIBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
+// AIBackendController implements [reconcile.TypedReconciler] for [aigv1a1.AIBackend].
 //
 // Exported for testing purposes.
 type AIBackendController struct {
-	client             client.Client
-	kube               kubernetes.Interface
-	logger             logr.Logger
-	aiGatewayRouteChan chan event.GenericEvent
+	client      client.Client
+	kube        kubernetes.Interface
+	logger      logr.Logger
+	AIRouteChan chan event.GenericEvent
 }
 
-// NewAIServiceBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent) *AIBackendController {
+// NewAIBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIBackend].
+func NewAIBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiRouteChan chan event.GenericEvent) *AIBackendController {
 	return &AIBackendController{
-		client:             client,
-		kube:               kube,
-		logger:             logger,
-		aiGatewayRouteChan: aiGatewayRouteChan,
+		client:      client,
+		kube:        kube,
+		logger:      logger,
+		AIRouteChan: aiRouteChan,
 	}
 }
 
-// Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
+// Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.AIBackend].
 func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	var aiBackend aigv1a1.AIServiceBackend
+	var aiBackend aigv1a1.AIBackend
 	if err := c.client.Get(ctx, req.NamespacedName, &aiBackend); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			c.logger.Info("Deleting AIServiceBackend",
+			c.logger.Info("Deleting AIBackend",
 				"namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
-	c.logger.Info("Reconciling AIServiceBackend", "namespace", req.Namespace, "name", req.Name)
-	if err := c.syncAIServiceBackend(ctx, &aiBackend); err != nil {
-		c.logger.Error(err, "failed to sync AIServiceBackend")
-		c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeNotAccepted, err.Error())
+	c.logger.Info("Reconciling AIBackend", "namespace", req.Namespace, "name", req.Name)
+	if err := c.syncAIBackend(ctx, &aiBackend); err != nil {
+		c.logger.Error(err, "failed to sync AIBackend")
+		c.updateAIBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeNotAccepted, err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateAIServiceBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeAccepted, "AIServiceBackend reconciled successfully")
+	c.updateAIBackendStatus(ctx, &aiBackend, aigv1a1.ConditionTypeAccepted, "AIBackend reconciled successfully")
 	return ctrl.Result{}, nil
 }
 
-// syncAIGatewayRoute is the main logic for reconciling the AIServiceBackend resource.
+// syncAIRoute is the main logic for reconciling the AIBackend resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
-func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
+func (c *AIBackendController) syncAIBackend(ctx context.Context, aiBackend *aigv1a1.AIBackend) error {
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
-	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
-	err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
+	var AIRoutes aigv1a1.AIRouteList
+	err := c.client.List(ctx, &AIRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIRoute: key})
 	if err != nil {
-		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
+		return fmt.Errorf("failed to list AIRouteList: %w", err)
 	}
-	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
-		c.logger.Info("syncing AIGatewayRoute",
-			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
+	for _, AIRoute := range AIRoutes.Items {
+		c.logger.Info("syncing AIRoute",
+			"namespace", AIRoute.Namespace, "name", AIRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		c.aiGatewayRouteChan <- event.GenericEvent{Object: &aiGatewayRoute}
+		c.AIRouteChan <- event.GenericEvent{Object: &AIRoute}
 	}
 	return nil
 }
 
-// updateAIServiceBackendStatus updates the status of the AIServiceBackend.
-func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, route *aigv1a1.AIServiceBackend, conditionType string, message string) {
+// updateAIBackendStatus updates the status of the AIBackend.
+func (c *AIBackendController) updateAIBackendStatus(ctx context.Context, route *aigv1a1.AIBackend, conditionType string, message string) {
 	route.Status.Conditions = newConditions(conditionType, message)
 	if err := c.client.Status().Update(ctx, route); err != nil {
-		c.logger.Error(err, "failed to update AIServiceBackend status")
+		c.logger.Error(err, "failed to update AIBackend status")
 	}
 }

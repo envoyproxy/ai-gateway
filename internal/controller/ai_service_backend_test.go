@@ -23,14 +23,14 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-func TestAIServiceBackendController_Reconcile(t *testing.T) {
+func TestAIBackendController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
-	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
-	originals := []*aigv1a1.AIGatewayRoute{
+	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIRoute]()
+	c := NewAIBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
+	originals := []*aigv1a1.AIRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1a1.AIRouteSpec{
 				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 					{
 						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
@@ -38,17 +38,17 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				Rules: []aigv1a1.AIGatewayRouteRule{
+				Rules: []aigv1a1.AIRouteRule{
 					{
-						Matches:     []aigv1a1.AIGatewayRouteRuleMatch{{}},
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "mybackend"}},
+						Matches:     []aigv1a1.AIRouteRuleMatch{{}},
+						BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "mybackend"}},
 					},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute2", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1a1.AIRouteSpec{
 				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 					{
 						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
@@ -56,10 +56,10 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				Rules: []aigv1a1.AIGatewayRouteRule{
+				Rules: []aigv1a1.AIRouteRule{
 					{
-						Matches:     []aigv1a1.AIGatewayRouteRuleMatch{{}},
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "mybackend"}},
+						Matches:     []aigv1a1.AIRouteRuleMatch{{}},
+						BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "mybackend"}},
 					},
 				},
 			},
@@ -69,27 +69,27 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 		require.NoError(t, fakeClient.Create(t.Context(), route))
 	}
 
-	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 	require.Equal(t, originals, eventChan.RequireItemsEventually(t, 2))
 
 	// Check that the status was updated.
-	var backend aigv1a1.AIServiceBackend
+	var backend aigv1a1.AIBackend
 	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "mybackend"}, &backend))
 	require.Len(t, backend.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, backend.Status.Conditions[0].Type)
-	require.Equal(t, "AIServiceBackend reconciled successfully", backend.Status.Conditions[0].Message)
+	require.Equal(t, "AIBackend reconciled successfully", backend.Status.Conditions[0].Message)
 
-	// Test the case where the AIServiceBackend is being deleted.
-	err = fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
+	// Test the case where the AIBackend is being deleted.
+	err = fakeClient.Delete(t.Context(), &aigv1a1.AIBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
 }
 
-func Test_AiServiceBackendIndexFunc(t *testing.T) {
+func Test_AIBackendIndexFunc(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
 	// Create Backend Security Policies.
@@ -117,31 +117,31 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 	}
 
 	// Create AI Service Backends.
-	for _, backend := range []*aigv1a1.AIServiceBackend{
+	for _, backend := range []*aigv1a1.AIBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-1"},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "three", Namespace: "ns"},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef:               gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 				BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{Name: "some-backend-security-policy-3"},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "four", Namespace: "ns"},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: ptr.To[gwapiv1.Namespace]("ns")},
 			},
 		},
@@ -149,19 +149,19 @@ func Test_AiServiceBackendIndexFunc(t *testing.T) {
 		require.NoError(t, c.Create(t.Context(), backend, &client.CreateOptions{}))
 	}
 
-	var aiServiceBackend aigv1a1.AIServiceBackendList
-	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
-		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-1.ns"}))
-	require.Len(t, aiServiceBackend.Items, 2)
-	require.Equal(t, "one", aiServiceBackend.Items[0].Name)
-	require.Equal(t, "two", aiServiceBackend.Items[1].Name)
+	var AIBackend aigv1a1.AIBackendList
+	require.NoError(t, c.List(t.Context(), &AIBackend,
+		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIBackend: "some-backend-security-policy-1.ns"}))
+	require.Len(t, AIBackend.Items, 2)
+	require.Equal(t, "one", AIBackend.Items[0].Name)
+	require.Equal(t, "two", AIBackend.Items[1].Name)
 
-	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
-		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-2.ns"}))
-	require.Empty(t, aiServiceBackend.Items)
+	require.NoError(t, c.List(t.Context(), &AIBackend,
+		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIBackend: "some-backend-security-policy-2.ns"}))
+	require.Empty(t, AIBackend.Items)
 
-	require.NoError(t, c.List(t.Context(), &aiServiceBackend,
-		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: "some-backend-security-policy-3.ns"}))
-	require.Len(t, aiServiceBackend.Items, 1)
-	require.Equal(t, "three", aiServiceBackend.Items[0].Name)
+	require.NoError(t, c.List(t.Context(), &AIBackend,
+		client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIBackend: "some-backend-security-policy-3.ns"}))
+	require.Len(t, AIBackend.Items, 1)
+	require.Equal(t, "three", AIBackend.Items[0].Name)
 }

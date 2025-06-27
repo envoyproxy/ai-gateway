@@ -98,11 +98,11 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
+To use more models, add more [AIRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
@@ -123,6 +123,6 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ```
 
-[AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
+[AIRouteRule]: ../../api/api.mdx#AIRouterule
 [model ID]: https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models
 [GPT-4.5 Preview]: https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=global-standard%2Cstandard-chat-completions#gpt-45-preview

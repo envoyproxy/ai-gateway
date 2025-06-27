@@ -11,8 +11,8 @@ import (
 )
 
 func init() {
-	SchemeBuilder.Register(&AIGatewayRoute{}, &AIGatewayRouteList{})
-	SchemeBuilder.Register(&AIServiceBackend{}, &AIServiceBackendList{})
+	SchemeBuilder.Register(&AIRoute{}, &AIRouteList{})
+	SchemeBuilder.Register(&AIBackend{}, &AIBackendList{})
 	SchemeBuilder.Register(&BackendSecurityPolicy{}, &BackendSecurityPolicyList{})
 }
 

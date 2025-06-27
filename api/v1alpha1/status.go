@@ -16,8 +16,8 @@ const (
 	ConditionTypeNotAccepted = "NotAccepted"
 )
 
-// AIGatewayRouteStatus contains the conditions by the reconciliation result.
-type AIGatewayRouteStatus struct {
+// AIRouteStatus contains the conditions by the reconciliation result.
+type AIRouteStatus struct {
 	// Conditions is the list of conditions by the reconciliation result.
 	// Currently, at most one condition is set.
 	//
@@ -25,8 +25,8 @@ type AIGatewayRouteStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// AIServiceBackendStatus contains the conditions by the reconciliation result.
-type AIServiceBackendStatus struct {
+// AIBackendStatus contains the conditions by the reconciliation result.
+type AIBackendStatus struct {
 	// Conditions is the list of conditions by the reconciliation result.
 	// Currently, at most one condition is set.
 	//

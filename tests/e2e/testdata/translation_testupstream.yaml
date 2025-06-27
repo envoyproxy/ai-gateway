@@ -23,7 +23,7 @@ spec:
       port: 80
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: translation-testupstream
   namespace: default
@@ -53,7 +53,7 @@ spec:
           weight: 100
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: translation-testupstream-cool-model-backend
   namespace: default
@@ -66,7 +66,7 @@ spec:
     group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: translation-testupstream-another-cool-model-backend
   namespace: default

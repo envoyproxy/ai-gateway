@@ -20,7 +20,7 @@ import (
 // newCustomRouter implements [x.NewCustomRouter].
 func newCustomRouter(defaultRouter x.Router, config *filterapi.Config) x.Router {
 	// You can poke the current configuration of the routes, and the list of backends
-	// specified in the AIGatewayRoute.Rules, etc.
+	// specified in the AIRoute.Rules, etc.
 	return &myCustomRouter{config: config, defaultRouter: defaultRouter}
 }
 

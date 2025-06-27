@@ -98,13 +98,13 @@ func readYamlsAsString(paths []string) (string, error) {
 }
 
 // collectObjects reads the YAML input and collects target resources. Currently, this will collect
-// AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and Secret resources. Other resources
+// AIRoute, AIBackend, BackendSecurityPolicy, and Secret resources. Other resources
 // will be written back to the output writer.
 //
 // If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
 func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
-	aigwRoutes []*aigv1a1.AIGatewayRoute,
-	aigwBackends []*aigv1a1.AIServiceBackend,
+	aigwRoutes []*aigv1a1.AIRoute,
+	aigwBackends []*aigv1a1.AIBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
@@ -142,9 +142,9 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			continue
 		}
 		switch obj.GetKind() {
-		case "AIGatewayRoute":
+		case "AIRoute":
 			mustExtractAndAppend(obj, &aigwRoutes)
-		case "AIServiceBackend":
+		case "AIBackend":
 			mustExtractAndAppend(obj, &aigwBackends)
 		case "BackendSecurityPolicy":
 			mustExtractAndAppend(obj, &backendSecurityPolicies)
@@ -167,8 +167,8 @@ const (
 // translateCustomResourceObjects translates the AI Gateway custom resources to Envoy Gateway and Kubernetes objects.
 func translateCustomResourceObjects(
 	ctx context.Context,
-	aigwRoutes []*aigv1a1.AIGatewayRoute,
-	aigwBackends []*aigv1a1.AIServiceBackend,
+	aigwRoutes []*aigv1a1.AIRoute,
+	aigwBackends []*aigv1a1.AIBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
@@ -186,8 +186,8 @@ func translateCustomResourceObjects(
 ) {
 	builder := fake.NewClientBuilder().
 		WithScheme(controller.Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1a1.AIRoute{}).
+		WithStatusSubresource(&aigv1a1.AIBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
 	_ = controller.ApplyIndexing(ctx, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
@@ -208,9 +208,9 @@ func translateCustomResourceObjects(
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent))
-	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	aisbC := controller.NewAIBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent))
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	airC := controller.NewAIRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),

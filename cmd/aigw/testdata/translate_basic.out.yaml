@@ -72,7 +72,7 @@ metadata:
     - apiVersion: aigateway.envoyproxy.io/v1alpha1
       blockOwnerDeletion: true
       controller: true
-      kind: AIGatewayRoute
+      kind: AIRoute
       name: envoy-ai-gateway-basic
       uid: ""
 spec:

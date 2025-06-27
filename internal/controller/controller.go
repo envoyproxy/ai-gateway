@@ -84,7 +84,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
 		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
-		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
+		// We need the annotation change event to reconcile the Gateway referenced by AIRoutes.
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
@@ -94,36 +94,36 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for Gateway: %w", err)
 	}
 
-	aiGatewayRouteEventChan := make(chan event.GenericEvent, 100)
-	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
+	AIRouteEventChan := make(chan event.GenericEvent, 100)
+	routeC := NewAIRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
 		gatewayEventChan,
 	)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIRoute{}).
 		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		WatchesRawSource(source.Channel(
-			aiGatewayRouteEventChan,
+			AIRouteEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
 		Complete(routeC); err != nil {
-		return fmt.Errorf("failed to create controller for AIGatewayRoute: %w", err)
+		return fmt.Errorf("failed to create controller for AIRoute: %w", err)
 	}
 
-	aiServiceBackendEventChan := make(chan event.GenericEvent, 100)
-	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("ai-service-backend"), aiGatewayRouteEventChan)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).
+	AIBackendEventChan := make(chan event.GenericEvent, 100)
+	backendC := NewAIBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("ai-service-backend"), AIRouteEventChan)
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIBackend{}).
 		WatchesRawSource(source.Channel(
-			aiServiceBackendEventChan,
+			AIBackendEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
 		Complete(backendC); err != nil {
-		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to create controller for AIBackend: %w", err)
 	}
 
 	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), aiServiceBackendEventChan)
+		WithName("backend-security-policy"), AIBackendEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
 		WatchesRawSource(source.Channel(
 			backendSecurityPolicyEventChan,
@@ -173,36 +173,36 @@ func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Bui
 }
 
 const (
-	// k8sClientIndexAIGatewayRouteToAttachedGateway is the index name that maps from a Gateway to the
-	// AIGatewayRoute that attaches to it.
-	k8sClientIndexAIGatewayRouteToAttachedGateway = "GWAPIGatewayToReferencingAIGatewayRoute"
+	// k8sClientIndexAIRouteToAttachedGateway is the index name that maps from a Gateway to the
+	// AIRoute that attaches to it.
+	k8sClientIndexAIRouteToAttachedGateway = "GWAPIGatewayToReferencingAIRoute"
 	// k8sClientIndexSecretToReferencingBackendSecurityPolicy is the index name that maps
 	// from a Secret to the BackendSecurityPolicy that references it.
 	k8sClientIndexSecretToReferencingBackendSecurityPolicy = "SecretToReferencingBackendSecurityPolicy"
-	// k8sClientIndexBackendToReferencingAIGatewayRoute is the index name that maps from a Backend to the
-	// AIGatewayRoute that references it.
-	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
-	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
-	// to the AIServiceBackend that references it.
-	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+	// k8sClientIndexBackendToReferencingAIRoute is the index name that maps from a Backend to the
+	// AIRoute that references it.
+	k8sClientIndexBackendToReferencingAIRoute = "BackendToReferencingAIRoute"
+	// k8sClientIndexBackendSecurityPolicyToReferencingAIBackend is the index name that maps from a BackendSecurityPolicy
+	// to the AIBackend that references it.
+	k8sClientIndexBackendSecurityPolicyToReferencingAIBackend = "BackendSecurityPolicyToReferencingAIBackend"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
 func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
-	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
-		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
+	err := indexer(ctx, &aigv1a1.AIRoute{},
+		k8sClientIndexBackendToReferencingAIRoute, AIRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Backends: %w", err)
+		return fmt.Errorf("failed to index field for AIRoute to Backends: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
-		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
+	err = indexer(ctx, &aigv1a1.AIRoute{},
+		k8sClientIndexAIRouteToAttachedGateway, AIRouteToAttachedGatewayIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Gateway: %w", err)
+		return fmt.Errorf("failed to index field for AIRoute to Gateway: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
-		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
+	err = indexer(ctx, &aigv1a1.AIBackend{},
+		k8sClientIndexBackendSecurityPolicyToReferencingAIBackend, AIBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
@@ -212,32 +212,32 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	return nil
 }
 
-func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
-	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+func AIRouteToAttachedGatewayIndexFunc(o client.Object) []string {
+	AIRoute := o.(*aigv1a1.AIRoute)
 	var ret []string
-	for _, ref := range aiGatewayRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+	for _, ref := range AIRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, AIRoute.Namespace))
 	}
 	return ret
 }
 
-func aiGatewayRouteIndexFunc(o client.Object) []string {
-	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+func AIRouteIndexFunc(o client.Object) []string {
+	AIRoute := o.(*aigv1a1.AIRoute)
 	var ret []string
-	for _, rule := range aiGatewayRoute.Spec.Rules {
+	for _, rule := range AIRoute.Spec.Rules {
 		for _, backend := range rule.BackendRefs {
-			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
+			key := fmt.Sprintf("%s.%s", backend.Name, AIRoute.Namespace)
 			ret = append(ret, key)
 		}
 	}
 	return ret
 }
 
-func aiServiceBackendIndexFunc(o client.Object) []string {
-	aiServiceBackend := o.(*aigv1a1.AIServiceBackend)
+func AIBackendIndexFunc(o client.Object) []string {
+	AIBackend := o.(*aigv1a1.AIBackend)
 	var ret []string
-	if ref := aiServiceBackend.Spec.BackendSecurityPolicyRef; ref != nil {
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiServiceBackend.Namespace))
+	if ref := AIBackend.Spec.BackendSecurityPolicyRef; ref != nil {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, AIBackend.Namespace))
 	}
 	return ret
 }

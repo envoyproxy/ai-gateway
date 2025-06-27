@@ -27,8 +27,8 @@ import (
 
 func newFakeClient() client.Client {
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1a1.AIRoute{}).
+		WithStatusSubresource(&aigv1a1.AIBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
 	return builder.Build()
 }
@@ -99,16 +99,16 @@ func TestServerPostVirtualHostModify(t *testing.T) {
 func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
-	// Create some fake AIGatewayRoute objects.
-	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	// Create some fake AIRoute objects.
+	err := c.Create(t.Context(), &aigv1a1.AIRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1a1.AIRouteSpec{
+			Rules: []aigv1a1.AIRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1a1.AIRouteRuleBackendRef{
 						{Name: "aaa", Priority: ptr.To[uint32](0)},
 						{Name: "bbb", Priority: ptr.To[uint32](1)},
 					},
@@ -128,7 +128,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 		}, errLog: "failed to parse HTTPRoute rule index"},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/nonexistent/rule/0",
-		}, errLog: `failed to get AIGatewayRoute object`},
+		}, errLog: `failed to get AIRoute object`},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/99999",
 		}, errLog: `HTTPRoute rule index out of range`},

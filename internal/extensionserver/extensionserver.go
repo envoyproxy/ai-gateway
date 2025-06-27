@@ -159,10 +159,10 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		return
 	}
 	// Get the HTTPRoute object from the cluster name.
-	var aigwRoute aigv1a1.AIGatewayRoute
+	var aigwRoute aigv1a1.AIRoute
 	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
-		s.log.Error(err, "failed to get AIGatewayRoute object",
+		s.log.Error(err, "failed to get AIRoute object",
 			"namespace", httpRouteNamespace, "name", httpRouteName)
 		return
 	}

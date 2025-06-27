@@ -77,17 +77,17 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var routes aigv1a1.AIGatewayRouteList
+	var routes aigv1a1.AIRouteList
 	err := c.client.List(ctx, &routes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
+		k8sClientIndexAIRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if len(routes.Items) == 0 {
-		// This means that the gateway is not attached to any AIGatewayRoute.
-		c.logger.Info("No AIGatewayRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
+		// This means that the gateway is not attached to any AIRoute.
+		c.logger.Info("No AIRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, nil
 	}
 	if err := c.ensureExtensionPolicy(ctx, &gw); err != nil {
@@ -161,7 +161,7 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 					Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
 					Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
 				},
-				Metadata: &egv1a1.ExtProcMetadata{WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace}},
+				Metadata: &egv1a1.ExtProcMetadata{WritableNamespaces: []string{aigv1a1.AIFilterMetadataNamespace}},
 				BackendCluster: egv1a1.BackendCluster{
 					BackendRefs: []egv1a1.BackendRef{{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
@@ -207,9 +207,9 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 }
 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
-func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
-	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
-	input := aiGatewayRoutes[0].Spec.APISchema
+func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiRoutes []aigv1a1.AIRoute, uuid string) error {
+	// Precondition: AIRoutes is not empty as we early return if it is empty.
+	input := aiRoutes[0].Spec.APISchema
 
 	ec := &filterapi.Config{UUID: uuid}
 	ec.Schema = schemaToFilterAPI(input)
@@ -217,32 +217,32 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
 	llmCosts := map[string]struct{}{}
-	for i := range aiGatewayRoutes {
-		aiGatewayRoute := &aiGatewayRoutes[i]
-		spec := aiGatewayRoute.Spec
+	for i := range aiRoutes {
+		AIRoute := &aiRoutes[i]
+		spec := AIRoute.Spec
 		for i := range spec.Rules {
 			rule := &spec.Rules[i]
 			backends := make([]filterapi.Backend, len(rule.BackendRefs))
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
 				b := &backends[j]
-				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, AIRoute.Namespace)
 				b.ModelNameOverride = backendRef.ModelNameOverride
-				var backendObj *aigv1a1.AIServiceBackend
-				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+				var backendObj *aigv1a1.AIBackend
+				backendObj, err = c.backend(ctx, AIRoute.Namespace, backendRef.Name)
 				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
+					return fmt.Errorf("failed to get AIBackend %s: %w", b.Name, err)
 				}
 				b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, AIRoute.Namespace, string(bspRef.Name))
 					if err != nil {
 						return fmt.Errorf("failed to create backend auth: %w", err)
 					}
 				}
 			}
 			configRule := filterapi.RouteRule{Backends: backends}
-			configRule.Name = routeName(aiGatewayRoute, i)
+			configRule.Name = routeName(AIRoute, i)
 			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
 			for j, match := range rule.Matches {
 				configRule.Headers[j].Name = match.Headers[0].Name
@@ -250,15 +250,15 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 			}
 			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
 			// Convert to UTC time in force to avoid timezone issues.
-			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
+			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, AIRoute.CreationTimestamp).Time.UTC()
 			ec.Rules = append(ec.Rules, configRule)
 
-			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
+			for _, cost := range AIRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
 				_, ok := llmCosts[cost.MetadataKey]
 				if ok {
 					c.logger.Info("LLMRequestCost with the same metadata key already exists, skipping",
-						"metadataKey", cost.MetadataKey, "route", aiGatewayRoute.Name)
+						"metadataKey", cost.MetadataKey, "route", AIRoute.Name)
 					continue
 				}
 				switch cost.Type {
@@ -286,7 +286,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		}
 	}
 
-	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
+	ec.MetadataNamespace = aigv1a1.AIFilterMetadataNamespace
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
@@ -391,8 +391,8 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 	return "", fmt.Errorf("secret %s does not contain key %s", name, dataKey)
 }
 
-func (c *GatewayController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
-	backend := &aigv1a1.AIServiceBackend{}
+func (c *GatewayController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIBackend, error) {
+	backend := &aigv1a1.AIBackend{}
 	return backend, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend)
 }
 

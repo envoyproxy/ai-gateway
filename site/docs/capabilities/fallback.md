@@ -10,7 +10,7 @@ Envoy AI Gateway supports provider fallback to ensure high availability and reli
 
 ## How Fallback Works
 
-- **Primary and Fallback Backends:** You can specify a prioritized list of backends in your `AIGatewayRoute` using `backendRefs`. The first backend is treated as primary, and subsequent backends are considered fallbacks.
+- **Primary and Fallback Backends:** You can specify a prioritized list of backends in your `AIRoute` using `backendRefs`. The first backend is treated as primary, and subsequent backends are considered fallbacks.
 - **Health Checks:** Fallback is triggered based on passive health checks and retry policies, which can be configured using the [`BackendTrafficPolicy`](https://gateway.envoyproxy.io/contributions/design/backend-traffic-policy/) API.
 - **Automatic Failover:** When the primary backend becomes unhealthy, Envoy AI Gateway automatically shifts traffic to the next healthy fallback backend.
 
@@ -20,7 +20,7 @@ Below is an example configuration that demonstrates provider fallback from a fai
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: provider-fallback
   namespace: default
@@ -83,7 +83,7 @@ spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: provider-fallback # HTTPRoute is created with the same name as AIGatewayRoute
+      name: provider-fallback # HTTPRoute is created with the same name as AIRoute
   retry:
     numRetries: 5
     perRetry:
