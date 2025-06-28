@@ -22,7 +22,7 @@ import (
 //go:embed testdata
 var testdata embed.FS
 
-func TestAIGatewayRoutes(t *testing.T) {
+func TestAIRoutes(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
 	ctx := t.Context()
 
@@ -50,24 +50,24 @@ func TestAIGatewayRoutes(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
+			data, err := testdata.ReadFile(path.Join("testdata/AIRoutes", tc.name))
 			require.NoError(t, err)
 
-			aiGatewayRoute := &aigv1a1.AIGatewayRoute{}
-			err = yaml.UnmarshalStrict(data, aiGatewayRoute)
+			AIRoute := &aigv1a1.AIRoute{}
+			err = yaml.UnmarshalStrict(data, AIRoute)
 			require.NoError(t, err)
 
 			if tc.expErr != "" {
-				require.ErrorContains(t, c.Create(ctx, aiGatewayRoute), tc.expErr)
+				require.ErrorContains(t, c.Create(ctx, AIRoute), tc.expErr)
 			} else {
-				require.NoError(t, c.Create(ctx, aiGatewayRoute))
-				require.NoError(t, c.Delete(ctx, aiGatewayRoute))
+				require.NoError(t, c.Create(ctx, AIRoute))
+				require.NoError(t, c.Delete(ctx, AIRoute))
 			}
 		})
 	}
 }
 
-func TestAIServiceBackends(t *testing.T) {
+func TestAIBackends(t *testing.T) {
 	c, _, _ := testsinternal.NewEnvTest(t)
 	ctx := t.Context()
 
@@ -84,10 +84,10 @@ func TestAIServiceBackends(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))
+			data, err := testdata.ReadFile(path.Join("testdata/AIBackends", tc.name))
 			require.NoError(t, err)
 
-			aiBackend := &aigv1a1.AIServiceBackend{}
+			aiBackend := &aigv1a1.AIBackend{}
 			err = yaml.UnmarshalStrict(data, aiBackend)
 			require.NoError(t, err)
 

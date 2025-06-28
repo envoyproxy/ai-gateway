@@ -41,18 +41,18 @@ const (
 //
 // Exported for testing purposes.
 type BackendSecurityPolicyController struct {
-	client                    client.Client
-	kube                      kubernetes.Interface
-	logger                    logr.Logger
-	aiServiceBackendEventChan chan event.GenericEvent
+	client             client.Client
+	kube               kubernetes.Interface
+	logger             logr.Logger
+	AIBackendEventChan chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
-		client:                    client,
-		kube:                      kube,
-		logger:                    logger,
-		aiServiceBackendEventChan: aiServiceBackendEventChan,
+		client:             client,
+		kube:               kube,
+		logger:             logger,
+		AIBackendEventChan: aiBackendEventChan,
 	}
 }
 
@@ -218,15 +218,15 @@ func backendSecurityPolicyKey(namespace, name string) string {
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
 	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
-	var aiServiceBackends aigv1a1.AIServiceBackendList
-	err := c.client.List(ctx, &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
+	var AIBackends aigv1a1.AIBackendList
+	err := c.client.List(ctx, &AIBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIBackend: key})
 	if err != nil {
-		return fmt.Errorf("failed to list AIServiceBackendList: %w", err)
+		return fmt.Errorf("failed to list AIBackendList: %w", err)
 	}
-	for i := range aiServiceBackends.Items {
-		aiBackend := &aiServiceBackends.Items[i]
-		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
+	for i := range AIBackends.Items {
+		aiBackend := &AIBackends.Items[i]
+		c.logger.Info("Syncing AIBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
+		c.AIBackendEventChan <- event.GenericEvent{Object: aiBackend}
 	}
 	return nil
 }

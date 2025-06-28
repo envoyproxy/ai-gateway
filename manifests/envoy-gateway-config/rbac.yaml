@@ -12,8 +12,8 @@ rules:
   - apiGroups:
       - "aigateway.envoyproxy.io"
     resources:
-      - "aigatewayroutes"
-      - "aiservicebackends"
+      - "AIRoutes"
+      - "AIBackends"
       - "backendSecurityPolicies"
     verbs:
       - "get"

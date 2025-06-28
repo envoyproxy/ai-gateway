@@ -23,7 +23,7 @@ spec:
       port: 80
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
@@ -58,7 +58,7 @@ spec:
         - name: envoy-ai-gateway-basic-testupstream
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: envoy-ai-gateway-basic-openai
   namespace: default
@@ -75,7 +75,7 @@ spec:
     group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: envoy-ai-gateway-basic-aws
   namespace: default
@@ -93,7 +93,7 @@ spec:
 ---
 # GCP Example
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: envoy-ai-gateway-basic-gcp
   namespace: default
@@ -110,7 +110,7 @@ spec:
     group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: envoy-ai-gateway-basic-azure
   namespace: default
@@ -328,7 +328,7 @@ stringData:
   client-secret: "GCP_OIDC_CLIENT_SECRET"  # Replace with your OIDC client secret
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
+kind: AIBackend
 metadata:
   name: envoy-ai-gateway-basic-testupstream
   namespace: default

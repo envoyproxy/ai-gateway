@@ -9,14 +9,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.3
-  name: aigatewayroutes.aigateway.envoyproxy.io
+  name: airoutes.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
   names:
-    kind: AIGatewayRoute
-    listKind: AIGatewayRouteList
-    plural: aigatewayroutes
-    singular: aigatewayroute
+    kind: AIRoute
+    listKind: AIRouteList
+    plural: airoutes
+    singular: airoute
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -27,26 +27,26 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
+          AIRoute combines multiple AIBackends and attaching them to Gateway(s) resources.
 
           This serves as a way to define a "unified" AI API for a Gateway which allows downstream
           clients to use a single schema API to interact with multiple AI backends.
 
           The schema field is used to determine the structure of the requests that the Gateway will
-          receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
-          on the output schema of the AIServiceBackend while doing the other necessary jobs like
+          receive. And then the Gateway will route the traffic to the appropriate AIBackend based
+          on the output schema of the AIBackend while doing the other necessary jobs like
           upstream authentication, rate limit, etc.
 
-          Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
+          Envoy AI Gateway will generate the following k8s resources corresponding to the AIRoute:
 
             - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
-              The name of the HTTPRoute is the same as the AIGatewayRoute.
+              The name of the HTTPRoute is the same as the AIRoute.
             - EnvoyExtensionPolicy of the Envoy Gateway API to attach the AI Gateway filter into the target Gateways.
               This will be created per Gateway, and its name is `ai-eg-eep-${gateway-name}`.
             - HTTPRouteFilter of the Envoy Gateway API per namespace for automatic hostname rewrite.
               The name of the HTTPRouteFilter is `ai-eg-host-rewrite`.
 
-          All of these resources are created in the same namespace as the AIGatewayRoute. Note that this is the implementation
+          All of these resources are created in the same namespace as the AIRoute. Note that this is the implementation
           detail subject to change. If you want to customize the default behavior of the Envoy AI Gateway, you can use these
           resources as a reference and create your own resources. Alternatively, you can use EnvoyPatchPolicy API of the Envoy
           Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
@@ -70,7 +70,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the details of the AIGatewayRoute.
+            description: Spec defines the details of the AIRoute.
             properties:
               filterConfig:
                 description: |-
@@ -92,8 +92,8 @@ spec:
                           Resources required by the external processor container.
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 
-                          Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
-                          AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
+                          Note: when multiple AIRoute resources are attached to the same Gateway, and each
+                          AIRoute has a different resource configuration, the ai-gateway will pick one of them
                           to configure the resource requirements of the external processor container.
                         properties:
                           claims:
@@ -212,10 +212,10 @@ spec:
                   \             from: Number\n\t              number: 0\n\t            response:\n\t
                   \             from: Metadata\n\t              metadata:\n\t                namespace:
                   io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
-                  that when multiple AIGatewayRoute resources are attached to the
-                  same Gateway, and\ndifferent costs are configured for the same metadata
-                  key, the ai-gateway will pick one of them\nto configure the metadata
-                  key in the generated HTTPRoute, and ignore the rest."
+                  that when multiple AIRoute resources are attached to the same Gateway,
+                  and\ndifferent costs are configured for the same metadata key, the
+                  ai-gateway will pick one of them\nto configure the metadata key
+                  in the generated HTTPRoute, and ignore the rest."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
@@ -259,50 +259,50 @@ spec:
                 type: array
               rules:
                 description: |-
-                  Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
+                  Rules is the list of AIRouteRule that this AIRoute will match the traffic to.
                   Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 
                   AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional
                   modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for
                   the transformation of the request and response, etc.
 
-                  In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available
+                  In the matching conditions in the AIRouteRule, `x-ai-eg-model` header is available
                   if we want to describe the routing behavior based on the model name. The model name is extracted
                   from the request content before the routing decision.
 
                   How multiple rules are matched is the same as the Gateway API. See for the details:
                   https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
                 items:
-                  description: AIGatewayRouteRule is a rule that defines the routing
-                    behavior of the AIGatewayRoute.
+                  description: AIRouteRule is a rule that defines the routing behavior
+                    of the AIRoute.
                   properties:
                     backendRefs:
                       description: |-
-                        BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.
+                        BackendRefs is the list of AIBackend that this rule will route the traffic to.
                         Each backend can have a weight that determines the traffic distribution.
 
-                        The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+                        The namespace of each backend is "local", i.e. the same namespace as the AIRoute.
 
                         By configuring multiple backends, you can achieve the fallback behavior in the case of
                         the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
                         Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
                         https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
                       items:
-                        description: AIGatewayRouteRuleBackendRef is a reference to
-                          a backend with a weight.
+                        description: AIRouteRuleBackendRef is a reference to a backend
+                          with a weight.
                         properties:
                           modelNameOverride:
                             description: Name of the model in the backend. If provided
                               this will override the name provided in the request.
                             type: string
                           name:
-                            description: Name is the name of the AIServiceBackend.
+                            description: Name is the name of the AIBackend.
                             minLength: 1
                             type: string
                           priority:
                             default: 0
                             description: |-
-                              Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+                              Priority is the priority of the AIBackend. This sets the priority on the underlying endpoints.
                               See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
                               Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
 
@@ -313,7 +313,7 @@ spec:
                           weight:
                             default: 1
                             description: |-
-                              Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
+                              Weight is the weight of the AIBackend. This is exactly the same as the weight in
                               the BackendRef in the Gateway API. See for the details:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 
@@ -328,7 +328,7 @@ spec:
                       type: array
                     matches:
                       description: |-
-                        Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
+                        Matches is the list of AIRouteMatch that this rule will match the traffic to.
                         This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:
                         https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch
                       items:
@@ -412,7 +412,7 @@ spec:
                         where the header value will be recognized as a "model" in "/models" endpoint.
                         All the matched models will share the same creation time.
 
-                        Default to the creation timestamp of the AIGatewayRoute if not set.
+                        Default to the creation timestamp of the AIRoute if not set.
                       format: date-time
                       type: string
                     modelsOwnedBy:
@@ -494,13 +494,13 @@ spec:
                 description: |-
                   APISchema specifies the API schema of the input that the target Gateway(s) will receive.
                   Based on this schema, the ai-gateway will perform the necessary transformation to the
-                  output schema specified in the selected AIServiceBackend during the routing process.
+                  output schema specified in the selected AIBackend during the routing process.
 
                   Currently, the only supported schema is OpenAI as the input schema.
                 properties:
                   name:
-                    description: Name is the name of the API schema of the AIGatewayRoute
-                      or AIServiceBackend.
+                    description: Name is the name of the API schema of the AIRoute
+                      or AIBackend.
                     enum:
                     - OpenAI
                     - AWSBedrock
@@ -532,7 +532,7 @@ spec:
                 - rule: self.name == 'OpenAI'
               targetRefs:
                 description: TargetRefs are the names of the Gateway resources this
-                  AIGatewayRoute is being attached to.
+                  AIRoute is being attached to.
                 items:
                   description: |-
                     LocalPolicyTargetReferenceWithSectionName identifies an API object to apply a
@@ -592,7 +592,7 @@ spec:
             - targetRefs
             type: object
           status:
-            description: Status defines the status details of the AIGatewayRoute.
+            description: Status defines the status details of the AIRoute.
             properties:
               conditions:
                 description: |-

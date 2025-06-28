@@ -9,14 +9,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.3
-  name: aiservicebackends.aigateway.envoyproxy.io
+  name: aibackends.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
   names:
-    kind: AIServiceBackend
-    listKind: AIServiceBackendList
-    plural: aiservicebackends
-    singular: aiservicebackend
+    kind: AIBackend
+    listKind: AIBackendList
+    plural: aibackends
+    singular: aibackend
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -27,13 +27,13 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
+          AIBackend is a resource that represents a single backend for AIRoute.
           A backend is a service that handles traffic with a concrete API specification.
 
-          A AIServiceBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
+          A AIBackend is "attached" to a Backend which is either a k8s Service or a Backend resource of the Envoy Gateway.
 
-          When a backend with an attached AIServiceBackend is used as a routing target in the AIGatewayRoute (more precisely, the
-          HTTPRouteSpec defined in the AIGatewayRoute), the ai-gateway will generate the necessary configuration to do
+          When a backend with an attached AIBackend is used as a routing target in the AIRoute (more precisely, the
+          HTTPRouteSpec defined in the AIRoute), the ai-gateway will generate the necessary configuration to do
           the backend specific logic in the final HTTPRoute.
         properties:
           apiVersion:
@@ -54,11 +54,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the details of AIServiceBackend.
+            description: Spec defines the details of AIBackend.
             properties:
               backendRef:
                 description: |-
-                  BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
+                  BackendRef is the reference to the Backend resource that this AIBackend corresponds to.
 
                   A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
                   as a backend in the future.
@@ -164,15 +164,15 @@ spec:
               schema:
                 description: |-
                   APISchema specifies the API schema of the output format of requests from
-                  Envoy that this AIServiceBackend can accept as incoming requests.
+                  Envoy that this AIBackend can accept as incoming requests.
                   Based on this schema, the ai-gateway will perform the necessary transformation for
-                  the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.
+                  the pair of AIRouteSpec.APISchema and AIBackendSpec.APISchema.
 
                   This is required to be set.
                 properties:
                   name:
-                    description: Name is the name of the API schema of the AIGatewayRoute
-                      or AIServiceBackend.
+                    description: Name is the name of the API schema of the AIRoute
+                      or AIBackend.
                     enum:
                     - OpenAI
                     - AWSBedrock
@@ -205,7 +205,7 @@ spec:
             - schema
             type: object
           status:
-            description: Status defines the status details of the AIServiceBackend.
+            description: Status defines the status details of the AIBackend.
             properties:
               conditions:
                 description: |-

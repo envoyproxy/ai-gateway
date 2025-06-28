@@ -6,11 +6,11 @@ sidebar_position: 8
 
 Since the Envoy AI Gateway is designed to provide a Unified API for routing and managing LLM/AI traffic, it supports various AI providers out of the box.
 A "support of provider" means two things: the API schema support and the Authentication support. \
-The former can be configured in the `AIServiceBackend` resource's `schema` field, while the latter is configured in the `BackendSecurityPolicy`.
+The former can be configured in the `AIBackend` resource's `schema` field, while the latter is configured in the `BackendSecurityPolicy`.
 
 Below is a table of currently supported providers and their respective configurations.
 
-| Provider Name                                                                                         |      API Schema Config on [AIServiceBackend]       | Upstream Authentication Config on [BackendSecurityPolicy] | Status | Note                                                                                                                                                   |
+| Provider Name                                                                                         |      API Schema Config on [AIBackend]       | Upstream Authentication Config on [BackendSecurityPolicy] | Status | Note                                                                                                                                                   |
 |-------------------------------------------------------------------------------------------------------|:--------------------------------------------------:|:---------------------------------------------------------:|:------:|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [OpenAI](https://platform.openai.com/docs/api-reference)                                              |         `{"name":"OpenAI","version":"v1"}`         |                         [API Key]                         |   ✅    |                                                                                                                                                        |
 | [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |              `{"name":"AWSBedrock"}`               |                 [AWS Bedrock Credentials]                 |   ✅    |                                                                                                                                                        |
@@ -29,7 +29,7 @@ Below is a table of currently supported providers and their respective configura
 | [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |                        N/A                         |                            N/A                            |   🚧   | Work-in-progress: [issue#609]                                                                                                                          |
 | Self-hosted-models                                                                                    |         `{"name":"OpenAI","version":"v1"}`         |                            N/A                            |   ⚠️   | Depending on the API schema spoken by self-hosted servers. For example, [vLLM] speaks the OpenAI format. Also, API Key auth can be configured as well. |
 
-[AIServiceBackend]: api/api.mdx#aiservicebackendspec
+[AIBackend]: api/api.mdx#AIBackendspec
 [BackendSecurityPolicy]: api/api.mdx#backendsecuritypolicyspec
 [API Key]: api/api.mdx#backendsecuritypolicyapikey
 [AWS Bedrock Credentials]: api/api.mdx#backendsecuritypolicyawscredentials

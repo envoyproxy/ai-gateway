@@ -77,15 +77,15 @@ const (
 )
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
-	var routes aigv1a1.AIGatewayRouteList
+	var routes aigv1a1.AIRouteList
 	err := g.c.List(ctx, &routes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
+		k8sClientIndexAIRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list routes: %w", err)
 	}
 	if len(routes.Items) == 0 {
-		g.logger.Info("no AIGatewayRoutes found for gateway", "name", gatewayName, "namespace", gatewayNamespace)
+		g.logger.Info("no AIRoutes found for gateway", "name", gatewayName, "namespace", gatewayNamespace)
 		return nil
 	}
 

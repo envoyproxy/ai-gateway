@@ -55,7 +55,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, res)
 	})
-	// Create a Gateway with attached AIGatewayRoutes.
+	// Create a Gateway with attached AIRoutes.
 	const okGwName = "ok-gw"
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace},
@@ -69,23 +69,23 @@ func TestGatewayController_Reconcile(t *testing.T) {
 			},
 		},
 	}
-	for _, aigwRoute := range []*aigv1a1.AIGatewayRoute{
+	for _, aigwRoute := range []*aigv1a1.AIRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1a1.AIRouteSpec{
 				TargetRefs: targets,
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+				Rules: []aigv1a1.AIRouteRule{
+					{BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "apple"}}},
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1a1.AIRouteSpec{
 				TargetRefs: targets,
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
+				Rules: []aigv1a1.AIRouteRule{
+					{BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "orange"}}},
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
 			},
@@ -94,17 +94,17 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		err = fakeClient.Create(t.Context(), aigwRoute)
 		require.NoError(t, err)
 	}
-	// We also need to create corresponding AIServiceBackends.
-	for _, aigwRoute := range []*aigv1a1.AIServiceBackend{
+	// We also need to create corresponding AIBackends.
+	for _, aigwRoute := range []*aigv1a1.AIBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},
@@ -142,12 +142,12 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest")
 
 	const namespace = "ns"
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1a1.AIRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			Spec: aigv1a1.AIRouteSpec{
+				Rules: []aigv1a1.AIRouteRule{
+					{BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "apple"}}},
 				},
 				APISchema:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}},
@@ -155,9 +155,9 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
+			Spec: aigv1a1.AIRouteSpec{
+				Rules: []aigv1a1.AIRouteRule{
+					{BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "orange"}}},
 				},
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{
@@ -167,17 +167,17 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			},
 		},
 	}
-	// We also need to create corresponding AIServiceBackends.
-	for _, aigwRoute := range []*aigv1a1.AIServiceBackend{
+	// We also need to create corresponding AIBackends.
+	for _, aigwRoute := range []*aigv1a1.AIBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1a1.AIBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},

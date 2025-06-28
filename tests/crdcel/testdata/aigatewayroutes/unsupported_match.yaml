@@ -4,7 +4,7 @@
 # the root of the repo.
 
 apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
+kind: AIRoute
 metadata:
   name: apple
   namespace: default

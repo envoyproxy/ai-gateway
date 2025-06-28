@@ -21,8 +21,8 @@ graph TB
 
     subgraph "UserAppliedResources"["User Applied Resources"]
         subgraph "AI Gateway Resources"
-            AIGatewayRoute:::aiGatewayResourceStyle
-            AIServiceBackend:::aiGatewayResourceStyle
+            AIRoute:::aiGatewayResourceStyle
+            AIBackend:::aiGatewayResourceStyle
             BackendSecurityPolicy:::aiGatewayResourceStyle
         end
         subgraph "Envoy Gateway resources"
@@ -49,8 +49,8 @@ graph TB
     end
     style EnvoyProxyPod fill:none,stroke:5
 
-    AIGatewayRoute -.->AIGateway
-    AIServiceBackend -.->AIGateway
+    AIRoute -.->AIGateway
+    AIBackend -.->AIGateway
     BackendSecurityPolicy -.->AIGateway
     Gateway -.->|Watching|AIGateway
 

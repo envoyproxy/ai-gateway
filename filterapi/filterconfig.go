@@ -145,7 +145,7 @@ const (
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
 type HeaderMatch = gwapiv1.HTTPHeaderMatch
 
-// RouteRule corresponds to AIGatewayRoute in api/v1alpha1/api.go
+// RouteRule corresponds to AIRoute in api/v1alpha1/api.go
 // besides the `Backends` field is modified to abstract the concept of a backend
 // at Envoy Gateway level to a simple name.
 type RouteRule struct {
@@ -173,14 +173,14 @@ type RouteRule struct {
 	// where the header value will be recognized as a "model" in "/models" endpoint.
 	// All the matched models will share the same creation time.
 	//
-	// Default to the creation timestamp of the AIGatewayRoute if not set.
+	// Default to the creation timestamp of the AIRoute if not set.
 	ModelsCreatedAt time.Time `json:"modelsCreatedAt"`
 }
 
 // RouteRuleName is the name of the route rule.
 type RouteRuleName string
 
-// Backend corresponds to AIGatewayRouteRuleBackendRef in api/v1alpha1/api.go
+// Backend corresponds to AIRouteRuleBackendRef in api/v1alpha1/api.go
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
 	// Name of the backend, which is the value in the final routing decision

@@ -12,13 +12,13 @@ The Envoy AI Gateway uses several custom resources to manage AI traffic. Here's 
 
 | Resource | Purpose | API Reference |
 |----------|---------|---------------|
-| AIGatewayRoute | Defines unified API and routing rules for AI traffic | [AIGatewayRoute](../api/api.mdx#aigatewayroute) |
-| AIServiceBackend | Represents individual AI service backends | [AIServiceBackend](../api/api.mdx#aiservicebackend) |
+| AIRoute | Defines unified API and routing rules for AI traffic | [AIRoute](../api/api.mdx#AIRoute) |
+| AIBackend | Represents individual AI service backends | [AIBackend](../api/api.mdx#AIBackend) |
 | BackendSecurityPolicy | Configures authentication for backend access | [BackendSecurityPolicy](../api/api.mdx#backendsecuritypolicy) |
 
 ## Core Resources
 
-### AIGatewayRoute
+### AIRoute
 
 A resource that defines a unified AI API for a Gateway, allowing clients to interact with multiple AI backends using a single schema.
 - Specifies the input API schema for client requests
@@ -26,7 +26,7 @@ A resource that defines a unified AI API for a Gateway, allowing clients to inte
 - Manages request/response transformations between different API schemas
 - Can track LLM request costs (like token usage)
 
-### AIServiceBackend
+### AIBackend
 
 Represents a single AI service backend that handles traffic with a specific API schema.
 
@@ -45,10 +45,10 @@ Configures authentication and authorization rules for backend access.
 
 ```mermaid
 graph TD
-    A[AIGatewayRoute] -->|references| B[AIServiceBackend]
+    A[AIRoute] -->|references| B[AIBackend]
     B -->|references| C[K8s Service/Backend]
     B -->|references| D[BackendSecurityPolicy]
     D -->|contains| E[API Key/AWS Credentials]
 ```
 
-The AIGatewayRoute acts as the entry point, defining how client requests are processed and routed to one or more AIServiceBackends. Each AIServiceBackend can reference a BackendSecurityPolicy, which provides the necessary credentials for accessing the underlying AI service.
+The AIRoute acts as the entry point, defining how client requests are processed and routed to one or more AIBackends. Each AIBackend can reference a BackendSecurityPolicy, which provides the necessary credentials for accessing the underlying AI service.

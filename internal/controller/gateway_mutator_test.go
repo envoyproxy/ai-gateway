@@ -35,9 +35,9 @@ func TestGatewayMutator_Default(t *testing.T) {
 			Containers: []corev1.Container{{Name: "envoy"}},
 		},
 	}
-	err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-gateway", Namespace: "test-namespace"},
-		Spec:       aigv1a1.AIGatewayRouteSpec{},
+		Spec:       aigv1a1.AIRouteSpec{},
 	})
 	require.NoError(t, err)
 	err = g.Default(t.Context(), pod)
@@ -54,9 +54,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
-	err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1a1.AIRouteSpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 				{
 					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
@@ -64,11 +64,11 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					},
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
-				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			Rules: []aigv1a1.AIRouteRule{
+				{BackendRefs: []aigv1a1.AIRouteRuleBackendRef{{Name: "apple"}}},
 			},
 			APISchema:    aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
-			FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
+			FilterConfig: &aigv1a1.AIFilterConfig{},
 		},
 	})
 	require.NoError(t, err)

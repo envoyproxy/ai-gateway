@@ -47,7 +47,7 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 ### 1. Configure Token Tracking
 
-AI Gateway automatically tracks token usage for each request. Configure which token counts you want to track in your `AIGatewayRoute`:
+AI Gateway automatically tracks token usage for each request. Configure which token counts you want to track in your `AIRoute`:
 
 ```yaml
 spec:

@@ -24,24 +24,24 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-func Test_aiGatewayRouteIndexFunc(t *testing.T) {
+func Test_AIRouteIndexFunc(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
-	// Create a AIGatewayRoute.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	// Create a AIRoute.
+	AIRoute := &aigv1a1.AIRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1a1.AIRouteSpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
 				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1a1.AIRouteRule{
 				{
-					Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					Matches: []aigv1a1.AIRouteRuleMatch{},
+					BackendRefs: []aigv1a1.AIRouteRuleBackendRef{
 						{Name: "backend1", Weight: ptr.To[int32](1)},
 						{Name: "backend2", Weight: ptr.To[int32](1)},
 					},
@@ -49,20 +49,20 @@ func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, c.Create(t.Context(), aiGatewayRoute))
+	require.NoError(t, c.Create(t.Context(), AIRoute))
 
-	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
-	err := c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend1.default"})
+	var AIRoutes aigv1a1.AIRouteList
+	err := c.List(t.Context(), &AIRoutes,
+		client.MatchingFields{k8sClientIndexBackendToReferencingAIRoute: "backend1.default"})
 	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
+	require.Len(t, AIRoutes.Items, 1)
+	require.Equal(t, AIRoute.Name, AIRoutes.Items[0].Name)
 
-	err = c.List(t.Context(), &aiGatewayRoutes,
-		client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: "backend2.default"})
+	err = c.List(t.Context(), &AIRoutes,
+		client.MatchingFields{k8sClientIndexBackendToReferencingAIRoute: "backend2.default"})
 	require.NoError(t, err)
-	require.Len(t, aiGatewayRoutes.Items, 1)
-	require.Equal(t, aiGatewayRoute.Name, aiGatewayRoutes.Items[0].Name)
+	require.Len(t, AIRoutes.Items, 1)
+	require.Equal(t, AIRoute.Name, AIRoutes.Items[0].Name)
 }
 
 func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
