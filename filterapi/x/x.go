@@ -8,41 +8,12 @@ package x
 
 import (
 	"context"
-	"errors"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
-
-// NewCustomRouter is the function to create a custom router over the default router.
-// This is nil by default and can be set by the custom build of external processor.
-var NewCustomRouter NewCustomRouterFn
-
-// ErrNoMatchingRule is the error the router function must return if there is no matching rule.
-var ErrNoMatchingRule = errors.New("no matching rule found")
-
-// NewCustomRouterFn is the function signature for [NewCustomRouter].
-//
-// It accepts the exptproc config passed to the AI Gateway filter and returns a [Router].
-// This is called when the new configuration is loaded.
-//
-// The defaultRouter can be used to delegate the calculation to the default router implementation.
-type NewCustomRouterFn func(defaultRouter Router, config *filterapi.Config) Router
-
-// Router is the interface for the router.
-//
-// Router must be goroutine-safe as it is shared across multiple requests.
-type Router interface {
-	// Calculate determines the route to route to based on the request headers.
-	//
-	// The request headers include the populated [filterapi.Config.ModelNameHeaderKey]
-	// with the parsed model name based on the [filterapi.Config] given to the NewCustomRouterFn.
-	//
-	// Returns the selected route rule name and the error if any.
-	Calculate(requestHeaders map[string]string) (route filterapi.RouteRuleName, err error)
-}
 
 // NewCustomChatCompletionMetrics is the function to create a custom chat completion AI Gateway metrics over
 // the default metrics. This is nil by default and can be set by the custom build of external processor.

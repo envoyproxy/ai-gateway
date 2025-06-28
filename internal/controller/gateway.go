@@ -214,7 +214,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec := &filterapi.Config{UUID: uuid}
 	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
-	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -241,17 +240,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					}
 				}
 			}
-			configRule := filterapi.RouteRule{Backends: backends}
-			configRule.Name = routeName(aiGatewayRoute, i)
-			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
-			for j, match := range rule.Matches {
-				configRule.Headers[j].Name = match.Headers[0].Name
-				configRule.Headers[j].Value = match.Headers[0].Value
-			}
-			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
-			// Convert to UTC time in force to avoid timezone issues.
-			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
-			ec.Rules = append(ec.Rules, configRule)
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
