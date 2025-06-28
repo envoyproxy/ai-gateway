@@ -23,19 +23,21 @@ import (
 //
 // Exported for testing purposes.
 type AIBackendController struct {
-	client             client.Client
-	kube               kubernetes.Interface
-	logger             logr.Logger
-	aiGatewayRouteChan chan event.GenericEvent
+	client                    client.Client
+	kube                      kubernetes.Interface
+	logger                    logr.Logger
+	aiGatewayRouteChan        chan event.GenericEvent
+	backendSecurityPolicyChan chan event.GenericEvent
 }
 
 // NewAIServiceBackendController creates a new [reconcile.TypedReconciler] for [aigv1a1.AIServiceBackend].
-func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent) *AIBackendController {
+func NewAIServiceBackendController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiGatewayRouteChan chan event.GenericEvent, backendSecurityPolicyChan chan event.GenericEvent) *AIBackendController {
 	return &AIBackendController{
-		client:             client,
-		kube:               kube,
-		logger:             logger,
-		aiGatewayRouteChan: aiGatewayRouteChan,
+		client:                    client,
+		kube:                      kube,
+		logger:                    logger,
+		aiGatewayRouteChan:        aiGatewayRouteChan,
+		backendSecurityPolicyChan: backendSecurityPolicyChan,
 	}
 }
 
@@ -63,6 +65,7 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 // syncAIGatewayRoute is the main logic for reconciling the AIServiceBackend resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
+	// Sync AIGatewayRoutes that reference this backend
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
 	err := c.client.List(ctx, &aiGatewayRoutes, client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key})
@@ -76,6 +79,51 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 		)
 		c.aiGatewayRouteChan <- event.GenericEvent{Object: &aiGatewayRoute}
 	}
+
+	// Sync BackendSecurityPolicies that target this backend (new pattern)
+	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
+	err = c.client.List(ctx, &backendSecurityPolicies, client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key})
+	if err != nil {
+		return fmt.Errorf("failed to list BackendSecurityPolicyList: %w", err)
+	}
+	for _, policy := range backendSecurityPolicies.Items {
+		c.logger.Info("syncing BackendSecurityPolicy",
+			"namespace", policy.Namespace, "name", policy.Name,
+			"targeted_backend", aiBackend.Name, "targeted_backend_namespace", aiBackend.Namespace,
+		)
+		select {
+		case c.backendSecurityPolicyChan <- event.GenericEvent{Object: &policy}:
+		default:
+			// Channel is full or no receiver, skip
+		}
+	}
+
+	// Sync BackendSecurityPolicy that this backend references (old pattern)
+	if aiBackend.Spec.BackendSecurityPolicyRef != nil {
+		var policy aigv1a1.BackendSecurityPolicy
+		err := c.client.Get(ctx, client.ObjectKey{
+			Name:      string(aiBackend.Spec.BackendSecurityPolicyRef.Name),
+			Namespace: aiBackend.Namespace,
+		}, &policy)
+		if err != nil {
+			if client.IgnoreNotFound(err) != nil {
+				return fmt.Errorf("failed to get referenced BackendSecurityPolicy %s: %w", aiBackend.Spec.BackendSecurityPolicyRef.Name, err)
+			}
+			// Policy not found, log and continue
+			c.logger.Info("Referenced BackendSecurityPolicy not found", "name", string(aiBackend.Spec.BackendSecurityPolicyRef.Name), "namespace", aiBackend.Namespace)
+		} else {
+			c.logger.Info("syncing BackendSecurityPolicy",
+				"namespace", policy.Namespace, "name", policy.Name,
+				"referencing_backend", aiBackend.Name, "referencing_backend_namespace", aiBackend.Namespace,
+			)
+			select {
+			case c.backendSecurityPolicyChan <- event.GenericEvent{Object: &policy}:
+			default:
+				// Channel is full or no receiver, skip
+			}
+		}
+	}
+
 	return nil
 }
 

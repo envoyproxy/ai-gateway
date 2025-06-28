@@ -397,6 +397,9 @@ type AIServiceBackendSpec struct {
 	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
 	// is being attached to.
 	//
+	// Deprecated: BackendSecurityPolicy should use targetRefs to target AIServiceBackend instead.
+	// This field will be dropped in Envoy AI Gateway v0.3.0.
+	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
@@ -485,6 +488,7 @@ const (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
+// +kubebuilder:metadata:labels="gateway.networking.k8s.io/policy=direct"
 type BackendSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -497,12 +501,20 @@ type BackendSecurityPolicy struct {
 // Only one mechanism to access a backend(s) can be specified.
 //
 // Only one type of BackendSecurityPolicy can be defined.
-// +kubebuilder:validation:MaxProperties=2
+// +kubebuilder:validation:MaxProperties=3
 // +kubebuilder:validation:XValidation:rule="self.type == 'APIKey' ? (has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is APIKey, only apiKey field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AWSCredentials' ? (has(self.awsCredentials) && !has(self.apiKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AWSCredentials, only awsCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.gcpCredentials)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 type BackendSecurityPolicySpec struct {
+	// TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
+	// This follows the Gateway API policy attachment pattern where policies target their resources directly.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
+	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
+
 	// Type specifies the type of the backend security policy.
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
