@@ -48,116 +48,110 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: aws-bedrock-route
+                                  exact: us.meta.llama3-2-1b-instruct-v1:0
+                              - name: x-model-name
+                                string_match:
+                                  exact: us.anthropic.claude-3-5-sonnet-20240620-v1:0
                           route:
                             auto_host_rewrite: true
                             cluster: aws_bedrock
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: openai-route
+                                  exact: gpt-4o-mini
                           route:
                             auto_host_rewrite: true
                             cluster: openai
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: azure-openai-route
+                                  exact: o1
                           route:
                             auto_host_rewrite: true
                             cluster: azure_openai
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: gemini-route
+                                  exact: gemini-2.0-flash-lite
                           route:
                             auto_host_rewrite: true
                             cluster: gemini
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: groq-route
+                                  exact: llama-3.1-8b-instant
                           route:
                             auto_host_rewrite: true
                             cluster: groq
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: grok-route
+                                  exact: grok-3
                           route:
                             auto_host_rewrite: true
                             cluster: grok
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: sambanova-route
+                                  exact: Meta-Llama-3.1-8B-Instruct
                           route:
                             auto_host_rewrite: true
                             cluster: sambanova
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-model-name
                                 string_match:
-                                  exact: deepinfra-route
+                                  exact: meta-llama/Meta-Llama-3-8B-Instruct
                           route:
                             auto_host_rewrite: true
                             cluster: deepinfra
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-test-backend
                                 string_match:
-                                  exact: testupstream-openai-route
+                                  exact: openai
                           route:
                             cluster: testupstream-openai
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-test-backend
                                 string_match:
-                                  exact: testupstream-modelname-override-route
+                                  exact: modelname-override
                           route:
                             cluster: testupstream-modelname-override
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-test-backend
                                 string_match:
-                                  exact: testupstream-aws-route
+                                  exact: aws-bedrock
                           route:
                             cluster: testupstream-aws
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-selected-route-name
+                              - name: x-test-backend
                                 string_match:
-                                  exact: testupstream-azure-route
+                                  exact: azure-openai
                           route:
                             cluster: testupstream-azure
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-selected-route-name
-                                string_match:
-                                  exact: original_destination_cluster
-                          name: original_destination_cluster
-                          route:
-                            cluster: original_destination_cluster
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:

@@ -177,6 +177,11 @@ func Test_newHTTPRoute(t *testing.T) {
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-0"},
+								}},
+							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -184,10 +189,20 @@ func Test_newHTTPRoute(t *testing.T) {
 								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
 								{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
 							},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-1"},
+								}},
+							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 							Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-2"},
+								}},
+							},
 						},
 					},
 				},
@@ -236,14 +251,14 @@ func Test_newHTTPRoute(t *testing.T) {
 			expRules := []gwapiv1.HTTPRouteRule{
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-0"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-0"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}}},
 					Filters:     rewriteFilters,
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-1"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-1"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}, Weight: ptr.To[int32](100)}},
@@ -254,7 +269,7 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-2"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-2"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
