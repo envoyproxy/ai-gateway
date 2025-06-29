@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -315,6 +316,115 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			require.Equal(t, tc.exp, auth)
 		})
 	}
+}
+
+func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	tests := []struct {
+		name          string
+		bspName       string
+		setupBSP      *aigv1a1.BackendSecurityPolicy
+		setupSecret   *corev1.Secret
+		expectedError string
+	}{
+		{
+			name:          "missing backend security policy",
+			bspName:       "missing-bsp",
+			expectedError: "failed to get BackendSecurityPolicy missing-bsp",
+		},
+		{
+			name:    "api key type with missing secret",
+			bspName: "api-key-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "api-key-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+					APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{
+							Name: "missing-secret",
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-secret",
+		},
+		{
+			name:    "aws credentials without credentials defined",
+			bspName: "aws-no-creds-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-no-creds-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type:           aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: nil, // This should trigger the error
+				},
+			},
+			expectedError: "AWSCredentials type selected but not defined",
+		},
+		{
+			name:    "aws credentials with credentials file missing secret",
+			bspName: "aws-creds-file-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-file-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						Region: "us-west-2",
+						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+							SecretRef: &gwapiv1.SecretObjectReference{
+								Name: "missing-aws-secret",
+							},
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-aws-secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup BSP if provided
+			if tt.setupBSP != nil {
+				err := fakeClient.Create(ctx, tt.setupBSP)
+				require.NoError(t, err)
+			}
+
+			// Setup secret if provided
+			if tt.setupSecret != nil {
+				err := fakeClient.Create(ctx, tt.setupSecret)
+				require.NoError(t, err)
+			}
+
+			// Call the function
+			result, err := c.bspToFilterAPIBackendAuth(ctx, namespace, tt.bspName)
+
+			// Verify expected error
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedError)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	// Test missing secret
+	result, err := c.getSecretData(ctx, namespace, "missing-secret", "test-key")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")
+	require.Empty(t, result)
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {

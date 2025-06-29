@@ -623,6 +623,16 @@ type GCPServiceAccountImpersonationConfig struct {
 
 // BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
 type BackendSecurityPolicyGCPCredentials struct {
+	// ProjectName is the GCP project name.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ProjectName string `json:"projectName"`
+	// Region is the GCP region associated with the policy.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Region string `json:"region"`
 	// WorkLoadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation.
 	//
 	// +kubebuilder:validation:Required

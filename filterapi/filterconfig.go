@@ -137,9 +137,18 @@ type VersionedAPISchema struct {
 type APISchemaName string
 
 const (
-	APISchemaOpenAI      APISchemaName = "OpenAI"
-	APISchemaAWSBedrock  APISchemaName = "AWSBedrock"
+	// APISchemaOpenAI represents the standard OpenAI API schema.
+	APISchemaOpenAI APISchemaName = "OpenAI"
+	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
+	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"
+	// APISchemaGCPVertexAI represents the Google Cloud Gemini API schema.
+	// Used for Gemini models hosted on Google Cloud Vertex AI.
+	APISchemaGCPVertexAI APISchemaName = "GCPVertexAI"
+	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
+	// Used for Claude models hosted on Google Cloud Vertex AI.
+	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
 )
 
 // HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
@@ -226,13 +235,19 @@ type AzureAuth struct {
 	AccessToken string `json:"accessToken"`
 }
 
-// GCPAuth defines the file containing GCP credential that will be mounted to the external proc.
+// GCPAuth defines the GCP authentication configuration used to access Google Cloud AI services.
 type GCPAuth struct {
 	// AccessToken is the access token as a literal string.
+	// This token is obtained through GCP Workload Identity Federation and service account impersonation.
+	// The token is automatically rotated by the BackendSecurityPolicy controller before expiration.
 	AccessToken string `json:"accessToken"`
 	// Region is the GCP region to use for the request.
+	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
+	// Examples: "us-central1", "europe-west4"
 	Region string `json:"region"`
 	// ProjectName is the GCP project name to use for the request.
+	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
+	// This should be the project where Vertex AI APIs are enabled.
 	ProjectName string `json:"projectName"`
 }
 

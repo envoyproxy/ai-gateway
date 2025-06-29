@@ -29,6 +29,8 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250530174510-65e920069ea6
 	golang.org/x/oauth2 v0.30.0
+	google.golang.org/api v0.223.0
+	google.golang.org/genai v1.13.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.33.1
@@ -47,6 +49,10 @@ require (
 	4d63.com/gochecknoglobals v0.2.2 // indirect
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	cel.dev/expr v0.23.1 // indirect
+	cloud.google.com/go v0.116.0 // indirect
+	cloud.google.com/go/auth v0.15.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.7 // indirect
+	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/4meepo/tagalign v1.4.2 // indirect
 	github.com/Abirdcfly/dupword v0.1.3 // indirect
@@ -214,8 +220,11 @@ require (
 	github.com/google/go-github/v56 v56.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/licensecheck v0.3.1 // indirect
+	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/safetext v0.0.0-20220905092116-b49f7bc46da2 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
+	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gordonklaus/ineffassign v0.1.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect

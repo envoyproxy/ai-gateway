@@ -853,6 +853,16 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 
 
 <ApiField
+  name="projectName"
+  type="string"
+  required="true"
+  description="ProjectName is the GCP project name."
+/><ApiField
+  name="region"
+  type="string"
+  required="true"
+  description="Region is the GCP region associated with the policy."
+/><ApiField
   name="workLoadIdentityFederationConfig"
   type="[GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
   required="true"

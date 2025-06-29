@@ -11,6 +11,8 @@ metadata:
 spec:
   type: GCPCredentials
   gcpCredentials:
+    projectName: GCP_PROJECT_NAME
+    region: GCP_REGION
     workLoadIdentityFederationConfig:
       projectID: GCP_PROJECT_ID
       workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -396,6 +397,30 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	})
 	require.NotNil(t, oidcAWS)
 	require.Equal(t, "some-client-id", oidcAWS.ClientID)
+
+	// GCP type with OIDC defined.
+	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+			ProjectName: "fake-project-name",
+			Region:      "fake-region",
+			WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+				ProjectID: "fake-project-id",
+				WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
+					Name: "fake-workload-identity-provider-name",
+					OIDCProvider: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: egv1a1.OIDC{
+							ClientID: "some-client-id",
+						},
+					},
+				},
+				WorkloadIdentityPoolName:    "fake-workload-identity-pool-name",
+				ServiceAccountImpersonation: nil,
+			},
+		},
+	})
+	require.NotNil(t, oidcGCP)
+	require.Equal(t, "some-client-id", oidcGCP.ClientID)
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
@@ -644,4 +669,163 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 	res, err := c.executeRotation(ctx, rotator, bsp)
 	require.NoError(t, err)
 	require.Less(t, res.RequeueAfter, time.Hour)
+}
+
+func TestValidateGCPCredentialsParams(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     *aigv1a1.BackendSecurityPolicyGCPCredentials
+		wantError string
+	}{
+		{
+			name:      "nil credentials",
+			input:     nil,
+			wantError: "invalid backend security policy, gcp credentials cannot be nil",
+		},
+		{
+			name: "empty project name",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP credentials configuration: projectName cannot be empty",
+		},
+		{
+			name: "empty region",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP credentials configuration: region cannot be empty",
+		},
+		{
+			name: "empty projectID",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: projectID cannot be empty",
+		},
+		{
+			name: "empty workloadIdentityPoolName",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty",
+		},
+		{
+			name: "empty workloadIdentityProvider name",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: ""},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty",
+		},
+		{
+			name: "valid credentials",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGCPCredentialsParams(tt.input)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, tt.wantError, err.Error())
+			}
+		})
+	}
+}
+
+func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *testing.T) {
+	bspNamespace := "default"
+	bspName := "test-gcp-policy"
+	tests := []struct {
+		name           string
+		bsp            *aigv1a1.BackendSecurityPolicySpec
+		expectedErrMsg string
+	}{
+		{
+			name: "nil gcp credentials",
+			bsp: &aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: nil,
+			},
+			expectedErrMsg: "invalid backend security policy, gcp credentials cannot be nil",
+		},
+		{
+			name: "empty gcp credentials",
+			bsp: &aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+			},
+			expectedErrMsg: "invalid GCP credentials configuration: projectName cannot be empty",
+		},
+	}
+
+	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil)
+
+	for _, tt := range tests {
+		bsp := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bspName,
+				Namespace: bspNamespace,
+			},
+			Spec: *tt.bsp,
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			// Initial rotation should create a new secret
+			res, err := c.rotateCredential(context.Background(), bsp)
+
+			switch {
+			case tt.expectedErrMsg != "" && err == nil:
+				t.Errorf("expected error but got none, expected: %s", tt.expectedErrMsg)
+			case tt.expectedErrMsg == "" && err != nil:
+				t.Errorf("unexpected error: %v", err)
+			case tt.expectedErrMsg != "" && err != nil:
+				strings.Contains(err.Error(), tt.expectedErrMsg)
+			default:
+				require.NoError(t, err)
+				require.NotZero(t, res.RequeueAfter)
+			}
+		})
+	}
 }
