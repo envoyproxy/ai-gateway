@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	// DefaultRequestTimeout is the default timeout for HTTP requests when not specified.
+	// defaultRequestTimeout is the default timeout for HTTP requests when not specified.
 	// Changed from Envoy Gateway's default of 15s to 60s for AI workloads.
-	DefaultRequestTimeout gwapiv1.Duration = "60s"
+	defaultRequestTimeout gwapiv1.Duration = "60s"
 )
 
 // GetTimeoutsWithDefaults returns the timeouts with default values applied when not specified.
 // This ensures that AI Gateway routes have appropriate timeout defaults for AI workloads.
-func (r *AIGatewayRouteRule) GetTimeoutsWithDefaults() *gwapiv1.HTTPRouteTimeouts {
-	defaultTimeout := DefaultRequestTimeout
+func (r *AIGatewayRouteRule) GetTimeoutsOrDefault() *gwapiv1.HTTPRouteTimeouts {
+	defaultTimeout := defaultRequestTimeout
 
 	if r.Timeouts == nil {
 		// If no timeouts are specified, use default request timeout

@@ -68,7 +68,7 @@ func TestAIGatewayRouteRule_GetTimeoutsWithDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.rule.GetTimeoutsWithDefaults()
+			result := tt.rule.GetTimeoutsOrDefault()
 			require.Equal(t, tt.expected, result)
 		})
 	}
