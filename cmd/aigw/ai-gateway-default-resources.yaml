@@ -61,13 +61,13 @@ spec:
     level:
       default: error
   bootstrap:
-    jsonPatches:
-      - op: replace
-        path: /admin/address/socket_address/address
-        value: "127.0.0.1"
-      - op: replace
-        path: /admin/address/socket_address/port_value
-        value: 9901
+    type: Merge
+    value: |-
+      admin:
+        address:
+          socket_address:
+            address: 127.0.0.1
+            port_value: 9901
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
