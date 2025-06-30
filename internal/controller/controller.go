@@ -192,22 +192,22 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field from AIGatewayRoute to Backends: %w", err)
+		return fmt.Errorf("failed to create index from Backends to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field from AIGatewayRoute to Gateway: %w", err)
+		return fmt.Errorf("failed to create index from Gateway to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field from AIServiceBackend to BackendSecurityPolicy: %w", err)
+		return fmt.Errorf("failed to create index from BackendSecurityPolicy to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field from BackendSecurityPolicy to Secret: %w", err)
+		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
 	}
 	return nil
 }
