@@ -706,6 +706,120 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test parallel tool calls for anthropic claude model",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role: openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "What is the weather in Dallas, Texas and Orlando, Florida in Fahrenheit?",
+							},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: "tool-1",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_current_weather",
+										Arguments: "{\"city\": \"Dallas\", \"state\": \"TX\", \"unit\": \"fahrenheit\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallType(openai.ToolTypeFunction),
+								},
+								{
+									ID: "tool-2",
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_current_weather",
+										Arguments: "{\"city\": \"Orlando\", \"state\": \"FL\", \"unit\": \"fahrenheit\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallType(openai.ToolTypeFunction),
+								},
+							},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleTool,
+						Value: openai.ChatCompletionToolMessageParam{
+							Content: openai.StringOrArray{
+								Value: "The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.",
+							},
+							Role:       openai.ChatMessageRoleTool,
+							ToolCallID: "tool-1",
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleTool,
+						Value: openai.ChatCompletionToolMessageParam{
+							Content: openai.StringOrArray{
+								Value: "The weather in Orlando FL is 78 degrees fahrenheit with clear skies.",
+							},
+							Role:       openai.ChatMessageRoleTool,
+							ToolCallID: "tool-2",
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("What is the weather in Dallas, Texas and Orlando, Florida in Fahrenheit?"),
+							},
+						},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      "get_current_weather",
+									ToolUseID: "tool-1",
+									Input:     map[string]interface{}{"city": "Dallas", "state": "TX", "unit": "fahrenheit"},
+								},
+							},
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      "get_current_weather",
+									ToolUseID: "tool-2",
+									Input:     map[string]interface{}{"city": "Orlando", "state": "FL", "unit": "fahrenheit"},
+								},
+							},
+						},
+					},
+					{
+						Role: awsbedrock.ConversationRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{Text: ptr.To("The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.")},
+									},
+									ToolUseID: ptr.To("tool-1"),
+								},
+							},
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{Text: ptr.To("The weather in Orlando FL is 78 degrees fahrenheit with clear skies.")},
+									},
+									ToolUseID: ptr.To("tool-2"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
