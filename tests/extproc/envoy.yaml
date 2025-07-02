@@ -231,6 +231,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -276,6 +290,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -321,6 +349,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -366,6 +408,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -422,6 +478,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -484,6 +554,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -546,6 +630,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -616,6 +714,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -667,6 +779,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -718,6 +844,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -769,6 +909,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -820,6 +974,20 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - ai_gateway_llm_ns
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec

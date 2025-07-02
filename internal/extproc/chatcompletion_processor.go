@@ -225,6 +225,11 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		}
 	}
 
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+	}
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -234,6 +239,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 				},
 			},
 		},
+		DynamicMetadata: dm,
 	}, nil
 }
 
@@ -388,6 +394,33 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	return openAIReq.Model, &openAIReq, nil
+}
+
+// buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
+//
+// This is necessary to ensure that the content length can be set after the extproc filter has processed the request,
+// which will happen in the header mutation filter.
+//
+// This is needed since the content length header is unconditionally cleared by Envoy as we use REPLACE_AND_CONTINUE
+// processing mode in the request headers phase at upstream filter. This is sort of a workaround, and it is necessary
+// for now.
+func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, contentLength int) *structpb.Struct {
+	metadata := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			config.metadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"content_length": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(contentLength)},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return metadata
 }
 
 func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, modelNameOverride, backendName string) (*structpb.Struct, error) {
