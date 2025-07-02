@@ -211,32 +211,6 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	input := aiGatewayRoutes[0].Spec.APISchema
-	// 	var (
-	//		backends       = make(map[string]*processorConfigBackend)
-	//		declaredModels []model
-	//	)
-	//	for _, r := range config.Rules {
-	//		ownedBy := r.ModelsOwnedBy
-	//		createdAt := r.ModelsCreatedAt
-	//
-	//		// Collect declared models from configured header routes. These will be used to
-	//		// serve requests to the /v1/models endpoint.
-	//		// TODO(nacx): note that currently we only support exact matching in the headers. When
-	//		// header matching is extended, this will need to be updated.
-	//		for _, h := range r.Headers {
-	//			// If explicitly set to something that is not an exact match, skip.
-	//			// If not set, we assume it's an exact match.
-	//			//
-	//			// Also, we only care about the AIModel header to declare models.
-	//			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
-	//				continue
-	//			}
-	//			declaredModels = append(declaredModels, model{
-	//				name:      h.Value,
-	//				createdAt: createdAt,
-	//				ownedBy:   ownedBy,
-	//			})
-	//		}
 
 	ec := &filterapi.Config{UUID: uuid}
 	ec.Schema = schemaToFilterAPI(input)
