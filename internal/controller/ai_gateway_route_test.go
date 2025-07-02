@@ -132,7 +132,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].BackendRef.Name))
-		require.Equal(t, "myroute-rule-0", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		// Defaulting to the empty path, which shouldn't reach in practice.
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)

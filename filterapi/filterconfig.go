@@ -29,49 +29,7 @@ schema:
 modelNameHeaderKey: x-ai-eg-model
 `
 
-// Config is the configuration schema for the filter.
-//
-// # Example configuration:
-//
-//	schema:
-//	  name: OpenAI
-//	selectedRouteHeaderKey: x-envoy-ai-gateway-selected-route
-//	modelNameHeaderKey: x-ai-eg-model
-//	llmRequestCosts:
-//	- metadataKey: token_usage_key
-//	  type: OutputToken
-//	rules:
-//	- name: llama3-route
-//	  headers:
-//	  - name: x-ai-eg-model
-//	    value: llama3.3333
-//	  backends:
-//	  - name: openai-backend.mynamespace
-//	    schema:
-//	      name: OpenAI
-//	  - name: awsbedrock
-//	    weight: 10
-//	    schema:
-//	      name: AWSBedrock
-//	- name: gpt4-route
-//	  headers:
-//	  - name: x-ai-eg-model
-//	    value: gpt4.4444
-//	  backends:
-//	  - name: openai
-//	    schema:
-//	      name: OpenAI
-//
-// where the input of the Gateway is in the OpenAI schema, the model name is populated in the header x-ai-eg-model,
-// The model name header `x-ai-eg-model` is used in the header matching to make the routing decision. **After** the routing decision is made,
-// the selected route name is populated in the header `x-ai-eg-selected-route`. For example, when the model name is `llama3.3333`,
-// the request is routed to a route named `llama3-route`.
-//
-// From the Envoy configuration perspective, the extproc expects there are corresponding routes in the envoy configuration as well as
-// each cluster must configure the upstream filter to talk to the experoc to perform the corresponding authn/z as well as the transformation.
-// See tests/extproc/envoy.yaml for the example configuration.
-//
-// Note that this contains literal credentials inlined.
+// Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`

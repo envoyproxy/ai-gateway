@@ -241,7 +241,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
 				b := filterapi.Backend{}
-				b.Name = internalapi.BackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, j)
+				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)

@@ -16,9 +16,9 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 )
 
-// BackendName generates a unique backend name for a per-route rule,
-// i.e. the unique identifier for a backend that is associated with a specific
+// PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
+// i.e., the unique identifier for a backend that is associated with a specific
 // route rule in a specific AIGatewayRoute.
-func BackendName(namespace, name, routeName string, routeRuleIndex int) string {
-	return fmt.Sprintf("%s/%s/route/%s/rule/%d", namespace, name, routeName, routeRuleIndex)
+func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
+	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
 }

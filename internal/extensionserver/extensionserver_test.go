@@ -182,6 +182,6 @@ func Test_maybeModifyCluster(t *testing.T) {
 		mmd, ok := md.FilterMetadata[internalapi.InternalMetadataNamespace]
 		require.True(t, ok)
 		require.Len(t, mmd.Fields, 1)
-		require.Equal(t, "aaa.ns", mmd.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
 	})
 }

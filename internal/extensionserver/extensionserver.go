@@ -212,7 +212,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 				m.Fields = make(map[string]*structpb.Value)
 			}
 			m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-				internalapi.BackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex),
+				internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
 			)
 		}
 	}
