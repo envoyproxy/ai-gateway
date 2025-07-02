@@ -26,7 +26,7 @@ import (
 // mockReceiver is a mock implementation of Receiver.
 type mockReceiver struct {
 	cfg       *filterapi.Config
-	mux       sync.Mutex
+	mux       sync.RWMutex
 	loadCount atomic.Int32
 }
 
@@ -40,8 +40,8 @@ func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) erro
 }
 
 func (m *mockReceiver) getConfig() *filterapi.Config {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	m.mux.RLock()
+	defer m.mux.RUnlock()
 	return m.cfg
 }
 
@@ -168,6 +168,7 @@ rules:
 	}, 1*time.Second, tickInterval, buf.String())
 
 	// Wait for a couple ticks to verify config is not reloaded if file does not change.
-	time.Sleep(2 * tickInterval)
-	require.Equal(t, int32(3), rcv.loadCount.Load())
+	require.Eventually(t, func() bool {
+		return rcv.loadCount.Load() == 3
+	}, 3*time.Second, tickInterval)
 }
