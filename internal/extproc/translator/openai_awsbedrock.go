@@ -38,8 +38,6 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams
 	role string
-	// parallelToolCalls indicates the number of tool calls an assistant performs in a single message.
-	parallelToolCalls int
 }
 
 // RequestBody implements [Translator.RequestBody].
@@ -282,7 +280,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				},
 			})
 	}
-	o.parallelToolCalls = len(openAiMessage.ToolCalls)
 	return bedrockMessage, nil
 }
 
@@ -352,7 +349,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) error {
 	// Convert Messages.
 	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(openAIReq.Messages))
-	for i := range openAIReq.Messages {
+	openAIReqMessageLen, i := len(openAIReq.Messages), 0
+	for i < openAIReqMessageLen {
 		msg := &openAIReq.Messages[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleUser:
@@ -409,16 +407,27 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				return err
 			}
 
-			latestMessage := bedrockReq.Messages[len(bedrockReq.Messages)-1]
-			if o.parallelToolCalls > 0 && latestMessage.Role == awsbedrock.ConversationRoleUser && len(latestMessage.Content) > 0 && latestMessage.Content[0].ToolResult != nil {
-				o.parallelToolCalls--
-				latestMessage.Content = append(latestMessage.Content, bedrockMessage.Content[0])
-			} else {
-				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
+			for i+1 < openAIReqMessageLen {
+				nextMessage := &openAIReq.Messages[i+1]
+				if nextMessage.Type != openai.ChatMessageRoleTool {
+					break
+				}
+
+				nextToolMessage := nextMessage.Value.(openai.ChatCompletionToolMessageParam)
+				nextBedrockMessage, err := o.openAIMessageToBedrockMessageRoleTool(&nextToolMessage, awsbedrock.ConversationRoleUser)
+				if err != nil {
+					return err
+				}
+				bedrockMessage.Content = append(bedrockMessage.Content, nextBedrockMessage.Content[0])
+				i++
 			}
+
+			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		default:
 			return fmt.Errorf("unexpected role: %s", msg.Type)
 		}
+
+		i++
 	}
 	return nil
 }
