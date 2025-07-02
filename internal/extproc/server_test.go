@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -50,6 +51,23 @@ func TestServer_LoadConfig(t *testing.T) {
 			},
 			Schema:             filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 			ModelNameHeaderKey: "x-model-name",
+			Backends: []filterapi.Backend{
+				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
+				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+			},
+			Models: []filterapi.Model{
+				{
+					Name:      "llama3.3333",
+					OwnedBy:   "meta",
+					CreatedAt: now,
+				},
+				{
+					Name:      "gpt4.4444",
+					OwnedBy:   "openai",
+					CreatedAt: now,
+				},
+			},
 		}
 		s, _ := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(t.Context(), config)
@@ -70,18 +88,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
-		require.Equal(t, []filterapi.Model{
-			{
-				Name:      "llama3.3333",
-				OwnedBy:   "meta",
-				CreatedAt: now,
-			},
-			{
-				Name:      "gpt4.4444",
-				OwnedBy:   "openai",
-				CreatedAt: now,
-			},
-		}, s.config.declaredModels)
+		require.Equal(t, config.Models, s.config.declaredModels)
 	})
 }
 
@@ -282,23 +289,23 @@ func TestServer_setBackend(t *testing.T) {
 		md     *corev3.Metadata
 		errStr string
 	}{
-		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
+		{md: &corev3.Metadata{}, errStr: "missing internal.aigateway.envoy.io metadata"},
 		{
-			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {}}},
-			errStr: "missing backend_name in endpoint metadata",
+			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalMetadataNamespace: {}}},
+			errStr: "missing per_route_rule_backend_name in endpoint metadata",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalMetadataNamespace: {
 				Fields: map[string]*structpb.Value{
-					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
+					internalapi.InternalMetadataBackendNameKey: {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
 				},
 			}}},
 			errStr: "unknown backend: kserve",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalMetadataNamespace: {
 				Fields: map[string]*structpb.Value{
-					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
+					internalapi.InternalMetadataBackendNameKey: {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
 				},
 			}}},
 			errStr: "no router processor found, request_id=aaaaaaaaaaaa, backend=openai",

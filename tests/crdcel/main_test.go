@@ -41,10 +41,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 		{
-			name:   "unsupported_match.yaml",
-			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
-		},
-		{
 			name:   "no_target_refs.yaml",
 			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
 		},

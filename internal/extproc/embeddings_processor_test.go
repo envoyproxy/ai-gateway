@@ -64,21 +64,10 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
 	})
-	t.Run("router error", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		p := &embeddingsProcessorRouterFilter{
-			config:         &processorConfig{},
-			requestHeaders: headers,
-			logger:         slog.Default(),
-		}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: embeddingBodyFromModel(t, "some-model")})
-		require.ErrorContains(t, err, "failed to calculate route: test error")
-	})
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		const modelKey = "x-ai-gateway-model-key"
-		const modelRouteKey = "x-ai-gateway-route-key"
 		p := &embeddingsProcessorRouterFilter{
 			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
@@ -92,13 +81,11 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, re)
 		require.NotNil(t, re.RequestBody)
 		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
-		require.Len(t, setHeaders, 3)
+		require.Len(t, setHeaders, 2)
 		require.Equal(t, modelKey, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
-		require.Equal(t, modelRouteKey, setHeaders[1].Header.Key)
-		require.Equal(t, "some-route", string(setHeaders[1].Header.RawValue))
-		require.Equal(t, "x-ai-eg-original-path", setHeaders[2].Header.Key)
-		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
+		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
+		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
 	})
 }
 

@@ -26,7 +26,6 @@ import (
 const DefaultConfig = `
 schema:
   name: OpenAI
-selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-ai-eg-model
 `
 
