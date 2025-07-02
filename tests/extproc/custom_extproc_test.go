@@ -45,6 +45,7 @@ func TestExtProcCustomMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"),
+			option.WithHeader("x-test-backend", "openai"),
 			option.WithHeader(
 				testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions"))),
 			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,

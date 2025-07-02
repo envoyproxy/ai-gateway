@@ -179,7 +179,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
 		require.NotNil(t, md)
 		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata[internalapi.InternalMetadataNamespace]
+		mmd, ok := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 		require.True(t, ok)
 		require.Len(t, mmd.Fields, 1)
 		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())

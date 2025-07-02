@@ -203,10 +203,10 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 			if endpoint.Metadata.FilterMetadata == nil {
 				endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
 			}
-			m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalMetadataNamespace]
+			m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 			if !ok {
 				m = &structpb.Struct{}
-				endpoint.Metadata.FilterMetadata[internalapi.InternalMetadataNamespace] = m
+				endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
 			}
 			if m.Fields == nil {
 				m.Fields = make(map[string]*structpb.Value)

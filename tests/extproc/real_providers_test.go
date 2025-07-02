@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -69,6 +70,13 @@ func TestWithRealProviders(t *testing.T) {
 			{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
 				APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
 			}},
+		},
+		Models: []filterapi.Model{
+			{
+				Name:      "grok-3",
+				OwnedBy:   "xAI",
+				CreatedAt: time.Now(),
+			},
 		},
 	})
 
@@ -291,15 +299,7 @@ func TestWithRealProviders(t *testing.T) {
 		}, eventuallyTimeout, eventuallyInterval)
 
 		require.Equal(t, []string{
-			"gpt-4o-mini",
-			"us.meta.llama3-2-1b-instruct-v1:0",
-			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-			"o1",
-			"gemini-2.0-flash-lite",
-			"llama-3.1-8b-instant",
 			"grok-3",
-			"Meta-Llama-3.1-8B-Instruct",
-			"meta-llama/Meta-Llama-3-8B-Instruct",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {

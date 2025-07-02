@@ -274,9 +274,9 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 		panic(err)
 	}
 
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalMetadataNamespace]
+	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 	if !ok {
-		return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalMetadataNamespace)
+		return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
 	}
 	backendName, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
 	if !ok {

@@ -10,8 +10,8 @@ package internalapi
 import "fmt"
 
 const (
-	// InternalMetadataNamespace is the namespace used for the dynamic metadata for internal use.
-	InternalMetadataNamespace = "internal.aigateway.envoy.io"
+	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
+	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 )
