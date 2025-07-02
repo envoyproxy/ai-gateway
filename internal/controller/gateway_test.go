@@ -204,9 +204,6 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[1].Type)
 		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[1].CEL)
-		require.Len(t, fc.Rules, 2)
-		require.Equal(t, "route1-rule-0", string(fc.Rules[0].Name))
-		require.Equal(t, "route2-rule-0", string(fc.Rules[1].Name))
 	}
 }
 

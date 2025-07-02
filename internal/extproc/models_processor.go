@@ -44,10 +44,10 @@ func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *sl
 	}
 	for _, m := range config.declaredModels {
 		models.Data = append(models.Data, openai.Model{
-			ID:      m.name,
+			ID:      m.Name,
 			Object:  "model",
-			OwnedBy: m.ownedBy,
-			Created: openai.JSONUNIXTime(m.createdAt),
+			OwnedBy: m.OwnedBy,
+			Created: openai.JSONUNIXTime(m.CreatedAt),
 		})
 	}
 	return &modelsProcessor{logger: logger, models: models}, nil

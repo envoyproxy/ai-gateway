@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // DefaultConfig is the default configuration that can be used as a
@@ -86,12 +85,21 @@ type Config struct {
 	Schema VersionedAPISchema `json:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
-	// SelectedRouteHeaderKey is the header key to be populated with the route name by the filter
-	// **after** the routing decision is made by the filter using Rules.
-	SelectedRouteHeaderKey string `json:"selectedRouteHeaderKey"`
-	// Rules is the routing rules to be used by the filter to make the routing decision.
-	// Inside the routing rules, the header ModelNameHeaderKey may be used to make the routing decision.
-	Rules []RouteRule `json:"rules"`
+	// Backends is the list of backends that this listener can route to.
+	Backends []Backend `json:"backends,omitempty"`
+	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
+	Models []Model `json:"models,omitempty"`
+}
+
+// Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
+// and is used to populate the "/models" endpoint in OpenAI-compatible APIs.
+type Model struct {
+	// Name will be exported as the field of "ID" in OpenAI-compatible APIs.
+	Name string
+	// ownedBy will be exported as the field of "OwnedBy" in OpenAI-compatible API "/models".
+	OwnedBy string
+	// createdAt will be exported as the field of "Created" in OpenAI-compatible API "/models".
+	CreatedAt time.Time
 }
 
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
@@ -151,49 +159,13 @@ const (
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
 )
 
-// HeaderMatch is an alias for HTTPHeaderMatch of the Gateway API.
-type HeaderMatch = gwapiv1.HTTPHeaderMatch
-
-// RouteRule corresponds to AIGatewayRoute in api/v1alpha1/api.go
-// besides the `Backends` field is modified to abstract the concept of a backend
-// at Envoy Gateway level to a simple name.
-type RouteRule struct {
-	// Name is the name of the route rule.
-	Name RouteRuleName `json:"name"`
-	// Headers is the list of headers to match for the routing decision.
-	// Currently, only exact match is supported.
-	Headers []HeaderMatch `json:"headers"`
-	// Backends is the list of backends to which the request should be routed to when the headers match.
-	Backends []Backend `json:"backends"`
-	// ModelsOwnedBy represents the owner of the running models serving by the backends,
-	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".
-	//
-	// This is used only when this rule contains "x-ai-eg-model" in its header matching
-	// where the header value will be recognized as a "model" in "/models" endpoint.
-	// All the matched models will share the same owner.
-	//
-	// Default to "Envoy AI Gateway" if not set.
-	ModelsOwnedBy string `json:"modelsOwnedBy"`
-	// ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
-	// which will be exported as the field of "Created" in openai-compatible API "/models".
-	// It follows the format of RFC 3339, for example "2024-05-21T10:00:00Z".
-	//
-	// This is used only when this rule contains "x-ai-eg-model" in its header matching
-	// where the header value will be recognized as a "model" in "/models" endpoint.
-	// All the matched models will share the same creation time.
-	//
-	// Default to the creation timestamp of the AIGatewayRoute if not set.
-	ModelsCreatedAt time.Time `json:"modelsCreatedAt"`
-}
-
 // RouteRuleName is the name of the route rule.
 type RouteRuleName string
 
 // Backend corresponds to AIGatewayRouteRuleBackendRef in api/v1alpha1/api.go
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
-	// Name of the backend, which is the value in the final routing decision
-	// matching the header key specified in the [filterapi.Config.BackendRoutingHeaderKey].
+	// Name of the backend including the route name as well as the route rule index.
 	Name string `json:"name"`
 	// Name of the model in the backend. If provided this will override the name provided in the request.
 	ModelNameOverride string `json:"modelNameOverride"`

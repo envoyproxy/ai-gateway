@@ -48,42 +48,8 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
 				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
-			Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			SelectedRouteHeaderKey: "x-ai-eg-selected-route",
-			ModelNameHeaderKey:     "x-model-name",
-			Rules: []filterapi.RouteRule{
-				{
-					Headers: []filterapi.HeaderMatch{
-						{
-							Name:  "x-model-name",
-							Value: "llama3.3333",
-						},
-					},
-					Backends: []filterapi.Backend{
-						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-					},
-					ModelsOwnedBy:   "meta",
-					ModelsCreatedAt: now,
-				},
-				{
-					Headers: []filterapi.HeaderMatch{
-						{
-							Name:  "x-model-name",
-							Value: "gpt4.4444",
-						},
-						{
-							Name:  "some-random-header",
-							Value: "some-random-value",
-						},
-					},
-					Backends: []filterapi.Backend{
-						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-					},
-					ModelsOwnedBy:   "openai",
-					ModelsCreatedAt: now,
-				},
-			},
+			Schema:             filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			ModelNameHeaderKey: "x-model-name",
 		}
 		s, _ := requireNewServerWithMockProcessor(t)
 		err := s.LoadConfig(t.Context(), config)
@@ -91,9 +57,7 @@ func TestServer_LoadConfig(t *testing.T) {
 
 		require.NotNil(t, s.config)
 		require.Equal(t, "ns", s.config.metadataNamespace)
-		require.NotNil(t, s.config.router)
 		require.Equal(t, s.config.schema, config.Schema)
-		require.Equal(t, "x-ai-eg-selected-route", s.config.selectedRouteHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
@@ -106,16 +70,16 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
-		require.Equal(t, []model{
+		require.Equal(t, []filterapi.Model{
 			{
-				name:      "llama3.3333",
-				ownedBy:   "meta",
-				createdAt: now,
+				Name:      "llama3.3333",
+				OwnedBy:   "meta",
+				CreatedAt: now,
 			},
 			{
-				name:      "gpt4.4444",
-				ownedBy:   "openai",
-				createdAt: now,
+				Name:      "gpt4.4444",
+				OwnedBy:   "openai",
+				CreatedAt: now,
 			},
 		}, s.config.declaredModels)
 	})

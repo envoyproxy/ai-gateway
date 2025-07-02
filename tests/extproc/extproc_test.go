@@ -82,8 +82,6 @@ var (
 	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
 )
 
-const routeSelectorHeader = "x-selected-route-name"
-
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
 //

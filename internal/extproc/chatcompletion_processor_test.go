@@ -16,12 +16,10 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -78,41 +76,13 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
 	})
-	t.Run("router error", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
-		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{router: rt},
-			requestHeaders: headers,
-			logger:         slog.Default(),
-		}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
-		require.ErrorContains(t, err, "failed to calculate route: test error")
-	})
-	t.Run("router error 404", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
-		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{router: rt},
-			requestHeaders: headers,
-			logger:         slog.Default(),
-		}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		ir := resp.GetImmediateResponse()
-		require.NotNil(t, ir)
-		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
-		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
-	})
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retRouteName: "some-route"}
 		const modelKey = "x-ai-gateway-model-key"
 		const modelRouteKey = "x-ai-gateway-route-key"
 		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{router: rt, modelNameHeaderKey: modelKey, selectedRouteHeaderKey: modelRouteKey},
+			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
@@ -344,10 +314,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config: &processorConfig{
-						selectedRouteHeaderKey: "x-ai-gateway-backend-key",
-						modelNameHeaderKey:     modelKey,
-					},
+					config:                 &processorConfig{modelNameHeaderKey: modelKey},
 					requestHeaders:         headers,
 					logger:                 slog.Default(),
 					metrics:                mm,

@@ -29,6 +29,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -210,11 +211,36 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	input := aiGatewayRoutes[0].Spec.APISchema
+	// 	var (
+	//		backends       = make(map[string]*processorConfigBackend)
+	//		declaredModels []model
+	//	)
+	//	for _, r := range config.Rules {
+	//		ownedBy := r.ModelsOwnedBy
+	//		createdAt := r.ModelsCreatedAt
+	//
+	//		// Collect declared models from configured header routes. These will be used to
+	//		// serve requests to the /v1/models endpoint.
+	//		// TODO(nacx): note that currently we only support exact matching in the headers. When
+	//		// header matching is extended, this will need to be updated.
+	//		for _, h := range r.Headers {
+	//			// If explicitly set to something that is not an exact match, skip.
+	//			// If not set, we assume it's an exact match.
+	//			//
+	//			// Also, we only care about the AIModel header to declare models.
+	//			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
+	//				continue
+	//			}
+	//			declaredModels = append(declaredModels, model{
+	//				name:      h.Value,
+	//				createdAt: createdAt,
+	//				ownedBy:   ownedBy,
+	//			})
+	//		}
 
 	ec := &filterapi.Config{UUID: uuid}
 	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
-	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -222,11 +248,26 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		spec := aiGatewayRoute.Spec
 		for i := range spec.Rules {
 			rule := &spec.Rules[i]
-			backends := make([]filterapi.Backend, len(rule.BackendRefs))
+			for _, m := range rule.Matches {
+				for _, h := range m.Headers {
+					// If explicitly set to something that is not an exact match, skip.
+					// If not set, we assume it's an exact match.
+					//
+					// Also, we only care about the AIModel header to declare models.
+					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != aigv1a1.AIModelHeaderKey {
+						continue
+					}
+					ec.Models = append(ec.Models, filterapi.Model{
+						Name:      h.Value,
+						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC(),
+						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+					})
+				}
+			}
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
-				b := &backends[j]
-				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+				b := filterapi.Backend{}
+				b.Name = internalapi.BackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
@@ -240,18 +281,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 						return fmt.Errorf("failed to create backend auth: %w", err)
 					}
 				}
+				ec.Backends = append(ec.Backends, b)
 			}
-			configRule := filterapi.RouteRule{Backends: backends}
-			configRule.Name = routeName(aiGatewayRoute, i)
-			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
-			for j, match := range rule.Matches {
-				configRule.Headers[j].Name = match.Headers[0].Name
-				configRule.Headers[j].Value = match.Headers[0].Value
-			}
-			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
-			// Convert to UTC time in force to avoid timezone issues.
-			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
-			ec.Rules = append(ec.Rules, configRule)
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}

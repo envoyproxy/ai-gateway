@@ -15,11 +15,9 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -68,39 +66,21 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 	t.Run("router error", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retErr: errors.New("test error")}
 		p := &embeddingsProcessorRouterFilter{
-			config:         &processorConfig{router: rt},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: embeddingBodyFromModel(t, "some-model")})
 		require.ErrorContains(t, err, "failed to calculate route: test error")
 	})
-	t.Run("router error 404", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retErr: x.ErrNoMatchingRule}
-		p := &embeddingsProcessorRouterFilter{
-			config:         &processorConfig{router: rt},
-			requestHeaders: headers,
-			logger:         slog.Default(),
-		}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: embeddingBodyFromModel(t, "some-model")})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		ir := resp.GetImmediateResponse()
-		require.NotNil(t, ir)
-		require.Equal(t, typev3.StatusCode_NotFound, ir.GetStatus().GetCode())
-		require.Equal(t, x.ErrNoMatchingRule.Error(), string(ir.GetBody()))
-	})
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		rt := mockRouter{t: t, expHeaders: headers, retRouteName: "some-route"}
 		const modelKey = "x-ai-gateway-model-key"
 		const modelRouteKey = "x-ai-gateway-route-key"
 		p := &embeddingsProcessorRouterFilter{
-			config:         &processorConfig{router: rt, modelNameHeaderKey: modelKey, selectedRouteHeaderKey: modelRouteKey},
+			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
@@ -290,10 +270,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		mt := mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config: &processorConfig{
-				selectedRouteHeaderKey: "x-ai-gateway-backend-key",
-				modelNameHeaderKey:     modelKey,
-			},
+			config:                 &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
