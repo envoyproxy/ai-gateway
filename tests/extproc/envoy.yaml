@@ -225,7 +225,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -270,7 +270,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -315,7 +315,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -360,7 +360,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -416,7 +416,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -478,7 +478,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -540,7 +540,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -610,7 +610,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -661,7 +661,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -712,7 +712,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -763,7 +763,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
@@ -814,7 +814,7 @@ static_resources:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"
-                  request_body_mode: "BUFFERED"
+                  request_body_mode: "NONE"
                   response_header_mode: "SKIP"
                   response_body_mode: "NONE"
                 grpc_service:
