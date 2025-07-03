@@ -59,7 +59,7 @@ metadata:
 spec:
   logging:
     level:
-      default: debug
+      default: error
   bootstrap:
     type: Merge
     value: |-
