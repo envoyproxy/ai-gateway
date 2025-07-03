@@ -174,6 +174,8 @@ metadata:
 spec:
   type: GCPCredentials
   gcpCredentials:
+    projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
+    region: GCP_REGION  # Replace with your GCP region
     workLoadIdentityFederationConfig:
       projectID: GCP_PROJECT_ID  # Replace with your GCP project ID
       workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL  # Replace with your workload identity pool name
@@ -187,6 +189,9 @@ spec:
             clientSecret:
               name: envoy-ai-gateway-basic-gcp-client-secret
               namespace: default
+      serviceAccountImpersonation:
+        serviceAccountName: SERVICE_ACCOUNT_NAME  # Replace with the service account name to impersonate
+        serviceAccountProjectName: GCP_SERVICE_ACCOUNT_PROJECT_NAME  # Replace with the project name of the service account
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend

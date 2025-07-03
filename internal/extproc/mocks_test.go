@@ -183,6 +183,8 @@ type mockChatCompletionMetrics struct {
 	requestErrorCount   int
 	tokenUsageCount     int
 	tokenLatencyCount   int
+	timeToFirstToken    float64
+	interTokenLatency   float64
 }
 
 // StartRequest implements [metrics.ChatCompletion].
@@ -202,6 +204,18 @@ func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ 
 // RecordTokenLatency implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ ...attribute.KeyValue) {
 	m.tokenLatencyCount++
+}
+
+// GetTimeToFirstTokenMs implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) GetTimeToFirstTokenMs() float64 {
+	m.timeToFirstToken = 1.0
+	return m.timeToFirstToken * 1000
+}
+
+// GetInterTokenLatencyMs implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) GetInterTokenLatencyMs() float64 {
+	m.interTokenLatency = 0.5
+	return m.interTokenLatency * 1000
 }
 
 // RecordRequestCompletion implements [metrics.ChatCompletion].

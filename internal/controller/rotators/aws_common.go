@@ -3,21 +3,23 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-/*
-Package rotators provides credential rotation implementations.
-This file contains common AWS functionality shared between different AWS credential
-rotators. It provides:
-1. AWS Client Interfaces and Implementations:
-- STSClient for AWS STS API operations
-- Concrete implementations with proper AWS SDK integration
-2. Credential File Management:
-- Parsing and formatting of AWS credentials file
-- Handling of temporary credentials and session tokens
-3. Common Configuration:
-- Default AWS configuration with adaptive retry
-- Standard timeouts and delays
-- Session name formatting
-*/
+// Package rotators provides credential rotation implementations.
+//
+// This file contains common AWS functionality shared between different AWS credential
+// rotators. It provides:
+//
+// 1. AWS Client Interfaces and Implementations:
+//   - STSClient for AWS STS API operations
+//   - Concrete implementations with proper AWS SDK integration
+//
+// 2. Credential File Management:
+//   - Parsing and formatting of AWS credentials file
+//   - Handling of temporary credentials and session tokens
+//
+// 3. Common Configuration:
+//   - Default AWS configuration with adaptive retry
+//   - Standard timeouts and delays
+//   - Session name formatting
 package rotators
 
 import (
@@ -102,8 +104,8 @@ type awsCredentialsFile struct {
 
 // formatAWSCredentialsFile formats an AWS credential profile into a credentials file.
 // The output follows the standard AWS credentials file format and ensures:
-// - Proper formatting of all credential components
-// - Optional inclusion of session token
+//   - Proper formatting of all credential components
+//   - Optional inclusion of session token
 func formatAWSCredentialsFile(file *awsCredentialsFile) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("[%s]\n", file.creds.profile))

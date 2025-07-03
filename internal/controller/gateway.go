@@ -367,6 +367,23 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		return &filterapi.BackendAuth{
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+		if gcpCreds == nil {
+			return nil, fmt.Errorf("GCP credentials type selected but not defined %s", backendSecurityPolicy.Name)
+		}
+		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		}
+		return &filterapi.BackendAuth{
+			GCPAuth: &filterapi.GCPAuth{
+				AccessToken: gcpAccessToken,
+				Region:      gcpCreds.Region,
+				ProjectName: gcpCreds.ProjectName,
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
 			backendSecurityPolicy.Name)

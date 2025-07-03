@@ -54,6 +54,9 @@ controller:
   # Azure authentication request will be configured to use AI_GATEWAY_AZURE_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_AZURE_PROXY_URL
   #    value: some-proxy-placeholder
+  # GCP authentication request will be configured to use AI_GATEWAY_GCP_AUTH_PROXY_URL proxy if set.
+  #  - key: AI_GATEWAY_GCP_AUTH_PROXY_URL
+  #    value: some-proxy-placeholder
   podEnv: {}
   # Example of volumes
   #  - mountPath: /placeholder/path

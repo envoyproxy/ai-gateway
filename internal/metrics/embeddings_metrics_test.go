@@ -34,7 +34,7 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.RecordTokenUsage(t.Context(), 10, 10, extra)
 
-	// For embeddings, input tokens and total tokens should be the same (no output tokens)
+	// For embeddings, input tokens and total tokens should be the same (no output tokens).
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10.0, sum)
@@ -63,17 +63,17 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
 
-	// Record multiple token usages
+	// Record multiple token usages.
 	em.RecordTokenUsage(t.Context(), 5, 5)
 	em.RecordTokenUsage(t.Context(), 15, 15)
 	em.RecordTokenUsage(t.Context(), 20, 20)
 
-	// Check input tokens: 5 + 15 + 20 = 40
+	// Check input tokens: 5 + 15 + 20 = 40.
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(3), count)
 	assert.Equal(t, 40.0, sum)
 
-	// Check total tokens: 5 + 15 + 20 = 40
+	// Check total tokens: 5 + 15 + 20 = 40.
 	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, totalAttrs)
 	assert.Equal(t, uint64(3), count)
 	assert.Equal(t, 40.0, sum)

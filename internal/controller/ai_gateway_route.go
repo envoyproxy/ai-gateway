@@ -206,7 +206,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
 			},
 			Filters:  rewriteFilters,
-			Timeouts: rule.Timeouts,
+			Timeouts: rule.GetTimeoutsOrDefault(),
 		})
 	}
 

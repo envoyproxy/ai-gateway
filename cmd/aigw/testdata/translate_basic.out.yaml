@@ -94,6 +94,8 @@ spec:
         - headers:
             - name: x-ai-eg-selected-route
               value: envoy-ai-gateway-basic-rule-0
+      timeouts:
+        request: 60s
     - backendRefs:
         - group: gateway.envoyproxy.io
           kind: Backend
@@ -108,6 +110,8 @@ spec:
         - headers:
             - name: x-ai-eg-selected-route
               value: envoy-ai-gateway-basic-rule-1
+      timeouts:
+        request: 60s
     - backendRefs:
         - kind: Service
           name: envoy-ai-gateway-basic-testupstream
@@ -122,6 +126,8 @@ spec:
         - headers:
             - name: x-ai-eg-selected-route
               value: envoy-ai-gateway-basic-rule-2
+      timeouts:
+        request: 60s
     - matches:
         - path:
             value: /

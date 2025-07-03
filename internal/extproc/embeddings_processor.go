@@ -18,6 +18,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -212,6 +213,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 		}
 	}
 
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(e.config, len(bm))
+	}
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -221,6 +227,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 				},
 			},
 		},
+		DynamicMetadata: dm,
 	}, nil
 }
 
@@ -298,7 +305,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		},
 	}
 
-	// Accumulate token usage for embeddings (only input and total tokens are relevant)
+	// Accumulate token usage for embeddings (only input and total tokens are relevant).
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 

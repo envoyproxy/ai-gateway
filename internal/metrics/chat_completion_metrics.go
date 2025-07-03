@@ -18,11 +18,13 @@ import (
 // chatCompletion is the implementation for the chat completion AI Gateway metrics.
 type chatCompletion struct {
 	baseMetrics
-	firstTokenSent bool
-	lastTokenTime  time.Time
+	firstTokenSent    bool
+	lastTokenTime     time.Time
+	timeToFirstToken  float64
+	interTokenLatency float64
 }
 
-// NewChatCompletion creates a new ChatCompletion instance.
+// NewChatCompletion creates a new x.ChatCompletionMetrics instance.
 func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn) x.ChatCompletionMetrics {
 	if newCustomFn != nil {
 		return newCustomFn(meter)
@@ -30,7 +32,7 @@ func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletion
 	return DefaultChatCompletion(meter)
 }
 
-// DefaultChatCompletion creates a new default ChatCompletion instance.
+// DefaultChatCompletion creates a new default x.ChatCompletionMetrics instance.
 func DefaultChatCompletion(meter metric.Meter) x.ChatCompletionMetrics {
 	return &chatCompletion{
 		baseMetrics: newBaseMetrics(meter, genaiOperationChat),
@@ -67,11 +69,22 @@ func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, 
 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
-		c.metrics.firstTokenLatency.Record(ctx, time.Since(c.requestStart).Seconds(), metric.WithAttributes(attrs...))
+		c.timeToFirstToken = time.Since(c.requestStart).Seconds()
+		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributes(attrs...))
 	} else if tokens > 0 {
 		// Calculate time between tokens.
-		itl := time.Since(c.lastTokenTime).Seconds() / float64(tokens)
-		c.metrics.outputTokenLatency.Record(ctx, itl, metric.WithAttributes(attrs...))
+		c.interTokenLatency = time.Since(c.lastTokenTime).Seconds() / float64(tokens)
+		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributes(attrs...))
 	}
 	c.lastTokenTime = time.Now()
+}
+
+// GetTimeToFirstTokenMs implements [x.ChatCompletionMetrics.GetTimeToFirstTokenMs].
+func (c *chatCompletion) GetTimeToFirstTokenMs() float64 {
+	return c.timeToFirstToken * 1000 // Convert seconds to milliseconds.
+}
+
+// GetInterTokenLatencyMs implements [x.ChatCompletionMetrics.GetInterTokenLatencyMs].
+func (c *chatCompletion) GetInterTokenLatencyMs() float64 {
+	return c.interTokenLatency * 1000 // Convert seconds to milliseconds.
 }

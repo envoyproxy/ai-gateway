@@ -74,7 +74,7 @@ func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool,
 	attrs := b.buildBaseAttributes(extraAttrs...)
 
 	if success {
-		// According to the semantic conventions, the error attribute should not be added for successful operations
+		// According to the semantic conventions, the error attribute should not be added for successful operations.
 		b.metrics.requestLatency.Record(ctx, time.Since(b.requestStart).Seconds(), metric.WithAttributes(attrs...))
 	} else {
 		// We don't have a set of typed errors yet, or a set of low-cardinality values, so we can just set the value to the

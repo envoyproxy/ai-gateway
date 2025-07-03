@@ -157,6 +157,12 @@ func TestRecordRequestCompletion(t *testing.T) {
 	assert.Greater(t, sum, 0.0)
 }
 
+func TestGetTimeToFirstTokenMsAndGetInterTokenLatencyMs(t *testing.T) {
+	c := chatCompletion{timeToFirstToken: 1.0, interTokenLatency: 2.0}
+	assert.Equal(t, 1000.0, c.GetTimeToFirstTokenMs())
+	assert.Equal(t, 2000.0, c.GetInterTokenLatencyMs())
+}
+
 // getHistogramValues returns the count and sum of a histogram metric with the given attributes.
 func getHistogramValues(t *testing.T, reader metric.Reader, metric string, attrs attribute.Set) (uint64, float64) {
 	var data metricdata.ResourceMetrics
