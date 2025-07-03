@@ -106,7 +106,6 @@ func TestStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-model-name
 backends:
 - name: kserve
