@@ -2469,6 +2469,14 @@ spec:
                 description: GCPCredentials is a mechanism to access a backend(s).
                   GCP specific logic will be applied.
                 properties:
+                  projectName:
+                    description: ProjectName is the GCP project name.
+                    minLength: 1
+                    type: string
+                  region:
+                    description: Region is the GCP region associated with the policy.
+                    minLength: 1
+                    type: string
                   workLoadIdentityFederationConfig:
                     description: WorkLoadIdentityFederationConfig is the configuration
                       for the GCP Workload Identity Federation.
@@ -3668,6 +3676,8 @@ spec:
                     - workloadIdentityProvider
                     type: object
                 required:
+                - projectName
+                - region
                 - workLoadIdentityFederationConfig
                 type: object
               type:
