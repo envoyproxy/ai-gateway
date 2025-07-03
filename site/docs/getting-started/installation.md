@@ -24,7 +24,7 @@ kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-contr
 
 ### Installing CRDs serperately
 
-If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gateway-crds-helm`) which will install just the CRDs.
+If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gateway-crds-helm`) which will install just the CRDs:
 
 ```shell
 helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
