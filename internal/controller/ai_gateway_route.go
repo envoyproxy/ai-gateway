@@ -233,38 +233,47 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	dst.ObjectMeta.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
 
-	targetRefs := aiGatewayRoute.Spec.TargetRefs
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
-	parentRefs := make([]gwapiv1.ParentReference, len(targetRefs))
-	for i, egRef := range targetRefs {
+	parentRefs := aiGatewayRoute.Spec.ParentRefs
+	for _, egRef := range aiGatewayRoute.Spec.TargetRefs {
 		egName := egRef.Name
 		var namespace *gwapiv1.Namespace
-		if egNs != "" {
+		if egNs != "" { // This path is only for the `aigw translate`.
 			namespace = ptr.To(egNs)
 		}
-		parentRefs[i] = gwapiv1.ParentReference{
+		parentRefs = append(parentRefs, gwapiv1.ParentReference{
 			Name:      egName,
 			Namespace: namespace,
-		}
+		})
 	}
 	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
 	return nil
 }
 
+// syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
 func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	for _, t := range aiGatewayRoute.Spec.TargetRefs {
-		var gw gwapiv1.Gateway
-		if err := c.client.Get(ctx, client.ObjectKey{Name: string(t.Name), Namespace: aiGatewayRoute.Namespace}, &gw); err != nil {
-			if apierrors.IsNotFound(err) {
-				c.logger.Info("Gateway not found", "namespace", aiGatewayRoute.Namespace, "name", t.Name)
-				continue
-			}
-			return fmt.Errorf("failed to get Gateway: %w", err)
-		}
-		c.logger.Info("syncing Gateway", "namespace", gw.Namespace, "name", gw.Name)
-		c.gatewayEventChan <- event.GenericEvent{Object: &gw}
+		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(t.Name))
+	}
+	for _, p := range aiGatewayRoute.Spec.ParentRefs {
+		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(p.Name))
 	}
 	return nil
+}
+
+// syncGateway is a helper function for syncGateways that sends one GenericEvent to the gateway controller.
+func (c *AIGatewayRouteController) syncGateway(ctx context.Context, namespace, name string) {
+	var gw gwapiv1.Gateway
+	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &gw); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Info("Gateway not found", "namespace", namespace, "name", name)
+			return
+		}
+		c.logger.Error(err, "failed to get Gateway", "namespace", namespace, "name", name)
+		return
+	}
+	c.logger.Info("syncing Gateway", "namespace", gw.Namespace, "name", gw.Name)
+	c.gatewayEventChan <- event.GenericEvent{Object: &gw}
 }
 
 func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {

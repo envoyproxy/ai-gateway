@@ -215,7 +215,10 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
 	var ret []string
-	for _, ref := range aiGatewayRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
+	for _, ref := range aiGatewayRoute.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+	}
+	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
 	}
 	return ret
