@@ -218,7 +218,7 @@ type BackendAuth struct {
 // AWSAuth defines the credentials needed to access AWS.
 type AWSAuth struct {
 	// CredentialFileLiteral is the literal string of the AWS credential file. E.g.
-	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>
+	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>.
 	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
 	Region                string `json:"region"`
 }
@@ -243,7 +243,7 @@ type GCPAuth struct {
 	AccessToken string `json:"accessToken"`
 	// Region is the GCP region to use for the request.
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
-	// Examples: "us-central1", "europe-west4"
+	// Examples: "us-central1", "europe-west4".
 	Region string `json:"region"`
 	// ProjectName is the GCP project name to use for the request.
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.

@@ -38,7 +38,7 @@ type azureTokenRotator struct {
 	backendSecurityPolicyNamespace string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
-	// tokenProvider specifies provider to fetch Azure access token
+	// tokenProvider specifies provider to fetch Azure access token.
 	tokenProvider tokenprovider.TokenProvider
 }
 

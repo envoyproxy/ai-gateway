@@ -141,11 +141,11 @@ func TestGCPHandler_Do(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 
-				// Check Authorization header
+				// Check Authorization header.
 				authHeaderFound := false
 				expectedAuthHeader := fmt.Sprintf("Bearer %s", tc.handler.gcpAccessToken)
 
-				// Check path header if expected
+				// Check path header if expected.
 				pathHeaderUpdated := false
 
 				for _, header := range tc.headerMut.SetHeaders {
@@ -165,10 +165,10 @@ func TestGCPHandler_Do(t *testing.T) {
 					}
 				}
 
-				// Authorization header should always be added
+				// Authorization header should always be added.
 				require.True(t, authHeaderFound, "Authorization header not found")
 
-				// Only check path header if we had expectations for it
+				// Only check path header if we had expectations for it.
 				if len(tc.wantPathValue) > 0 || len(tc.wantPathRawValue) > 0 {
 					require.True(t, pathHeaderUpdated, "Path header not updated as expected")
 				}

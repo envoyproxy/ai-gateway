@@ -361,7 +361,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "aws-no-creds-bsp", Namespace: namespace},
 				Spec: aigv1a1.BackendSecurityPolicySpec{
 					Type:           aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-					AWSCredentials: nil, // This should trigger the error
+					AWSCredentials: nil, // This should trigger the error.
 				},
 			},
 			expectedError: "AWSCredentials type selected but not defined",
@@ -389,22 +389,17 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup BSP if provided
 			if tt.setupBSP != nil {
 				err := fakeClient.Create(ctx, tt.setupBSP)
 				require.NoError(t, err)
 			}
 
-			// Setup secret if provided
 			if tt.setupSecret != nil {
 				err := fakeClient.Create(ctx, tt.setupSecret)
 				require.NoError(t, err)
 			}
 
-			// Call the function
 			result, err := c.bspToFilterAPIBackendAuth(ctx, namespace, tt.bspName)
-
-			// Verify expected error
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.expectedError)
 			require.Nil(t, result)
@@ -420,7 +415,7 @@ func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 	namespace := "test-namespace"
 
-	// Test missing secret
+	// Test missing secret.
 	result, err := c.getSecretData(ctx, namespace, "missing-secret", "test-key")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")

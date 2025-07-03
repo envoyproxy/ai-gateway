@@ -91,8 +91,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// mockSTSClient implements the STSOperations interface for testing
-
+// mockSTSClient implements the STSOperations interface for testing.
 type mockSTSClient struct {
 	expTime time.Time
 }
@@ -162,14 +161,13 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	// initial secret lookup failure as no secret exist
+	// Initial secret lookup failure as no secret exist.
 	_, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName)))
 	require.Error(t, err)
 	require.Equal(t, "secrets \"ai-eg-bsp-mybackendSecurityPolicy-OIDC\" not found", err.Error())
 
 	oidcSecretName := "oidcClientSecret"
 
-	// create oidc secret
 	oidcSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      oidcSecretName,
@@ -181,7 +179,7 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	}
 	require.NoError(t, cl.Create(t.Context(), &oidcSecret, &client.CreateOptions{}))
 
-	// create backend security policy with OIDC config
+	// Create backend security policy with OIDC config.
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        discoveryServer.URL,
@@ -252,14 +250,13 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	// initial secret lookup failure as no secret exist
+	// Initial secret lookup failure as no secret exist.
 	_, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName)))
 	require.Error(t, err)
 
 	oidcSecretName := "oidcClientSecret"
 	awsSecretName := rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName))
 
-	// create oidc secret
 	oidcSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      oidcSecretName,
@@ -271,7 +268,6 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	}
 	require.NoError(t, cl.Create(t.Context(), &oidcSecret, &client.CreateOptions{}))
 
-	// create backend security policy
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        discoveryServer.URL,
@@ -299,22 +295,21 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
 		oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
-	// ensure aws credentials secret do not exist
+	// Ensure aws credentials secret do not exist.
 	_, err = rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.Error(t, err)
 
-	// first credential rotation should create aws credentials secret
+	// First credential rotation should create aws credentials secret.
 	res, err := rotator.Rotate(ctx)
 	require.NoError(t, err)
 	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-preRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
-	// ensure both oidc secret and aws credential secret are created
+	// Ensure both oidc secret and aws credential secret are created.
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
 	require.NoError(t, err)
 	require.Equal(t, "client-secret", string(returnOidcSecret.Data["client-secret"]))
@@ -322,17 +317,16 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	awsSecret1, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.NoError(t, err)
 
-	// second credential rotation should update expiration time
+	// Second credential rotation should update expiration time.
 	t0 := awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey]
 
-	// set secret time expired
+	// Set secret time expired.
 	parsedTime, err := time.Parse(time.RFC3339, t0)
 	require.NoError(t, err)
 	t1 := parsedTime.Add(-preRotationWindow - time.Minute).String()
 	awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey] = t1
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
-	// rotate credential
 	_, err = rotator.Rotate(ctx)
 	require.NoError(t, err)
 	awsSecret2, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
@@ -812,7 +806,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			Spec: *tt.bsp,
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			// Initial rotation should create a new secret
+			// Initial rotation should create a new secret.
 			res, err := c.rotateCredential(context.Background(), bsp)
 
 			switch {

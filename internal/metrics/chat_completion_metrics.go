@@ -81,10 +81,10 @@ func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, 
 
 // GetTimeToFirstTokenMs implements [x.ChatCompletionMetrics.GetTimeToFirstTokenMs].
 func (c *chatCompletion) GetTimeToFirstTokenMs() float64 {
-	return c.timeToFirstToken * 1000 // Convert seconds to milliseconds
+	return c.timeToFirstToken * 1000 // Convert seconds to milliseconds.
 }
 
 // GetInterTokenLatencyMs implements [x.ChatCompletionMetrics.GetInterTokenLatencyMs].
 func (c *chatCompletion) GetInterTokenLatencyMs() float64 {
-	return c.interTokenLatency * 1000 // Convert seconds to milliseconds
+	return c.interTokenLatency * 1000 // Convert seconds to milliseconds.
 }

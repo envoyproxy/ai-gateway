@@ -305,7 +305,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		},
 	}
 
-	// Accumulate token usage for embeddings (only input and total tokens are relevant)
+	// Accumulate token usage for embeddings (only input and total tokens are relevant).
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 

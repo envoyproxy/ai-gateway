@@ -57,15 +57,15 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			case tc.expBodyContains != "":
 				require.NotNil(t, bodyMutation)
 				require.Contains(t, string(bodyMutation.GetBody()), tc.expBodyContains)
-				// Verify content-length header is set
+				// Verify content-length header is set.
 				require.Len(t, headerMutation.SetHeaders, 2)
 				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
 			case bodyMutation != nil:
-				// If there's a body mutation (like on retry), content-length header should be set
+				// If there's a body mutation (like on retry), content-length header should be set.
 				require.Len(t, headerMutation.SetHeaders, 2)
 				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
 			default:
-				// No body mutation, only path header
+				// No body mutation, only path header.
 				require.Len(t, headerMutation.SetHeaders, 1)
 			}
 		})
@@ -148,7 +148,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expTokenUsage, tokenUsage)
 
-			// Both error and success responses should have nil mutations for OpenAI to OpenAI translation
+			// Both error and success responses should have nil mutations for OpenAI to OpenAI translation.
 			require.Nil(t, headerMutation)
 			require.Nil(t, bodyMutation)
 		})
@@ -170,7 +170,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseError(t *testing.T) {
 		require.NotNil(t, headerMutation)
 		require.NotNil(t, bodyMutation)
 
-		// Should convert to OpenAI error format
+		// Should convert to OpenAI error format.
 		var openaiError openai.Error
 		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &openaiError))
 		require.Equal(t, "error", openaiError.Type)
