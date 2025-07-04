@@ -7,6 +7,8 @@ package extensionserver
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -17,9 +19,12 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -184,4 +189,130 @@ func Test_maybeModifyCluster(t *testing.T) {
 		require.Len(t, mmd.Fields, 1)
 		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
 	})
+}
+
+func Test_PostClusterModify(t *testing.T) {
+	// Create an InferencePool resource.
+	inferencePool := &gwaiev1a2.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-inference-pool",
+			Namespace: "ns",
+		},
+		Spec: gwaiev1a2.InferencePoolSpec{
+			Selector: map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{
+				"app": "test-app",
+			},
+			TargetPortNumber: 8000,
+			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+				ExtensionRef: &gwaiev1a2.Extension{
+					ExtensionReference: gwaiev1a2.ExtensionReference{
+						Name:       "test-epp-service",
+						PortNumber: ptr.To[gwaiev1a2.PortNumber](9002),
+					},
+				},
+			},
+		},
+	}
+
+	// Convert InferencePool to unstructured and then to JSON bytes.
+	unstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(inferencePool)
+	require.NoError(t, err)
+
+	unstructuredInferencePool := &unstructured.Unstructured{Object: unstructuredObj}
+	unstructuredInferencePool.SetAPIVersion("inference.networking.x-k8s.io/v1alpha2")
+	unstructuredInferencePool.SetKind("InferencePool")
+
+	jsonBytes, err := json.Marshal(unstructuredInferencePool)
+	require.NoError(t, err)
+
+	// Create server with logger.
+	var buf bytes.Buffer
+	slogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := logr.FromSlogHandler(slogger.Handler())
+	s := &Server{
+		log: logger,
+	}
+
+	// Test the PostClusterModify method with InferencePool cluster.
+	cluster := &clusterv3.Cluster{
+		Name:                 "httproute/ns/inference-route/rule/0",
+		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
+	}
+
+	req := &egextension.PostClusterModifyRequest{
+		Cluster: cluster,
+		PostClusterContext: &egextension.PostClusterExtensionContext{
+			BackendExtensionResources: []*egextension.ExtensionResource{
+				{
+					UnstructuredBytes: jsonBytes,
+				},
+			},
+		},
+	}
+
+	resp, err := s.PostClusterModify(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Get the modified cluster from response.
+	cluster = resp.Cluster
+
+	// Verify cluster was configured for ORIGINAL_DST.
+	require.Equal(t, clusterv3.Cluster_ORIGINAL_DST, cluster.ClusterDiscoveryType.(*clusterv3.Cluster_Type).Type)
+
+	// Verify load balancer policy is CLUSTER_PROVIDED.
+	require.Equal(t, clusterv3.Cluster_CLUSTER_PROVIDED, cluster.LbPolicy)
+
+	// Verify connect timeout is set to 6 seconds.
+	require.NotNil(t, cluster.ConnectTimeout)
+	require.Equal(t, int64(6), cluster.ConnectTimeout.Seconds)
+
+	// Verify original destination load balancer config.
+	require.NotNil(t, cluster.LbConfig)
+	originalDstConfig := cluster.LbConfig.(*clusterv3.Cluster_OriginalDstLbConfig_).OriginalDstLbConfig
+	require.True(t, originalDstConfig.UseHttpHeader)
+	require.Equal(t, "x-gateway-destination-endpoint", originalDstConfig.HttpHeaderName)
+
+	// Verify log messages.
+	require.Contains(t, buf.String(), "Handling InferencePool cluster with resource")
+	require.Contains(t, buf.String(), "Configured cluster for InferencePool with ORIGINAL_DST")
+}
+
+func Test_PostClusterModify_NoBackendExtensionResources(t *testing.T) {
+	// Create server with logger.
+	var buf bytes.Buffer
+	slogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := logr.FromSlogHandler(slogger.Handler())
+	s := &Server{
+		log: logger,
+	}
+
+	// Test the PostClusterModify method with no backend extension resources.
+	cluster := &clusterv3.Cluster{
+		Name:                 "httproute/ns/regular-route/rule/0",
+		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
+	}
+
+	req := &egextension.PostClusterModifyRequest{
+		Cluster: cluster,
+		// No PostClusterContext or empty BackendExtensionResources.
+	}
+	resp, err := s.PostClusterModify(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Get the modified cluster from response.
+	cluster = resp.Cluster
+
+	// Verify cluster was NOT modified (should remain STATIC).
+	require.Equal(t, clusterv3.Cluster_STATIC, cluster.ClusterDiscoveryType.(*clusterv3.Cluster_Type).Type)
+
+	// Verify no InferencePool-specific configuration was added.
+	require.Equal(t, clusterv3.Cluster_ROUND_ROBIN, cluster.LbPolicy) // default value.
+	require.Nil(t, cluster.ConnectTimeout)
+	require.Nil(t, cluster.LbConfig)
+
+	// Verify no InferencePool-related log messages.
+	require.NotContains(t, buf.String(), "Handling InferencePool cluster")
+	require.NotContains(t, buf.String(), "Configured cluster for InferencePool with ORIGINAL_DST")
 }

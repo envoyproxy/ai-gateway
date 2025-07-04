@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -22,6 +23,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
@@ -95,6 +97,10 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
+	if err := c.ensureInferencePoolExtensionPolicies(ctx, &gw, routes.Items); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	if err := c.reconcileFilterConfigSecret(ctx, &gw, routes.Items, gw.Name); err != nil {
@@ -114,6 +120,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 const sideCarExtProcBackendName = "envoy-ai-gateway-extproc-backend"
 
 // ensureExtensionPolicy creates or updates the extension policy for the external process running as a sidecar.
+// It also creates additional EnvoyExtensionPolicy resources for InferencePool EPP services when needed.
 func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapiv1.Gateway) (err error) {
 	// Ensure that the backend that makes Envoy talk to the UDS exists.
 	var backend egv1a1.Backend
@@ -189,9 +196,146 @@ func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapi
 		},
 	}
 	if err = c.client.Create(ctx, extPolicy); err != nil {
-		err = fmt.Errorf("failed to create extension policy: %w", err)
+		return fmt.Errorf("failed to create extension policy: %w", err)
 	}
+
 	return
+}
+
+// ensureInferencePoolExtensionPolicies creates EnvoyExtensionPolicy resources for InferencePool EPP services.
+func (c *GatewayController) ensureInferencePoolExtensionPolicies(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute) error {
+	// Create EPP policies for each AIGatewayRoute that uses InferencePool backends.
+	for _, route := range aiGatewayRoutes {
+		if err := c.ensureEPPExtensionPolicyForRoute(ctx, gw, &route); err != nil {
+			return fmt.Errorf("failed to ensure EPP extension policy for route %s/%s: %w", route.Namespace, route.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureEPPExtensionPolicyForRoute creates an EnvoyExtensionPolicy for an AIGatewayRoute that uses InferencePool backends.
+func (c *GatewayController) ensureEPPExtensionPolicyForRoute(ctx context.Context, gw *gwapiv1.Gateway, route *aigv1a1.AIGatewayRoute) error {
+	// Collect all unique InferencePool references from this route.
+	inferencePoolEPPs := make(map[string]*gwaiev1a2.InferencePool)
+
+	for _, rule := range route.Spec.Rules {
+		if rule.HasInferencePoolBackends() {
+			for _, backendRef := range rule.BackendRefs {
+				if backendRef.IsInferencePool() {
+					// Get the InferencePool resource to extract EPP configuration.
+					var inferencePool gwaiev1a2.InferencePool
+					err := c.client.Get(ctx, client.ObjectKey{
+						Namespace: route.Namespace,
+						Name:      backendRef.Name,
+					}, &inferencePool)
+					if err != nil {
+						return fmt.Errorf("failed to get InferencePool %s/%s: %w", route.Namespace, backendRef.Name, err)
+					}
+
+					// Use a unique key for each InferencePool.
+					key := fmt.Sprintf("%s/%s", route.Namespace, backendRef.Name)
+					inferencePoolEPPs[key] = &inferencePool
+				}
+			}
+		}
+	}
+
+	// Create EnvoyExtensionPolicy for each unique EPP service, targeting the HTTPRoute.
+	for key, inferencePool := range inferencePoolEPPs {
+		if err := c.ensureEPPExtensionPolicyForHTTPRoute(ctx, gw, route, key, inferencePool); err != nil {
+			return fmt.Errorf("failed to ensure EPP extension policy for %s: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureEPPExtensionPolicyForHTTPRoute creates an EnvoyExtensionPolicy for a specific InferencePool's EPP service, targeting an HTTPRoute.
+func (c *GatewayController) ensureEPPExtensionPolicyForHTTPRoute(ctx context.Context, gw *gwapiv1.Gateway, route *aigv1a1.AIGatewayRoute, inferencePoolKey string, inferencePool *gwaiev1a2.InferencePool) error {
+	if inferencePool.Spec.ExtensionRef == nil || inferencePool.Spec.ExtensionRef.Name == "" {
+		// No EPP service configured, skip.
+		return nil
+	}
+
+	eppServiceName := string(inferencePool.Spec.ExtensionRef.Name)
+	var eppServicePort int32 // Default port.
+	if inferencePool.Spec.ExtensionRef.PortNumber != nil {
+		eppServicePort = int32(*inferencePool.Spec.ExtensionRef.PortNumber)
+	} else {
+		// The port number on the service running the extension. When unspecified,
+		// implementations SHOULD infer a default value of 9002 when the Kind is
+		// Service.
+		eppServicePort = 9002
+	}
+
+	// Create Backend resource for the EPP service.
+	backendName := fmt.Sprintf("epp-%s-%s", route.Name, strings.ReplaceAll(inferencePoolKey, "/", "-"))
+	backend := egv1a1.Backend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backendName,
+			Namespace: gw.Namespace,
+		},
+		Spec: egv1a1.BackendSpec{
+			Endpoints: []egv1a1.BackendEndpoint{{
+				FQDN: &egv1a1.FQDNEndpoint{
+					Hostname: fmt.Sprintf("%s.%s.svc.cluster.local", eppServiceName, route.Namespace),
+					Port:     eppServicePort,
+				},
+			}},
+		},
+	}
+
+	if err := c.client.Create(ctx, &backend); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create EPP backend: %w", err)
+	}
+
+	// Create EnvoyExtensionPolicy for the EPP service, targeting the HTTPRoute.
+	eppPolicyName := fmt.Sprintf("epp-%s-%s", route.Name, strings.ReplaceAll(inferencePoolKey, "/", "-"))
+	eppExtPolicy := &egv1a1.EnvoyExtensionPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppPolicyName,
+			Namespace: gw.Namespace,
+		},
+		Spec: egv1a1.EnvoyExtensionPolicySpec{
+			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+				{
+					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+						Kind:  "HTTPRoute",
+						Group: "gateway.networking.k8s.io",
+						Name:  gwapiv1.ObjectName(route.Name),
+					},
+				},
+			}},
+			ExtProc: []egv1a1.ExtProc{{
+				ProcessingMode: &egv1a1.ExtProcProcessingMode{
+					Request: &egv1a1.ProcessingModeOptions{
+						Body: ptr.To(egv1a1.StreamedExtProcBodyProcessingMode),
+					},
+					Response: &egv1a1.ProcessingModeOptions{
+						Body: ptr.To(egv1a1.StreamedExtProcBodyProcessingMode),
+					},
+				},
+				MessageTimeout: ptr.To(gwapiv1.Duration("5s")),
+				BackendCluster: egv1a1.BackendCluster{
+					BackendRefs: []egv1a1.BackendRef{{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name:      gwapiv1.ObjectName(backendName),
+							Kind:      ptr.To(gwapiv1.Kind("Backend")),
+							Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+							Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
+						},
+					}},
+				},
+			}},
+		},
+	}
+
+	if err := c.client.Create(ctx, eppExtPolicy); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create EPP extension policy: %w", err)
+	}
+
+	return nil
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
@@ -240,6 +384,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 			}
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
+
+				// Skip InferencePool backends as they don't need AIServiceBackend processing.
+				if backendRef.IsInferencePool() {
+					continue
+				}
+
 				b := filterapi.Backend{}
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
