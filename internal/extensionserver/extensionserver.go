@@ -7,6 +7,7 @@ package extensionserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,7 +32,10 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -177,43 +181,50 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		return
 	}
 	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
-	if cluster.LoadAssignment == nil {
-		s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
-		return
-	}
-	if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
-		s.log.Info("LoadAssignment endpoints length does not match backend refs length",
-			"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs))
-		return
-	}
-	// Populate the metadata for each endpoint in the LoadAssignment.
-	for i, endpoints := range cluster.LoadAssignment.Endpoints {
-		backendRef := httpRouteRule.BackendRefs[i]
-		name := backendRef.Name
-		namespace := aigwRoute.Namespace
-		if backendRef.Priority != nil {
-			endpoints.Priority = *backendRef.Priority
+
+	// Check if this rule has InferencePool backends - skip LoadAssignment logic but continue with HttpProtocolOptions.
+	hasInferencePoolBackends := httpRouteRule.HasInferencePoolBackends()
+
+	// Only process LoadAssignment for non-InferencePool backends.
+	if !hasInferencePoolBackends {
+		if cluster.LoadAssignment == nil {
+			s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
+			return
 		}
-		// We populate the same metadata for all endpoints in the LoadAssignment.
-		// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
-		for _, endpoint := range endpoints.LbEndpoints {
-			if endpoint.Metadata == nil {
-				endpoint.Metadata = &corev3.Metadata{}
+		if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
+			s.log.Info("LoadAssignment endpoints length does not match backend refs length",
+				"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs))
+			return
+		}
+		// Populate the metadata for each endpoint in the LoadAssignment.
+		for i, endpoints := range cluster.LoadAssignment.Endpoints {
+			backendRef := httpRouteRule.BackendRefs[i]
+			name := backendRef.Name
+			namespace := aigwRoute.Namespace
+			if backendRef.Priority != nil {
+				endpoints.Priority = *backendRef.Priority
 			}
-			if endpoint.Metadata.FilterMetadata == nil {
-				endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+			// We populate the same metadata for all endpoints in the LoadAssignment.
+			// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
+			for _, endpoint := range endpoints.LbEndpoints {
+				if endpoint.Metadata == nil {
+					endpoint.Metadata = &corev3.Metadata{}
+				}
+				if endpoint.Metadata.FilterMetadata == nil {
+					endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+				}
+				m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+				if !ok {
+					m = &structpb.Struct{}
+					endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+				}
+				if m.Fields == nil {
+					m.Fields = make(map[string]*structpb.Value)
+				}
+				m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+					internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
+				)
 			}
-			m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-			if !ok {
-				m = &structpb.Struct{}
-				endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
-			}
-			if m.Fields == nil {
-				m.Fields = make(map[string]*structpb.Value)
-			}
-			m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-				internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
-			)
 		}
 	}
 
@@ -324,6 +335,73 @@ func mustToAny(msg proto.Message) *anypb.Any {
 		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
 		Value:   b,
 	}
+}
+
+// PostClusterModify allows an extension to modify clusters after they are generated.
+func (s *Server) PostClusterModify(_ context.Context, req *egextension.PostClusterModifyRequest) (*egextension.PostClusterModifyResponse, error) {
+	// Check if we have backend extension resources (InferencePool resources).
+	if req.PostClusterContext == nil || len(req.PostClusterContext.BackendExtensionResources) == 0 {
+		// No backend extension resources, skip.
+		return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
+	}
+
+	// Parse InferencePool resources from BackendExtensionResources.
+	var inferencePool *gwaiev1a2.InferencePool
+	for _, resource := range req.PostClusterContext.BackendExtensionResources {
+		// Unmarshal the unstructured bytes to get the resource.
+		var unstructuredObj unstructured.Unstructured
+		if err := json.Unmarshal(resource.UnstructuredBytes, &unstructuredObj); err != nil {
+			s.log.Error(err, "failed to unmarshal extension resource")
+			continue
+		}
+
+		// Check if this is an InferencePool resource.
+		if unstructuredObj.GetAPIVersion() == "inference.networking.x-k8s.io/v1alpha2" &&
+			unstructuredObj.GetKind() == "InferencePool" {
+			// Convert unstructured to InferencePool.
+			var pool gwaiev1a2.InferencePool
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &pool); err != nil {
+				s.log.Error(err, "failed to convert unstructured to InferencePool",
+					"name", unstructuredObj.GetName(), "namespace", unstructuredObj.GetNamespace())
+				continue
+			}
+			inferencePool = &pool
+			break // We only support one InferencePool per cluster based on CEL validation.
+		}
+	}
+
+	// If we found an InferencePool, configure the cluster for ORIGINAL_DST.
+	if inferencePool != nil {
+		s.handleInferencePoolClusterWithResource(req.Cluster, inferencePool)
+	}
+
+	return &egextension.PostClusterModifyResponse{Cluster: req.Cluster}, nil
+}
+
+// handleInferencePoolClusterWithResource modifies clusters that have InferencePool backends using the provided resource.
+func (s *Server) handleInferencePoolClusterWithResource(cluster *clusterv3.Cluster, inferencePool *gwaiev1a2.InferencePool) {
+	s.log.Info("Handling InferencePool cluster with resource", "cluster_name", cluster.Name, "inference_pool", inferencePool.Name)
+
+	// Configure cluster for ORIGINAL_DST with header-based load balancing.
+	cluster.ClusterDiscoveryType = &clusterv3.Cluster_Type{Type: clusterv3.Cluster_ORIGINAL_DST}
+	cluster.LbPolicy = clusterv3.Cluster_CLUSTER_PROVIDED
+	cluster.ConnectTimeout = &durationpb.Duration{Seconds: 6}
+
+	// Configure original destination load balancer to use HTTP header.
+	cluster.LbConfig = &clusterv3.Cluster_OriginalDstLbConfig_{
+		OriginalDstLbConfig: &clusterv3.Cluster_OriginalDstLbConfig{
+			UseHttpHeader:  true,
+			HttpHeaderName: "x-gateway-destination-endpoint",
+		},
+	}
+
+	// Remove EDS config since we are using ORIGINAL_DST.
+	cluster.EdsClusterConfig = nil
+
+	s.log.Info("Configured cluster for InferencePool with ORIGINAL_DST",
+		"cluster_name", cluster.Name,
+		"inference_pool", inferencePool.Name,
+		"namespace", inferencePool.Namespace)
 }
 
 // PostVirtualHostModify allows an extension to modify the virtual hosts in the xDS config.

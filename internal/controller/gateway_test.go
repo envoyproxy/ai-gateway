@@ -22,6 +22,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
@@ -588,4 +589,105 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
 		})
 	}
+}
+
+func TestGatewayController_ensureInferencePoolExtensionPolicies(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+
+	// Create a test InferencePool.
+	inferencePool := &gwaiev1a2.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pool",
+			Namespace: "default",
+		},
+		Spec: gwaiev1a2.InferencePoolSpec{
+			Selector: map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{
+				"app": "test-model",
+			},
+			TargetPortNumber: 8080,
+			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+				ExtensionRef: &gwaiev1a2.Extension{
+					ExtensionReference: gwaiev1a2.ExtensionReference{
+						Name:       "test-epp-service",
+						PortNumber: ptr.To(gwaiev1a2.PortNumber(9002)),
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
+
+	// Create a test Gateway.
+	gw := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gateway",
+			Namespace: "default",
+		},
+	}
+
+	// Create a test AIGatewayRoute with InferencePool backend.
+	aiGatewayRoute := aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "default",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:  "test-pool",
+							Group: ptr.To("inference.networking.x-k8s.io"),
+							Kind:  ptr.To("InferencePool"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &GatewayController{
+		client: fakeClient,
+		logger: ctrl.Log.WithName("test"),
+	}
+
+	// Test the ensureInferencePoolExtensionPolicies method.
+	err := controller.ensureInferencePoolExtensionPolicies(context.Background(), gw, []aigv1a1.AIGatewayRoute{aiGatewayRoute})
+	require.NoError(t, err)
+
+	// Verify that Backend and EnvoyExtensionPolicy were created.
+	var backends egv1a1.BackendList
+	err = fakeClient.List(context.Background(), &backends)
+	require.NoError(t, err)
+	require.Len(t, backends.Items, 1)
+
+	backend := backends.Items[0]
+	require.Equal(t, "epp-test-route-default-test-pool", backend.Name)
+	require.Equal(t, "default", backend.Namespace)
+	require.Len(t, backend.Spec.Endpoints, 1)
+	require.Equal(t, "test-epp-service.default.svc.cluster.local", backend.Spec.Endpoints[0].FQDN.Hostname)
+	require.Equal(t, int32(9002), backend.Spec.Endpoints[0].FQDN.Port)
+
+	var policies egv1a1.EnvoyExtensionPolicyList
+	err = fakeClient.List(context.Background(), &policies)
+	require.NoError(t, err)
+	require.Len(t, policies.Items, 1)
+
+	policy := policies.Items[0]
+	require.Equal(t, "epp-test-route-default-test-pool", policy.Name)
+	require.Equal(t, "default", policy.Namespace)
+	require.Len(t, policy.Spec.ExtProc, 1)
+
+	// Verify PolicyTargetReferences points to HTTPRoute.
+	require.Len(t, policy.Spec.PolicyTargetReferences.TargetRefs, 1)
+	targetRef := policy.Spec.PolicyTargetReferences.TargetRefs[0]
+	require.Equal(t, "HTTPRoute", string(targetRef.Kind))
+	require.Equal(t, "gateway.networking.k8s.io", string(targetRef.Group))
+	require.Equal(t, "test-route", string(targetRef.Name))
+
+	extProc := policy.Spec.ExtProc[0]
+	require.NotNil(t, extProc.ProcessingMode.Request)
+	require.NotNil(t, extProc.ProcessingMode.Response)
+	require.Len(t, extProc.BackendCluster.BackendRefs, 1)
+	require.Equal(t, "epp-test-route-default-test-pool", string(extProc.BackendCluster.BackendRefs[0].Name))
 }
