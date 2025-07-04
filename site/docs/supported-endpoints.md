@@ -85,9 +85,9 @@ The following table shows which providers support which endpoints:
 | [Cohere](https://docs.cohere.com/v2/docs/compatibility-api) | ✅ | ✅ | Via OpenAI-compatible endpoint |
 | [Mistral](https://docs.mistral.ai/api/) | ✅ | ✅ | OpenAI-compatible API |
 | [DeepInfra](https://deepinfra.com/docs/inference) | ✅ | ✅ | Via OpenAI-compatible endpoint |
-| [DeepSeek](https://api-docs.deepseek.com/) | ✅ | ✅ | OpenAI-compatible API |
+| [DeepSeek](https://api-docs.deepseek.com/) | ✅ | ❌ | OpenAI-compatible API |
 | [Hunyuan](https://cloud.tencent.com/document/product/1729/111007) | ✅ | ✅ | OpenAI-compatible API |
-| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381) | ✅ | ✅ | OpenAI-compatible API |
+| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381) | ✅ | ❌ | OpenAI-compatible API |
 
 **Note:** Embeddings support requires the provider to use OpenAI-compatible API schema. Providers that use native API translation (AWS Bedrock, Azure OpenAI) currently only support chat completions.
 
