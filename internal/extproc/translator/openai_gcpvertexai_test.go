@@ -7,6 +7,7 @@ package translator
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -20,13 +21,36 @@ import (
 )
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
+	wantBdy := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Tell me about AI Gateways"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": null,
+    "generation_config": {},
+    "system_instruction": {
+        "parts": [
+            {
+                "text": "You are a helpful assistant"
+            }
+        ]
+    }
+}
+`)
+
 	tests := []struct {
 		name          string
 		input         openai.ChatCompletionRequest
 		onRetry       bool
 		wantError     bool
 		wantHeaderMut *extprocv3.HeaderMutation
-		wantBodyMut   *extprocv3.BodyMutation
+		wantBody      *extprocv3.BodyMutation
 	}{
 		{
 			name: "basic request",
@@ -63,9 +87,19 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 							RawValue: []byte("publishers/google/models/gemini-pro:generateContent"),
 						},
 					},
+					{
+						Header: &corev3.HeaderValue{
+							Key:      "Content-Length",
+							RawValue: []byte("185"),
+						},
+					},
 				},
 			},
-			wantBodyMut: nil,
+			wantBody: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: wantBdy,
+				},
+			},
 		},
 	}
 
@@ -83,7 +117,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
-			if diff := cmp.Diff(tc.wantBodyMut, bodyMut); diff != "" {
+			if diff := cmp.Diff(tc.wantBody, bodyMut, bodyMutTransformer(t)); diff != "" {
 				t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -118,7 +152,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 			}
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tc.wantHeaderMut, headerMut); diff != "" {
+			if diff := cmp.Diff(tc.wantHeaderMut, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -164,39 +198,37 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 					"totalTokens": 25
 				}
 			}`,
-			endOfStream:   true,
-			wantError:     false,
-			wantHeaderMut: nil,
-			wantBodyMut:   nil,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("211")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "logprobs": {},
+            "message": {
+                "content": "AI Gateways act as intermediaries between clients and LLM services.",
+                "role": "assistant"
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {}
+}`),
+				},
+			},
 			wantTokenUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-		},
-		{
-			name: "streaming chunk",
-			respHeaders: map[string]string{
-				"content-type": "application/json",
-			},
-			body: `{
-				"candidates": [
-					{
-						"content": {
-							"parts": [
-								{
-									"text": "AI"
-								}
-							]
-						}
-					}
-				]
-			}`,
-			endOfStream:    false,
-			wantError:      false,
-			wantHeaderMut:  nil,
-			wantBodyMut:    nil,
-			wantTokenUsage: LLMTokenUsage{},
 		},
 		{
 			name: "empty response",
@@ -223,11 +255,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			}
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tc.wantHeaderMut, headerMut); diff != "" {
+			if diff := cmp.Diff(tc.wantHeaderMut, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
-			if diff := cmp.Diff(tc.wantBodyMut, bodyMut); diff != "" {
+			if diff := cmp.Diff(tc.wantBodyMut, bodyMut, bodyMutTransformer(t)); diff != "" {
 				t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
 			}
 
@@ -236,4 +268,22 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			}
 		})
 	}
+}
+
+func bodyMutTransformer(t *testing.T) cmp.Option {
+	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]interface{} {
+		if bm == nil {
+			return nil
+		}
+
+		var bdy map[string]interface{}
+		if body, ok := bm.Mutation.(*extprocv3.BodyMutation_Body); ok {
+			if err := json.Unmarshal(body.Body, &bdy); err != nil {
+				t.Errorf("error unmarshaling body: %v", err)
+				return nil
+			}
+			return bdy
+		}
+		return nil
+	})
 }

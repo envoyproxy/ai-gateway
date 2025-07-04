@@ -65,10 +65,10 @@ type stsTokenGenerator func(
 
 // gcpOIDCTokenRotator implements Rotator interface for GCP access token exchange.
 // It handles the complete authentication flow for GCP Workload Identity Federation:
-//  1. Obtaining an OIDC token from the configured provider
-//  2. Exchanging the OIDC token for a GCP STS token
-//  3. Using the STS token to impersonate a GCP service account
-//  4. Storing the resulting access token in a Kubernetes secret
+//  1. Obtaining an OIDC token from the configured provider.
+//  2. Exchanging the OIDC token for a GCP STS token.
+//  3. Using the STS token to impersonate a GCP service account.
+//  4. Storing the resulting access token in a Kubernetes secret.
 type gcpOIDCTokenRotator struct {
 	client client.Client // Kubernetes client for interacting with the cluster.
 	logger logr.Logger   // Logger for recording rotator activities.

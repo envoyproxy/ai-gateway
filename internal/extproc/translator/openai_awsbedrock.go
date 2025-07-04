@@ -7,11 +7,9 @@ package translator
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -160,25 +158,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 	return nil
 }
 
-// regDataURI follows the web uri regex definition.
-// https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
-var regDataURI = regexp.MustCompile(`\Adata:(.+?)?(;base64)?,`)
-
-// parseDataURI parse data uri example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD.
-func parseDataURI(uri string) (string, []byte, error) {
-	matches := regDataURI.FindStringSubmatch(uri)
-	if len(matches) != 3 {
-		return "", nil, fmt.Errorf("data uri does not have a valid format")
-	}
-	l := len(matches[0])
-	contentType := matches[1]
-	bin, err := base64.StdEncoding.DecodeString(uri[l:])
-	if err != nil {
-		return "", nil, err
-	}
-	return contentType, bin, nil
-}
-
 // openAIMessageToBedrockMessageRoleUser converts openai user role message.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleUser(
 	openAiMessage *openai.ChatCompletionUserMessageParam, role string,
@@ -208,13 +187,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				}
 				var format string
 				switch contentType {
-				case "image/png":
+				case mimeTypeImagePNG:
 					format = "png"
-				case "image/jpeg":
+				case mimeTypeImageJPEG:
 					format = "jpeg"
-				case "image/gif":
+				case mimeTypeImageGIF:
 					format = "gif"
-				case "image/webp":
+				case mimeTypeImageWEBP:
 					format = "webp"
 				default:
 					return nil, fmt.Errorf("unsupported image type: %s please use one of [png, jpeg, gif, webp]",

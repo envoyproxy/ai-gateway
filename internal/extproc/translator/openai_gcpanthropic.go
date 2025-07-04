@@ -32,7 +32,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 
 	// TODO: Implement actual translation from OpenAI to Anthropic request.
 
-	headerMutation, bodyMutation = buildGCPRequestMutations(pathSuffix, nil)
+	headerMutation, bodyMutation = buildGCPRequestMutations(&pathSuffix, nil)
 	return headerMutation, bodyMutation, nil
 }
 
