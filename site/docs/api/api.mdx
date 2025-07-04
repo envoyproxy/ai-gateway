@@ -423,7 +423,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion."
 /><ApiField
   name="modelsOwnedBy"
   type="string"
@@ -514,7 +514,12 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="targetRefs"
   type="[LocalPolicyTargetReferenceWithSectionName](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReferenceWithSectionName) array"
   required="true"
-  description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to."
+  description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0."
+/><ApiField
+  name="parentRefs"
+  type="ParentReference array"
+  required="true"
+  description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway."
 /><ApiField
   name="schema"
   type="[VersionedAPISchema](#versionedapischema)"
@@ -853,6 +858,16 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 
 
 <ApiField
+  name="projectName"
+  type="string"
+  required="true"
+  description="ProjectName is the GCP project name."
+/><ApiField
+  name="region"
+  type="string"
+  required="true"
+  description="Region is the GCP region associated with the policy."
+/><ApiField
   name="workLoadIdentityFederationConfig"
   type="[GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
   required="true"

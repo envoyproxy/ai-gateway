@@ -154,8 +154,9 @@ func Test_newHTTPRoute(t *testing.T) {
 			}
 
 			var (
-				timeout1 gwapiv1.Duration = "30s"
-				timeout2 gwapiv1.Duration = "60s"
+				timeout1       gwapiv1.Duration = "30s"
+				timeout2       gwapiv1.Duration = "60s"
+				defaultTimeout gwapiv1.Duration = "60s"
 			)
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
@@ -239,6 +240,7 @@ func Test_newHTTPRoute(t *testing.T) {
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-0"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
 					Filters:     rewriteFilters,
 				},
 				{
@@ -250,7 +252,8 @@ func Test_newHTTPRoute(t *testing.T) {
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}},
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}, Weight: ptr.To[int32](100)}},
 					},
-					Filters: rewriteFilters,
+					Timeouts: &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:  rewriteFilters,
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{

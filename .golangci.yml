@@ -18,6 +18,7 @@ linters:
     - stylecheck
     - testifylint
     - unconvert
+    - godot
 
 linters-settings:
   depguard:
@@ -99,9 +100,19 @@ linters-settings:
       - require-error
       - suite-dont-use-pkg
       - suite-extra-assert-call
-
+  godot:
+    scope: all
+    exclude:
+      - "^\\+.+"
+      - "coverage-ignore"
 issues:
   exclude-rules:
+    # API package has +kubernetes:foo:bar annotations which does not work with godot.
+    # In practice, the comment in the API package should be reviewed thoroughly, so
+    # it should be fine to ignore the godot linter here.
+    - path: api
+      linters:
+        - godot
     - path: zz_generated
       linters:
         - goimports

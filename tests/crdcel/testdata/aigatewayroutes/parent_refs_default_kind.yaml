@@ -1,0 +1,26 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: parent-refs
+  namespace: default
+spec:
+  parentRefs:
+    - name: some-gateway
+  schema:
+    name: OpenAI
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: llama3-70b
+      backendRefs:
+        - name: kserve
+          weight: 20
+        - name: aws-bedrock
+          weight: 40

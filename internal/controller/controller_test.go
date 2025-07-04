@@ -27,16 +27,16 @@ func TestMain(m *testing.M) {
 func Test_aiGatewayRouteIndexFunc(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
-	// Create a AIGatewayRoute.
+	// Create an AIGatewayRoute.
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "default",
 		},
 		Spec: aigv1a1.AIGatewayRouteSpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
-				{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget2"}},
+			ParentRefs: []gwapiv1a2.ParentReference{
+				{Name: "mytarget", Kind: ptr.To(gwapiv1a2.Kind("Gateway"))},
+				{Name: "mytarget2", Kind: ptr.To(gwapiv1a2.Kind("HTTPRoute"))},
 			},
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{

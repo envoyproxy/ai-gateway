@@ -76,3 +76,13 @@ func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Contex
 func (m *myCustomChatCompletionMetrics) RecordTokenLatency(_ context.Context, tokens uint32, _ ...attribute.KeyValue) {
 	m.logger.Info("RecordTokenLatency", "tokens", tokens)
 }
+
+func (m *myCustomChatCompletionMetrics) GetTimeToFirstTokenMs() float64 {
+	// For demonstration, we return a fixed value.
+	return 1.0
+}
+
+func (m *myCustomChatCompletionMetrics) GetInterTokenLatencyMs() float64 {
+	// For demonstration, we return a fixed value.
+	return 1.0
+}

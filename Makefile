@@ -105,6 +105,7 @@ editorconfig:
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
 	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -133,7 +134,7 @@ test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
 	@go tool go-test-coverage --config=.testcoverage.yml
 
-ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
+ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 
 # This runs the integration tests of CEL validation rules in CRD definitions.
 #

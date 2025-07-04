@@ -365,7 +365,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 
 	s.config = &processorConfig{}
 	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
-		// Returning nil guarantees that the test will fail if this processor is selected
+		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
 	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {

@@ -28,12 +28,15 @@ import (
 // setupDefaultAIGatewayResourcesWithAvailableCredentials sets up the default AI Gateway resources with available
 // credentials and returns the path to the resources file and the credentials context.
 func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (string, internaltesting.CredentialsContext) {
-	credCtx := internaltesting.RequireNewCredentialsContext(t)
+	credCtx := internaltesting.RequireNewCredentialsContext()
 	// Set up the credential substitution.
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath)
-	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
+	awsCredTmpFile := filepath.Join(t.TempDir(), "aws-credentials")
+	err := os.WriteFile(awsCredTmpFile, []byte(credCtx.AWSFileLiteral), 0o600)
+	require.NoError(t, err)
+	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", awsCredTmpFile)
+	err = os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
 	return aiGatewayResourcesPath, credCtx
 }
@@ -52,6 +55,29 @@ func TestRun(t *testing.T) {
 		cancel()
 		<-done
 	}()
+
+	// This is the health checking to see the envoy admin is working as expected.
+	require.Eventually(t, func() bool {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:9901/ready",
+			strings.NewReader(""))
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("error: %v", err)
+			return false
+		}
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		raw, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		body := string(raw)
+		t.Logf("status=%d, response: %s", resp.StatusCode, body)
+		if resp.StatusCode != http.StatusOK && body != "live" {
+			return false
+		}
+		return true
+	}, 120*time.Second, 1*time.Second)
 
 	// This is the health checking to see the extproc is working as expected.
 	require.Eventually(t, func() bool {

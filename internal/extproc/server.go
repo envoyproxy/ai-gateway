@@ -137,7 +137,7 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 }
 
 // processorForPath returns the processor for the given path.
-// Only exact path matching is supported currently
+// Only exact path matching is supported currently.
 func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool) (Processor, error) {
 	pathHeader := ":path"
 	if isUpstreamFilter {

@@ -157,6 +157,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      string
+	backendName            string
 	handler                backendauth.Handler
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
@@ -180,6 +181,10 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
+	case filterapi.APISchemaGCPVertexAI:
+		c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator()
+	case filterapi.APISchemaGCPAnthropic:
+		c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator()
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -220,6 +225,11 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		}
 	}
 
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+	}
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -229,6 +239,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 				},
 			},
 		},
+		DynamicMetadata: dm,
 	}, nil
 }
 
@@ -325,10 +336,15 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
+		metadata, err := buildDynamicMetadata(c.config, &c.costs, c.requestHeaders, c.modelNameOverride, c.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
+		if c.stream {
+			// Adding token latency information to metadata.
+			c.mergeWithTokenLatencyMetadata(metadata)
+		}
+		resp.DynamicMetadata = metadata
 	}
 
 	return resp, nil
@@ -346,6 +362,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	rp.upstreamFilterCount++
 	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
+	c.backendName = b.Name
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
@@ -358,6 +375,19 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	return
 }
 
+func (c *chatCompletionProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
+	timeToFirstTokenMs := c.metrics.GetTimeToFirstTokenMs()
+	interTokenLatencyMs := c.metrics.GetInterTokenLatencyMs()
+	ns := c.config.metadataNamespace
+	innerVal := metadata.Fields[ns].GetStructValue()
+	if innerVal == nil {
+		innerVal = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		metadata.Fields[ns] = structpb.NewStructValue(innerVal)
+	}
+	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
+	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
+}
+
 func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, err error) {
 	var openAIReq openai.ChatCompletionRequest
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
@@ -366,26 +396,53 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 	return openAIReq.Model, &openAIReq, nil
 }
 
-func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(c.config.requestCosts))
-	for i := range c.config.requestCosts {
-		rc := &c.config.requestCosts[i]
+// buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
+//
+// This is necessary to ensure that the content length can be set after the extproc filter has processed the request,
+// which will happen in the header mutation filter.
+//
+// This is needed since the content length header is unconditionally cleared by Envoy as we use REPLACE_AND_CONTINUE
+// processing mode in the request headers phase at upstream filter. This is sort of a workaround, and it is necessary
+// for now.
+func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, contentLength int) *structpb.Struct {
+	metadata := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			config.metadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"content_length": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(contentLength)},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return metadata
+}
+
+func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, modelNameOverride, backendName string) (*structpb.Struct, error) {
+	metadataCost := make(map[string]*structpb.Value, len(config.requestCosts))
+	for i := range config.requestCosts {
+		rc := &config.requestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
-			cost = c.costs.InputTokens
+			cost = costs.InputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = c.costs.OutputTokens
+			cost = costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = c.costs.TotalTokens
+			cost = costs.TotalTokens
 		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
-				c.requestHeaders[c.config.modelNameHeaderKey],
-				c.requestHeaders[c.config.selectedRouteHeaderKey],
-				c.costs.InputTokens,
-				c.costs.OutputTokens,
-				c.costs.TotalTokens,
+				requestHeaders[config.modelNameHeaderKey],
+				requestHeaders[config.selectedRouteHeaderKey],
+				costs.InputTokens,
+				costs.OutputTokens,
+				costs.TotalTokens,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -394,19 +451,33 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
 		}
-		c.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
-		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+		metadataCost[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
-	if len(metadata) == 0 {
+
+	metadataRoute := make(map[string]*structpb.Value, 2)
+	if modelNameOverride != "" {
+		metadataRoute["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: modelNameOverride}}
+	}
+
+	if backendName != "" {
+		metadataRoute["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+	}
+
+	metadata := &structpb.Struct{
+		Fields: map[string]*structpb.Value{},
+	}
+
+	if len(metadataCost) != 0 {
+		metadata.Fields[config.metadataNamespace] = &structpb.Value{Kind: &structpb.Value_StructValue{StructValue: &structpb.Struct{Fields: metadataCost}}}
+	}
+
+	if len(metadataRoute) != 0 {
+		metadata.Fields["route"] = &structpb.Value{Kind: &structpb.Value_StructValue{StructValue: &structpb.Struct{Fields: metadataRoute}}}
+	}
+
+	if len(metadata.Fields) == 0 {
 		return nil, nil
 	}
-	return &structpb.Struct{
-		Fields: map[string]*structpb.Value{
-			c.config.metadataNamespace: {
-				Kind: &structpb.Value_StructValue{
-					StructValue: &structpb.Struct{Fields: metadata},
-				},
-			},
-		},
-	}, nil
+
+	return metadata, nil
 }

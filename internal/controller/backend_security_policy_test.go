@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,8 +91,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// mockSTSClient implements the STSOperations interface for testing
-
+// mockSTSClient implements the STSOperations interface for testing.
 type mockSTSClient struct {
 	expTime time.Time
 }
@@ -161,14 +161,13 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	// initial secret lookup failure as no secret exist
+	// Initial secret lookup failure as no secret exist.
 	_, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName)))
 	require.Error(t, err)
 	require.Equal(t, "secrets \"ai-eg-bsp-mybackendSecurityPolicy-OIDC\" not found", err.Error())
 
 	oidcSecretName := "oidcClientSecret"
 
-	// create oidc secret
 	oidcSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      oidcSecretName,
@@ -180,7 +179,7 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	}
 	require.NoError(t, cl.Create(t.Context(), &oidcSecret, &client.CreateOptions{}))
 
-	// create backend security policy with OIDC config
+	// Create backend security policy with OIDC config.
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        discoveryServer.URL,
@@ -251,14 +250,13 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
-	// initial secret lookup failure as no secret exist
+	// Initial secret lookup failure as no secret exist.
 	_, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName)))
 	require.Error(t, err)
 
 	oidcSecretName := "oidcClientSecret"
 	awsSecretName := rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName))
 
-	// create oidc secret
 	oidcSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      oidcSecretName,
@@ -270,7 +268,6 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	}
 	require.NoError(t, cl.Create(t.Context(), &oidcSecret, &client.CreateOptions{}))
 
-	// create backend security policy
 	oidc := egv1a1.OIDC{
 		Provider: egv1a1.OIDCProvider{
 			Issuer:        discoveryServer.URL,
@@ -298,22 +295,21 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// new aws oidc rotator
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
 		oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
-	// ensure aws credentials secret do not exist
+	// Ensure aws credentials secret do not exist.
 	_, err = rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.Error(t, err)
 
-	// first credential rotation should create aws credentials secret
+	// First credential rotation should create aws credentials secret.
 	res, err := rotator.Rotate(ctx)
 	require.NoError(t, err)
 	require.WithinRange(t, time.Now().Add(time.Until(res.Add(-preRotationWindow))), time.Now().Add(50*time.Minute), time.Now().Add(time.Hour))
 
-	// ensure both oidc secret and aws credential secret are created
+	// Ensure both oidc secret and aws credential secret are created.
 	returnOidcSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, oidcSecretName)
 	require.NoError(t, err)
 	require.Equal(t, "client-secret", string(returnOidcSecret.Data["client-secret"]))
@@ -321,17 +317,16 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 	awsSecret1, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
 	require.NoError(t, err)
 
-	// second credential rotation should update expiration time
+	// Second credential rotation should update expiration time.
 	t0 := awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey]
 
-	// set secret time expired
+	// Set secret time expired.
 	parsedTime, err := time.Parse(time.RFC3339, t0)
 	require.NoError(t, err)
 	t1 := parsedTime.Add(-preRotationWindow - time.Minute).String()
 	awsSecret1.Annotations[rotators.ExpirationTimeAnnotationKey] = t1
 	require.NoError(t, cl.Update(t.Context(), awsSecret1))
 
-	// rotate credential
 	_, err = rotator.Rotate(ctx)
 	require.NoError(t, err)
 	awsSecret2, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
@@ -396,6 +391,30 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	})
 	require.NotNil(t, oidcAWS)
 	require.Equal(t, "some-client-id", oidcAWS.ClientID)
+
+	// GCP type with OIDC defined.
+	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+			ProjectName: "fake-project-name",
+			Region:      "fake-region",
+			WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+				ProjectID: "fake-project-id",
+				WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
+					Name: "fake-workload-identity-provider-name",
+					OIDCProvider: aigv1a1.BackendSecurityPolicyOIDC{
+						OIDC: egv1a1.OIDC{
+							ClientID: "some-client-id",
+						},
+					},
+				},
+				WorkloadIdentityPoolName:    "fake-workload-identity-pool-name",
+				ServiceAccountImpersonation: nil,
+			},
+		},
+	})
+	require.NotNil(t, oidcGCP)
+	require.Equal(t, "some-client-id", oidcGCP.ClientID)
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
@@ -644,4 +663,163 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 	res, err := c.executeRotation(ctx, rotator, bsp)
 	require.NoError(t, err)
 	require.Less(t, res.RequeueAfter, time.Hour)
+}
+
+func TestValidateGCPCredentialsParams(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     *aigv1a1.BackendSecurityPolicyGCPCredentials
+		wantError string
+	}{
+		{
+			name:      "nil credentials",
+			input:     nil,
+			wantError: "invalid backend security policy, gcp credentials cannot be nil",
+		},
+		{
+			name: "empty project name",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP credentials configuration: projectName cannot be empty",
+		},
+		{
+			name: "empty region",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP credentials configuration: region cannot be empty",
+		},
+		{
+			name: "empty projectID",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: projectID cannot be empty",
+		},
+		{
+			name: "empty workloadIdentityPoolName",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty",
+		},
+		{
+			name: "empty workloadIdentityProvider name",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: ""},
+				},
+			},
+			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty",
+		},
+		{
+			name: "valid credentials",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+					ProjectID:                "pid",
+					WorkloadIdentityPoolName: "pool",
+					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				},
+			},
+			wantError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGCPCredentialsParams(tt.input)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, tt.wantError, err.Error())
+			}
+		})
+	}
+}
+
+func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *testing.T) {
+	bspNamespace := "default"
+	bspName := "test-gcp-policy"
+	tests := []struct {
+		name           string
+		bsp            *aigv1a1.BackendSecurityPolicySpec
+		expectedErrMsg string
+	}{
+		{
+			name: "nil gcp credentials",
+			bsp: &aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: nil,
+			},
+			expectedErrMsg: "invalid backend security policy, gcp credentials cannot be nil",
+		},
+		{
+			name: "empty gcp credentials",
+			bsp: &aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+			},
+			expectedErrMsg: "invalid GCP credentials configuration: projectName cannot be empty",
+		},
+	}
+
+	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil)
+
+	for _, tt := range tests {
+		bsp := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bspName,
+				Namespace: bspNamespace,
+			},
+			Spec: *tt.bsp,
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			// Initial rotation should create a new secret.
+			res, err := c.rotateCredential(context.Background(), bsp)
+
+			switch {
+			case tt.expectedErrMsg != "" && err == nil:
+				t.Errorf("expected error but got none, expected: %s", tt.expectedErrMsg)
+			case tt.expectedErrMsg == "" && err != nil:
+				t.Errorf("unexpected error: %v", err)
+			case tt.expectedErrMsg != "" && err != nil:
+				strings.Contains(err.Error(), tt.expectedErrMsg)
+			default:
+				require.NoError(t, err)
+				require.NotZero(t, res.RequeueAfter)
+			}
+		})
+	}
 }

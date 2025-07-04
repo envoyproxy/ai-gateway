@@ -92,20 +92,26 @@ func TestStartControllers(t *testing.T) {
 		},
 	}
 	t.Run("setup routes", func(t *testing.T) {
-		for _, route := range []string{"route1", "route2"} {
+		for i, route := range []string{"route1", "route2"} {
+			var targetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName
+			var parentRefs []gwapiv1a2.ParentReference
+			if i == 0 {
+				targetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					{
+						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io"},
+					},
+				}
+			} else {
+				parentRefs = []gwapiv1a2.ParentReference{{Name: "gtw"}}
+			}
 			err := c.Create(ctx, &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: route, Namespace: "default",
 				},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-						{
-							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-								Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
-							},
-						},
-					},
-					APISchema: defaultSchema,
+					TargetRefs: targetRefs,
+					ParentRefs: parentRefs,
+					APISchema:  defaultSchema,
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
