@@ -54,7 +54,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			// Since these are stub implementations, we expect nil mutations
+			// Since these are stub implementations, we expect nil mutations.
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{
 					{
@@ -105,7 +105,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 			wantError:     false,
 			wantHeaderMut: nil,
 		},
-		// TODO: Add more test cases when implementation is ready
+		// TODO: Add more test cases when implementation is ready.
 	}
 
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator()

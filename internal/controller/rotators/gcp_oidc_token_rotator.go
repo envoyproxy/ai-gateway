@@ -65,22 +65,22 @@ type stsTokenGenerator func(
 
 // gcpOIDCTokenRotator implements Rotator interface for GCP access token exchange.
 // It handles the complete authentication flow for GCP Workload Identity Federation:
-// 1. Obtaining an OIDC token from the configured provider
-// 2. Exchanging the OIDC token for a GCP STS token
-// 3. Using the STS token to impersonate a GCP service account
-// 4. Storing the resulting access token in a Kubernetes secret
+//  1. Obtaining an OIDC token from the configured provider
+//  2. Exchanging the OIDC token for a GCP STS token
+//  3. Using the STS token to impersonate a GCP service account
+//  4. Storing the resulting access token in a Kubernetes secret
 type gcpOIDCTokenRotator struct {
 	client client.Client // Kubernetes client for interacting with the cluster.
-	logger logr.Logger   // Logger for recording rotator activities
-	// GCP Credentials configuration from BackendSecurityPolicy
+	logger logr.Logger   // Logger for recording rotator activities.
+	// GCP Credentials configuration from BackendSecurityPolicy.
 	gcpCredentials aigv1a1.BackendSecurityPolicyGCPCredentials
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
 	backendSecurityPolicyNamespace string
-	// preRotationWindow is the duration before token expiry when rotation should occur
+	// preRotationWindow is the duration before token expiry when rotation should occur.
 	preRotationWindow time.Duration
-	// oidcProvider provides the OIDC token needed for GCP Workload Identity Federation
+	// oidcProvider provides the OIDC token needed for GCP Workload Identity Federation.
 	oidcProvider tokenprovider.TokenProvider
 
 	saTokenFunc  serviceAccountTokenGenerator
@@ -117,31 +117,31 @@ func NewGCPOIDCTokenRotator(
 // IsExpired implements [Rotator.IsExpired].
 // IsExpired checks if the preRotation time is before the current time.
 func (r *gcpOIDCTokenRotator) IsExpired(preRotationExpirationTime time.Time) bool {
-	// Use the common IsBufferedTimeExpired helper to determine if the token has expired
-	// A buffer of 0 means we check exactly at the pre-rotation time
+	// Use the common IsBufferedTimeExpired helper to determine if the token has expired.
+	// A buffer of 0 means we check exactly at the pre-rotation time.
 	return IsBufferedTimeExpired(0, preRotationExpirationTime)
 }
 
 // GetPreRotationTime implements [Rotator.GetPreRotationTime].
 // GetPreRotationTime retrieves the pre-rotation time for GCP token.
 func (r *gcpOIDCTokenRotator) GetPreRotationTime(ctx context.Context) (time.Time, error) {
-	// Look up the secret containing the current token
+	// Look up the secret containing the current token.
 	secret, err := LookupSecret(ctx, r.client, r.backendSecurityPolicyNamespace, GetBSPSecretName(r.backendSecurityPolicyName))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// If the secret doesn't exist, return zero time to indicate immediate rotation is needed
+			// If the secret doesn't exist, return zero time to indicate immediate rotation is needed.
 			return time.Time{}, nil
 		}
 		return time.Time{}, fmt.Errorf("failed to lookup secret: %w", err)
 	}
-	// Extract the token expiration time from the secret's annotations
+	// Extract the token expiration time from the secret's annotations.
 	expirationTime, err := GetExpirationSecretAnnotation(secret)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to get expiration time from secret: %w", err)
 	}
 
 	// Calculate the pre-rotation time by subtracting the pre-rotation window from the expiration time
-	// This ensures tokens are rotated before they expire
+	// This ensures tokens are rotated before they expire.
 	preRotationTime := expirationTime.Add(-r.preRotationWindow)
 	return preRotationTime, nil
 }
@@ -159,8 +159,8 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	r.logger.Info("start rotating gcp access token", "namespace", r.backendSecurityPolicyNamespace, "name", r.backendSecurityPolicyName)
 
-	// 1. Get OIDCProvider Token
-	// This is the initial token from the configured OIDC provider (e.g., Kubernetes service account token)
+	// 1. Get OIDCProvider Token.
+	// This is the initial token from the configured OIDC provider (e.g., Kubernetes service account token).
 	oidcTokenExpiry, err := r.oidcProvider.GetToken(ctx)
 	if err != nil {
 		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.gcpCredentials.WorkLoadIdentityFederationConfig.WorkloadIdentityProvider.Name)
@@ -168,7 +168,7 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	}
 
 	// 2. Exchange the JWT for an STS token.
-	// The OIDC JWT token is exchanged for a Google Cloud STS token
+	// The OIDC JWT token is exchanged for a Google Cloud STS token.
 	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, r.gcpCredentials.WorkLoadIdentityFederationConfig)
 	if err != nil {
 		wifConfig := r.gcpCredentials.WorkLoadIdentityFederationConfig
@@ -181,7 +181,7 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	}
 
 	// 3. Exchange the STS token for a GCP service account access token.
-	// The STS token is used to impersonate a GCP service account
+	// The STS token is used to impersonate a GCP service account.
 	var gcpAccessToken *tokenprovider.TokenExpiry
 	if r.gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation != nil {
 		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation)
@@ -196,7 +196,7 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("failed to impersonate service account %s: %w", saEmail, err)
 		}
 	} else {
-		// If no service account impersonation is configured, use the STS token directly
+		// If no service account impersonation is configured, use the STS token directly.
 		gcpAccessToken = stsToken
 	}
 
@@ -263,13 +263,13 @@ func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv
 		return nil, fmt.Errorf("error creating GCP STS service client: %w", err)
 	}
 	// Construct the STS request.
-	// Build the audience string in the format required by GCP Workload Identity Federation
+	// Build the audience string in the format required by GCP Workload Identity Federation.
 	stsAudience := fmt.Sprintf("//iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s",
 		wifConfig.ProjectID,
 		wifConfig.WorkloadIdentityPoolName,
 		wifConfig.WorkloadIdentityProvider.Name)
 
-	// Create the token exchange request with the appropriate parameters
+	// Create the token exchange request with the appropriate parameters.
 	req := &sts.GoogleIdentityStsV1ExchangeTokenRequest{
 		GrantType:          grantTypeTokenExchange,
 		Audience:           stsAudience,
@@ -302,20 +302,20 @@ var _ serviceAccountTokenGenerator = impersonateServiceAccount
 //
 // The resulting token will have the cloud-platform scope.
 func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig aigv1a1.GCPServiceAccountImpersonationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
-	// Construct the service account email from the configured parameters
+	// Construct the service account email from the configured parameters.
 	saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saConfig.ServiceAccountName, saConfig.ServiceAccountProjectName)
 
 	// Configure the impersonation parameters.
-	// Define which service account to impersonate and what scopes the token should have
+	// Define which service account to impersonate and what scopes the token should have.
 	config := impersonate.CredentialsConfig{
 		TargetPrincipal: saEmail,                 // The service account to impersonate.
 		Scopes:          []string{stsTokenScope}, // The desired scopes for the access token.
 	}
 
-	// Use the STS token as the source token for impersonation
+	// Use the STS token as the source token for impersonation.
 	opts = append(opts, option.WithTokenSource(oauth2.StaticTokenSource(&oauth2.Token{AccessToken: stsToken, TokenType: "Bearer"})))
 
-	// If a proxy URL is set, add it as a client option
+	// If a proxy URL is set, add it as a client option.
 	proxyOpt, err := getGCPProxyClientOption()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GCP proxy client option: %w", err)
@@ -325,7 +325,7 @@ func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig ai
 		opts = append(opts, proxyOpt)
 	}
 
-	// Create a token source that will provide tokens with the permissions of the impersonated service account
+	// Create a token source that will provide tokens with the permissions of the impersonated service account.
 	ts, err := impersonate.CredentialsTokenSource(ctx, config, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating impersonated credentials for service account %s: %w", saEmail, err)

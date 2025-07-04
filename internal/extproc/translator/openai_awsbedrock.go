@@ -36,7 +36,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	bufferedBody      []byte
 	events            []awsbedrock.ConverseStreamEvent
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
-	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams
+	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams.
 	role string
 }
 
@@ -309,7 +309,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
-	// Validate and cast the openai content value into bedrock content block
+	// Validate and cast the openai content value into bedrock content block.
 	content := make([]*awsbedrock.ToolResultContentBlock, 0)
 
 	switch v := openAiMessage.Content.Value.(type) {

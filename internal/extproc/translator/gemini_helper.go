@@ -30,7 +30,7 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string) string {
 func buildGCPRequestMutations(path string, reqBody []byte) (*ext_procv3.HeaderMutation, *ext_procv3.BodyMutation) {
 	var bodyMutation *ext_procv3.BodyMutation
 
-	// Create header mutation
+	// Create header mutation.
 	headerMutation := &ext_procv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{
@@ -42,9 +42,9 @@ func buildGCPRequestMutations(path string, reqBody []byte) (*ext_procv3.HeaderMu
 		},
 	}
 
-	// If the request body is not empty, we set the content-length header and create a body mutation
+	// If the request body is not empty, we set the content-length header and create a body mutation.
 	if len(reqBody) != 0 {
-		// Set the "content-length" header
+		// Set the "content-length" header.
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
 				Key:      HTTPHeaderKeyContentLength,
@@ -52,7 +52,7 @@ func buildGCPRequestMutations(path string, reqBody []byte) (*ext_procv3.HeaderMu
 			},
 		})
 
-		// Create body mutation
+		// Create body mutation.
 		bodyMutation = &ext_procv3.BodyMutation{
 			Mutation: &ext_procv3.BodyMutation_Body{Body: reqBody},
 		}
