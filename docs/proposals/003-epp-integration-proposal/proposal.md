@@ -496,19 +496,29 @@ The second one, introduces the abilities for define the custom BackendRef in Env
 
 Reference: https://github.com/envoyproxy/gateway/pull/6342
 
-Workflow is like:
+Cluste Modify Workflow is like:
 
 **Envoy Gateway**
 
-1. define the custom backend resource in Envoy Gateway configuration
-2. Envoy Gateway watches that resource
-3. If httproute refers any resource with the same GVK, carry it with BackendExtensionRefs IR
-4. When EG doing xDS translation, checks if BackendExtensionRefs > 0, if so, it calls the PostRouteModifyHook and carry the unstructuredResources(InferencePool) to Envoy AI Gateway
+1. enabled the XDSCluster level XDSTranslatorHook, and define the custom backend resource in Envoy Gateway configuration (InferencePool CRD)
+2. Envoy Gateway will start to watch the InferencePools
+3. If httproute refers any resource with the same GVK, carry it with ExtensionRefs IR
+4. When EG doing xDS translation, checks if ExtensionRefs > 0, if so, it calls the PostClusterModifyHook and carry the unstructuredResources(InferencePool) to Envoy AI Gateway
 
 **Envoy AI Gateway**
 
-1. Implement the PostRouteModifyHook, iterates the unstructuredResources to group the inferencePool
-2. Add the cluster  with override_host loadBalancingPolicy, and edits the route to link with the cluster
+1. Implement the PostClusterModifyHook, iterates the unstructuredResources to group the inferencePool(only support one InferencePool per route rule)
+2. Modify the cluster type with ORIGINAL_DST, and add the original_dst_lb_config
+
+```yaml
+        type: ORIGINAL_DST
+        original_dst_lb_config:
+          use_http_header: true
+          http_header_name: x-gateway-destination-endpoint
+        connect_timeout: 6s
+        lb_policy: CLUSTER_PROVIDED
+```
+
 3. Send it back to Envoy Gateway
 4. Envoy Gateway xDS Server pushes the config to EnvoyProxy
 
