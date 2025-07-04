@@ -8,7 +8,7 @@ The Envoy AI Gateway provides OpenAI-compatible API endpoints for routing and ma
 
 ## Overview
 
-The AI Gateway acts as a proxy that accepts OpenAI-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
+The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
 
 ## Supported Endpoints
 
@@ -69,6 +69,28 @@ curl -H "Content-Type: application/json" \
 - OpenAI
 - Any OpenAI-compatible provider that supports embeddings
 
+## Provider-Endpoint Compatibility
+
+The following table shows which providers support which endpoints:
+
+| Provider | Chat Completions | Embeddings | Notes |
+|----------|:----------------:|:----------:|-------|
+| [OpenAI](https://platform.openai.com/docs/api-reference) | ✅ | ✅ | Full support for both endpoints |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/) | ✅ | ❌ | Uses Converse API translation, embeddings not supported |
+| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference) | ✅ | ❌ | Uses native Azure API translation, embeddings not supported |
+| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai) | ✅ | ✅ | Via OpenAI-compatible endpoint |
+| [Groq](https://console.groq.com/docs/openai) | ✅ | ✅ | OpenAI-compatible API |
+| [Grok](https://docs.x.ai/docs/api-reference) | ✅ | ✅ | OpenAI-compatible API |
+| [Together AI](https://docs.together.ai/docs/openai-api-compatibility) | ✅ | ✅ | OpenAI-compatible API |
+| [Cohere](https://docs.cohere.com/v2/docs/compatibility-api) | ✅ | ✅ | Via OpenAI-compatible endpoint |
+| [Mistral](https://docs.mistral.ai/api/) | ✅ | ✅ | OpenAI-compatible API |
+| [DeepInfra](https://deepinfra.com/docs/inference) | ✅ | ✅ | Via OpenAI-compatible endpoint |
+| [DeepSeek](https://api-docs.deepseek.com/) | ✅ | ✅ | OpenAI-compatible API |
+| [Hunyuan](https://cloud.tencent.com/document/product/1729/111007) | ✅ | ✅ | OpenAI-compatible API |
+| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381) | ✅ | ✅ | OpenAI-compatible API |
+
+**Note:** Embeddings support requires the provider to use OpenAI-compatible API schema. Providers that use native API translation (AWS Bedrock, Azure OpenAI) currently only support chat completions.
+
 **Example:**
 ```bash
 curl -H "Content-Type: application/json" \
@@ -112,71 +134,12 @@ curl $GATEWAY_URL/v1/models
 }
 ```
 
-## Unsupported Endpoints
 
-The following OpenAI API endpoints are **not currently supported**:
+## What's Next
 
-### Audio
-- `POST /v1/audio/speech` - Text-to-speech
-- `POST /v1/audio/transcriptions` - Speech-to-text (Whisper)
-- `POST /v1/audio/translations` - Audio translation
+To learn more about configuring and using the Envoy AI Gateway with these endpoints:
 
-### Images
-- `POST /v1/images/generations` - Image generation (DALL-E)
-- `POST /v1/images/edits` - Image editing
-- `POST /v1/images/variations` - Image variations
-
-### Files
-- `GET /v1/files` - List files
-- `POST /v1/files` - Upload file
-- `DELETE /v1/files/{file_id}` - Delete file
-- `GET /v1/files/{file_id}` - Retrieve file
-- `GET /v1/files/{file_id}/content` - Retrieve file content
-
-### Fine-tuning
-- `POST /v1/fine_tuning/jobs` - Create fine-tuning job
-- `GET /v1/fine_tuning/jobs` - List fine-tuning jobs
-- `GET /v1/fine_tuning/jobs/{fine_tuning_job_id}` - Retrieve fine-tuning job
-- `POST /v1/fine_tuning/jobs/{fine_tuning_job_id}/cancel` - Cancel fine-tuning job
-
-### Assistants (Beta)
-- All `/v1/assistants/*` endpoints
-- All `/v1/threads/*` endpoints
-- All `/v1/vector_stores/*` endpoints
-
-### Batch
-- `POST /v1/batches` - Create batch
-- `GET /v1/batches` - List batches
-- `GET /v1/batches/{batch_id}` - Retrieve batch
-- `POST /v1/batches/{batch_id}/cancel` - Cancel batch
-
-### Moderation
-- `POST /v1/moderations` - Content moderation
-
-## Model Selection
-
-The AI Gateway supports model selection through two methods:
-
-1. **Request Body:** Specify the model in the request body (standard OpenAI format)
-2. **Header-based:** Use the `x-ai-eg-model` header for routing decisions
-
-The `x-ai-eg-model` header is particularly useful for:
-- Load balancing between different providers for the same model
-- Provider fallback scenarios
-- Custom routing logic based on model names
-
-## Provider Translation
-
-The AI Gateway automatically translates OpenAI-format requests to provider-specific formats:
-
-- **AWS Bedrock:** Converts to Bedrock's Converse API
-- **Azure OpenAI:** Adjusts API paths and authentication
-- **OpenAI-compatible providers:** Passes through with minimal modifications
-
-## Rate Limiting and Cost Tracking
-
-All supported endpoints include:
-- Token usage tracking
-- Cost calculation based on provider pricing
-- Rate limiting capabilities
-- Request/response metrics
+- **[Supported Providers](./supported-providers.md)** - Complete list of supported AI providers and their configurations
+- **[Usage-Based Rate Limiting](./capabilities/usage-based-ratelimiting.md)** - Configure token-based rate limiting and cost controls
+- **[Provider Fallback](./capabilities/fallback.md)** - Set up automatic failover between providers for high availability
+- **[Metrics and Monitoring](./capabilities/metrics.md)** - Monitor usage, costs, and performance metrics
