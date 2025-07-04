@@ -106,28 +106,19 @@ func TestStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-model-name
-rules:
-- backends:
-  - name: kserve
-    weight: 1
-    schema:
-      name: OpenAI
-  - name: awsbedrock
-    weight: 10
-    schema:
-      name: AWSBedrock
-  headers:
-  - name: x-model-name
-    value: llama3.3333
-- backends:
-  - name: openai
-    schema:
-      name: OpenAI
-  headers:
-  - name: x-model-name
-    value: gpt4.4444
+backends:
+- name: kserve
+  weight: 1
+  schema:
+    name: OpenAI
+- name: awsbedrock
+  weight: 10
+  schema:
+    name: AWSBedrock
+- name: openai
+  schema:
+    name: OpenAI
 `
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
 
@@ -142,16 +133,11 @@ rules:
 	cfg = `
 schema:
   name: OpenAI
-selectedRouteHeaderKey: x-ai-eg-selected-route
 modelNameHeaderKey: x-model-name
-rules:
-- backends:
-  - name: openai
-    schema:
-      name: OpenAI
-  headers:
-  - name: x-model-name
-    value: gpt4.4444
+backends:
+- name: openai
+  schema:
+    name: OpenAI
 `
 
 	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))

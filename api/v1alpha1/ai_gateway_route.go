@@ -59,12 +59,24 @@ type AIGatewayRouteList struct {
 }
 
 // AIGatewayRouteSpec details the AIGatewayRoute configuration.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.parentRefs) || !has(self.targetRefs) || size(self.targetRefs) == 0", message="targetRefs is deprecated, use parentRefs only"
 type AIGatewayRouteSpec struct {
 	// TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
 	//
-	// +kubebuilder:validation:MinItems=1
+	// Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0.
+	//
 	// +kubebuilder:validation:MaxItems=128
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs"`
+	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
+
+	// ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
+	// Cross namespace references are not supported. In other words, the Gateway resources must be in the
+	// same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway.
+	//
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="self.all(match, match.kind == 'Gateway')", message="only Gateway is supported"
+	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
+
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected AIServiceBackend during the routing process.
@@ -301,13 +313,10 @@ type AIGatewayRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
-	// Currently, only the exact header matching is supported.
-	//
 	// +listType=map
 	// +listMapKey=name
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:XValidation:rule="self.all(match, match.type != 'RegularExpression')", message="currently only exact match is supported"
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 

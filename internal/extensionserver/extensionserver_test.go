@@ -23,6 +23,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func newFakeClient() client.Client {
@@ -178,9 +179,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
 		require.NotNil(t, md)
 		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata["aigateway.envoy.io"]
+		mmd, ok := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 		require.True(t, ok)
 		require.Len(t, mmd.Fields, 1)
-		require.Equal(t, "aaa.ns", mmd.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
 	})
 }

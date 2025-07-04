@@ -10,14 +10,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -103,28 +102,11 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, 
 	}
 
 	e.requestHeaders[e.config.modelNameHeaderKey] = model
-	routeName, err := e.config.router.Calculate(e.requestHeaders)
-	if err != nil {
-		if errors.Is(err, x.ErrNoMatchingRule) {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-						Body:   []byte(err.Error()),
-					},
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to calculate route: %w", err)
-	}
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		// Also set the selected backend to the request header with the key specified in the config.
-		Header: &corev3.HeaderValue{Key: e.config.selectedRouteHeaderKey, RawValue: []byte(routeName)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
 	})
@@ -212,6 +194,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 		}
 	}
 
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(e.config, len(bm))
+	}
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -221,6 +208,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 				},
 			},
 		},
+		DynamicMetadata: dm,
 	}, nil
 }
 
@@ -298,7 +286,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		},
 	}
 
-	// Accumulate token usage for embeddings (only input and total tokens are relevant)
+	// Accumulate token usage for embeddings (only input and total tokens are relevant).
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 

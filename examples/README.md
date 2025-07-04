@@ -21,6 +21,3 @@ Example setup for comprehensive monitoring and observability with Prometheus and
 ### [Custom Metrics](./extproc_custom_metrics/)
 Example of implementing custom metrics collection using the external processor interface.
 
-### [Custom Router](./extproc_custom_router/)
-Shows how to implement custom routing logic using the external processor interface.
-

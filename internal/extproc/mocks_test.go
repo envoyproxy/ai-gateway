@@ -29,7 +29,6 @@ var (
 	_ Processor                                 = &mockProcessor{}
 	_ translator.OpenAIChatCompletionTranslator = &mockTranslator{}
 	_ translator.OpenAIEmbeddingTranslator      = &mockEmbeddingTranslator{}
-	_ x.Router                                  = &mockRouter{}
 )
 
 func newMockProcessor(_ *processorConfig, _ *slog.Logger) Processor {
@@ -116,20 +115,6 @@ func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
-}
-
-// mockRouter implements [router.Router] for testing.
-type mockRouter struct {
-	t            *testing.T
-	expHeaders   map[string]string
-	retRouteName string
-	retErr       error
-}
-
-// Calculate implements [router.Router.Calculate].
-func (m mockRouter) Calculate(headers map[string]string) (filterapi.RouteRuleName, error) {
-	require.Equal(m.t, m.expHeaders, headers)
-	return filterapi.RouteRuleName(m.retRouteName), m.retErr
 }
 
 // mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.

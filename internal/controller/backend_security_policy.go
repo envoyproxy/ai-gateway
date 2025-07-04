@@ -154,6 +154,26 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
+			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
+		}
+
+		// For GCP, OIDC is currently the only supported authentication method.
+		// If additional methods are added, validate that OIDC is used before calling getBackendSecurityPolicyAuthOIDC.
+		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+
+		// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
+		var oidcProvider tokenprovider.TokenProvider
+		oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+		}
+		rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 	default:
 		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", bsp.Spec.Type)
 		c.logger.Error(err, "unsupported backend security type", "namespace", bsp.Namespace, "name", bsp.Name)
@@ -207,6 +227,10 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 			return &spec.AzureCredentials.OIDCExchangeToken.OIDC
 		}
 		return nil
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if spec.GCPCredentials != nil {
+			return &spec.GCPCredentials.WorkLoadIdentityFederationConfig.WorkloadIdentityProvider.OIDCProvider.OIDC
+		}
 	}
 	return nil
 }
@@ -237,4 +261,29 @@ func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx 
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update BackendSecurityPolicy status")
 	}
+}
+
+func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCredentials) error {
+	if gcpCreds == nil {
+		return fmt.Errorf("invalid backend security policy, gcp credentials cannot be nil")
+	}
+	if gcpCreds.ProjectName == "" {
+		return fmt.Errorf("invalid GCP credentials configuration: projectName cannot be empty")
+	}
+	if gcpCreds.Region == "" {
+		return fmt.Errorf("invalid GCP credentials configuration: region cannot be empty")
+	}
+
+	wifConfig := gcpCreds.WorkLoadIdentityFederationConfig
+	if wifConfig.ProjectID == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+	}
+	if wifConfig.WorkloadIdentityPoolName == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
+	}
+	if wifConfig.WorkloadIdentityProvider.Name == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
+	}
+
+	return nil
 }

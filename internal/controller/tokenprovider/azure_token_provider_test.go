@@ -46,7 +46,7 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 	})
 
 	t.Run("azure proxy url", func(t *testing.T) {
-		// Set environment variable for the test
+		// Set environment variable for the test.
 		mockProxyURL := "http://localhost:8888"
 		t.Setenv("AI_GATEWAY_AZURE_PROXY_URL", mockProxyURL)
 
@@ -55,12 +55,12 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 		require.NotNil(t, opts)
 		require.NotNil(t, opts.ClientOptions.Transport)
 
-		// Assert that the transport has a proxy set
+		// Assert that the transport has a proxy set.
 		transport, ok := opts.ClientOptions.Transport.(*http.Client)
 		require.True(t, ok)
 		require.NotNil(t, transport.Transport)
 
-		// Check the proxy URL (optional, deeper inspection)
+		// Check the proxy URL (optional, deeper inspection).
 		innerTransport, ok := transport.Transport.(*http.Transport)
 		require.True(t, ok)
 		require.NotNil(t, innerTransport.Proxy)

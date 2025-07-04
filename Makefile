@@ -105,6 +105,7 @@ editorconfig:
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
 	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -151,7 +152,6 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
-	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
 	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
@@ -169,7 +169,7 @@ test-controller: apigen ## Run the integration tests for the controller with env
 .PHONY: test-e2e
 test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
-	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
+	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
 
 
 
@@ -180,7 +180,7 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 # Example:
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
-# - `make build.extproc_custom_router CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_router directory.
+# - `make build.extproc_custom_metrics CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_metrics directory.
 # - `make build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib`: will build the tests/internal/testupstreamlib/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
@@ -244,7 +244,7 @@ build-e2e: ## Build the docker images for the controller, extproc and testupstre
 # To build the main functions outside cmd/ directory, set CMD_PATH_PREFIX to the directory containing the main function.
 #
 # Example:
-# - `make docker-build.extproc_custom_router CMD_PATH_PREFIX=examples`
+# - `make docker-build.extproc_custom_metrics CMD_PATH_PREFIX=examples`
 .PHONY: docker-build.%
 ifeq ($(ENABLE_MULTI_PLATFORMS),true)
 docker-build.%: GOARCH_LIST = amd64 arm64

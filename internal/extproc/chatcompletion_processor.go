@@ -10,7 +10,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,7 +17,6 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -106,28 +104,11 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	}
 
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
-	routeName, err := c.config.router.Calculate(c.requestHeaders)
-	if err != nil {
-		if errors.Is(err, x.ErrNoMatchingRule) {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-						Body:   []byte(err.Error()),
-					},
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to calculate route: %w", err)
-	}
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		// Also set the selected backend to the request header with the key specified in the config.
-		Header: &corev3.HeaderValue{Key: c.config.selectedRouteHeaderKey, RawValue: []byte(routeName)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
@@ -181,6 +162,10 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
+	case filterapi.APISchemaGCPVertexAI:
+		c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator()
+	case filterapi.APISchemaGCPAnthropic:
+		c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator()
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -188,31 +173,22 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
-func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
-	// Start tracking metrics for this request.
-	c.metrics.StartRequest(c.requestHeaders)
-
-	// The request headers have already been at the time the processor was created.
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
-		RequestHeaders: &extprocv3.HeadersResponse{},
-	}}, nil
-}
-
-// ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.Context, _ *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+//
+// At the upstream filter, we already have the original request body at request headers phase.
+// So, we simply do the translation and upstream auth at this stage, and send them back to Envoy
+// with the status CONTINUE_AND_REPLACE. This will allows Envoy to not send the request body again
+// to the extproc.
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			c.metrics.RecordRequestCompletion(ctx, false)
 		}
 	}()
 
-	// TODO: We do not use the body from the extproc request since we might have already translated it
-	// to the upstream format on the previous retry (if any). If it's possible, we should be able to
-	// configure the extproc filter to "not send the body but execute the ProcessRequestBody" method.
-	// Currently, there's no way to do this, hence Envoy has to "unnecessarily" send the entire request body
-	// to the extproc twice.
-
+	// Start tracking metrics for this request.
+	c.metrics.StartRequest(c.requestHeaders)
 	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
+
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
@@ -230,15 +206,27 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(ctx context.C
 		}
 	}
 
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation, BodyMutation: bodyMutation},
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+	}
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation, BodyMutation: bodyMutation,
+					Status: extprocv3.CommonResponse_CONTINUE_AND_REPLACE,
+				},
 			},
 		},
-	}
-	c.stream = c.originalRequestBody.Stream
-	return resp, nil
+		DynamicMetadata: dm,
+	}, nil
+}
+
+// ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	panic("BUG: ProcessRequestBody should not be called in the upstream filter")
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -389,6 +377,33 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 	return openAIReq.Model, &openAIReq, nil
 }
 
+// buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
+//
+// This is necessary to ensure that the content length can be set after the extproc filter has processed the request,
+// which will happen in the header mutation filter.
+//
+// This is needed since the content length header is unconditionally cleared by Envoy as we use REPLACE_AND_CONTINUE
+// processing mode in the request headers phase at upstream filter. This is sort of a workaround, and it is necessary
+// for now.
+func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, contentLength int) *structpb.Struct {
+	metadata := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			config.metadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"content_length": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(contentLength)},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return metadata
+}
+
 func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, modelNameOverride, backendName string) (*structpb.Struct, error) {
 	metadataCost := make(map[string]*structpb.Value, len(config.requestCosts))
 	for i := range config.requestCosts {
@@ -405,7 +420,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
 				requestHeaders[config.modelNameHeaderKey],
-				requestHeaders[config.selectedRouteHeaderKey],
+				backendName,
 				costs.InputTokens,
 				costs.OutputTokens,
 				costs.TotalTokens,

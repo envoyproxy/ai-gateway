@@ -32,6 +32,8 @@ func TestAIGatewayRoutes(t *testing.T) {
 	}{
 		{name: "basic.yaml"},
 		{name: "llmcosts.yaml"},
+		{name: "parent_refs.yaml"},
+		{name: "parent_refs_default_kind.yaml"},
 		{
 			name:   "non_openai_schema.yaml",
 			expErr: `spec.schema: Invalid value: "object": failed rule: self.name == 'OpenAI'`,
@@ -41,12 +43,12 @@ func TestAIGatewayRoutes(t *testing.T) {
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 		{
-			name:   "unsupported_match.yaml",
-			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
+			name:   "target_refs_with_parent_refs.yaml",
+			expErr: `spec: Invalid value: "object": targetRefs is deprecated, use parentRefs only`,
 		},
 		{
-			name:   "no_target_refs.yaml",
-			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
+			name:   "parent_refs_invalid_kind.yaml",
+			expErr: `spec.parentRefs: Invalid value: "array": only Gateway is supported`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

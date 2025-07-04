@@ -579,7 +579,7 @@ type TopLogProbs struct {
 type LogProb struct {
 	Token   string  `json:"token"`
 	LogProb float64 `json:"logprob"`
-	Bytes   []byte  `json:"bytes,omitempty"` // Omitting the field if it is null
+	Bytes   []byte  `json:"bytes,omitempty"` // Omitting the field if it is null.
 	// TopLogProbs is a list of the most likely tokens and their log probability, at this token position.
 	// In rare cases, there may be fewer than the number of requested top_logprobs returned.
 	TopLogProbs []TopLogProbs `json:"top_logprobs"` //nolint:tagliatelle //follow openai api

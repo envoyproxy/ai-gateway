@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -147,10 +148,26 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  aigv1a1.AIModelHeaderKey,
+										Value: "mymodel",
+									},
+								},
+							},
+						},
+					},
 				},
-				APISchema:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
+					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
+				},
 			},
 		},
 		{
@@ -162,7 +179,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{
 					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
-					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+					{MetadataKey: "cat", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
 		},
@@ -199,13 +216,14 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-		require.Len(t, fc.LLMRequestCosts, 2)
+		require.Len(t, fc.LLMRequestCosts, 4)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[1].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[1].CEL)
-		require.Len(t, fc.Rules, 2)
-		require.Equal(t, "route1-rule-0", string(fc.Rules[0].Name))
-		require.Equal(t, "route2-rule-0", string(fc.Rules[1].Name))
+		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[3].Type)
+		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
+		require.Len(t, fc.Models, 1)
+		require.Equal(t, "mymodel", fc.Models[0].Name)
 	}
 }
 
@@ -315,6 +333,110 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			require.Equal(t, tc.exp, auth)
 		})
 	}
+}
+
+func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	tests := []struct {
+		name          string
+		bspName       string
+		setupBSP      *aigv1a1.BackendSecurityPolicy
+		setupSecret   *corev1.Secret
+		expectedError string
+	}{
+		{
+			name:          "missing backend security policy",
+			bspName:       "missing-bsp",
+			expectedError: "failed to get BackendSecurityPolicy missing-bsp",
+		},
+		{
+			name:    "api key type with missing secret",
+			bspName: "api-key-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "api-key-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+					APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{
+							Name: "missing-secret",
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-secret",
+		},
+		{
+			name:    "aws credentials without credentials defined",
+			bspName: "aws-no-creds-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-no-creds-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type:           aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: nil, // This should trigger the error.
+				},
+			},
+			expectedError: "AWSCredentials type selected but not defined",
+		},
+		{
+			name:    "aws credentials with credentials file missing secret",
+			bspName: "aws-creds-file-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-file-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						Region: "us-west-2",
+						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+							SecretRef: &gwapiv1.SecretObjectReference{
+								Name: "missing-aws-secret",
+							},
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-aws-secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupBSP != nil {
+				err := fakeClient.Create(ctx, tt.setupBSP)
+				require.NoError(t, err)
+			}
+
+			if tt.setupSecret != nil {
+				err := fakeClient.Create(ctx, tt.setupSecret)
+				require.NoError(t, err)
+			}
+
+			result, err := c.bspToFilterAPIBackendAuth(ctx, namespace, tt.bspName)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedError)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	// Test missing secret.
+	result, err := c.getSecretData(ctx, namespace, "missing-secret", "test-key")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")
+	require.Empty(t, result)
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -40,89 +41,41 @@ func TestWithRealProviders(t *testing.T) {
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
+		Schema:             openAISchema,
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
+			}},
+			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: cc.AWSFileLiteral,
+				Region:                "us-east-1",
+			}}},
+			{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
+			}},
+			{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
+			}},
+			{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
+			}},
+			{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
+			}},
+			{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
+			}},
+			{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
+			}},
+		},
+		Models: []filterapi.Model{
 			{
-				Name:    "openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
-					}},
-				},
-			},
-			{
-				Name: "aws-bedrock-route",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
-					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
-				},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-						CredentialFileLiteral: cc.AWSFileLiteral,
-						Region:                "us-east-1",
-					}}},
-				},
-			},
-			{
-				Name:    "azure-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
-					}},
-				},
-			},
-			{
-				Name:    "gemini-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gemini-2.0-flash-lite"}},
-				Backends: []filterapi.Backend{
-					{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "groq-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "llama-3.1-8b-instant"}},
-				Backends: []filterapi.Backend{
-					{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "grok-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "grok-3"}},
-				Backends: []filterapi.Backend{
-					{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "sambanova-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "Meta-Llama-3.1-8B-Instruct"}},
-				Backends: []filterapi.Backend{
-					{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "deepinfra-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "meta-llama/Meta-Llama-3-8B-Instruct"}},
-				Backends: []filterapi.Backend{
-					{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
-					}},
-				},
+				Name:      "grok-3",
+				OwnedBy:   "xAI",
+				CreatedAt: time.Now(),
 			},
 		},
 	})
@@ -243,7 +196,7 @@ func TestWithRealProviders(t *testing.T) {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
-					// Step 1: Initial tool call request
+					// Step 1: Initial tool call request.
 					question := "What is the weather in New York City?"
 					params := openai.ChatCompletionNewParams{
 						Messages: []openai.ChatCompletionMessageParamUnion{
@@ -274,7 +227,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("error: %v", err)
 						return false
 					}
-					// Step 2: Verify tool call
+					// Step 2: Verify tool call.
 					if len(completion.Choices) == 0 {
 						t.Logf("Expected a response but got none: %+v", completion)
 						return false
@@ -284,13 +237,13 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("Expected tool call from completion result but got none")
 						return false
 					}
-					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response
+					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response.
 					params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
 					getWeatherCalled := false
 					for _, toolCall := range toolCalls {
 						if toolCall.Function.Name == "get_weather" {
 							getWeatherCalled = true
-							// Extract the location from the function call arguments
+							// Extract the location from the function call arguments.
 							var args map[string]interface{}
 							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
 								t.Logf("Error unmarshalling the function arguments: %v", argErr)
@@ -299,11 +252,11 @@ func TestWithRealProviders(t *testing.T) {
 							if location != "New York City" {
 								t.Logf("Expected location to be New York City but got %s", location)
 							}
-							// Simulate getting weather data
+							// Simulate getting weather data.
 							weatherData := "Sunny, 25°C"
 							toolMessage := openai.ToolMessage(weatherData, toolCall.ID)
 							params.Messages = append(params.Messages, toolMessage)
-							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log
+							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log.
 						}
 					}
 					if getWeatherCalled == false {
@@ -317,7 +270,7 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 
-					// Step 4: Verify that the second response is correct
+					// Step 4: Verify that the second response is correct.
 					if len(secondChatCompletion.Choices) == 0 {
 						t.Logf("Expected a response but got none: %+v", secondChatCompletion)
 						return false
@@ -346,15 +299,7 @@ func TestWithRealProviders(t *testing.T) {
 		}, eventuallyTimeout, eventuallyInterval)
 
 		require.Equal(t, []string{
-			"gpt-4o-mini",
-			"us.meta.llama3-2-1b-instruct-v1:0",
-			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-			"o1",
-			"gemini-2.0-flash-lite",
-			"llama-3.1-8b-instant",
 			"grok-3",
-			"Meta-Llama-3.1-8B-Instruct",
-			"meta-llama/Meta-Llama-3-8B-Instruct",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {
