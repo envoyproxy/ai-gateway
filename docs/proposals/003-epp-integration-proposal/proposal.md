@@ -14,7 +14,10 @@
 -   [Design](#design)
     -   [Resource Relation](#resource-relation)
     -   [Configuration Generation](#configuration-generation)
-    -   [Work with Envoy Gateway](#aigatewayroute)
+    -   [Work with Envoy Gateway](#work-with-envoy-gateway)
+-   [Final Workflow](#final-workflow)
+-   [Implementation Considerations and Limitations](#implementation-considerations-and-limitations)
+-   [Non-GIE EPP Integration](#non-gie-epp-integration)
 
 <!-- /toc -->
 
@@ -60,8 +63,6 @@ spec:
 ```
 
 The control plane will generate the corresponding ext proc config (filter + cluster) to envoy, Take the inferencePool above as an example, the destination would be `vllm-llama3-8b-instruct-epp:9002` in the same namespace with the InferencePool.
-
-![](http://liuxunzhuo.oss-cn-chengdu.aliyuncs.com/2025-06-25-090607.png)
 
 Based on the routing rules, the CP patches the ext-proc per-route config to the routes, and when request is matched with the rule, the request goes to the EPP(ext-proc). Take the HTTPRoute as an example, the CP will apply the per-route ext-proc filter according to the `/` matches rule.
 
@@ -199,78 +200,6 @@ To integrate with the GIE, there are two options:
 
 This requires to expand the `AIGatewayRouteRuleBackendRef` with `BackendObjectReference`
 
-##### Current
-
-```
-// AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
-type AIGatewayRouteRuleBackendRef struct {
-	// Name is the name of the AIServiceBackend.
-	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
-
-	// Name of the model in the backend. If provided this will override the name provided in the request.
-	ModelNameOverride string `json:"modelNameOverride,omitempty"`
-
-	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
-	// the BackendRef in the Gateway API. See for the details:
-	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
-	//
-	// Default is 1.
-	//
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:default=1
-	Weight *int32 `json:"weight,omitempty"`
-	// Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
-	// See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
-	// Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
-	//
-	// Default is 0.
-	//
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:default=0
-	Priority *uint32 `json:"priority,omitempty"`
-}
-```
-
-##### Target
-
-```
-// AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
-type AIGatewayRouteRuleBackendRef struct {
-
-	gwapiv1.BackendObjectReference
-
-	// Name of the model in the backend. If provided this will override the name provided in the request.
-	ModelNameOverride string `json:"modelNameOverride,omitempty"`
-
-	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
-	// the BackendRef in the Gateway API. See for the details:
-	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
-	//
-	// Default is 1.
-	//
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:default=1
-	Weight *int32 `json:"weight,omitempty"`
-	// Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
-	// See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
-	// Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
-	//
-	// Default is 0.
-	//
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:default=0
-	Priority *uint32 `json:"priority,omitempty"`
-}
-
-```
-
 ##### Example
 
 + When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
@@ -325,46 +254,19 @@ spec:
 
 This requires to expand the `AIServiceBackend` backendRef supports the InferencePool, considering current AIServiceBackend BackendRef is `gwapiv1.BackendObjectReference`, so we don't need any changes on it.
 
-##### Current
+#### Conclusion
 
-```
-type AIServiceBackendSpec struct {
-	// APISchema specifies the API schema of the output format of requests from
-	// Envoy that this AIServiceBackend can accept as incoming requests.
-	// Based on this schema, the ai-gateway will perform the necessary transformation for
-	// the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.
-	//
-	// This is required to be set.
-	//
-	// +kubebuilder:validation:Required
-	APISchema VersionedAPISchema `json:"schema"`
-	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
-	//
-	// A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
-	// as a backend in the future.
-	//
-	// This is required to be set.
-	//
-	// +kubebuilder:validation:Required
-	BackendRef gwapiv1.BackendObjectReference `json:"backendRef"`
+We will adopt **Option 1: Add InferencePool as a backendRef on AIGatewayRoute Level**.
 
-	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
-	// is being attached to.
-	//
-	// +optional
-	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
+This approach is preferred because InferencePool resources do not require BackendSecurityPolicy or schema configuration. The implementation assumes OpenAI format compatibility, which aligns with the Gateway API Inference Extension (GAIE) design principles.
 
-	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
-	// 	That may be useful for the backend that has a different cost calculation logic.
-}
-```
 
 ##### Example
 
 + When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
 + When it matches vllm-llama3-8b-instruct goes to AIServiceBackend `vllm-llama3-8b-instruct`
 
-```
+```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
@@ -442,6 +344,12 @@ This section is about how to manage the GIE kubernetes resource, in short, there
 + static: end-user manage the GIE deployment, service etc resource.
 + dynamic: end-user do not care about the life cycle of GIE resources, Envoy AI Gateway take care of that.
 
+#### Conclusion
+
+For the initial implementation, we will adopt the **static approach** to manage EPP lifecycle. This decision is based on implementation complexity considerations and allows users to pre-deploy EPP resources. Dynamic resource management will be considered for future iterations based on user requirements and feedback.
+
+This approach aligns with industry practices where external inference framework controllers typically manage EPP deployment logic. For reference, KServe implements EPP deployment through their `LLMInferenceService` API, demonstrating that EPP lifecycle management is better handled at the inference framework level rather than within Envoy AI Gateway. See [KServe LLMInferenceService](https://github.com/kserve/kserve/blob/master/pkg/apis/serving/v1alpha1/llm_inference_service_types.go#L171) for implementation details.
+
 #### Work with Envoy Gateway
 
 There are two work-in-process PRs in upstream:
@@ -455,7 +363,7 @@ Reference: https://github.com/envoyproxy/gateway/pull/6271
 
 The first one, introduces a new Backend Type called HostOverride, it can be referred by HTTPRoute:
 
-```
+```yaml
  apiVersion: gateway.envoyproxy.io/v1alpha1
   kind: Backend
   metadata:
@@ -472,7 +380,7 @@ It adds the the cluster with override_host loadBalancingPolicy, we can add the h
 
 Take the configuration below as an example:
 
-```
+```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
@@ -512,7 +420,7 @@ spec:
 
 When EAGW found this situation, it will generate HTTPRoute + Backend + EPP:
 
-```
+```yaml
   apiVersion: gateway.networking.k8s.io/v1
   kind: HTTPRoute
   metadata:
@@ -604,7 +512,89 @@ Workflow is like:
 3. Send it back to Envoy Gateway
 4. Envoy Gateway xDS Server pushes the config to EnvoyProxy
 
-##### Question?
+#### Conclusion
 
-How do we manage the ext-proc configuration, since the PostRouteModifyHook don't carry the listener, then we cannot add ext-proc http filter over there? Solve by another Hook? Or generate the EnvoyExtensionPolicy, if so what is the advantages compared to the first one?
+We will adopt the **EnvoyExtensionServer approach** for integrating with Envoy Gateway. This decision is based on several factors:
 
++ **API Stability**: The extension server approach provides better stability compared to direct API modifications
++ **Flexibility**: Offers more control over custom backendRef handling through the extension server mechanism
++ **Conformance**: Enables passing Gateway API conformance tests without requiring modifications ([#648](https://github.com/envoyproxy/ai-gateway/issues/648))
++ **Maintainability**: Reduces coupling with upstream Envoy Gateway API changes
+
+## Final Workflow
+
+The complete integration workflow follows these steps:
+
+1. **Extension Server Setup**: Enable Envoy Gateway extension server with InferencePool backend resource support
+2. **Resource Installation**: Deploy Gateway API Inference Extension (GIE) resources including CRDs and controller deployment
+3. **InferencePool Configuration**: Create InferencePool resource referencing the external processing service
+4. **Route Configuration**: Configure InferencePool as AIGatewayRoute backend (limited to one InferencePool per route rule)
+5. **HTTPRoute Generation**: Envoy AI Gateway synchronizes configuration to managed HTTPRoute with InferencePool BackendRef
+6. **Extension Policy Creation**: Generate EnvoyExtensionPolicy with external processing configuration targeting the HTTPRoute
+7. **Cluster Modification**: Envoy Gateway invokes PostClusterModify hook, carrying InferencePool resource information
+8. **Cluster Configuration**: Envoy AI Gateway configures Original Destination cluster with `x-gateway-destination-endpoint` header matching
+9. **Request Processing**: Client requests flow through EnvoyProxy to EPP service, which adds destination headers and metadata for endpoint selection
+
+## Implementation Considerations and Limitations
+
+### Load Balancing Policy
+
+The initial implementation will use **Original Destination** cluster configuration for endpoint selection. Future iterations may consider **Host Override** policy as an alternative approach based on performance and operational requirements.
+
+### Fallback Support
+
+Envoy Gateway's native fallback mechanism operates within a single cluster using multiple backends as separate `localityLBEndpoints`. However, InferencePool integration presents architectural constraints:
+
++ InferencePool cannot coexist with standard AIServiceBackends in a single route rule
++ The cluster configuration requires Original Destination or Host Override setup, which conflicts with standard multi-backend configurations
++ Cross-provider fallback scenarios are not supported in the initial implementation
+
+This limitation will be documented, and potential solutions using aggregate clusters may be explored in future releases.
+
+### Token Rate Limiting
+
+Token-based rate limiting for InferencePool is supported through proper upstream external processing filter configuration. The implementation must ensure upstream `extproc` filters are correctly inserted, following the same pattern used in the current extension server implementation.
+
+### Documented Limitations
+
+The following limitations must be clearly documented for users:
+
+#### Cross-Provider Fallback Restriction
+Cross-provider fallback functionality is not supported when using InferencePool due to Envoy cluster configuration constraints at both Envoy Gateway and extension server levels. This limitation may be addressed in future releases if Envoy Gateway supports aggregate cluster configurations or alternative extension server-level solutions.
+
+#### Single Backend Constraint
+Users cannot define multiple InferencePool resources or combine InferencePool with standard AIServiceBackends within a single route rule. This restriction will be enforced through Kubernetes CEL validation.
+
+**Technical Rationale**: Multi-backend route rules assume an Envoy cluster contains multiple backends as `LocalityLbEndpoints`, where each backend's metadata distinguishes the corresponding AIServiceBackend for external processing logic. InferencePool's Original Destination cluster configuration is incompatible with this multi-backend model, and Envoy Gateway's fallback/priority mechanisms operate at the cluster level.
+
+## Non-GIE EPP Integration
+
+This section outlines the requirements and integration process for custom Endpoint Picker Provider (EPP) implementations beyond the Gateway API Inference Extension.
+
+### EPP Selection Mechanism
+
+EPP selection is configured through `InferencePool.spec.extensionRef` as defined in the [Gateway API Inference Extension specification](https://gateway-api-inference-extension.sigs.k8s.io/reference/spec/#extensionreference). This design is implementation-agnostic, allowing users to specify their own EPP deployments while maintaining compatibility with the InferencePool API.
+
+### Requirements for Custom EPP Implementation
+
+Custom EPP implementations must satisfy the following technical requirements:
+
++ **External Processing Server**: Must implement the Envoy external processing (ext-proc) gRPC protocol
++ **Endpoint Selection**: Must add the `x-gateway-destination-endpoint` header to request headers for endpoint routing
++ **InferencePool API Awareness**: Must understand InferencePool resource specifications to:
+  + Enable Envoy AI Gateway to establish ext-proc server connections
+  + Determine which routes require ext-proc filter attachment
+  + Configure Original Destination clusters with `x-gateway-destination-endpoint` header matching
+
+### Integration Workflow
+
+The integration process for custom EPP implementations follows these steps:
+
+1. **Deployment**: Deploy the custom EPP service implementing the ext-proc protocol
+2. **Resource Configuration**: Create InferencePool resource referencing the custom EPP service
+3. **Route Binding**: Link the InferencePool to AIGatewayRoute backend configuration
+4. **Request Processing**: Incoming requests are processed through the following flow:
+   + EnvoyProxy receives client request
+   + Request is forwarded to custom EPP ext-proc server
+   + EPP analyzes request and adds `x-gateway-destination-endpoint` header
+   + EnvoyProxy routes request to the selected endpoint based on the header value
