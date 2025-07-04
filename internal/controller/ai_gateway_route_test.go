@@ -333,3 +333,11 @@ func Test_buildPriorityAnnotation(t *testing.T) {
 	annotation := buildPriorityAnnotation(rules)
 	require.Equal(t, "0:orange:0,0:apple:1,0:pineapple:2", annotation)
 }
+
+func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This is mostly for coverage.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch)
+	s.syncGateway(t.Context(), "ns", "non-exist")
+}
