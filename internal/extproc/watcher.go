@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -23,6 +24,7 @@ type ConfigReceiver interface {
 }
 
 type configWatcher struct {
+	mu              sync.Mutex
 	lastMod         time.Time
 	path            string
 	rcv             ConfigReceiver
@@ -76,6 +78,9 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	case err != nil:
 		return err
 	}
+
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
 
 	if cfg != nil {
 		if cw.usingDefaultCfg { // Do not re-reload the same thing on every tick.
