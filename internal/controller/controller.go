@@ -63,6 +63,8 @@ type Options struct {
 	EnableLeaderElection bool
 	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
 	EnvoyGatewayNamespace string
+	// EnableEnvoyGatewayDaemonSetMode ensures Envoy Gateway is rolled out during ai-gateway-extproc update when deployed as DaemonSet.
+	EnableEnvoyGatewayDaemonSetMode bool
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
@@ -82,7 +84,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage,
+		options.EnableEnvoyGatewayDaemonSetMode)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).

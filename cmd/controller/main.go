@@ -31,17 +31,18 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel        string
-	extProcImage           string
-	extProcImagePullPolicy corev1.PullPolicy
-	enableLeaderElection   bool
-	logLevel               zapcore.Level
-	extensionServerPort    string
-	tlsCertDir             string
-	tlsCertName            string
-	tlsKeyName             string
-	caBundleName           string
-	envoyGatewayNamespace  string
+	extProcLogLevel                 string
+	extProcImage                    string
+	extProcImagePullPolicy          corev1.PullPolicy
+	enableLeaderElection            bool
+	logLevel                        zapcore.Level
+	extensionServerPort             string
+	tlsCertDir                      string
+	tlsCertName                     string
+	tlsKeyName                      string
+	caBundleName                    string
+	envoyGatewayNamespace           string
+	enableEnvoyGatewayDaemonSetMode bool
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -114,6 +115,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"envoy-gateway-system",
 		"The namespace where the Envoy Gateway system components are installed.",
 	)
+	enableEnvoyGatewayDaemonSetMode := fs.Bool(
+		"enableEnvoyGatewayDaemonSetMode",
+		false,
+		"Enable Envoy Gateway DaemonSet mode ensures Envoy Gateway is rolled out during ai-gateway-extproc update when deployed as DaemonSet.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -138,17 +144,18 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	}
 
 	return flags{
-		extProcLogLevel:        *extProcLogLevelPtr,
-		extProcImage:           *extProcImagePtr,
-		extProcImagePullPolicy: extProcPullPolicy,
-		enableLeaderElection:   *enableLeaderElectionPtr,
-		logLevel:               zapLogLevel,
-		extensionServerPort:    *extensionServerPortPtr,
-		tlsCertDir:             *tlsCertDir,
-		tlsCertName:            *tlsCertName,
-		tlsKeyName:             *tlsKeyName,
-		caBundleName:           *caBundleName,
-		envoyGatewayNamespace:  *envoyGatewayNamespace,
+		extProcLogLevel:                 *extProcLogLevelPtr,
+		extProcImage:                    *extProcImagePtr,
+		extProcImagePullPolicy:          extProcPullPolicy,
+		enableLeaderElection:            *enableLeaderElectionPtr,
+		logLevel:                        zapLogLevel,
+		extensionServerPort:             *extensionServerPortPtr,
+		tlsCertDir:                      *tlsCertDir,
+		tlsCertName:                     *tlsCertName,
+		tlsKeyName:                      *tlsKeyName,
+		caBundleName:                    *caBundleName,
+		envoyGatewayNamespace:           *envoyGatewayNamespace,
+		enableEnvoyGatewayDaemonSetMode: *enableEnvoyGatewayDaemonSetMode,
 	}, nil
 }
 
