@@ -114,7 +114,16 @@ func TestStartControllers(t *testing.T) {
 					APISchema:  defaultSchema,
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{
+									Headers: []gwapiv1.HTTPHeaderMatch{
+										{
+											Name:  "x-ai-eg-model",
+											Value: "foo",
+										},
+									},
+								},
+							},
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 								{Name: "backend1", Weight: ptr.To[int32](1)},
 								{Name: "backend2", Weight: ptr.To[int32](1)},
@@ -181,8 +190,8 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default backend.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-selected-route", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
-				require.Equal(t, route+"-rule-0", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
+				require.Equal(t, "x-ai-eg-model", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, "foo", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 
 				// Check all rule has the host rewrite filter except for the last rule.
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {

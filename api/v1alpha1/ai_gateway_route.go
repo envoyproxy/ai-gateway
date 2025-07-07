@@ -313,13 +313,10 @@ type AIGatewayRouteRuleMatch struct {
 	// Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
 	//
-	// Currently, only the exact header matching is supported.
-	//
 	// +listType=map
 	// +listMapKey=name
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:XValidation:rule="self.all(match, match.type != 'RegularExpression')", message="currently only exact match is supported"
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 

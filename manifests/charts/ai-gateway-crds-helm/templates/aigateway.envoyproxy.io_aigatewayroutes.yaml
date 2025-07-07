@@ -494,8 +494,6 @@ spec:
                             description: |-
                               Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:
                               https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch
-
-                              Currently, only the exact header matching is supported.
                             items:
                               description: |-
                                 HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
@@ -553,9 +551,6 @@ spec:
                             x-kubernetes-list-map-keys:
                             - name
                             x-kubernetes-list-type: map
-                            x-kubernetes-validations:
-                            - message: currently only exact match is supported
-                              rule: self.all(match, match.type != 'RegularExpression')
                         type: object
                       maxItems: 128
                       type: array

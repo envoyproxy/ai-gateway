@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -40,89 +41,41 @@ func TestWithRealProviders(t *testing.T) {
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
+		Schema:             openAISchema,
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
+			}},
+			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: cc.AWSFileLiteral,
+				Region:                "us-east-1",
+			}}},
+			{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
+			}},
+			{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
+			}},
+			{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
+			}},
+			{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
+			}},
+			{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
+			}},
+			{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
+			}},
+		},
+		Models: []filterapi.Model{
 			{
-				Name:    "openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
-					}},
-				},
-			},
-			{
-				Name: "aws-bedrock-route",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
-					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
-				},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-						CredentialFileLiteral: cc.AWSFileLiteral,
-						Region:                "us-east-1",
-					}}},
-				},
-			},
-			{
-				Name:    "azure-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
-					}},
-				},
-			},
-			{
-				Name:    "gemini-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gemini-2.0-flash-lite"}},
-				Backends: []filterapi.Backend{
-					{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "groq-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "llama-3.1-8b-instant"}},
-				Backends: []filterapi.Backend{
-					{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "grok-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "grok-3"}},
-				Backends: []filterapi.Backend{
-					{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "sambanova-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "Meta-Llama-3.1-8B-Instruct"}},
-				Backends: []filterapi.Backend{
-					{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
-					}},
-				},
-			},
-			{
-				Name:    "deepinfra-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "meta-llama/Meta-Llama-3-8B-Instruct"}},
-				Backends: []filterapi.Backend{
-					{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
-					}},
-				},
+				Name:      "grok-3",
+				OwnedBy:   "xAI",
+				CreatedAt: time.Now(),
 			},
 		},
 	})
@@ -346,15 +299,7 @@ func TestWithRealProviders(t *testing.T) {
 		}, eventuallyTimeout, eventuallyInterval)
 
 		require.Equal(t, []string{
-			"gpt-4o-mini",
-			"us.meta.llama3-2-1b-instruct-v1:0",
-			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-			"o1",
-			"gemini-2.0-flash-lite",
-			"llama-3.1-8b-instant",
 			"grok-3",
-			"Meta-Llama-3.1-8B-Instruct",
-			"meta-llama/Meta-Llama-3-8B-Instruct",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {

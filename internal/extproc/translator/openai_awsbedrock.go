@@ -349,7 +349,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) error {
 	// Convert Messages.
 	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(openAIReq.Messages))
-	for i := range openAIReq.Messages {
+	openAIReqMessageLen, i := len(openAIReq.Messages), 0
+	for i < openAIReqMessageLen {
 		msg := &openAIReq.Messages[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleUser:
@@ -405,10 +406,33 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if err != nil {
 				return err
 			}
+			// Coalesce consecutive tool messages following a user message.
+			for i+1 < openAIReqMessageLen {
+				nextMessage := &openAIReq.Messages[i+1]
+				if nextMessage.Type != openai.ChatMessageRoleTool {
+					break
+				}
+
+				nextToolMessage, ok := nextMessage.Value.(openai.ChatCompletionToolMessageParam)
+				if !ok {
+					return fmt.Errorf("expected ChatCompletionToolMessageParam, got %T", nextMessage.Value)
+				}
+				nextBedrockMessage, err := o.openAIMessageToBedrockMessageRoleTool(&nextToolMessage, awsbedrock.ConversationRoleUser)
+				if err != nil {
+					return err
+				}
+				if len(nextBedrockMessage.Content) > 0 {
+					bedrockMessage.Content = append(bedrockMessage.Content, nextBedrockMessage.Content[0])
+				}
+				i++
+			}
+
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		default:
 			return fmt.Errorf("unexpected role: %s", msg.Type)
 		}
+
+		i++
 	}
 	return nil
 }

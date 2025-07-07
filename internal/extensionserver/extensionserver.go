@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // Server is the implementation of the EnvoyGatewayExtensionServer interface.
@@ -202,15 +203,17 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 			if endpoint.Metadata.FilterMetadata == nil {
 				endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
 			}
-			m, ok := endpoint.Metadata.FilterMetadata["aigateway.envoy.io"]
+			m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 			if !ok {
 				m = &structpb.Struct{}
-				endpoint.Metadata.FilterMetadata["aigateway.envoy.io"] = m
+				endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
 			}
 			if m.Fields == nil {
 				m.Fields = make(map[string]*structpb.Value)
 			}
-			m.Fields["backend_name"] = structpb.NewStringValue(fmt.Sprintf("%s.%s", name, namespace))
+			m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+				internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
+			)
 		}
 	}
 

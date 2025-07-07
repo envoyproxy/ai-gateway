@@ -24,12 +24,10 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 const (
 	managedByLabel             = "app.kubernetes.io/managed-by"
-	selectedRouteHeaderKey     = "x-ai-eg-selected-route"
 	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
 	aigatewayUUIDAnnotationKey = "aigateway.envoyproxy.io/uuid"
 	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
@@ -168,10 +166,6 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	return nil
 }
 
-func routeName(aiGatewayRoute *aigv1a1.AIGatewayRoute, ruleIndex int) filterapi.RouteRuleName {
-	return filterapi.RouteRuleName(fmt.Sprintf("%s-rule-%d", aiGatewayRoute.Name, ruleIndex))
-}
-
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
 func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	rewriteFilters := []gwapiv1.HTTPRouteFilter{{
@@ -182,12 +176,12 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			Name:  hostRewriteHTTPFilterName,
 		},
 	}}
-	var rules []gwapiv1.HTTPRouteRule
-	for i, rule := range aiGatewayRoute.Spec.Rules {
-		routeName := routeName(aiGatewayRoute, i)
+	rules := make([]gwapiv1.HTTPRouteRule, 0, len(aiGatewayRoute.Spec.Rules)+1) // +1 for the default rule.
+	for i := range aiGatewayRoute.Spec.Rules {
+		rule := &aiGatewayRoute.Spec.Rules[i]
 		var backendRefs []gwapiv1.HTTPBackendRef
-		for i := range rule.BackendRefs {
-			br := &rule.BackendRefs[i]
+		for j := range rule.BackendRefs {
+			br := &rule.BackendRefs[j]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
 			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 			if err != nil {
@@ -200,13 +194,15 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				}},
 			)
 		}
+		var matches []gwapiv1.HTTPRouteMatch
+		for j := range rule.Matches {
+			matches = append(matches, gwapiv1.HTTPRouteMatch{Headers: rule.Matches[j].Headers})
+		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
-			Matches: []gwapiv1.HTTPRouteMatch{
-				{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: string(routeName)}}},
-			},
-			Filters:  rewriteFilters,
-			Timeouts: rule.GetTimeoutsOrDefault(),
+			Matches:     matches,
+			Filters:     rewriteFilters,
+			Timeouts:    rule.GetTimeoutsOrDefault(),
 		})
 	}
 

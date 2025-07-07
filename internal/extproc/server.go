@@ -23,12 +23,10 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/router"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -58,49 +56,18 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
-	rt, err := router.New(config, x.NewCustomRouter)
-	if err != nil {
-		return fmt.Errorf("cannot create router: %w", err)
-	}
-
-	var (
-		backends       = make(map[string]*processorConfigBackend)
-		declaredModels []model
-	)
-	for _, r := range config.Rules {
-		ownedBy := r.ModelsOwnedBy
-		createdAt := r.ModelsCreatedAt
-
-		// Collect declared models from configured header routes. These will be used to
-		// serve requests to the /v1/models endpoint.
-		// TODO(nacx): note that currently we only support exact matching in the headers. When
-		// header matching is extended, this will need to be updated.
-		for _, h := range r.Headers {
-			// If explicitly set to something that is not an exact match, skip.
-			// If not set, we assume it's an exact match.
-			//
-			// Also, we only care about the AIModel header to declare models.
-			if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != config.ModelNameHeaderKey {
-				continue
+	backends := make(map[string]*processorConfigBackend, len(config.Backends))
+	for _, backend := range config.Backends {
+		b := backend
+		var h backendauth.Handler
+		if b.Auth != nil {
+			var err error
+			h, err = backendauth.NewHandler(ctx, b.Auth)
+			if err != nil {
+				return fmt.Errorf("cannot create backend auth handler: %w", err)
 			}
-			declaredModels = append(declaredModels, model{
-				name:      h.Value,
-				createdAt: createdAt,
-				ownedBy:   ownedBy,
-			})
 		}
-
-		for _, backend := range r.Backends {
-			b := backend
-			var h backendauth.Handler
-			if b.Auth != nil {
-				h, err = backendauth.NewHandler(ctx, b.Auth)
-				if err != nil {
-					return fmt.Errorf("cannot create backend auth handler: %w", err)
-				}
-			}
-			backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
-		}
+		backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
 	}
 
 	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
@@ -108,6 +75,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		c := &config.LLMRequestCosts[i]
 		var prog cel.Program
 		if c.CEL != "" {
+			var err error
 			prog, err = llmcostcel.NewProgram(c.CEL)
 			if err != nil {
 				return fmt.Errorf("cannot create CEL program for cost: %w", err)
@@ -117,15 +85,13 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	newConfig := &processorConfig{
-		uuid:                   config.UUID,
-		schema:                 config.Schema,
-		router:                 rt,
-		selectedRouteHeaderKey: config.SelectedRouteHeaderKey,
-		modelNameHeaderKey:     config.ModelNameHeaderKey,
-		backends:               backends,
-		metadataNamespace:      config.MetadataNamespace,
-		requestCosts:           costs,
-		declaredModels:         declaredModels,
+		uuid:               config.UUID,
+		schema:             config.Schema,
+		modelNameHeaderKey: config.ModelNameHeaderKey,
+		backends:           backends,
+		metadataNamespace:  config.MetadataNamespace,
+		requestCosts:       costs,
+		declaredModels:     config.Models,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -308,13 +274,13 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req 
 		panic(err)
 	}
 
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata["aigateway.envoy.io"]
+	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 	if !ok {
-		return status.Error(codes.Internal, "missing aigateway.envoy.io metadata")
+		return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
 	}
-	backendName, ok := aiGatewayEndpointMetadata.Fields["backend_name"]
+	backendName, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
 	if !ok {
-		return status.Error(codes.Internal, "missing backend_name in endpoint metadata")
+		return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
 	}
 	backend, ok := s.config.backends[backendName.GetStringValue()]
 	if !ok {

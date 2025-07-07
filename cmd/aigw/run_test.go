@@ -79,33 +79,6 @@ func TestRun(t *testing.T) {
 		return true
 	}, 120*time.Second, 1*time.Second)
 
-	// This is the health checking to see the extproc is working as expected.
-	require.Eventually(t, func() bool {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:1975/v1/chat/completions",
-			strings.NewReader("{}"))
-		req.Header.Set("Content-Type", "application/json")
-		require.NoError(t, err)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
-		}
-		defer func() {
-			require.NoError(t, resp.Body.Close())
-		}()
-		// We don't care about the content and just check the connection is successful.
-		raw, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		body := string(raw)
-		t.Logf("status=%d, body: %s", resp.StatusCode, body)
-		// This ensures that the response is returned from the external processor where the body says about the
-		// matching rule not found since we send an empty JSON.
-		if resp.StatusCode != http.StatusNotFound || body != "no matching rule found" {
-			return false
-		}
-		return true
-	}, 120*time.Second, 1*time.Second)
-
 	for _, tc := range []struct {
 		testName, modelName string
 		required            internaltesting.RequiredCredential

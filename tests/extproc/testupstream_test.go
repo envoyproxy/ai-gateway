@@ -44,53 +44,19 @@ func TestWithTestUpstream(t *testing.T) {
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
-			{
-				Name:    "testupstream-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
-				Backends: []filterapi.Backend{
-					testUpstreamOpenAIBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-aws-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-azure-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAzureBackend,
-				},
-			},
-			{
-				Name:    "testupstream-modelname-override-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "modelname-override"}},
-				Backends: []filterapi.Backend{
-					testUpstreamModelNameOverride,
-				},
-			},
-			{
-				Name: "not-used-for-completion",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "some-model1"},
-					{Name: "x-model-name", Value: "some-model2"},
-					{Name: "x-model-name", Value: "some-model3"},
-				},
-				Backends:        []filterapi.Backend{alwaysFailingBackend},
-				ModelsOwnedBy:   "Envoy AI Gateway",
-				ModelsCreatedAt: now,
-			},
+		Schema:             openAISchema,
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			testUpstreamOpenAIBackend,
+			testUpstreamModelNameOverride,
+			testUpstreamAAWSBackend,
+			testUpstreamAzureBackend,
+		},
+		Models: []filterapi.Model{
+			{Name: "some-model1", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model2", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model3", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 		},
 	})
 

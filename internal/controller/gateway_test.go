@@ -148,10 +148,26 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  aigv1a1.AIModelHeaderKey,
+										Value: "mymodel",
+									},
+								},
+							},
+						},
+					},
 				},
-				APISchema:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
+					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
+				},
 			},
 		},
 		{
@@ -163,7 +179,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{
 					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
-					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+					{MetadataKey: "cat", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
 		},
@@ -200,13 +216,14 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-		require.Len(t, fc.LLMRequestCosts, 2)
+		require.Len(t, fc.LLMRequestCosts, 4)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[1].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[1].CEL)
-		require.Len(t, fc.Rules, 2)
-		require.Equal(t, "route1-rule-0", string(fc.Rules[0].Name))
-		require.Equal(t, "route2-rule-0", string(fc.Rules[1].Name))
+		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[3].Type)
+		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
+		require.Len(t, fc.Models, 1)
+		require.Equal(t, "mymodel", fc.Models[0].Name)
 	}
 }
 
