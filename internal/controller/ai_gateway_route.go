@@ -27,9 +27,10 @@ import (
 )
 
 const (
-	managedByLabel             = "app.kubernetes.io/managed-by"
-	hostRewriteHTTPFilterName  = "ai-eg-host-rewrite"
-	aigatewayUUIDAnnotationKey = "aigateway.envoyproxy.io/uuid"
+	managedByLabel                      = "app.kubernetes.io/managed-by"
+	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
+	routeNotFoundResponseHTTPFilterName = "ai-eg-not-found-response"
+	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
 	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	// This will result in metadata being added to the underling Envoy route
 	// @see https://gateway.envoyproxy.io/contributions/design/metadata/
@@ -93,19 +94,11 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
-// syncAIGatewayRoute is the main logic for reconciling the AIGatewayRoute resource.
-// This is decoupled from the Reconcile method to centralize the error handling and status updates.
-func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	// Check if the HTTPRouteFilter exists in the namespace.
-	var httpRouteFilter egv1a1.HTTPRouteFilter
-	err := c.client.Get(ctx,
-		client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: aiGatewayRoute.Namespace}, &httpRouteFilter)
-	if apierrors.IsNotFound(err) {
-		httpRouteFilter = egv1a1.HTTPRouteFilter{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      hostRewriteHTTPFilterName,
-				Namespace: aiGatewayRoute.Namespace,
-			},
+// defaultHTTPRouteFilters returns the default HTTPRouteFilters that are required for the AIGatewayRoute to function.
+func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
+	return []*egv1a1.HTTPRouteFilter{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: hostRewriteHTTPFilterName, Namespace: ns},
 			Spec: egv1a1.HTTPRouteFilterSpec{
 				URLRewrite: &egv1a1.HTTPURLRewriteFilter{
 					Hostname: &egv1a1.HTTPHostnameModifier{
@@ -113,18 +106,48 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 					},
 				},
 			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: routeNotFoundResponseHTTPFilterName, Namespace: ns},
+			Spec: egv1a1.HTTPRouteFilterSpec{
+				DirectResponse: &egv1a1.HTTPDirectResponseFilter{
+					StatusCode: ptr.To(404),
+					Body: &egv1a1.CustomResponseBody{
+						Inline: ptr.To(
+							// "Likely" since the matching rule can be arbitrary, not necessarily matching on the model name.
+							`No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
+						),
+					},
+				},
+			},
+		},
+	}
+}
+
+// syncAIGatewayRoute is the main logic for reconciling the AIGatewayRoute resource.
+// This is decoupled from the Reconcile method to centralize the error handling and status updates.
+func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+	// Check if the static default HTTPRouteFilters exist in the namespace.
+	filters := defaultHTTPRouteFilters(aiGatewayRoute.Namespace)
+	for _, base := range filters {
+		var f egv1a1.HTTPRouteFilter
+		if err := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); err != nil {
+			if apierrors.IsNotFound(err) {
+				// Create the filter if it does not exist.
+				if err = c.client.Create(ctx, base); err != nil {
+					return fmt.Errorf("failed to create HTTPRouteFilter %s: %w", f.Name, err)
+				}
+				c.logger.Info("Created HTTPRouteFilter", "name", f.Name, "namespace", f.Namespace)
+			} else {
+				return fmt.Errorf("failed to get HTTPRouteFilter %s: %w", base.Name, err)
+			}
 		}
-		if err = c.client.Create(ctx, &httpRouteFilter); err != nil {
-			return fmt.Errorf("failed to create HTTPRouteFilter: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to get HTTPRouteFilter: %w", err)
 	}
 
 	// Check if the HTTPRoute exists.
 	c.logger.Info("syncing AIGatewayRoute", "namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name)
 	var httpRoute gwapiv1.HTTPRoute
-	err = c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
+	err := c.client.Get(ctx, client.ObjectKey{Name: aiGatewayRoute.Name, Namespace: aiGatewayRoute.Namespace}, &httpRoute)
 	existingRoute := err == nil
 	if apierrors.IsNotFound(err) {
 		// This means that this AIGatewayRoute is a new one.
@@ -206,20 +229,18 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		})
 	}
 
-	// Adds the default route rule with "/" path. This is necessary because Envoy's router selects the backend
-	// before entering the filters. So, all requests would result in a 404 if there is no default route. In practice,
-	// this default route is not used because our AI Gateway filters is the one who actually calculates the route based
-	// on the given Rules. If it doesn't match any backend, 404 will be returned from the AI Gateway filter as an immediate
-	// response.
-	//
-	// In other words, this default route is an implementation detail to make the Envoy router happy and does not affect
-	// the actual routing at all.
-	if len(rules) > 0 {
-		rules = append(rules, gwapiv1.HTTPRouteRule{
-			Name:    ptr.To[gwapiv1.SectionName]("unreachable"),
-			Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
-		})
-	}
+	rules = append(rules, gwapiv1.HTTPRouteRule{
+		Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
+		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
+		Filters: []gwapiv1.HTTPRouteFilter{{
+			Type: gwapiv1.HTTPRouteFilterExtensionRef,
+			ExtensionRef: &gwapiv1.LocalObjectReference{
+				Group: "gateway.envoyproxy.io",
+				Kind:  "HTTPRouteFilter",
+				Name:  routeNotFoundResponseHTTPFilterName,
+			},
+		}},
+	})
 
 	dst.Spec.Rules = rules
 

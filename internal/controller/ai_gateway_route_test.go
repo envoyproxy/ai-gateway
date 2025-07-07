@@ -279,8 +279,18 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 				{
 					// The default rule.
-					Name:    ptr.To[gwapiv1.SectionName]("unreachable"),
+					Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
 					Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
+					Filters: []gwapiv1.HTTPRouteFilter{
+						{
+							Type: gwapiv1.HTTPRouteFilterExtensionRef,
+							ExtensionRef: &gwapiv1.LocalObjectReference{
+								Group: "gateway.envoyproxy.io",
+								Kind:  "HTTPRouteFilter",
+								Name:  routeNotFoundResponseHTTPFilterName,
+							},
+						},
+					},
 				},
 			}
 			require.Equal(t, expRules, httpRoute.Spec.Rules)
