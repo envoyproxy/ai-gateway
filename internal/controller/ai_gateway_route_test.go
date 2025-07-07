@@ -142,6 +142,12 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
 	require.NoError(t, err)
 	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
+
+	// Also check the default route not found response filter.
+	var notFoundFilter egv1a1.HTTPRouteFilter
+	err = s.client.Get(t.Context(), client.ObjectKey{Name: routeNotFoundResponseHTTPFilterName, Namespace: "ns1"}, &notFoundFilter)
+	require.NoError(t, err)
+	require.Equal(t, routeNotFoundResponseHTTPFilterName, notFoundFilter.Name)
 }
 
 func Test_newHTTPRoute(t *testing.T) {

@@ -29,7 +29,7 @@ import (
 const (
 	managedByLabel                      = "app.kubernetes.io/managed-by"
 	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
-	routeNotFoundResponseHTTPFilterName = "ai-eg-not-found-response"
+	routeNotFoundResponseHTTPFilterName = "ai-eg-route-not-found-response"
 	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
 	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	// This will result in metadata being added to the underling Envoy route
