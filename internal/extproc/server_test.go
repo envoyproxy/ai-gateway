@@ -8,7 +8,6 @@ package extproc
 import (
 	"context"
 	"errors"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"io"
 	"log/slog"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
