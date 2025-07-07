@@ -106,11 +106,8 @@ func TestWithTestUpstream(t *testing.T) {
 	}{
 		{
 			name:            "unknown path",
-			backend:         "openai",
 			path:            "/unknown",
-			method:          http.MethodPost,
 			requestBody:     `{"prompt": "hello"}`,
-			expPath:         "/unknown",
 			expStatus:       http.StatusNotFound,
 			expResponseBody: `unsupported path: /unknown`,
 		},
