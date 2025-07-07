@@ -86,7 +86,7 @@ func TestWithTestUpstream(t *testing.T) {
 		responseBody,
 		// responseType is either empty, "sse" or "aws-event-stream" as implemented by the test upstream.
 		responseType,
-		// responseStatus is the HTTP status code of the response.
+		// responseStatus is the HTTP status code of the response returned by the test upstream.
 		responseStatus,
 		// responseHeaders are the headers sent in the HTTP response
 		// The value is a base64 encoded string of comma separated key-value pairs.
@@ -105,15 +105,11 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
-			name:           "unknown path",
-			backend:        "openai",
-			path:           "/unknown",
-			method:         http.MethodPost,
-			requestBody:    `{"prompt": "hello"}`,
-			responseBody:   `{"error": "unknown path"}`,
-			expPath:        "/unknown",
-			responseStatus: "500",
-			expStatus:      http.StatusInternalServerError,
+			name:            "unknown path",
+			path:            "/unknown",
+			requestBody:     `{"prompt": "hello"}`,
+			expStatus:       http.StatusNotFound,
+			expResponseBody: `unsupported path: /unknown`,
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",

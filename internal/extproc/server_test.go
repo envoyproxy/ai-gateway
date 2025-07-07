@@ -15,6 +15,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -358,12 +359,18 @@ func TestServer_ProcessorSelection(t *testing.T) {
 				},
 			},
 		}
-		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+				Body:       []byte("unsupported path: /unknown"),
+				GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
+			},
+		}}
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
 		require.Equal(t, codes.NotFound, status.Convert(err).Code())
-		require.ErrorContains(t, err, "no processor defined for path: /unknown")
+		require.ErrorContains(t, err, "unsupported path: /unknown")
 	})
 
 	t.Run("known path", func(t *testing.T) {
