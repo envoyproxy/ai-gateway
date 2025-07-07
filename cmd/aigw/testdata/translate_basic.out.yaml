@@ -134,7 +134,7 @@ spec:
     - matches:
         - path:
             value: /
-      name:  route-not-found
+      name: route-not-found
       filters:
         - extensionRef:
             group: gateway.envoyproxy.io
