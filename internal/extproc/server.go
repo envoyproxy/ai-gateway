@@ -18,6 +18,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/cel-go/cel"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -102,6 +103,8 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 	s.processorFactories[path] = newProcessor
 }
 
+var errNoProcessor = errors.New("no processor registered for the given path")
+
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently.
 func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool) (Processor, error) {
@@ -112,7 +115,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	path := requestHeaders[pathHeader]
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
-		return nil, fmt.Errorf("no processor defined for path: %v", path)
+		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
 	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
 }
@@ -172,6 +175,19 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			isUpstreamFilter = req.GetAttributes() != nil
 			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {
+				if errors.Is(err, errNoProcessor) {
+					path := headersMap[":path"]
+					_ = stream.Send(&extprocv3.ProcessingResponse{
+						Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+							ImmediateResponse: &extprocv3.ImmediateResponse{
+								Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+								Body:       []byte(fmt.Sprintf("unsupported path: %s", path)),
+								GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
+							},
+						},
+					})
+					return status.Errorf(codes.NotFound, "unsupported path: %s", path)
+				}
 				s.logger.Error("cannot get processor", slog.String("error", err.Error()))
 				return status.Error(codes.NotFound, err.Error())
 			}

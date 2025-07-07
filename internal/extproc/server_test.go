@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"io"
 	"log/slog"
 	"testing"
@@ -358,12 +359,18 @@ func TestServer_ProcessorSelection(t *testing.T) {
 				},
 			},
 		}
-		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+				Body:       []byte("unsupported path: /unknown"),
+				GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
+			},
+		}}
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
 		require.Equal(t, codes.NotFound, status.Convert(err).Code())
-		require.ErrorContains(t, err, "no processor defined for path: /unknown")
+		require.ErrorContains(t, err, "unsupported path: /unknown")
 	})
 
 	t.Run("known path", func(t *testing.T) {
