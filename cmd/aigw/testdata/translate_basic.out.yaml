@@ -134,7 +134,13 @@ spec:
     - matches:
         - path:
             value: /
-      name: unreachable
+      name:  route-not-found
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-route-not-found-response
+          type: ExtensionRef
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -176,6 +182,19 @@ spec:
   urlRewrite:
     hostname:
       type: Backend
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: ai-eg-route-not-found-response
+  namespace: default
+spec:
+  directResponse:
+    body:
+      inline: No matching route found. It is likely that the model specified your
+        request is not configured in the Gateway.
+      type: null
+    statusCode: 404
 ---
 apiVersion: v1
 kind: Secret
