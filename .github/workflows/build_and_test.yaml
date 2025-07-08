@@ -60,7 +60,7 @@ jobs:
         run: make check
   unittest:
     name: Unit Test
-    needs: [style]
+#    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +89,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
+          sleep 10 # wait for ollama to start
           ollama pull qwen3:0.6b
 
       - env:
