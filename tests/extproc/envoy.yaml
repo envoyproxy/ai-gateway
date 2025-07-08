@@ -71,6 +71,15 @@ static_resources:
                             headers:
                               - name: x-model-name
                                 string_match:
+                                  exact: text-embedding-3-small
+                          route:
+                            auto_host_rewrite: true
+                            cluster: openai
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-model-name
+                                string_match:
                                   exact: o1
                           route:
                             auto_host_rewrite: true
@@ -81,6 +90,15 @@ static_resources:
                               - name: x-model-name
                                 string_match:
                                   exact: gemini-2.0-flash-lite
+                          route:
+                            auto_host_rewrite: true
+                            cluster: gemini
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-model-name
+                                string_match:
+                                  exact: gemini-embedding-exp-03-07
                           route:
                             auto_host_rewrite: true
                             cluster: gemini
@@ -116,7 +134,25 @@ static_resources:
                             headers:
                               - name: x-model-name
                                 string_match:
+                                  exact: E5-Mistral-7B-Instruct
+                          route:
+                            auto_host_rewrite: true
+                            cluster: sambanova
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-model-name
+                                string_match:
                                   exact: meta-llama/Meta-Llama-3-8B-Instruct
+                          route:
+                            auto_host_rewrite: true
+                            cluster: deepinfra
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-model-name
+                                string_match:
+                                  exact: BAAI/bge-base-en-v1.5
                           route:
                             auto_host_rewrite: true
                             cluster: deepinfra
