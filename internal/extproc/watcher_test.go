@@ -79,7 +79,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
-	const tickInterval = time.Microsecond
+	const tickInterval = time.Millisecond
 	logger, buf := newTestLoggerWithBuffer()
 	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ backends:
   schema:
     name: OpenAI
 `
-	requireAtomicWriteFile(t, path, []byte(cfg), 0o600)
+	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Initial loading should have happened.
 	require.Eventually(t, func() bool {
@@ -139,7 +139,7 @@ backends:
     name: OpenAI
 `
 
-	requireAtomicWriteFile(t, path, []byte(cfg), 0o600)
+	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Verify the config has been updated.
 	require.Eventually(t, func() bool {
@@ -153,7 +153,12 @@ backends:
 
 // requireAtomicWriteFile creates a temporary file, writes the data to it, and then renames it to the final filename.
 // This is an alternative to os.WriteFile but in a way that ensures the write is atomic.
-func requireAtomicWriteFile(t *testing.T, filename string, data []byte, perm os.FileMode) {
+func requireAtomicWriteFile(t *testing.T, tickInterval time.Duration, filename string, data []byte, perm os.FileMode) {
+	// Sleep enough to ensure that the new file has a different modification time.
+	// In practice, when the extproc is deployed, it will read from the k8s secret,
+	// hence the file will have a different modification time (due to the delay caused by Kubernetes secret updates).
+	time.Sleep(2 * tickInterval)
+
 	tempFile, err := os.CreateTemp(t.TempDir(), filepath.Base(filename)+".tmp.*")
 	require.NoError(t, err, "failed to create temporary file for atomic write")
 	tempName := tempFile.Name()
