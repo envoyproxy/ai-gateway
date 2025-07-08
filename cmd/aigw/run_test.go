@@ -79,10 +79,11 @@ func TestRun(t *testing.T) {
 		return true
 	}, 120*time.Second, 1*time.Second)
 
-	for _, tc := range []struct {
+	type testCase struct {
 		testName, modelName string
 		required            internaltesting.RequiredCredential
-	}{
+	}
+	cases := []testCase{
 		{
 			testName:  "openai",
 			modelName: "gpt-4o-mini",
@@ -93,7 +94,25 @@ func TestRun(t *testing.T) {
 			modelName: "us.meta.llama3-2-1b-instruct-v1:0",
 			required:  internaltesting.RequiredCredentialAWS,
 		},
-	} {
+		{
+			testName: "openai with fallback route",
+			// gpt-4o is not explicitly listed in the route, but it should still work by matching the fallback route.
+			modelName: "gpt-4o",
+			required:  internaltesting.RequiredCredentialOpenAI,
+		},
+	}
+
+	const ollamaModelName = "qwen3:0.6b"
+	if checkIfOllamaReady(t, ollamaModelName) {
+		cases = append(cases, testCase{
+			testName:  "ollama",
+			modelName: ollamaModelName,
+		})
+	} else {
+		t.Logf("Ollama is not ready for serving the model %s. Skipping the test case. If ollama is already running, then `ollama pull %[1]s`", ollamaModelName)
+	}
+
+	for _, tc := range cases {
 		t.Run(tc.testName, func(t *testing.T) {
 			client := openai.NewClient(option.WithBaseURL("http://localhost:1975" + "/v1/"))
 			cc.MaybeSkip(t, tc.required)
@@ -174,4 +193,25 @@ func Test_mustStartExtProc(t *testing.T) {
 	cancel()
 	// Wait for the external processor to stop.
 	time.Sleep(1 * time.Second)
+}
+
+// checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.
+func checkIfOllamaReady(t *testing.T, modelName string) bool {
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+	tags := string(body)
+	t.Logf("Ollama tags: %s", tags)
+	return strings.Contains(tags, modelName)
 }
