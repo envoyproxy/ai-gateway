@@ -81,6 +81,17 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
+
+      # This runs ollama server to be used in `aigw run` end-to-end tests.
+      # The test case using it will be skipped if ollama is not available.
+      # Since installing it and pulling the model takes a while, we do it only for Linux runners.
+      - name: Start Ollama server
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          sleep 10 # Wait for ollama to start. TODO: this is really hacky, so find a better way to wait for ollama to start. This can be a source of flakiness.
+          ollama pull qwen3:0.6b
+
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}

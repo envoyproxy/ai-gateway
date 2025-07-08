@@ -18,7 +18,13 @@
 # The special header `aigw-backend-selector` can be used to select the backend regardless of the model.
 # For example, -H `aigw-backend-selector: openai` will route to the OpenAI backend, etc.
 # Alternatively, AI Gateway will extract "model" from the request body and can be used to route to the backend when the special header is not present.
-# The default configuration routes to the OpenAI backend if the model is `gpt-4o-mini` and to the AWS Bedrock backend if the model is `us.meta.llama3-2-1b-instruct-v1:0`.
+#
+# The default configuration routes to
+#
+# * OpenAI backend if the model is `gpt-4o-mini`
+# * AWS Bedrock backend if the model is `us.meta.llama3-2-1b-instruct-v1:0`.
+# * Ollama backend if the model is `qwen3:0.6b`
+# * Fallback to the OpenAI backend for any other model.
 #
 # To modify the routing rules, you can add more rules to the `rules` field in the `AIGatewayRoute` resource.
 #
@@ -91,6 +97,8 @@ spec:
       backendRefs:
         - name: openai
           namespace: default
+      timeouts:
+        request: 120s
     # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
     - matches:
         - headers:
@@ -100,6 +108,8 @@ spec:
       backendRefs:
         - name: aws
           namespace: default
+      timeouts:
+        request: 120s
     # Special rule to unconditionally route to the ollama backend regardless of the model.
     - matches:
         - headers:
@@ -109,6 +119,8 @@ spec:
       backendRefs:
         - name: ollama
           namespace: default
+      timeouts:
+        request: 120s
     # A Model-specific rule, routing to the OpenAI backend if the model is gpt-4o-mini.
     - matches:
         - headers:
@@ -118,6 +130,8 @@ spec:
       backendRefs:
         - name: openai
           namespace: default
+      timeouts:
+        request: 120s
     # A Model-specific rule, routing to the AWS Bedrock backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
     - matches:
         - headers:
@@ -127,15 +141,30 @@ spec:
       backendRefs:
         - name: aws
           namespace: default
-    # A Model-specific rule, routing to the Ollama backend if the model is mistral:latest.
+      timeouts:
+        request: 120s
+    # A Model-specific rule, routing to the Ollama backend if the model is qwen3:0.6b.
     - matches:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: mistral:latest
+              value: qwen3:0.6b
       backendRefs:
         - name: ollama
           namespace: default
+      timeouts:
+        request: 120s
+    # Fallback any other request to the OpenAI backend if no other rules match.
+    - matches:
+        - headers:
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: .*
+      backendRefs:
+        - name: openai
+          namespace: default
+      timeouts:
+        request: 120s
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
