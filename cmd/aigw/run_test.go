@@ -93,6 +93,12 @@ func TestRun(t *testing.T) {
 			modelName: "us.meta.llama3-2-1b-instruct-v1:0",
 			required:  internaltesting.RequiredCredentialAWS,
 		},
+		{
+			testName: "openai with fallback route",
+			// gpt-4o is not explicitly listed in the route, but it should still work by matching the fallback route.
+			modelName: "gpt-4o",
+			required:  internaltesting.RequiredCredentialOpenAI,
+		},
 	} {
 		t.Run(tc.testName, func(t *testing.T) {
 			client := openai.NewClient(option.WithBaseURL("http://localhost:1975" + "/v1/"))
