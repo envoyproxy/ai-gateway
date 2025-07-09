@@ -31,18 +31,17 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel                 string
-	extProcImage                    string
-	extProcImagePullPolicy          corev1.PullPolicy
-	enableLeaderElection            bool
-	logLevel                        zapcore.Level
-	extensionServerPort             string
-	tlsCertDir                      string
-	tlsCertName                     string
-	tlsKeyName                      string
-	caBundleName                    string
-	envoyGatewayNamespace           string
-	enableEnvoyGatewayDaemonSetMode bool
+	extProcLogLevel        string
+	extProcImage           string
+	extProcImagePullPolicy corev1.PullPolicy
+	enableLeaderElection   bool
+	logLevel               zapcore.Level
+	extensionServerPort    string
+	tlsCertDir             string
+	tlsCertName            string
+	tlsKeyName             string
+	caBundleName           string
+	envoyGatewayNamespace  string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.

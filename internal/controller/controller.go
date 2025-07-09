@@ -63,8 +63,6 @@ type Options struct {
 	EnableLeaderElection bool
 	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
 	EnvoyGatewayNamespace string
-	// EnableEnvoyGatewayDaemonSetMode ensures Envoy Gateway is rolled out during ai-gateway-extproc update when deployed as DaemonSet.
-	EnableEnvoyGatewayDaemonSetMode bool
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.

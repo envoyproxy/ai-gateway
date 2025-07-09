@@ -35,8 +35,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"envoy-gateway-system", "/foo/bar/uds.sock",
-		"docker.io/envoyproxy/ai-gateway-extproc:latest")
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
 
 	const namespace = "ns"
 	t.Run("not found must be non error", func(t *testing.T) {
