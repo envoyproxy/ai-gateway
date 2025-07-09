@@ -23,7 +23,7 @@ Each metric comes with some default labels such as `gen_ai_request_model` that c
 
 ## Trying it out
 
-Before you begin, you'll need to complete the basic setup from the [Basic Usage](../getting-started/basic-usage.md) guide.
+Before you begin, you'll need to complete the basic setup from the [Basic Usage](/docs/getting-started/basic-usage) guide.
 
 Then, you can install the prometheus using the following commands:
 

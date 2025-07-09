@@ -56,7 +56,7 @@ The Gateway integrates with each provider's identity system to ensure secure, sh
 In both cases, the Gateway automatically manages these credentials, ensuring that each request to upstream providers is sent with short-lived credentials. This approach significantly reduces the risk of credential exposure and aligns with enterprise security best practices.
 
 :::info
-Learn more about connecting to [AWS Bedrock](../getting-started/connect-providers/aws-bedrock.md) and [Azure OpenAI](../getting-started/connect-providers/azure-openai.md) in the provider specific documentation.
+Learn more about connecting to [AWS Bedrock](/docs/getting-started/connect-providers/aws-bedrock) and [Azure OpenAI](/docs/getting-started/connect-providers/azure-openai) in the provider specific documentation.
 :::
 
 ### Manual Credential Management
@@ -64,7 +64,7 @@ Learn more about connecting to [AWS Bedrock](../getting-started/connect-provider
 For providers that support long lived access credentials, the Envoy AI Gateway control plane supports a manual credential management process. In these cases the credentials, like API keys, are stored in Kubernetes secrets and managed by the AI Gateway administrator. Envoy AI Gateway will use the credentials from the secret to authenticate with the upstream service, attaching them to each request by securely retrieving them from the secret and attaching them to the request.
 
 :::info
-Learn more about connecting to [Open AI](../getting-started/connect-providers/openai.md) and adding your API key to the secret. You can use the same approach for other providers that support long lived credentials.
+Learn more about connecting to [Open AI](/docs/getting-started/connect-providers/openai) and adding your API key to the secret. You can use the same approach for other providers that support long lived credentials.
 :::
 
 ## Conclusion

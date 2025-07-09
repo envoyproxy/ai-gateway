@@ -31,7 +31,7 @@ The Envoy AI Gateway project is designed to address the critical challenges of A
 
 - **Comprehensive Observability for Performance and Cost Management**: Provide visibility into traffic performance, usage patterns, and cost analytics, enabling organizations to optimize their GenAI usage and monitor service quality.
 
-- **Enterprise-Grade Security Features**: Implement security controls including fine-grained access control, authorization policies, rate limiting, to access services, as well as ensure secure egress connection to external providers from the gateway via [Upstream Authentication](capabilities/upstream-auth.mdx).
+- **Enterprise-Grade Security Features**: Implement security controls including fine-grained access control, authorization policies, rate limiting, to access services, as well as ensure secure egress connection to external providers from the gateway via [Upstream Authentication](capabilities/security/upstream-auth.mdx).
 
 - **Extensible Architecture**: Leverage Envoy's proven extensibility framework to enable rapid development of custom features, allowing organizations to adapt the gateway to their specific AI infrastructure needs.
 

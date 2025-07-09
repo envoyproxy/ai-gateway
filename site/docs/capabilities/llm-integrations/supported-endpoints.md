@@ -130,8 +130,8 @@ The following table summarizes which providers support which endpoints:
 To learn more about configuring and using the Envoy AI Gateway with these endpoints:
 
 - **[Supported Providers](./supported-providers.md)** - Complete list of supported AI providers and their configurations
-- **[Usage-Based Rate Limiting](./capabilities/traffic/usage-based-ratelimiting.md)** - Configure token-based rate limiting and cost controls
-- **[Provider Fallback](./capabilities/traffic/fallback.md)** - Set up automatic failover between providers for high availability
-- **[Metrics and Monitoring](./capabilities/observability/metrics.md)** - Monitor usage, costs, and performance metrics
+- **[Usage-Based Rate Limiting](../traffic/usage-based-ratelimiting.md)** - Configure token-based rate limiting and cost controls
+- **[Provider Fallback](../traffic/fallback.md)** - Set up automatic failover between providers for high availability
+- **[Metrics and Monitoring](../observability/metrics.md)** - Monitor usage, costs, and performance metrics
 
 [issue#609]: https://github.com/envoyproxy/ai-gateway/issues/609
