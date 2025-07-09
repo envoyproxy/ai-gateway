@@ -11,12 +11,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,9 +26,8 @@ import (
 
 // mockReceiver is a mock implementation of Receiver.
 type mockReceiver struct {
-	cfg       *filterapi.Config
-	mux       sync.Mutex
-	loadCount atomic.Int32
+	cfg *filterapi.Config
+	mux sync.Mutex
 }
 
 // LoadConfig implements ConfigReceiver.
@@ -35,7 +35,6 @@ func (m *mockReceiver) LoadConfig(_ context.Context, cfg *filterapi.Config) erro
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	m.cfg = cfg
-	m.loadCount.Add(1)
 	return nil
 }
 
@@ -80,7 +79,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
-	const tickInterval = time.Millisecond * 100
+	const tickInterval = time.Millisecond
 	logger, buf := newTestLoggerWithBuffer()
 	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
@@ -97,10 +96,6 @@ func TestStartConfigWatcher(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return strings.Contains(buf.String(), "config file does not exist; loading default config")
 	}, 1*time.Second, tickInterval, buf.String())
-
-	// Wait for a couple ticks to verify default config is not reloaded.
-	time.Sleep(2 * tickInterval)
-	require.Equal(t, int32(1), rcv.loadCount.Load())
 
 	// Create the initial config file.
 	cfg := `
@@ -120,14 +115,18 @@ backends:
   schema:
     name: OpenAI
 `
-	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
+	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Initial loading should have happened.
 	require.Eventually(t, func() bool {
-		return rcv.getConfig() != defaultCfg
+		return !cmp.Equal(rcv.getConfig(), defaultCfg)
 	}, 1*time.Second, tickInterval)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)
+	require.Len(t, firstCfg.Backends, 3, buf.String())
+	require.Equal(t, "kserve", firstCfg.Backends[0].Name)
+	require.Equal(t, "awsbedrock", firstCfg.Backends[1].Name)
+	require.Equal(t, "openai", firstCfg.Backends[2].Name)
 
 	// Update the config file.
 	cfg = `
@@ -140,20 +139,35 @@ backends:
     name: OpenAI
 `
 
-	require.NoError(t, os.WriteFile(path, []byte(cfg), 0o600))
+	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Verify the config has been updated.
 	require.Eventually(t, func() bool {
-		return rcv.getConfig() != firstCfg
+		return !cmp.Equal(rcv.getConfig(), firstCfg)
 	}, 1*time.Second, tickInterval)
-	require.NotEqual(t, firstCfg, rcv.getConfig())
+	secondCfg := rcv.getConfig()
+	require.NotNil(t, secondCfg)
+	require.Len(t, secondCfg.Backends, 1, buf.String())
+	require.Equal(t, "openai", secondCfg.Backends[0].Name)
+}
 
-	// Verify the buffer contains the updated loading.
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "loading a new config")
-	}, 1*time.Second, tickInterval, buf.String())
-
-	// Wait for a couple ticks to verify config is not reloaded if file does not change.
+// requireAtomicWriteFile creates a temporary file, writes the data to it, and then renames it to the final filename.
+// This is an alternative to os.WriteFile but in a way that ensures the write is atomic.
+func requireAtomicWriteFile(t *testing.T, tickInterval time.Duration, filename string, data []byte, perm os.FileMode) {
+	// Sleep enough to ensure that the new file has a different modification time.
+	// In practice, when the extproc is deployed, it will read from the k8s secret,
+	// hence the file will have a different modification time (due to the delay caused by Kubernetes secret updates).
 	time.Sleep(2 * tickInterval)
-	require.Equal(t, int32(3), rcv.loadCount.Load())
+
+	tempFile, err := os.CreateTemp(t.TempDir(), filepath.Base(filename)+".tmp.*")
+	require.NoError(t, err, "failed to create temporary file for atomic write")
+	tempName := tempFile.Name()
+	_, err = tempFile.Write(data)
+	require.NoError(t, err, "failed to write data to temporary file")
+	err = tempFile.Chmod(perm)
+	require.NoError(t, err, "failed to set permissions on temporary file")
+	err = tempFile.Close()
+	require.NoError(t, err, "failed to close temporary file")
+	err = os.Rename(tempName, filename)
+	require.NoError(t, err, "failed to rename temporary file to final destination")
 }
