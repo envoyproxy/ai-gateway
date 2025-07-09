@@ -1,0 +1,4 @@
+---
+id: observability
+title: Observability
+---

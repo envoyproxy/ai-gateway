@@ -140,6 +140,6 @@ curl $GATEWAY_URL/v1/models
 To learn more about configuring and using the Envoy AI Gateway with these endpoints:
 
 - **[Supported Providers](./supported-providers.md)** - Complete list of supported AI providers and their configurations
-- **[Usage-Based Rate Limiting](./capabilities/usage-based-ratelimiting.md)** - Configure token-based rate limiting and cost controls
-- **[Provider Fallback](./capabilities/fallback.md)** - Set up automatic failover between providers for high availability
-- **[Metrics and Monitoring](./capabilities/metrics.md)** - Monitor usage, costs, and performance metrics
+- **[Usage-Based Rate Limiting](./capabilities/traffic/usage-based-ratelimiting.md)** - Configure token-based rate limiting and cost controls
+- **[Provider Fallback](./capabilities/traffic/fallback.md)** - Set up automatic failover between providers for high availability
+- **[Metrics and Monitoring](./capabilities/observability/metrics.md)** - Monitor usage, costs, and performance metrics
