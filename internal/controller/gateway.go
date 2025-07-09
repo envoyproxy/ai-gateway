@@ -46,28 +46,26 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewayNamespace, udsPath, extProcImage string, enableEnvoyGatewayDaemonSetMode bool,
+	envoyGatewayNamespace, udsPath, extProcImage string,
 ) *GatewayController {
 	return &GatewayController{
-		client:                          client,
-		kube:                            kube,
-		logger:                          logger,
-		envoyGatewayNamespace:           envoyGatewayNamespace,
-		enableEnvoyGatewayDaemonSetMode: enableEnvoyGatewayDaemonSetMode,
-		udsPath:                         udsPath,
-		extProcImage:                    extProcImage,
+		client:                client,
+		kube:                  kube,
+		logger:                logger,
+		envoyGatewayNamespace: envoyGatewayNamespace,
+		udsPath:               udsPath,
+		extProcImage:          extProcImage,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                          client.Client
-	kube                            kubernetes.Interface
-	logger                          logr.Logger
-	envoyGatewayNamespace           string
-	enableEnvoyGatewayDaemonSetMode bool
-	udsPath                         string
-	extProcImage                    string // The image of the external processor sidecar container.
+	client                client.Client
+	kube                  kubernetes.Interface
+	logger                logr.Logger
+	envoyGatewayNamespace string
+	udsPath               string
+	extProcImage          string // The image of the external processor sidecar container.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -462,43 +460,41 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 	}
 
 	if rollout {
-		if c.enableEnvoyGatewayDaemonSetMode {
-			daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-					egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to list daemonsets: %w", err)
-			}
+		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
+				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list deployments: %w", err)
+		}
 
-			for _, daemonSet := range daemonSets.Items {
-				c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
-				_, err = c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
-					[]byte(fmt.Sprintf(
-						`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-					), metav1.PatchOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
-				}
-			}
-		} else {
-			deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-					egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-			})
+		for _, dep := range deps.Items {
+			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
+			_, err = c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
+				[]byte(fmt.Sprintf(
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+				), metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to list deployments: %w", err)
+				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
+		}
 
-			for _, dep := range deps.Items {
-				c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
-				_, err = c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
-					[]byte(fmt.Sprintf(
-						`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-					), metav1.PatchOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
-				}
+		daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
+				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list daemonsets: %w", err)
+		}
+
+		for _, daemonSet := range daemonSets.Items {
+			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
+			_, err = c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+				[]byte(fmt.Sprintf(
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+				), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 			}
 		}
 	}
