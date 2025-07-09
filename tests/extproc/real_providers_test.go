@@ -83,21 +83,36 @@ func TestWithRealProviders(t *testing.T) {
 	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	t.Run("health-checking", func(t *testing.T) {
-		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
-			{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
-			{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
-			{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-			{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				cc.MaybeSkip(t, tc.required)
-				requireEventuallyNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
-			})
-		}
+		t.Run("chat/completions", func(t *testing.T) {
+			for _, tc := range []realProvidersTestCase{
+				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
+				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
+				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
+				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cc.MaybeSkip(t, tc.required)
+					requireEventuallyChatCompletionNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
+				})
+			}
+		})
+		t.Run("embeddings", func(t *testing.T) {
+			for _, tc := range []realProvidersTestCase{
+				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
+				{name: "gemini", modelName: "gemini-embedding-exp-03-07", required: internaltesting.RequiredCredentialGemini},
+				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cc.MaybeSkip(t, tc.required)
+					requireEventuallyEmbeddingsRequestOK(t, tc.modelName)
+				})
+			}
+		})
 	})
 
 	// Read all access logs and check if the used token is logged.
@@ -304,7 +319,7 @@ func TestWithRealProviders(t *testing.T) {
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {
 		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
-		requireEventuallyNonStreamingRequestOK(t,
+		requireEventuallyChatCompletionNonStreamingRequestOK(t,
 			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
 	})
 }
@@ -317,7 +332,7 @@ type realProvidersTestCase struct {
 	required  internaltesting.RequiredCredential
 }
 
-func requireEventuallyNonStreamingRequestOK(t *testing.T, modelName, msg string) {
+func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, modelName, msg string) {
 	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 	require.Eventually(t, func() bool {
 		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
@@ -338,5 +353,34 @@ func requireEventuallyNonStreamingRequestOK(t *testing.T, modelName, msg string)
 			}
 		}
 		return nonEmptyCompletion
+	}, eventuallyTimeout, eventuallyInterval)
+}
+
+func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
+	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+	require.Eventually(t, func() bool {
+		embedding, err := client.Embeddings.New(t.Context(), openai.EmbeddingNewParams{
+			Input: openai.EmbeddingNewParamsInputUnion{
+				OfString: openai.String("The quick brown fox jumped over the lazy dog"),
+			},
+			Model: modelName,
+		})
+		if err != nil {
+			t.Logf("embeddings error: %v", err)
+			return false
+		}
+
+		if len(embedding.Data) == 0 {
+			t.Logf("no embeddings returned in response")
+			return false
+		}
+
+		if len(embedding.Data[0].Embedding) == 0 {
+			t.Logf("empty embedding vector in response")
+			return false
+		}
+
+		t.Logf("response: %+v", embedding.Data[0].Embedding)
+		return true
 	}, eventuallyTimeout, eventuallyInterval)
 }
