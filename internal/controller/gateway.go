@@ -478,6 +478,25 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
 		}
+
+		daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
+				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list daemonsets: %w", err)
+		}
+
+		for _, daemonSet := range daemonSets.Items {
+			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
+			_, err = c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+				[]byte(fmt.Sprintf(
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+				), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
+			}
+		}
 	}
 	return nil
 }
