@@ -57,7 +57,7 @@ It also can be thought of as "one-to-many" aliasing of model names, where one un
 
 As we see in the [Provider Fallback](./provider-fallback) page, Envoy AI Gateway allows you to fallback to a different AI provider if the primary one fails.
 However, sometimes we want to fallback to a different model on the same provider.
-For example, it is natural to set up the Envoy AI Gateway in a way that if the primary model expensive model fails (rate limit, etc), Envoy retries the request to a less expensive model on the same provider.
+For example, it is natural to set up the Envoy AI Gateway in a way that if the primary expensive model fails (rate limit, etc), Envoy retries the request to a less expensive model on the same provider.
 More concretely, if the request to `gpt-4` fails, we want to retry it with `gpt-3.5-turbo` on the same OpenAI provider.
 
 `modelNameOverride` can also be used in this scenario to achieve the desired behavior. The configuration would look like this:
