@@ -77,6 +77,7 @@ spec:
           value: gpt-4
     backendRefs:
     - name: openai-backend
+      # This doesn't specify modelNameOverride, so it will use the default model name `gpt-4` in the request.
       priority: 0
     - name: openai-backend
       modelNameOverride: gpt-3.5-turbo
