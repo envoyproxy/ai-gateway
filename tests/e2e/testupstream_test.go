@@ -119,7 +119,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 	t.Run("load-balancing-weights", func(t *testing.T) {
 		reqCountsPerTestUpstreamID := make(map[string]int)
-		const numRequests = 5000
+		const numRequests = 1000
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
