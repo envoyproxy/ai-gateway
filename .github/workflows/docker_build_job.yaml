@@ -61,5 +61,5 @@ jobs:
       - name: Build and Push Image Latest
         run: |
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then
-            make docker-push.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
+            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
           fi
