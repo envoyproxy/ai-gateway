@@ -6,17 +6,17 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: translation-testupstream
+  name: testupstream
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: translation-testupstream
+  name: testupstream
   namespace: default
 spec:
-  gatewayClassName: translation-testupstream
+  gatewayClassName: testupstream
   listeners:
     - name: http
       protocol: HTTP
@@ -25,13 +25,13 @@ spec:
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: translation-testupstream
+  name: testupstream
   namespace: default
 spec:
   schema:
     name: OpenAI
   targetRefs:
-    - name: translation-testupstream
+    - name: testupstream
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:
@@ -41,21 +41,34 @@ spec:
               name: x-ai-eg-model
               value: some-cool-model
       backendRefs:
-        - name: translation-testupstream-cool-model-backend
-          weight: 100
+        - name: testupstream-cool-model-backend
     - matches:
         - headers:
             - type: Exact
               name: x-ai-eg-model
               value: another-cool-model
       backendRefs:
-        - name: translation-testupstream-another-cool-model-backend
-          weight: 100
+        - name: testupstream-another-cool-model-backend
+    # This is for the case where multiple backends have the same weight and priority
+    # to ensure the traffic is split evenly between them regardless of the actual
+    # number of ip addresses that Backend's FQDN resolves to.
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: load-balancing-model
+      backendRefs:
+        - name: testupstream-cool-model-backend
+          weight: 1
+          priority: 1
+        - name: testupstream-canary-with-openai
+          weight: 1
+          priority: 1
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
-  name: translation-testupstream-cool-model-backend
+  name: testupstream-cool-model-backend
   namespace: default
 spec:
   schema:
@@ -68,7 +81,7 @@ spec:
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
-  name: translation-testupstream-another-cool-model-backend
+  name: testupstream-another-cool-model-backend
   namespace: default
 spec:
   schema:
@@ -87,7 +100,7 @@ spec:
   endpoints:
     - fqdn:
         hostname: testupstream.default.svc.cluster.local
-        port: 80
+        port: 8080
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
@@ -98,7 +111,7 @@ spec:
   endpoints:
     - fqdn:
         hostname: testupstream-canary.default.svc.cluster.local
-        port: 80
+        port: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -143,8 +156,9 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
-  type: ClusterIP
-
+  # Use a headless service to allow DNS resolution of multiple endpoints.
+  # For this primary service, this should resolve to 1 IP address.
+  clusterIP: None
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -152,7 +166,7 @@ metadata:
   name: testupstream-canary
   namespace: default
 spec:
-  replicas: 1
+  replicas: 20
   selector:
     matchLabels:
       app: testupstream-canary
@@ -189,4 +203,21 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
-  type: ClusterIP
+  # Use a headless service to allow DNS resolution of multiple endpoints.
+  # For this canary service, this should resolve to 20 IP addresses.
+  clusterIP: None
+---
+# Create a canary backend that uses the OpenAI schema for testing the weighted routing.
+# Almost identical to the testupstream-canary backend, but uses a different schema.
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: testupstream-canary-with-openai
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: testupstream-canary
+    kind: Backend
+    group: gateway.envoyproxy.io

@@ -25,8 +25,11 @@ import (
 func TestWithTestUpstream(t *testing.T) {
 	const manifest = "testdata/testupstream.yaml"
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	// Wait for the testupstream servers to be ready.
+	require.NoError(t, kubectlWaitForDeploymentReady("default", "testupstream"))
+	require.NoError(t, kubectlWaitForDeploymentReady("default", "testupstream-canary"))
 
-	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=testupstream"
 	requireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("/chat/completions", func(t *testing.T) {
@@ -111,6 +114,49 @@ func TestWithTestUpstream(t *testing.T) {
 					return true
 				}, 10*time.Second, 1*time.Second)
 			})
+		}
+	})
+
+	t.Run("load-balancing-weights", func(t *testing.T) {
+		reqCountsPerTestUpstreamID := make(map[string]int)
+		const numRequests = 5000
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
+		defer fwd.kill()
+
+		// Send multiple requests with a load-balancing-model to trigger load balancing with weights.
+		for i := 0; i < numRequests; i++ {
+			req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions",
+				strings.NewReader(`{"messages":[{"role":"user","content":"Test load balancing"}],"model":"load-balancing-model"}`))
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			_, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Check which backend handled the request.
+			testUpstreamID := resp.Header.Get(testupstreamlib.TestUpstreamIDResponseHeaderKey)
+			if testUpstreamID != "primary" && testUpstreamID != "canary" {
+				t.Fatalf("Unexpected test upstream ID: %s. Expected 'primary' or 'canary'", testUpstreamID)
+			}
+			reqCountsPerTestUpstreamID[testUpstreamID]++
+		}
+
+		require.Lenf(t, reqCountsPerTestUpstreamID, 2,
+			"Expected requests to be distributed between 2 backends: %v", reqCountsPerTestUpstreamID)
+
+		// Check for reasonable distribution with tolerance for statistical variation.
+		for backend, hits := range reqCountsPerTestUpstreamID {
+			t.Logf("Backend %s received %d/%d requests", backend, hits, numRequests)
+			require.Greater(t, hits, 0, "Backend %s should receive some requests", backend)
+
+			// Expect reasonable distribution (allow for some deviation).
+			expectedPerBackend := numRequests / 2
+			allowedDeviation := float64(expectedPerBackend) * 0.01 // 1% deviation tolerance.
+			require.InDelta(t, expectedPerBackend, hits, allowedDeviation,
+				"Backend %s request count should be within acceptable deviation range", backend)
 		}
 	})
 }

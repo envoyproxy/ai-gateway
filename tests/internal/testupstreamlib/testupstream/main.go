@@ -219,7 +219,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Println("no response headers")
 	}
-	w.Header().Set("testupstream-id", os.Getenv("TESTUPSTREAM_ID"))
+	w.Header().Set(testupstreamlib.TestUpstreamIDResponseHeaderKey, os.Getenv("TESTUPSTREAM_ID"))
 	status := http.StatusOK
 	if v := r.Header.Get(testupstreamlib.ResponseStatusKey); v != "" {
 		status, err = strconv.Atoi(v)
@@ -312,8 +312,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			// If the expected response body is not set, get the fake response if the path is known.
 			responseBody, err = getFakeResponse(r.URL.Path)
 			if err != nil {
-				logger.Println("failed to get the fake response")
-				http.Error(w, "failed to get the fake response", http.StatusBadRequest)
+				msg := fmt.Sprintf("failed to get the fake response for path %s: %v", r.URL.Path, err)
+				logger.Println(msg)
+				http.Error(w, msg, http.StatusBadRequest)
 				return
 			}
 		} else {
