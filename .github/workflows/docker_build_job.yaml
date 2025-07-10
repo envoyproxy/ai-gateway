@@ -47,13 +47,19 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       # Push images for the push events, e.g. when a new tag is pushed as well as PR merges.
-      # * Only use the tag if the event is a tag event, otherwise use "latest".
+      # * Only use the tag if the event is a tag event, otherwise use the hash.
       # * Build for both amd64 and arm64 platforms.
       - name: Build and Push Image
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="latest"
+            TAG="${{ github.sha }}"
           fi
           make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
+
+      - name: Build and Push Image Latest
+        run: |
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
+          fi
