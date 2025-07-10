@@ -1,3 +1,9 @@
+---
+id: provider-fallback
+title: Provider Fallback
+sidebar_position: 6
+---
+
 # Provider Fallback
 
 Envoy AI Gateway supports provider fallback to ensure high availability and reliability for AI/LLM workloads. With fallback, you can configure multiple upstream providers for a single route, so that if the primary provider fails (due to network errors, 5xx responses, or other health check failures), traffic is automatically routed to a healthy fallback provider.
