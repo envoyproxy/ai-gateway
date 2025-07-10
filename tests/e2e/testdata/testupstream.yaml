@@ -166,7 +166,7 @@ metadata:
   name: testupstream-canary
   namespace: default
 spec:
-  replicas: 10
+  replicas: 5
   selector:
     matchLabels:
       app: testupstream-canary
@@ -204,7 +204,7 @@ spec:
       port: 80
       targetPort: 8080
   # Use a headless service to allow DNS resolution of multiple endpoints.
-  # For this canary service, this should resolve to 10 IP addresses.
+  # For this canary service, this should resolve to 5 IP addresses.
   clusterIP: None
 ---
 # Create a canary backend that uses the OpenAI schema for testing the weighted routing.
