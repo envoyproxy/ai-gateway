@@ -7,6 +7,7 @@ package translator
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -68,10 +69,19 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	var bedrockReq awsbedrock.ConverseInput
 	// Convert InferenceConfiguration.
 	bedrockReq.InferenceConfig = &awsbedrock.InferenceConfiguration{}
-	bedrockReq.InferenceConfig.MaxTokens = openAIReq.MaxTokens
-	bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop
 	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
 	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
+
+	bedrockReq.InferenceConfig.MaxTokens = cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+
+	stopSequence, err := processStop(openAIReq.Stop)
+	if err != nil {
+		return
+	}
+	if len(stopSequence) > 0 {
+		bedrockReq.InferenceConfig.StopSequences = stopSequence
+	}
+
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {

@@ -109,7 +109,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
                          {"role": "user", "content": "what do you see in this image"},
                          {"role": "tool", "content": "some tool", "tool_call_id": "123"},
                          {"role": "assistant", "content": {"text": "you are a helpful assistant"}}
-						 ]}
+                    ]}
 `),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -165,7 +165,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
                         "messages": [
                          {"role": "assistant", "content": "you are a helpful assistant"},
                          {"role": "assistant", "content": "{'text': 'you are a helpful assistant'}"}
-						 ]}
+                    ]}
 `),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -283,6 +283,52 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						},
 					},
 				},
+			},
+		},
+		{
+			name: "test fields",
+			in: []byte(`{
+				"model": "gpu-o4",
+				"messages": [{"role": "user", "content": "hello"}],
+				"max_completion_tokens": 1024,
+				"parallel_tool_calls": true,
+				"stop": ["\n", "stop"]
+			}`),
+			out: &ChatCompletionRequest{
+				Model: "gpu-o4",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "hello"},
+						},
+						Type: ChatMessageRoleUser,
+					},
+				},
+				MaxCompletionTokens: ptr.To[int64](1024),
+				ParallelToolCalls:   ptr.To(true),
+				Stop:                []interface{}{"\n", "stop"},
+			},
+		},
+		{
+			name: "stop as string",
+			in: []byte(`{
+				"model": "gpu-o4",
+				"messages": [{"role": "user", "content": "hello"}],
+				"stop": "stop"
+			}`),
+			out: &ChatCompletionRequest{
+				Model: "gpu-o4",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "hello"},
+						},
+						Type: ChatMessageRoleUser,
+					},
+				},
+				Stop: "stop",
 			},
 		},
 	} {

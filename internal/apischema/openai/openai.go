@@ -424,7 +424,22 @@ type ChatCompletionResponseFormatJSONSchema struct {
 	Strict      bool   `json:"strict"`
 }
 
-// ChatCompletionRequest represents a request structure for chat completion API.
+// Reasoning represents the reasoning options for o-series models.
+// Docs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
+type Reasoning struct {
+	// Effort constrains effort on reasoning for reasoning models.
+	// Supported values: "low", "medium", "high". Defaults to "medium".
+	Effort *string `json:"effort,omitempty"`
+
+	// GenerateSummary is deprecated. Use Summary instead.
+	// Supported values: "auto", "concise", "detailed".
+	GenerateSummary *string `json:"generate_summary,omitempty"`
+
+	// Summary of the reasoning performed by the model.
+	// Supported values: "auto", "concise", "detailed".
+	Summary *string `json:"summary,omitempty"`
+}
+
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
 	// Depending on the model you use, different message types (modalities) are supported,
@@ -463,6 +478,11 @@ type ChatCompletionRequest struct {
 	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 	MaxTokens *int64 `json:"max_tokens,omitempty"` //nolint:tagliatelle //follow openai api
 
+	// MaxCompletionTokens is an Optional integer
+	// An upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens.
+	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_completion_tokens
+	MaxCompletionTokens *int64 `json:"max_completion_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
 	// N: LLM Gateway does not support multiple completions.
 	// The only accepted value is 1.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-n
@@ -488,7 +508,7 @@ type ChatCompletionRequest struct {
 	// Stop string / array / null Defaults to null
 	// Up to 4 sequences where the API will stop generating further tokens.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stop
-	Stop []*string `json:"stop,omitempty"`
+	Stop interface{} `json:"stop,omitempty"`
 
 	// Stream: If set, partial message deltas will be sent, like in ChatGPT.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stream
@@ -519,7 +539,7 @@ type ChatCompletionRequest struct {
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
-	ParallelToolCalls bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user

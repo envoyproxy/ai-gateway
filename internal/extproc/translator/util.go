@@ -36,3 +36,26 @@ func parseDataURI(uri string) (string, []byte, error) {
 	}
 	return contentType, bin, nil
 }
+
+// processStop handles the 'stop' parameter which can be a string or a slice of strings.
+// It normalizes the input into a []*string.
+func processStop(data interface{}) ([]*string, error) {
+	if data == nil {
+		return nil, nil
+	}
+	switch v := data.(type) {
+	case string:
+		return []*string{&v}, nil
+	case []string:
+		result := make([]*string, len(v))
+		for i, s := range v {
+			temp := s
+			result[i] = &temp
+		}
+		return result, nil
+	case []*string:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("invalid type for stop parameter: expected string, []string, []*string, or nil, got %T", v)
+	}
+}
