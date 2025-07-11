@@ -493,7 +493,7 @@ AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
   name="headers"
   type="HTTPHeaderMatch array"
   required="false"
-  description="Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch<br />Currently, only the exact header matching is supported."
+  description="Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch"
 />
 
 
@@ -514,7 +514,12 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="targetRefs"
   type="[LocalPolicyTargetReferenceWithSectionName](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReferenceWithSectionName) array"
   required="true"
-  description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to."
+  description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0."
+/><ApiField
+  name="parentRefs"
+  type="ParentReference array"
+  required="true"
+  description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway."
 /><ApiField
   name="schema"
   type="[VersionedAPISchema](#versionedapischema)"

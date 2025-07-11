@@ -6,23 +6,20 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: apple
+  name: parent-refs
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: some-gateway
       kind: Gateway
       group: gateway.networking.k8s.io
+  schema:
+    name: OpenAI
   rules:
     - matches:
         - headers:
-            - type: RegularExpression
+            - type: Exact
               name: x-ai-eg-model
               value: llama3-70b
       backendRefs:
         - name: kserve
-          weight: 20
-        - name: aws-bedrock
-          weight: 80

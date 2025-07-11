@@ -92,11 +92,6 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	if err := initTestupstream(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
 	if err := initPrometheus(ctx); err != nil {
 		cancel()
 		panic(err)
@@ -239,21 +234,6 @@ func initAIGateway(ctx context.Context) (err error) {
 		return
 	}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
-}
-
-func initTestupstream(ctx context.Context) (err error) {
-	initLog("Installing Test Upstream sever")
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
-	}()
-	initLog("\tapplying manifests")
-	if err = kubectlApplyManifest(ctx, "./init/testupstream/"); err != nil {
-		return
-	}
-	initLog("\twaiting for deployment")
-	return kubectlWaitForDeploymentReady("default", "testupstream")
 }
 
 func initPrometheus(ctx context.Context) (err error) {

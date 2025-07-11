@@ -113,4 +113,4 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
 
 ### Note
 
-* The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/metrics.md).
+* The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/observability/metrics.md).

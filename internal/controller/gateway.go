@@ -29,6 +29,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -214,7 +215,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	ec := &filterapi.Config{UUID: uuid}
 	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
-	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -222,11 +222,26 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		spec := aiGatewayRoute.Spec
 		for i := range spec.Rules {
 			rule := &spec.Rules[i]
-			backends := make([]filterapi.Backend, len(rule.BackendRefs))
+			for _, m := range rule.Matches {
+				for _, h := range m.Headers {
+					// If explicitly set to something that is not an exact match, skip.
+					// If not set, we assume it's an exact match.
+					//
+					// Also, we only care about the AIModel header to declare models.
+					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != aigv1a1.AIModelHeaderKey {
+						continue
+					}
+					ec.Models = append(ec.Models, filterapi.Model{
+						Name:      h.Value,
+						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC(),
+						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+					})
+				}
+			}
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
-				b := &backends[j]
-				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+				b := filterapi.Backend{}
+				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				var backendObj *aigv1a1.AIServiceBackend
 				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
@@ -240,18 +255,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 						return fmt.Errorf("failed to create backend auth: %w", err)
 					}
 				}
+				ec.Backends = append(ec.Backends, b)
 			}
-			configRule := filterapi.RouteRule{Backends: backends}
-			configRule.Name = routeName(aiGatewayRoute, i)
-			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
-			for j, match := range rule.Matches {
-				configRule.Headers[j].Name = match.Headers[0].Name
-				configRule.Headers[j].Value = match.Headers[0].Value
-			}
-			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
-			// Convert to UTC time in force to avoid timezone issues.
-			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
-			ec.Rules = append(ec.Rules, configRule)
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
@@ -471,6 +476,25 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 				), metav1.PatchOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
+			}
+		}
+
+		daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
+				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list daemonsets: %w", err)
+		}
+
+		for _, daemonSet := range daemonSets.Items {
+			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
+			_, err = c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+				[]byte(fmt.Sprintf(
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+				), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 			}
 		}
 	}

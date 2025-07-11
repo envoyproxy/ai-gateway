@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,53 +45,20 @@ func TestWithTestUpstream(t *testing.T) {
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
-			{
-				Name:    "testupstream-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
-				Backends: []filterapi.Backend{
-					testUpstreamOpenAIBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-aws-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-azure-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAzureBackend,
-				},
-			},
-			{
-				Name:    "testupstream-modelname-override-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "modelname-override"}},
-				Backends: []filterapi.Backend{
-					testUpstreamModelNameOverride,
-				},
-			},
-			{
-				Name: "not-used-for-completion",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "some-model1"},
-					{Name: "x-model-name", Value: "some-model2"},
-					{Name: "x-model-name", Value: "some-model3"},
-				},
-				Backends:        []filterapi.Backend{alwaysFailingBackend},
-				ModelsOwnedBy:   "Envoy AI Gateway",
-				ModelsCreatedAt: now,
-			},
+		Schema:             openAISchema,
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			testUpstreamOpenAIBackend,
+			testUpstreamModelNameOverride,
+			testUpstreamAAWSBackend,
+			testUpstreamAzureBackend,
+			testUpstreamGCPVertexAIBackend,
+		},
+		Models: []filterapi.Model{
+			{Name: "some-model1", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model2", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model3", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 		},
 	})
 
@@ -120,7 +88,7 @@ func TestWithTestUpstream(t *testing.T) {
 		responseBody,
 		// responseType is either empty, "sse" or "aws-event-stream" as implemented by the test upstream.
 		responseType,
-		// responseStatus is the HTTP status code of the response.
+		// responseStatus is the HTTP status code of the response returned by the test upstream.
 		responseStatus,
 		// responseHeaders are the headers sent in the HTTP response
 		// The value is a base64 encoded string of comma separated key-value pairs.
@@ -128,6 +96,12 @@ func TestWithTestUpstream(t *testing.T) {
 		responseHeaders,
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
+		// expHost is the expected host to be sent to the test upstream.
+		expHost string
+		// expHeaders are the expected headers to be sent to the test upstream.
+		// The value is a base64 encoded string of comma separated key-value pairs.
+		// E.g. "key1:value1,key2:value2".
+		expHeaders map[string]string
 		// expRequestBody is the expected body to be sent to the test upstream.
 		// This can be used to test the request body translation.
 		expRequestBody string
@@ -139,15 +113,11 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
-			name:           "unknown path",
-			backend:        "openai",
-			path:           "/unknown",
-			method:         http.MethodPost,
-			requestBody:    `{"prompt": "hello"}`,
-			responseBody:   `{"error": "unknown path"}`,
-			expPath:        "/unknown",
-			responseStatus: "500",
-			expStatus:      http.StatusInternalServerError,
+			name:            "unknown path",
+			path:            "/unknown",
+			requestBody:     `{"prompt": "hello"}`,
+			expStatus:       http.StatusNotFound,
+			expResponseBody: `unsupported path: /unknown`,
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",
@@ -193,6 +163,21 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "gcp-vertexai - /v1/chat/completions",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expRequestBody:  `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:         "gcp-region-aiplatform.googleapis.com",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -291,6 +276,19 @@ data: [DONE]
 			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
 		},
 		{
+			name:            "gcp-vertexai - /v1/chat/completions - error response",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			responseBody:    `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+			expResponseBody: `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+		},
+		{
 			name:            "openai - /v1/embeddings",
 			backend:         "openai",
 			path:            "/v1/embeddings",
@@ -343,6 +341,22 @@ data: [DONE]
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 				req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
+
+				var expHeaders []string
+				for k, v := range tc.expHeaders {
+					expHeaders = append(expHeaders, fmt.Sprintf("%s:%s", k, v))
+				}
+				if len(expHeaders) > 0 {
+					req.Header.Set(
+						testupstreamlib.ExpectedHeadersKey,
+						base64.StdEncoding.EncodeToString(
+							[]byte(strings.Join(expHeaders, ","))),
+					)
+				}
+
+				if tc.expHost != "" {
+					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
+				}
 				if tc.responseType != "" {
 					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
 				}
