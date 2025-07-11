@@ -295,10 +295,13 @@ func newConditions(conditionType, message string) []metav1.Condition {
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
 const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
 
-// handleFinalizer checks if the object has a deletion timestamp.
+// handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
+// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
+// so that the finalizer is persisted.
 //
-// If it does not, it adds the finalizer to the object and updates it so that the finalizer is persisted.
-// If it does have a deletion timestamp, it removes the finalizer and calls the onDeletionFn if provided.
+// onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
+// be a recoverable error. For example, onDeletionFn only propagates the deletion of the object to other resources.
+// See the call sites of this function for examples.
 func handleFinalizer[objType client.Object](
 	ctx context.Context, client client.Client,
 	logger logr.Logger,
@@ -309,6 +312,7 @@ func handleFinalizer[objType client.Object](
 		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
 			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
 			if err := client.Update(ctx, o); err != nil {
+				// This shouldn't happen in normal operation, but if it does, we log the error.
 				logger.Error(err, "Failed to add finalizer to object",
 					"namespace", o.GetNamespace(), "name", o.GetName())
 			}
@@ -319,11 +323,13 @@ func handleFinalizer[objType client.Object](
 		ctrlutil.RemoveFinalizer(o, aiGatewayControllerFinalizer)
 		if onDeletionFn != nil {
 			if err := onDeletionFn(ctx, o); err != nil {
+				// onDeletionFn can return an error, but it should not be a recoverable error.
 				logger.Error(err, "Failed to handle finalizer deletion",
 					"namespace", o.GetNamespace(), "name", o.GetName())
 			}
 		}
 		if err := client.Update(ctx, o); err != nil {
+			// This shouldn't happen in normal operation, but if it does, we log the error.
 			logger.Error(err, "Failed to remove finalizer from object",
 				"namespace", o.GetNamespace(), "name", o.GetName())
 		}
