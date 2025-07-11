@@ -48,7 +48,7 @@ Alternatively, you can make the following requests to see the raw metrics:
 
 ```shell
 curl http://localhost:9090/api/v1/query --data-urlencode \
-  'query=sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-basic"}) by (gen_ai_request_model, gen_ai_token_type)' \
+  'query=sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-basic"}) by (gen_ai_request_model, gen_ai_token_type)' \
     | jq '.data.result[]'
 ```
 
