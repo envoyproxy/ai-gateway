@@ -57,7 +57,7 @@ func newGenAI(meter metric.Meter) *genAI {
 		tokenUsage: mustRegisterHistogram(meter,
 			genaiMetricClientTokenUsage,
 			metric.WithDescription("Number of tokens processed."),
-			metric.WithUnit("{token}"),
+			metric.WithUnit("token"),
 			metric.WithExplicitBucketBoundaries(1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864),
 		),
 		requestLatency: mustRegisterHistogram(meter,

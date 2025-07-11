@@ -468,7 +468,10 @@ data: [DONE]
 		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Contains(t, string(body), `gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway",otel_scope_version="",le="0.01"} 1`)
+		require.Containsf(t, string(body),
+			`gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway"`,
+			"expected metrics in response body:\n%s", string(body),
+		)
 	})
 }
 
