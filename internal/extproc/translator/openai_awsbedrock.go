@@ -8,7 +8,6 @@ package translator
 import (
 	"bytes"
 	"cmp"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"

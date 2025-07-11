@@ -296,9 +296,13 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 	if openAIReq.FrequencyPenalty != nil {
 		gc.FrequencyPenalty = openAIReq.FrequencyPenalty
 	}
-	if len(openAIReq.Stop) > 0 {
+	stopSeq, err := processStop(openAIReq.Stop)
+	if err != nil {
+		return nil, err
+	}
+	if len(stopSeq) > 0 {
 		var stops []string
-		for _, s := range openAIReq.Stop {
+		for _, s := range stopSeq {
 			if s != nil {
 				stops = append(stops, *s)
 			}
