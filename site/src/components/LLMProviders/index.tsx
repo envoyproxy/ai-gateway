@@ -116,6 +116,12 @@ export default function LLMProviders(): React.ReactElement {
             Supported LLM Providers
           </Heading>
           <div className={styles.titleUnderline}></div>
+          <p className={styles.sectionDescription}>
+            The latest version of Envoy AI Gateway supports these LLM providers out of the box.
+            For detailed configuration instructions and the most up-to-date provider integrations,
+            check out our <a href="/docs/capabilities/llm-integrations/supported-providers" className={styles.docsLink}>
+            provider documentation</a>.
+          </p>
         </div>
         <div className={styles.providersGrid}>
           {LLMProvidersList.map((provider, idx) => (

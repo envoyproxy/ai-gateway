@@ -22,6 +22,29 @@
   border-radius: 2px;
 }
 
+.sectionDescription {
+  max-width: 600px;
+  margin: 2rem auto 0;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-700);
+  text-align: center;
+}
+
+.docsLink {
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.docsLink:hover {
+  color: var(--ifm-color-primary-dark);
+  border-bottom-color: var(--ifm-color-primary-dark);
+  text-decoration: none;
+}
+
 .providersGrid {
   display: flex;
   flex-wrap: wrap;
