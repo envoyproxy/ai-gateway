@@ -22,6 +22,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -128,6 +131,13 @@ func TestStartMetricsServer(t *testing.T) {
 
 	require.NotNil(t, s)
 	require.NotNil(t, m)
+	ccm := metrics.DefaultChatCompletion(m)
+	ccm.StartRequest(nil)
+	ccm.SetModel("test-model")
+	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})
+	ccm.RecordTokenUsage(t.Context(), 10, 5, 15)
+	ccm.RecordRequestCompletion(t.Context(), true)
+	ccm.RecordTokenLatency(t.Context(), 10)
 
 	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
 
@@ -135,7 +145,18 @@ func TestStartMetricsServer(t *testing.T) {
 	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil, "OK")
 
 	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil)
-	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, "target_info{")
+	// Ensure that the metrics endpoint returns the expected metrics.
+	for _, metric := range []string{
+		"gen_ai_client_token_usage_token_bucket",
+		"gen_ai_server_request_duration_seconds_bucket",
+		"gen_ai_server_request_duration_seconds_count",
+		"gen_ai_server_request_duration_seconds_sum",
+		"gen_ai_client_token_usage_token_bucket",
+		"gen_ai_client_token_usage_token_count",
+		"gen_ai_client_token_usage_token_sum",
+	} {
+		require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, metric)
+	}
 }
 
 func TestStartHealthCheckServer(t *testing.T) {
