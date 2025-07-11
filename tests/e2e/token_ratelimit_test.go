@@ -103,7 +103,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.kill()
-		const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
