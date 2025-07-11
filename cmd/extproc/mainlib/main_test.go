@@ -22,6 +22,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -128,6 +130,8 @@ func TestStartMetricsServer(t *testing.T) {
 
 	require.NotNil(t, s)
 	require.NotNil(t, m)
+	ccm := metrics.DefaultChatCompletion(m)
+	ccm.RecordTokenUsage(t.Context(), 10, 5, 15)
 
 	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
 
@@ -135,7 +139,10 @@ func TestStartMetricsServer(t *testing.T) {
 	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil, "OK")
 
 	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil)
-	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil, "target_info{")
+	// Ensure that the metrics endpoint returns the expected metrics.
+	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/metrics", nil,
+		"gen_ai_client_token_usage_token_bucket",
+	)
 }
 
 func TestStartHealthCheckServer(t *testing.T) {
