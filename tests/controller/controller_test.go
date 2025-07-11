@@ -665,7 +665,7 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
-			var r aigv1a1.AIGatewayRoute
+			var r aigv1a1.AIServiceBackend
 			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
 			if err == nil || client.IgnoreNotFound(err) != nil {
 				t.Logf("expected not found error, got: %v", err)
