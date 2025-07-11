@@ -273,6 +273,13 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp))
 	}
@@ -292,6 +299,10 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("azure-oidc"), Namespace: namespace},
 			StringData: map[string]string{rotators.AzureAccessTokenKey: "thisisazurecredentials"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp"), Namespace: namespace},
+			StringData: map[string]string{rotators.GCPAccessTokenKey: "thisisgcpcredentials"},
 		},
 	} {
 		_, err := kube.CoreV1().Secrets(namespace).Create(t.Context(), s, metav1.CreateOptions{})
@@ -324,6 +335,12 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "azure-oidc",
 			exp: &filterapi.BackendAuth{
 				AzureAuth: &filterapi.AzureAuth{AccessToken: "thisisazurecredentials"},
+			},
+		},
+		{
+			bspName: "gcp",
+			exp: &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
 			},
 		},
 	} {
