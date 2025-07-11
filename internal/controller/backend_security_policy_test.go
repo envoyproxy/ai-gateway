@@ -83,6 +83,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Len(t, bsp.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, bsp.Status.Conditions[0].Type)
 	require.Equal(t, "BackendSecurityPolicy reconciled successfully", bsp.Status.Conditions[0].Message)
+	require.Contains(t, bsp.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 
 	// Test the case where the BackendSecurityPolicy is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})

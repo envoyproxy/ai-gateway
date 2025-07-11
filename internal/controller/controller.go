@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -289,4 +290,43 @@ func newConditions(conditionType, message string) []metav1.Condition {
 		condition.Reason = "ReconciliationFailed"
 	}
 	return []metav1.Condition{condition}
+}
+
+// aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
+const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
+
+// handleFinalizer checks if the object has a deletion timestamp.
+//
+// If it does not, it adds the finalizer to the object and updates it so that the finalizer is persisted.
+// If it does have a deletion timestamp, it removes the finalizer and calls the onDeletionFn if provided.
+func handleFinalizer[objType client.Object](
+	ctx context.Context, client client.Client,
+	logger logr.Logger,
+	o objType,
+	onDeletionFn func(ctx context.Context, o objType) error,
+) (onDelete bool) {
+	if o.GetDeletionTimestamp().IsZero() {
+		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
+			if err := client.Update(ctx, o); err != nil {
+				logger.Error(err, "Failed to add finalizer to object",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		return false
+	}
+	if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+		ctrlutil.RemoveFinalizer(o, aiGatewayControllerFinalizer)
+		if onDeletionFn != nil {
+			if err := onDeletionFn(ctx, o); err != nil {
+				logger.Error(err, "Failed to handle finalizer deletion",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		if err := client.Update(ctx, o); err != nil {
+			logger.Error(err, "Failed to remove finalizer from object",
+				"namespace", o.GetNamespace(), "name", o.GetName())
+		}
+	}
+	return true
 }
