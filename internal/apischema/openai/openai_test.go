@@ -307,7 +307,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				},
 				MaxCompletionTokens: ptr.To[int64](1024),
 				ParallelToolCalls:   ptr.To(true),
-				Stop:                ptr.To[any]([]interface{}{"\n", "stop"}),
+				Stop:                []interface{}{"\n", "stop"},
 			},
 		},
 		{
@@ -328,7 +328,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						Type: ChatMessageRoleUser,
 					},
 				},
-				Stop: ptr.To[any]("stop"),
+				Stop: "stop",
 			},
 		},
 	} {
