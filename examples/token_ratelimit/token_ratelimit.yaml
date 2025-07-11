@@ -84,7 +84,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: testupstream.default.svc.cluster.local
+        hostname: envoy-ai-gateway-token-ratelimit-tesetupstream.default.svc.cluster.local
         port: 80
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -185,3 +185,39 @@ spec:
               metadata:
                 namespace: io.envoy.ai_gateway
                 key: llm_cel_calculated_token
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-ai-gateway-token-ratelimit-tesetupstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-ai-gateway-token-ratelimit-tesetupstream
+  template:
+    metadata:
+      labels:
+        app: envoy-ai-gateway-token-ratelimit-tesetupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-ai-gateway-token-ratelimit-tesetupstream
+  namespace: default
+spec:
+  selector:
+    app: envoy-ai-gateway-token-ratelimit-tesetupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
