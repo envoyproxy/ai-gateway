@@ -22,3 +22,8 @@ const (
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
 }
+
+// ClusterRefInferencePool generates a unique reference for an InferencePool cluster.
+func ClusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
+	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
+}

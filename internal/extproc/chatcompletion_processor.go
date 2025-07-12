@@ -208,6 +208,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
+		c.logger.Info("response body mutation", slog.String("body", string(bm)))
 		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
 	}
 
@@ -352,6 +353,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
+	c.logger.Info("selected backend", slog.String("picked_endpoint", c.requestHeaders["x-gateway-destination-endpoint"]), slog.String("OnRetry", fmt.Sprintf("%v", c.onRetry)), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride), slog.String("originalRequestBodyRaw", string(c.originalRequestBodyRaw)))
 	rp.upstreamFilter = c
 	return
 }
