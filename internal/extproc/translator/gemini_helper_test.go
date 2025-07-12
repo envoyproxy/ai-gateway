@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -724,10 +725,10 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 
 func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   *openai.ChatCompletionRequest
-		expects *genai.GenerationConfig
-		wantErr bool
+		name                     string
+		input                    *openai.ChatCompletionRequest
+		expectedGenerationConfig *genai.GenerationConfig
+		expectedErrMsg           string
 	}{
 		{
 			name: "all fields set",
@@ -743,7 +744,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				FrequencyPenalty: ptr.To(float32(0.5)),
 				Stop:             []*string{ptr.To("stop1"), ptr.To("stop2")},
 			},
-			expects: &genai.GenerationConfig{
+			expectedGenerationConfig: &genai.GenerationConfig{
 				Temperature:      ptr.To(float32(0.7)),
 				TopP:             ptr.To(float32(0.9)),
 				Seed:             ptr.To(int32(42)),
@@ -755,31 +756,283 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				FrequencyPenalty: ptr.To(float32(0.5)),
 				StopSequences:    []string{"stop1", "stop2"},
 			},
-			wantErr: false,
 		},
 		{
-			name:    "minimal fields",
-			input:   &openai.ChatCompletionRequest{},
-			expects: &genai.GenerationConfig{},
-			wantErr: false,
+			name:                     "minimal fields",
+			input:                    &openai.ChatCompletionRequest{},
+			expectedGenerationConfig: &genai.GenerationConfig{},
+		},
+		{
+			name: "text",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeText,
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "text/plain"},
+		},
+		{
+			name: "json object",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "application/json"},
+		},
+		{
+			name: "json schema (map)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Schema: map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType:   "application/json",
+				ResponseJsonSchema: map[string]any{"type": "string"},
+			},
+		},
+		{
+			name: "json schema (string)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Schema: `{"type":"string"}`,
+					},
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType:   "application/json",
+				ResponseJsonSchema: map[string]any{"type": "string"},
+			},
+		},
+		{
+			name: "json schema (invalid string)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Schema: `{"type":`, // invalid JSON.
+					},
+				},
+			},
+			expectedErrMsg: "invalid JSON schema string",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := openAIReqToGeminiGenerationConfig(tc.input)
-			if tc.wantErr {
-				if err == nil {
-					t.Errorf("expected error but got nil")
+			if tc.expectedErrMsg != "" && err == nil {
+				t.Errorf("expected error but got nil. Expected: %s", tc.expectedErrMsg)
+				return
+			}
+			if tc.expectedErrMsg == "" && err != nil {
+				t.Errorf("unexpected error. Error: %s", err.Error())
+				return
+			}
+			if tc.expectedErrMsg != "" && err != nil && !strings.Contains(err.Error(), tc.expectedErrMsg) {
+				t.Errorf("expected error message %q but got %q", tc.expectedErrMsg, err.Error())
+				return
+			}
+
+			if diff := cmp.Diff(tc.expectedGenerationConfig, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{})); diff != "" {
+				t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestOpenAIToolsToGeminiTools(t *testing.T) {
+	funcParams := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"a": map[string]any{"type": "integer"},
+			"b": map[string]any{"type": "integer"},
+		},
+		"required": []any{"a", "b"},
+	}
+	tests := []struct {
+		name          string
+		openaiTools   []openai.Tool
+		expected      []genai.Tool
+		expectedError string
+	}{
+		{
+			name:        "empty tools",
+			openaiTools: nil,
+			expected:    nil,
+		},
+		{
+			name: "single function tool with parameters",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "add",
+						Description: "Add two numbers",
+						Parameters:  funcParams,
+					},
+				},
+			},
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:                 "add",
+							Description:          "Add two numbers",
+							ParametersJsonSchema: funcParams,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple function tools",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "foo",
+						Description: "Foo function",
+					},
+				},
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bar",
+						Description: "Bar function",
+					},
+				},
+			},
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:                 "foo",
+							Description:          "Foo function",
+							Parameters:           nil,
+							ParametersJsonSchema: map[string]any(nil),
+						},
+						{
+							Name:                 "bar",
+							Description:          "Bar function",
+							Parameters:           nil,
+							ParametersJsonSchema: map[string]any(nil),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "tool with invalid parameters schema",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bad",
+						Description: "Bad function",
+						Parameters:  "not-a-map",
+					},
+				},
+			},
+			expectedError: "tool's param should be a valid JSON string. invalid JSON schema string provided for tool 'bad'",
+		},
+		{
+			name: "non-function tool is ignored",
+			openaiTools: []openai.Tool{
+				{
+					Type: "retrieval",
+				},
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := openAIToolsToGeminiTools(tc.openaiTools)
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				if d := cmp.Diff(tc.expected, result, cmpopts.IgnoreUnexported(genai.Schema{})); d != "" {
+					t.Errorf("Result mismatch (-want +got):\n%s", d)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     interface{}
+		expected  *genai.ToolConfig
+		expectErr string
+	}{
+		{
+			name:     "string auto",
+			input:    "auto",
+			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAuto}},
+		},
+		{
+			name:     "string none",
+			input:    "none",
+			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeNone}},
+		},
+		{
+			name:     "string required",
+			input:    "required",
+			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}},
+		},
+		{
+			name: "ToolChoice struct",
+			input: openai.ToolChoice{
+				Type:     openai.ToolTypeFunction,
+				Function: openai.ToolFunction{Name: "myfunc"},
+			},
+			expected: &genai.ToolConfig{
+				FunctionCallingConfig: &genai.FunctionCallingConfig{
+					Mode:                 genai.FunctionCallingConfigModeAny,
+					AllowedFunctionNames: []string{"myfunc"},
+				},
+				RetrievalConfig: nil,
+			},
+		},
+		{
+			name:      "unsupported type",
+			input:     123,
+			expectErr: "unsupported tool choice type",
+		},
+		{
+			name:      "unsupported string value",
+			input:     "invalid",
+			expectErr: "unsupported tool choice: 'invalid'",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := openAIToolChoiceToGeminiToolConfig(tc.input)
+			if tc.expectErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.expectErr) {
+					t.Errorf("expected error %q, got %v", tc.expectErr, err)
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+				t.Fatalf("unexpected error: %v", err)
 			}
-			if diff := cmp.Diff(tc.expects, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{})); diff != "" {
-				t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tc.expected, got, cmpopts.IgnoreUnexported(genai.ToolConfig{}, genai.FunctionCallingConfig{})); diff != "" {
+				t.Errorf("ToolConfig mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

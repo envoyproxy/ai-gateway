@@ -44,6 +44,52 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 }
 `)
 
+	wantBdyWithTools := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "What's the weather in San Francisco?"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "get_weather",
+                    "description": "Get the current weather in a given location",
+                    "parametersJsonSchema": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state, e.g. San Francisco, CA"
+                            },
+                            "unit": {
+                                "type": "string",
+                                "enum": ["celsius", "fahrenheit"]
+                            }
+                        },
+                        "required": ["location"]
+                    }
+                }
+            ]
+        }
+    ],
+    "generation_config": {},
+    "system_instruction": {
+        "parts": [
+            {
+                "text": "You are a helpful assistant"
+            }
+        ]
+    }
+}
+`)
+
 	tests := []struct {
 		name          string
 		input         openai.ChatCompletionRequest
@@ -98,6 +144,77 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantBody: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
 					Body: wantBdy,
+				},
+			},
+		},
+		{
+			name: "request with tools",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gemini-pro",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionSystemMessageParam{
+							Content: openai.StringOrArray{
+								Value: "You are a helpful assistant",
+							},
+						},
+						Type: openai.ChatMessageRoleSystem,
+					},
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "What's the weather in San Francisco?",
+							},
+						},
+						Type: openai.ChatMessageRoleUser,
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get the current weather in a given location",
+							Parameters: map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"location": map[string]interface{}{
+										"type":        "string",
+										"description": "The city and state, e.g. San Francisco, CA",
+									},
+									"unit": map[string]interface{}{
+										"type": "string",
+										"enum": []string{"celsius", "fahrenheit"},
+									},
+								},
+								"required": []string{"location"},
+							},
+						},
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{
+					{
+						Header: &corev3.HeaderValue{
+							Key:      ":path",
+							RawValue: []byte("publishers/google/models/gemini-pro:generateContent"),
+						},
+					},
+					{
+						Header: &corev3.HeaderValue{
+							Key:      "Content-Length",
+							RawValue: []byte("528"),
+						},
+					},
+				},
+			},
+			wantBody: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: wantBdyWithTools,
 				},
 			},
 		},

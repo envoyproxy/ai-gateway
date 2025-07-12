@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -178,6 +179,21 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
+		},
+		{
+			name:            "gcp-vertexai - /v1/chat/completions - tool use",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"user","content":"tell me the delivery date for order 123"}],"tools":[{"type":"function","function":{"name":"get_delivery_date","description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","parameters":{"type":"object","properties":{"order_id":{"type":"string","description":"The customer's order ID."}},"required":["order_id"]}}}]}`,
+			expRequestBody:  `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parametersJsonSchema":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
+			expHost:         "gcp-region-aiplatform.googleapis.com",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -379,10 +395,15 @@ data: [DONE]
 				}
 
 				if tc.expResponseBody != "" {
-					body, err := io.ReadAll(resp.Body)
+					bodyBytes, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
-					if string(body) != tc.expResponseBody {
-						fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), tc.expResponseBody))
+					// Substitute any dynamically generated UUIDs in the response body with a placeholder
+					// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
+					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
+					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
+					if body != expectedResponseBody {
+						fmt.Printf("unexpected response:\n%s", cmp.Diff(body, tc.expResponseBody))
 						return false
 					}
 				} else if tc.expResponseBodyFunc != nil {

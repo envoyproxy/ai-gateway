@@ -13,8 +13,8 @@ import (
 	"path"
 	"strconv"
 
-	"github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	ext_procv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 
@@ -258,6 +258,76 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 	return parts, knownToolCalls, nil
 }
 
+// openAIToolsToGeminiTools converts OpenAI tools to Gemini tools
+// This function combines all the openai tools into a single Gemini Tool as distinct function declarations.
+// This is mainly done because some Gemini models do not support multiple tools in a single request.
+// This behavior might need to change in future based on model capabilities.
+func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
+	if len(openaiTools) == 0 {
+		return nil, nil
+	}
+	var functionDecls []*genai.FunctionDeclaration
+	for _, tool := range openaiTools {
+		if tool.Type == openai.ToolTypeFunction {
+			if tool.Function != nil {
+				var params map[string]any
+				var err error
+
+				if tool.Function.Parameters != nil {
+					switch paramsRaw := tool.Function.Parameters.(type) {
+					case string:
+						if err = json.Unmarshal([]byte(paramsRaw), &params); err != nil {
+							return nil, fmt.Errorf("tool's param should be a valid JSON string. invalid JSON schema string provided for tool '%s': %w", tool.Function.Name, err)
+						}
+					case map[string]any:
+						params = paramsRaw
+					}
+				}
+				functionDecl := &genai.FunctionDeclaration{
+					Name:                 tool.Function.Name,
+					Description:          tool.Function.Description,
+					ParametersJsonSchema: params,
+				}
+				functionDecls = append(functionDecls, functionDecl)
+			}
+		}
+	}
+	if len(functionDecls) == 0 {
+		return nil, nil
+	}
+	return []genai.Tool{{FunctionDeclarations: functionDecls}}, nil
+}
+
+// openAIToolChoiceToGeminiToolConfig converts OpenAI tool_choice to Gemini ToolConfig.
+func openAIToolChoiceToGeminiToolConfig(toolChoice interface{}) (*genai.ToolConfig, error) {
+	if toolChoice == nil {
+		return nil, nil
+	}
+	switch tc := toolChoice.(type) {
+	case string:
+		switch tc {
+		case "auto":
+			return &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAuto}}, nil
+		case "none":
+			return &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeNone}}, nil
+		case "required":
+			return &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}}, nil
+		default:
+			return nil, fmt.Errorf("unsupported tool choice: '%s'", tc)
+		}
+	case openai.ToolChoice:
+		return &genai.ToolConfig{
+			FunctionCallingConfig: &genai.FunctionCallingConfig{
+				Mode:                 genai.FunctionCallingConfigModeAny,
+				AllowedFunctionNames: []string{tc.Function.Name},
+			},
+			RetrievalConfig: nil,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported tool choice type: %T", toolChoice)
+	}
+}
+
 // openAIReqToGeminiGenerationConfig converts OpenAI request to Gemini GenerationConfig.
 func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) (*genai.GenerationConfig, error) {
 	gc := &genai.GenerationConfig{}
@@ -282,6 +352,29 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 
 	if openAIReq.LogProbs != nil {
 		gc.ResponseLogprobs = *openAIReq.LogProbs
+	}
+
+	if openAIReq.ResponseFormat != nil {
+		switch openAIReq.ResponseFormat.Type {
+		case openai.ChatCompletionResponseFormatTypeText:
+			gc.ResponseMIMEType = mimeTypeTextPlain
+		case openai.ChatCompletionResponseFormatTypeJSONObject:
+			gc.ResponseMIMEType = mimeTypeApplicationJSON
+		case openai.ChatCompletionResponseFormatTypeJSONSchema:
+			var schemaMap map[string]interface{}
+
+			switch sch := openAIReq.ResponseFormat.JSONSchema.Schema.(type) {
+			case string:
+				if err := json.Unmarshal([]byte(sch), &schemaMap); err != nil {
+					return nil, fmt.Errorf("invalid JSON schema string: %w", err)
+				}
+			case map[string]interface{}:
+				schemaMap = sch
+			}
+
+			gc.ResponseMIMEType = mimeTypeApplicationJSON
+			gc.ResponseJsonSchema = schemaMap
+		}
 	}
 
 	if openAIReq.N != nil {

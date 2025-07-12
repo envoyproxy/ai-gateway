@@ -113,6 +113,18 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 		return gcp.GenerateContentRequest{}, err
 	}
 
+	// Convert OpenAI tools to Gemini tools.
+	tools, err := openAIToolsToGeminiTools(openAIReq.Tools)
+	if err != nil {
+		return gcp.GenerateContentRequest{}, fmt.Errorf("error converting tools: %w", err)
+	}
+
+	// Convert tool config.
+	toolConfig, err := openAIToolChoiceToGeminiToolConfig(openAIReq.ToolChoice)
+	if err != nil {
+		return gcp.GenerateContentRequest{}, fmt.Errorf("error converting tool choice: %w", err)
+	}
+
 	// Convert generation config.
 	generationConfig, err := openAIReqToGeminiGenerationConfig(openAIReq)
 	if err != nil {
@@ -121,8 +133,8 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 
 	gcr := gcp.GenerateContentRequest{
 		Contents:          contents,
-		Tools:             nil,
-		ToolConfig:        nil,
+		Tools:             tools,
+		ToolConfig:        toolConfig,
 		GenerationConfig:  generationConfig,
 		SystemInstruction: systemInstruction,
 	}
