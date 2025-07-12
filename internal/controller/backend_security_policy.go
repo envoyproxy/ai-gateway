@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -88,6 +89,28 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
 			return res, err
+		}
+		secretName, useGeneratedSecret := getSecretNameAndOwnership(bsp)
+		if useGeneratedSecret {
+			var secret *corev1.Secret
+			secret, err = rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
+			if err != nil {
+				return res, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
+					bsp.Namespace, secretName, err)
+			}
+
+			ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme())
+			if !ok {
+				updated := secret.DeepCopy()
+				if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
+					return res, fmt.Errorf("failed to set controller reference for secret %s/%s: %w",
+						updated.Namespace, updated.Name, err)
+				}
+				if err = c.client.Update(ctx, updated); err != nil {
+					return res, fmt.Errorf("failed to update secret %s/%s with owner reference: %w",
+						updated.Namespace, updated.Name, err)
+				}
+			}
 		}
 	}
 	err = c.syncBackendSecurityPolicy(ctx, bsp)
@@ -289,4 +312,16 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 	}
 
 	return nil
+}
+
+func getSecretNameAndOwnership(bsp *aigv1a1.BackendSecurityPolicy) (string, bool) {
+	if bsp.Spec.AzureCredentials != nil && bsp.Spec.AzureCredentials.ClientSecretRef != nil {
+		return string(bsp.Spec.AzureCredentials.ClientSecretRef.Name), false
+	}
+	if bsp.Spec.AWSCredentials != nil &&
+		bsp.Spec.AWSCredentials.CredentialsFile != nil &&
+		bsp.Spec.AWSCredentials.CredentialsFile.SecretRef != nil {
+		return string(bsp.Spec.AWSCredentials.CredentialsFile.SecretRef.Name), false
+	}
+	return rotators.GetBSPSecretName(bsp.Name), true
 }
