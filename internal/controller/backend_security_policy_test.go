@@ -516,6 +516,17 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
+	secretName := rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName))
+	err := cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"client-secret": []byte("client-secret"),
+		},
+	})
+	require.NoError(t, err)
 
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", bspName), Namespace: bspNamespace},
@@ -526,11 +537,25 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 			},
 		},
 	}
-	err := cl.Create(t.Context(), bsp)
+	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-OIDC", bspName)}})
 	require.Error(t, err)
 	require.Equal(t, time.Duration(0), res.RequeueAfter)
+
+	var updatedSecret corev1.Secret
+	err = cl.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: secretName}, &updatedSecret)
+	require.NoError(t, err)
+
+	found := false
+	for _, ref := range updatedSecret.OwnerReferences {
+		if ref.Kind == "BackendSecurityPolicy" && ref.Name == bsp.Name &&
+			ref.APIVersion == aigv1a1.SchemeBuilder.GroupVersion.String() {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected secret to have owner reference to BackendSecurityPolicy")
 }
 
 func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecretRef(t *testing.T) {

@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,6 +36,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -510,10 +512,21 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
+			secretName := rotators.GetBSPSecretName(backendSecurityPolicyName)
 			var bsp aigv1a1.BackendSecurityPolicy
 			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &bsp)
 			if err == nil || client.IgnoreNotFound(err) != nil {
 				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			var secret corev1.Secret
+			errSecret := c.Get(t.Context(), client.ObjectKey{
+				Name:      secretName,
+				Namespace: backendSecurityPolicyNamespace,
+			}, &secret)
+
+			if !apierrors.IsNotFound(errSecret) {
+				t.Logf("expected secret %s/%s to be deleted, but still exists", backendSecurityPolicyNamespace, secretName)
 				return false
 			}
 			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
