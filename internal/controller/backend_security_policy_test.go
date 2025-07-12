@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -516,6 +517,17 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
+	secretName := rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName))
+	err := cl.Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"client-secret": []byte("client-secret"),
+		},
+	})
+	require.NoError(t, err)
 
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-OIDC", bspName), Namespace: bspNamespace},
@@ -526,11 +538,17 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 			},
 		},
 	}
-	err := cl.Create(t.Context(), bsp)
+	err = cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-OIDC", bspName)}})
 	require.Error(t, err)
 	require.Equal(t, time.Duration(0), res.RequeueAfter)
+
+	var updatedSecret corev1.Secret
+	err = cl.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: secretName}, &updatedSecret)
+	require.NoError(t, err)
+	ok, _ := ctrlutil.HasOwnerReference(updatedSecret.OwnerReferences, bsp, c.client.Scheme())
+	require.True(t, ok, "expected secret to have owner reference to BackendSecurityPolicy")
 }
 
 func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecretRef(t *testing.T) {
@@ -820,6 +838,166 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			default:
 				require.NoError(t, err)
 				require.NotZero(t, res.RequeueAfter)
+			}
+		})
+	}
+}
+
+func TestGetBSPGeneratedSecretName(t *testing.T) {
+	tests := []struct {
+		name     string
+		bsp      *aigv1a1.BackendSecurityPolicy
+		expected struct {
+			name   string
+			exists bool
+		}
+	}{
+		{
+			name: "AWS without OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "aws-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+							SecretRef: nil,
+						},
+						OIDCExchangeToken: nil,
+					},
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "ai-eg-bsp-aws-bsp",
+				exists: true,
+			},
+		},
+		{
+			name: "AWS with OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "aws-oidc-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+								OIDC: egv1a1.OIDC{
+									ClientID: "some-client-id",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "",
+				exists: false,
+			},
+		},
+		{
+			name: "Azure without OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "azure-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						ClientSecretRef:   nil,
+						OIDCExchangeToken: nil,
+					},
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "ai-eg-bsp-azure-bsp",
+				exists: true,
+			},
+		},
+		{
+			name: "Azure with OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "azure-oidc-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{
+							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+								OIDC: egv1a1.OIDC{
+									ClientID: "some-client-id",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "",
+				exists: false,
+			},
+		},
+		{
+			name: "GCP type",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gcp-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "ai-eg-bsp-gcp-bsp",
+				exists: true,
+			},
+		},
+		{
+			name: "APIKey type",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "apikey-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				},
+			},
+			expected: struct {
+				name   string
+				exists bool
+			}{
+				name:   "",
+				exists: false,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resultName, resultExists := getBSPGeneratedSecretName(tt.bsp)
+			require.Equal(t, tt.expected.exists, resultExists)
+			if resultExists {
+				require.Equal(t, tt.expected.name, resultName)
+			} else {
+				require.Empty(t, resultName)
 			}
 		})
 	}
