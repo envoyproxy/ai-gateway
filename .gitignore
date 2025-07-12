@@ -36,3 +36,7 @@ site/yarn-debug.log*
 site/yarn-error.log*
 site/static/.DS_Store
 site/temp
+
+/hack/
+/.run
+/tests/extproc/envoy-config-local.yaml

@@ -42,7 +42,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 		return nil, nil, fmt.Errorf("error marshaling Gemini request: %w", err)
 	}
 
-	headerMutation, bodyMutation = buildGCPRequestMutations(pathSuffix, gcpReqBody)
+	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, gcpReqBody)
 	return headerMutation, bodyMutation, nil
 }
 
@@ -100,7 +100,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(respHeaders
 		}
 	}
 
-	headerMutation, bodyMutation = buildGCPRequestMutations("", openAIRespBytes)
+	headerMutation, bodyMutation = buildRequestMutations("", openAIRespBytes)
 
 	return headerMutation, bodyMutation, usage, nil
 }
