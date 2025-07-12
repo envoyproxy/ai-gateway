@@ -28,13 +28,3 @@ spec:
       triggers:
         - connect-failure
         - retriable-status-codes
-  # Optional: Uncomment to enable the failure to be propagated to the following requests.
-  # healthCheck:
-  #   passive:
-  #     baseEjectionTime: 30s
-  #     interval: 2s
-  #     maxEjectionPercent: 100
-  #     consecutive5XxErrors: 1
-  #     consecutiveGatewayErrors: 0
-  #     consecutiveLocalOriginFailures: 1
-  #     splitExternalLocalOriginErrors: false
