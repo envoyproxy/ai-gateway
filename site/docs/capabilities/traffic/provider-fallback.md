@@ -98,20 +98,14 @@ spec:
         maxInterval: 10s
       timeout: 30s
     retryOn:
+      # This ensures that only one attempt is made per priority.
+      # For example, if the primary backend fails, it will not retry on the same backend.
+      numAttemptsPerPriority: 1
       httpStatusCodes:
         - 500
       triggers:
         - connect-failure
         - retriable-status-codes
-  healthCheck:
-    passive:
-      baseEjectionTime: 5s
-      interval: 2s
-      maxEjectionPercent: 100
-      consecutive5XxErrors: 1
-      consecutiveGatewayErrors: 0
-      consecutiveLocalOriginFailures: 1
-      splitExternalLocalOriginErrors: false
 ```
 
 ## References
