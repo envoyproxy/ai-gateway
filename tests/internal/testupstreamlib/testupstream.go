@@ -44,4 +44,6 @@ const (
 	ExpectedTestUpstreamIDKey = "x-expected-testupstream-id"
 	// ExpectedHostKey is the key for the expected host in the request.
 	ExpectedHostKey = "x-expected-host"
+	// TestUpstreamIDResponseHeaderKey is the key for the testupstream ID in the response header.
+	TestUpstreamIDResponseHeaderKey = "testupstream-id"
 )
