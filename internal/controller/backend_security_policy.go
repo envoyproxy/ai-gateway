@@ -205,8 +205,11 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 						fmt.Sprintf("successfully rotated credential for %s in namespace %s of auth type %s, renewing in %f minutes",
 							bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 				} else {
-					c.logger.Error(fmt.Errorf("newly rotated credential is already expired %s",
-						rotationTime), "namespace", bsp.Namespace, "name", bsp.Name)
+					c.logger.Error(fmt.Errorf("newly rotated credential is already expired %s", rotationTime),
+						"credential is already expired after rotation",
+						"namespace", bsp.Namespace,
+						"name", bsp.Name,
+					)
 				}
 			}
 		} else {
