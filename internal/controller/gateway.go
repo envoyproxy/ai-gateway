@@ -338,9 +338,6 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		}
 		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		if backendSecurityPolicy.Spec.AWSCredentials == nil {
-			return nil, fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-		}
 		var secretName string
 		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
 			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
@@ -351,19 +348,13 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
-		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
-			return &filterapi.BackendAuth{
-				AWSAuth: &filterapi.AWSAuth{
-					CredentialFileLiteral: credentialsLiteral,
-					Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
-				},
-			}, nil
-		}
-		return nil, nil
+		return &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: credentialsLiteral,
+				Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
+			},
+		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		if backendSecurityPolicy.Spec.AzureCredentials == nil {
-			return nil, fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-		}
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if err != nil {

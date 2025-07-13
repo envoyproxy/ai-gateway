@@ -389,18 +389,6 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 			expectedError: "failed to get secret missing-secret",
 		},
 		{
-			name:    "aws credentials without credentials defined",
-			bspName: "aws-no-creds-bsp",
-			setupBSP: &aigv1a1.BackendSecurityPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "aws-no-creds-bsp", Namespace: namespace},
-				Spec: aigv1a1.BackendSecurityPolicySpec{
-					Type:           aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-					AWSCredentials: nil, // This should trigger the error.
-				},
-			},
-			expectedError: "AWSCredentials type selected but not defined",
-		},
-		{
 			name:    "aws credentials with credentials file missing secret",
 			bspName: "aws-creds-file-bsp",
 			setupBSP: &aigv1a1.BackendSecurityPolicy{
