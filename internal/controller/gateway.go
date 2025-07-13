@@ -365,9 +365,6 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
 		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
-		if gcpCreds == nil {
-			return nil, fmt.Errorf("GCP credentials type selected but not defined %s", backendSecurityPolicy.Name)
-		}
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
