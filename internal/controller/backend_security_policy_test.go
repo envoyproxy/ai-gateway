@@ -845,12 +845,9 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 
 func TestGetBSPGeneratedSecretName(t *testing.T) {
 	tests := []struct {
-		name     string
-		bsp      *aigv1a1.BackendSecurityPolicy
-		expected struct {
-			name   string
-			exists bool
-		}
+		name         string
+		bsp          *aigv1a1.BackendSecurityPolicy
+		expectedName string
 	}{
 		{
 			name: "AWS without OIDCExchangeToken",
@@ -868,13 +865,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "ai-eg-bsp-aws-bsp",
-				exists: true,
-			},
+			expectedName: "ai-eg-bsp-aws-bsp",
 		},
 		{
 			name: "AWS with OIDCExchangeToken",
@@ -895,13 +886,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "",
-				exists: false,
-			},
+			expectedName: "",
 		},
 		{
 			name: "Azure without OIDCExchangeToken",
@@ -917,13 +902,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "ai-eg-bsp-azure-bsp",
-				exists: true,
-			},
+			expectedName: "ai-eg-bsp-azure-bsp",
 		},
 		{
 			name: "Azure with OIDCExchangeToken",
@@ -944,13 +923,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "",
-				exists: false,
-			},
+			expectedName: "",
 		},
 		{
 			name: "GCP type",
@@ -962,13 +935,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "ai-eg-bsp-gcp-bsp",
-				exists: true,
-			},
+			expectedName: "ai-eg-bsp-gcp-bsp",
 		},
 		{
 			name: "APIKey type",
@@ -980,24 +947,15 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
 				},
 			},
-			expected: struct {
-				name   string
-				exists bool
-			}{
-				name:   "",
-				exists: false,
-			},
+			expectedName: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resultName, resultExists := getBSPGeneratedSecretName(tt.bsp)
-			require.Equal(t, tt.expected.exists, resultExists)
-			if resultExists {
-				require.Equal(t, tt.expected.name, resultName)
-			} else {
-				require.Empty(t, resultName)
+			resultName := getBSPGeneratedSecretName(tt.bsp)
+			if resultName != "" {
+				require.Equal(t, tt.expectedName, resultName)
 			}
 		})
 	}
