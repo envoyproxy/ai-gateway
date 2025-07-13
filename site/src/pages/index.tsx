@@ -4,6 +4,7 @@ import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
+import LLMProviders from '@site/src/components/LLMProviders';
 import Heading from '@theme/Heading';
 
 function HomepageHeader() {
@@ -39,6 +40,7 @@ export default function Home(): React.ReactElement {
       <HomepageHeader />
       <main>
         <HomepageFeatures />
+        <LLMProviders />
       </main>
     </Layout>
   );

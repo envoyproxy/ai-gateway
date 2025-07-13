@@ -335,15 +335,38 @@ func TestAIGatewayRouteController(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.AIGatewayRoute
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete route", func(t *testing.T) {
+		err := c.Delete(t.Context(), origin)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIGatewayRoute
+			err = c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			events := eventCh.RequireItemsEventually(t, 1)
+			require.Equal(t, gatewayName, events[0].Name)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
@@ -362,7 +385,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		err := mgr.Start(t.Context())
+		err = mgr.Start(t.Context())
 		require.NoError(t, err)
 	}()
 
@@ -431,7 +454,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	})
 
 	t.Run("update security policy", func(t *testing.T) {
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			origin := aigv1a1.BackendSecurityPolicy{}
 			require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &origin))
 			origin.Spec.APIKey = nil
@@ -460,15 +483,48 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.Equal(t, originals, backends)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.BackendSecurityPolicy
-			err := c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
+			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete bsp", func(t *testing.T) {
+		err = c.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      backendSecurityPolicyName,
+				Namespace: backendSecurityPolicyNamespace,
+			},
+		})
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var bsp aigv1a1.BackendSecurityPolicy
+			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &bsp)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			backends := eventCh.RequireItemsEventually(t, 2)
+			sort.Slice(backends, func(i, j int) bool {
+				backends[i].TypeMeta = metav1.TypeMeta{}
+				backends[j].TypeMeta = metav1.TypeMeta{}
+				return backends[i].Name < backends[j].Name
+			})
+			require.Equal(t, originals, backends)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
@@ -581,15 +637,49 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.Equal(t, originals, routes)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.AIServiceBackend
-			err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
+			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
+
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete backend", func(t *testing.T) {
+		err = c.Delete(t.Context(), &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      aiServiceBackendName,
+				Namespace: aiServiceBackendNamespace,
+			},
+		})
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIServiceBackend
+			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			routes := eventCh.RequireItemsEventually(t, 2)
+			sort.Slice(routes, func(i, j int) bool {
+				routes[i].TypeMeta = metav1.TypeMeta{}
+				routes[j].TypeMeta = metav1.TypeMeta{}
+				return routes[i].Name < routes[j].Name
+			})
+			require.Equal(t, originals, routes)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
