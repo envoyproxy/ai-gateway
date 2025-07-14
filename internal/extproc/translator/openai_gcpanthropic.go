@@ -21,7 +21,6 @@ import (
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
-	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -38,16 +37,6 @@ var errStreamingNotSupported = errors.New("streaming is not yet supported for GC
 
 // openAIToGCPAnthropicTranslatorV1ChatCompletion where we can store information for streaming requests.
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct{}
-
-// Option defines a function that configures the translator.
-type Option func(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
-
-// AnthropicContent Anthropic request/response structs.
-type AnthropicContent struct {
-	Type   string                            `json:"type"`
-	Text   string                            `json:"text"`
-	Source *anthropic.Base64ImageSourceParam `json:"source,omitempty"`
-}
 
 // NewChatCompletionOpenAIToGCPAnthropicTranslator creates a new translator.
 func NewChatCompletionOpenAIToGCPAnthropicTranslator() OpenAIChatCompletionTranslator {
@@ -83,11 +72,7 @@ func validateTemperatureForAnthropic(temp *float64) error {
 	return nil
 }
 
-func isDataURI(uri string) bool {
-	return strings.HasPrefix(uri, "data:")
-}
-
-func isSupportedImageMediaType(mediaType string) bool {
+func isAnthropicSupportedImageMediaType(mediaType string) bool {
 	switch anthropic.Base64ImageSourceMediaType(mediaType) {
 	case anthropic.Base64ImageSourceMediaTypeImageJPEG,
 		anthropic.Base64ImageSourceMediaTypeImagePNG,
@@ -99,33 +84,8 @@ func isSupportedImageMediaType(mediaType string) bool {
 	}
 }
 
-// validateFunctionParameters checks if the given parameters object is a valid JSON schema.
-func validateFunctionParameters(params any) error {
-	// If there are no parameters, it's valid.
-	if params == nil {
-		return nil
-	}
-
-	// Marshal the parameters to JSON to prepare for validation.
-	schemaBytes, err := json.Marshal(params)
-	if err != nil {
-		return fmt.Errorf("failed to marshal tool parameters to JSON: %w", err)
-	}
-
-	// Attempt to compile the bytes as a JSON Schema to validate its structure.
-	compiler := jsonschema.NewCompiler()
-	if err = compiler.AddResource(schemaJSON, strings.NewReader(string(schemaBytes))); err != nil {
-		return fmt.Errorf("invalid JSON schema for tool parameters: %w", err)
-	}
-	if _, err = compiler.Compile(schemaJSON); err != nil {
-		return fmt.Errorf("invalid JSON schema for tool parameters: %w", err)
-	}
-
-	return nil
-}
-
-// translateToolChoice converts the OpenAI tool_choice parameter to the Anthropic format.
-func translateToolChoice(openAIToolChoice any, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
+// translateAnthropicToolChoice converts the OpenAI tool_choice parameter to the Anthropic format.
+func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
 	var toolChoice anthropic.ToolChoiceUnionParam
 
 	if openAIToolChoice == nil {
@@ -209,7 +169,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			disableParallelToolUse = anthropic.Bool(!*parallelToolCalls)
 		}
 
-		toolChoice, err = translateToolChoice(openAIToolChoice, disableParallelToolUse)
+		toolChoice, err = translateAnthropicToolChoice(openAIToolChoice, disableParallelToolUse)
 		if err != nil {
 			return
 		}
@@ -221,7 +181,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 // It handles data URIs for various image types and PDFs, as well as remote URLs.
 func convertImageContentToAnthropic(imageURL string) (anthropic.ContentBlockParamUnion, error) {
 	switch {
-	case isDataURI(imageURL):
+	case strings.HasPrefix(imageURL, "data:"):
 		contentType, data, err := parseDataURI(imageURL)
 		if err != nil {
 			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("failed to parse image URL: %w", err)
@@ -231,7 +191,7 @@ func convertImageContentToAnthropic(imageURL string) (anthropic.ContentBlockPara
 			pdfSource := anthropic.Base64PDFSourceParam{Data: base64Data}
 			return anthropic.NewDocumentBlock(pdfSource), nil
 		}
-		if isSupportedImageMediaType(contentType) {
+		if isAnthropicSupportedImageMediaType(contentType) {
 			return anthropic.NewImageBlockBase64(contentType, base64Data), nil
 		}
 		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("invalid media_type for image '%s'", contentType)
@@ -344,7 +304,7 @@ func anthropicRoleToOpenAIRole(role anthropic.MessageParamRole) (string, error) 
 
 // openAIMessageToAnthropicMessageRoleAssistant converts an OpenAI assistant message to Anthropic content blocks.
 // The tool_use content is appended to the Anthropic message content list if tool_calls are present.
-func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatCompletionAssistantMessageParam) (anthropicMsg *anthropic.MessageParam, err error) {
+func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatCompletionAssistantMessageParam) (anthropicMsg anthropic.MessageParam, err error) {
 	contentBlocks := make([]anthropic.ContentBlockParamUnion, 0)
 	if v, ok := openAiMessage.Content.Value.(string); ok && len(v) > 0 {
 		contentBlocks = append(contentBlocks, anthropic.NewTextBlock(v))
@@ -381,7 +341,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 		contentBlocks = append(contentBlocks, anthropic.ContentBlockParamUnion{OfToolUse: &toolUse})
 	}
 
-	return &anthropic.MessageParam{
+	return anthropic.MessageParam{
 		Role:    anthropic.MessageParamRoleAssistant,
 		Content: contentBlocks,
 	}, nil
@@ -390,7 +350,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 // openAIToAnthropicMessages converts OpenAI messages to Anthropic message params type, handling all roles and system/developer logic.
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
 	for i := range openAIMsgs {
-		msg := openAIMsgs[i]
+		msg := &openAIMsgs[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleSystem:
 			if param, ok := msg.Value.(openai.ChatCompletionSystemMessageParam); ok {
@@ -416,12 +376,12 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 		case openai.ChatMessageRoleAssistant:
 			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
 
-			var messages *anthropic.MessageParam
+			var messages anthropic.MessageParam
 			messages, err = openAIMessageToAnthropicMessageRoleAssistant(&assistantMessage)
 			if err != nil {
 				return
 			}
-			anthropicMessages = append(anthropicMessages, *messages)
+			anthropicMessages = append(anthropicMessages, messages)
 		case openai.ChatMessageRoleTool:
 			toolMsg := msg.Value.(openai.ChatCompletionToolMessageParam)
 			var content []anthropic.ContentBlockParamUnion
