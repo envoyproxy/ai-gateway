@@ -32,19 +32,49 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	}
 
 	tests := []struct {
-		name          string
-		raw           []byte
-		input         *openai.ChatCompletionRequest
-		onRetry       bool
-		wantError     bool
-		wantHeaderMut *extprocv3.HeaderMutation
-		wantBodyMut   *extprocv3.BodyMutation
+		name              string
+		modelNameOverride string
+		raw               []byte
+		input             *openai.ChatCompletionRequest
+		onRetry           bool
+		wantError         bool
+		wantHeaderMut     *extprocv3.HeaderMutation
+		wantBodyMut       *extprocv3.BodyMutation
 	}{
 		{
 			name: "basic request",
 			input: &openai.ChatCompletionRequest{
 				Stream: false,
 				Model:  "claude-3",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Value: openai.ChatCompletionSystemMessageParam{
+							Content: openai.StringOrArray{
+								Value: "You are a helpful assistant",
+							},
+						},
+						Type: openai.ChatMessageRoleSystem,
+					},
+					{
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "Tell me about AI Gateways",
+							},
+						},
+						Type: openai.ChatMessageRoleUser,
+					},
+				},
+			},
+			wantError:     false,
+			wantHeaderMut: defaultHeaderMut,
+			wantBodyMut:   nil,
+		},
+		{
+			name:              "model name override",
+			modelNameOverride: "claude-3",
+			input: &openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gcp.claude-3",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						Value: openai.ChatCompletionSystemMessageParam{
@@ -98,10 +128,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		},
 	}
 
-	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator()
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(tc.modelNameOverride)
 			headerMut, bodyMut, err := translator.RequestBody(tc.raw, tc.input, tc.onRetry)
 
 			if tc.wantError {
@@ -124,10 +153,11 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {
 	tests := []struct {
-		name          string
-		headers       map[string]string
-		wantError     bool
-		wantHeaderMut *extprocv3.HeaderMutation
+		name              string
+		modelNameOverride string
+		headers           map[string]string
+		wantError         bool
+		wantHeaderMut     *extprocv3.HeaderMutation
 	}{
 		{
 			name:          "empty headers",
@@ -153,10 +183,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testi
 		},
 	}
 
-	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator()
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(tc.modelNameOverride)
 			headerMut, err := translator.ResponseHeaders(tc.headers)
 
 			if tc.wantError {
@@ -175,14 +204,15 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testi
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	tests := []struct {
-		name           string
-		respHeaders    map[string]string
-		body           string
-		endOfStream    bool
-		wantError      bool
-		wantHeaderMut  *extprocv3.HeaderMutation
-		wantBodyMut    *extprocv3.BodyMutation
-		wantTokenUsage LLMTokenUsage
+		name              string
+		modelNameOverride string
+		respHeaders       map[string]string
+		body              string
+		endOfStream       bool
+		wantError         bool
+		wantHeaderMut     *extprocv3.HeaderMutation
+		wantBodyMut       *extprocv3.BodyMutation
+		wantTokenUsage    LLMTokenUsage
 	}{
 		{
 			name: "successful response",
@@ -248,12 +278,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 		},
 	}
 
-	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator()
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := bytes.NewReader([]byte(tc.body))
-
+			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(tc.modelNameOverride)
 			headerMut, bodyMut, tokenUsage, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream)
 
 			if tc.wantError {
