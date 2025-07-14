@@ -318,11 +318,11 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
 	switch bsp.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		if bsp.Spec.AWSCredentials.OIDCExchangeToken != nil {
+		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
 			return ""
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		if bsp.Spec.AzureCredentials.OIDCExchangeToken != nil {
+		if bsp.Spec.AzureCredentials.OIDCExchangeToken == nil {
 			return ""
 		}
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:

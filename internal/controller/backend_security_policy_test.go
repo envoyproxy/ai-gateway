@@ -865,7 +865,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expectedName: "ai-eg-bsp-aws-bsp",
+			expectedName: "",
 		},
 		{
 			name: "AWS with OIDCExchangeToken",
@@ -886,7 +886,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expectedName: "",
+			expectedName: "ai-eg-bsp-aws-oidc-bsp",
 		},
 		{
 			name: "Azure without OIDCExchangeToken",
@@ -902,7 +902,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expectedName: "ai-eg-bsp-azure-bsp",
+			expectedName: "",
 		},
 		{
 			name: "Azure with OIDCExchangeToken",
@@ -923,7 +923,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 					},
 				},
 			},
-			expectedName: "",
+			expectedName: "ai-eg-bsp-azure-oidc-bsp",
 		},
 		{
 			name: "GCP type",
