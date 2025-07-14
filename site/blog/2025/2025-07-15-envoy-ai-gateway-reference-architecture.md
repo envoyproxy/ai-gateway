@@ -83,7 +83,7 @@ Check out the [KServe Documentation](https://kserve.github.io/website/latest/) t
 Use tools like Backstage to simplify model deployment and namespace management for teams.
 
 :::info
-Self-hosting is optional. Many adopters will initially rely on external providers and add internal hosting as requirements evolve.*
+Self-hosting is optional. Many adopters will initially rely on external providers and add internal hosting as requirements evolve.
 :::
 
 ![](./images/kserve-ref.png)
