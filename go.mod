@@ -30,7 +30,7 @@ require (
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/api v0.223.0
-	google.golang.org/genai v1.14.0
+	google.golang.org/genai v1.15.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.33.2
