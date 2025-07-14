@@ -149,8 +149,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		var f egv1a1.HTTPRouteFilter
 		if err := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); err != nil {
 			if apierrors.IsNotFound(err) {
-				// set OwnerReference
-				if err := ctrlutil.SetControllerReference(aiGatewayRoute, base, c.client.Scheme()); err != nil {
+				if err = ctrlutil.SetControllerReference(aiGatewayRoute, base, c.client.Scheme()); err != nil {
 					return fmt.Errorf("failed to set owner reference for HTTPRouteFilter %s: %w", base.Name, err)
 				}
 				// Create the filter if it does not exist.
