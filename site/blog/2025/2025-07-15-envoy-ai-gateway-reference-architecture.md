@@ -5,7 +5,7 @@ authors: [missberg, alexagriffith]
 tags: [reference, adopters]
 ---
 # A Reference Architecture for Adopters of Envoy AI Gateway
-![](./images/ref-arch-blog-hero.png)
+![Reference Architecture for Envoy AI Gateway](./images/ref-arch-blog-hero.png)
 # Building a Scalable, Flexible, Cloud-Native GenAI Platform with Open Source Solutions
 
 AI workloads are complex, and unmanaged complexity kills velocity. Your architecture is the key to mastering it.
