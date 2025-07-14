@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,7 +27,6 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 )
 
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
