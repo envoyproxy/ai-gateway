@@ -130,6 +130,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			backendSecurityPolicyEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
+		Owns(&corev1.Secret{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
