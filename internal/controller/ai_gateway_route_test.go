@@ -260,7 +260,7 @@ func Test_newHTTPRoute(t *testing.T) {
 				ExtensionRef: &gwapiv1.LocalObjectReference{
 					Group: "gateway.envoyproxy.io",
 					Kind:  "HTTPRouteFilter",
-					Name:  hostRewriteHTTPFilterName,
+					Name:  gwapiv1.ObjectName(getHostRewriteFilterName("myroute")),
 				},
 			}}
 			expRules := []gwapiv1.HTTPRouteRule{
@@ -302,7 +302,7 @@ func Test_newHTTPRoute(t *testing.T) {
 							ExtensionRef: &gwapiv1.LocalObjectReference{
 								Group: "gateway.envoyproxy.io",
 								Kind:  "HTTPRouteFilter",
-								Name:  routeNotFoundResponseHTTPFilterName,
+								Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName("myroute")),
 							},
 						},
 					},

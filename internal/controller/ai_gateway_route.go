@@ -94,13 +94,21 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
+func getHostRewriteFilterName(baseName string) string {
+	return fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
+}
+
+func getRouteNotFoundFilterName(baseName string) string {
+	return fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, baseName)
+}
+
 // generateHTTPRouteFilters returns two HTTPRouteFilter with the given AIGatewayRoute.
 func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
 	ns := aiGatewayRoute.Namespace
 	baseName := aiGatewayRoute.Name
 
-	hostRewriteName := fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
-	notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, baseName)
+	hostRewriteName := getHostRewriteFilterName(baseName)
+	notFoundName := getRouteNotFoundFilterName(baseName)
 
 	return []*egv1a1.HTTPRouteFilter{
 		{
@@ -215,7 +223,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		ExtensionRef: &gwapiv1.LocalObjectReference{
 			Group: "gateway.envoyproxy.io",
 			Kind:  "HTTPRouteFilter",
-			Name:  hostRewriteHTTPFilterName,
+			Name:  gwapiv1.ObjectName(getHostRewriteFilterName(aiGatewayRoute.Name)),
 		},
 	}}
 	rules := make([]gwapiv1.HTTPRouteRule, 0, len(aiGatewayRoute.Spec.Rules)+1) // +1 for the default rule.
@@ -256,7 +264,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			ExtensionRef: &gwapiv1.LocalObjectReference{
 				Group: "gateway.envoyproxy.io",
 				Kind:  "HTTPRouteFilter",
-				Name:  routeNotFoundResponseHTTPFilterName,
+				Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName(aiGatewayRoute.Name)),
 			},
 		}},
 	})

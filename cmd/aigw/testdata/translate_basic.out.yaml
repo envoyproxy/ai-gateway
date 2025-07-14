@@ -88,7 +88,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -105,7 +105,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -122,7 +122,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -139,7 +139,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-route-not-found-response
+            name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
           type: ExtensionRef
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1

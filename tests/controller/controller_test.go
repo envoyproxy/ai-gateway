@@ -11,6 +11,7 @@
 package controller
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"sort"
@@ -199,7 +200,7 @@ func TestStartControllers(t *testing.T) {
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
-					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
+					require.Equal(t, fmt.Sprintf("ai-eg-host-rewrite-%s", route), string(rule.Filters[0].ExtensionRef.Name))
 				}
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
