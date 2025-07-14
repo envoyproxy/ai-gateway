@@ -94,7 +94,7 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
-// generateHTTPRouteFilters returns two HTTPRouteFilter resources uniquely associated with the given AIGatewayRoute.
+// generateHTTPRouteFilters returns two HTTPRouteFilter with the given AIGatewayRoute.
 func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
 	ns := aiGatewayRoute.Namespace
 	baseName := aiGatewayRoute.Name
@@ -126,6 +126,7 @@ func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.
 					StatusCode: ptr.To(404),
 					Body: &egv1a1.CustomResponseBody{
 						Inline: ptr.To(
+							// "Likely" since the matching rule can be arbitrary, not necessarily matching on the model name.
 							`No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
 						),
 					},
