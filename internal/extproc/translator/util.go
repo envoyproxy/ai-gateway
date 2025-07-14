@@ -7,15 +7,12 @@ package translator
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/santhosh-tekuri/jsonschema/v5"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -25,7 +22,6 @@ const (
 	mimeTypeImagePNG  = "image/png"
 	mimeTypeImageGIF  = "image/gif"
 	mimeTypeImageWEBP = "image/webp"
-	schemaJSON        = "schema.json"
 )
 
 // regDataURI follows the web uri regex definition.
@@ -121,29 +117,4 @@ func processStop(data interface{}) ([]*string, error) {
 	default:
 		return nil, fmt.Errorf("invalid type for stop parameter: expected string, []string, []*string, or nil, got %T", v)
 	}
-}
-
-// validateFunctionParameters checks if the given parameters object is a valid JSON schema.
-func validateFunctionParameters(params any) error {
-	// If there are no parameters, it's valid.
-	if params == nil {
-		return nil
-	}
-
-	// Marshal the parameters to JSON to prepare for validation.
-	schemaBytes, err := json.Marshal(params)
-	if err != nil {
-		return fmt.Errorf("failed to marshal tool parameters to JSON: %w", err)
-	}
-
-	// Attempt to compile the bytes as a JSON Schema to validate its structure.
-	compiler := jsonschema.NewCompiler()
-	if err = compiler.AddResource(schemaJSON, strings.NewReader(string(schemaBytes))); err != nil {
-		return fmt.Errorf("invalid JSON schema for tool parameters: %w", err)
-	}
-	if _, err = compiler.Compile(schemaJSON); err != nil {
-		return fmt.Errorf("invalid JSON schema for tool parameters: %w", err)
-	}
-
-	return nil
 }

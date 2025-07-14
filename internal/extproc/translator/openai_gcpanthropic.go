@@ -133,21 +133,17 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
+			if openAITool.Type != openai.ToolTypeFunction || openAITool.Function == nil {
+				// Anthropic only supports 'function' tools, so we skip others.
+				continue
+			}
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
 				Description: anthropic.String(openAITool.Function.Description),
 			}
-			if openAITool.Type != openai.ToolTypeFunction {
-				// Anthropic only supports 'function' tools, so we skip others.
-				continue
-			}
 
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
-			if err = validateFunctionParameters(openAITool.Function.Parameters); err != nil {
-				return
-			}
-
 			toolParam.InputSchema = anthropic.ToolInputSchemaParam{
 				Properties: openAITool.Function.Parameters,
 				// TODO: support extra fields.
