@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -30,7 +31,6 @@ import (
 const (
 	anthropicVersionKey   = "anthropic_version"
 	gcpBackendError       = "GCPBackendError"
-	defaultMaxTokens      = int64(100)
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
@@ -465,7 +465,11 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 // into the parameter struct required by the Anthropic SDK.
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
-	maxTokens := coalesce(defaultMaxTokens, openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	if maxTokens == nil {
+		err = fmt.Errorf("the maximum number of tokens must be set for Anthropic, got nil instead")
+		return
+	}
 
 	// Translate openAI contents to anthropic params.
 	// 2. Translate messages and system prompts.
@@ -483,7 +487,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	// 4. Construct the final struct in one place.
 	params = &anthropic.MessageNewParams{
 		Messages:   messages,
-		MaxTokens:  maxTokens,
+		MaxTokens:  *maxTokens,
 		System:     systemBlocks,
 		Tools:      tools,
 		ToolChoice: toolChoice,

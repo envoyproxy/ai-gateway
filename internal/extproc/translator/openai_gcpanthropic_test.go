@@ -72,7 +72,8 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 
 	t.Run("Image Content Request", func(t *testing.T) {
 		imageReq := &openai.ChatCompletionRequest{
-			Model: "claude-3-opus-20240229",
+			MaxCompletionTokens: ptr.To(int64(200)),
+			Model:               "claude-3-opus-20240229",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
 					Type: openai.ChatMessageRoleUser,
@@ -164,17 +165,15 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	})
 
 	// Test for missing required parameter.
-	t.Run("Missing MaxTokens Uses Default", func(t *testing.T) {
+	t.Run("Missing MaxTokens Throws Error", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: nil,
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator()
-		_, bm, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.NoError(t, err)
-		body := bm.GetBody()
-		require.Equal(t, defaultMaxTokens, gjson.GetBytes(body, "max_tokens").Int())
+		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.ErrorContains(t, err, "the maximum number of tokens must be set for Anthropic, got nil instead")
 	})
 }
 
