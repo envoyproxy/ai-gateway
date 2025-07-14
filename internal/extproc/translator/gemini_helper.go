@@ -22,6 +22,7 @@ const (
 	GCPModelPublisherGoogle    = "google"
 	GCPModelPublisherAnthropic = "anthropic"
 	GCPMethodGenerateContent   = "generateContent"
+	GCPMethodRawPredict        = "rawPredict"
 	HTTPHeaderKeyContentLength = "Content-Length"
 )
 

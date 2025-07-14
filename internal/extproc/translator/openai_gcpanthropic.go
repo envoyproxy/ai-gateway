@@ -506,7 +506,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-  modelName := openAIReq.Model
+	modelName := openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
 		modelName = o.modelNameOverride
