@@ -54,11 +54,11 @@ sequenceDiagram
     participant Provider as AI Provider / Upstream
 
     Client->>Envoy: Request
+    Envoy->>Processor: Router-level ExtProc Request
+    Note over Processor: Extract Model Name
+    Processor-->>Envoy: ;
     Envoy->>RLS: Check Rate Limit
     RLS-->>Envoy: ;
-    Envoy->>Processor: Router-level ExtProc Request
-    Note over Processor: Extract Model Name & Routing
-    Processor-->>Envoy: ;
     loop Retry/Fallback loop
         Note over Envoy: Select Upstream/Endpoint
         Envoy->>Processor: Upstream level ExtProc Request
