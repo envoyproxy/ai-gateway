@@ -8,9 +8,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"testing"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -137,19 +138,25 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the empty path, which shouldn't reach in practice.
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
+
+		// Check per AIGatewayRoute has the default host rewrite filter.
+		var f egv1a1.HTTPRouteFilter
+		hostRewriteName := fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteName, Namespace: "ns1"}, &f)
+		require.NoError(t, err)
+		require.Equal(t, hostRewriteName, f.Name)
+		ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
+
+		// Also check per AIGatewayRoute has default route not found response filter.
+		var notFoundFilter egv1a1.HTTPRouteFilter
+		notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: notFoundName, Namespace: "ns1"}, &notFoundFilter)
+		require.NoError(t, err)
+		require.Equal(t, notFoundName, notFoundFilter.Name)
+		ok, _ = ctrlutil.HasOwnerReference(notFoundFilter.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
 	})
-
-	// Check the namespace has the default host rewrite filter.
-	var f egv1a1.HTTPRouteFilter
-	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
-	require.NoError(t, err)
-	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
-
-	// Also check the default route not found response filter.
-	var notFoundFilter egv1a1.HTTPRouteFilter
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: routeNotFoundResponseHTTPFilterName, Namespace: "ns1"}, &notFoundFilter)
-	require.NoError(t, err)
-	require.Equal(t, routeNotFoundResponseHTTPFilterName, notFoundFilter.Name)
 }
 
 func Test_newHTTPRoute(t *testing.T) {

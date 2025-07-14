@@ -94,11 +94,20 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
-// defaultHTTPRouteFilters returns the default HTTPRouteFilters that are required for the AIGatewayRoute to function.
-func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
+// generateHTTPRouteFilters returns two HTTPRouteFilter resources uniquely associated with the given AIGatewayRoute.
+func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
+	ns := aiGatewayRoute.Namespace
+	baseName := aiGatewayRoute.Name
+
+	hostRewriteName := fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
+	notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, baseName)
+
 	return []*egv1a1.HTTPRouteFilter{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: hostRewriteHTTPFilterName, Namespace: ns},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hostRewriteName,
+				Namespace: ns,
+			},
 			Spec: egv1a1.HTTPRouteFilterSpec{
 				URLRewrite: &egv1a1.HTTPURLRewriteFilter{
 					Hostname: &egv1a1.HTTPHostnameModifier{
@@ -108,13 +117,15 @@ func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: routeNotFoundResponseHTTPFilterName, Namespace: ns},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      notFoundName,
+				Namespace: ns,
+			},
 			Spec: egv1a1.HTTPRouteFilterSpec{
 				DirectResponse: &egv1a1.HTTPDirectResponseFilter{
 					StatusCode: ptr.To(404),
 					Body: &egv1a1.CustomResponseBody{
 						Inline: ptr.To(
-							// "Likely" since the matching rule can be arbitrary, not necessarily matching on the model name.
 							`No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
 						),
 					},
@@ -131,12 +142,16 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		return nil
 	}
 
-	// Check if the static default HTTPRouteFilters exist in the namespace.
-	filters := defaultHTTPRouteFilters(aiGatewayRoute.Namespace)
+	// Check if the static default HTTPRouteFilters exist per AIGatewayRoute.
+	filters := generateHTTPRouteFilters(aiGatewayRoute)
 	for _, base := range filters {
 		var f egv1a1.HTTPRouteFilter
 		if err := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); err != nil {
 			if apierrors.IsNotFound(err) {
+				// set OwnerReference
+				if err := ctrlutil.SetControllerReference(aiGatewayRoute, base, c.client.Scheme()); err != nil {
+					return fmt.Errorf("failed to set owner reference for HTTPRouteFilter %s: %w", base.Name, err)
+				}
 				// Create the filter if it does not exist.
 				if err = c.client.Create(ctx, base); err != nil {
 					return fmt.Errorf("failed to create HTTPRouteFilter %s: %w", f.Name, err)
