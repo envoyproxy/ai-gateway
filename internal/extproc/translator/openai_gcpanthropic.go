@@ -509,7 +509,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	}
 	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, modelName, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
-	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/main/vertex/vertex.go#L78
+	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/commit/e252e284244755b2b2f6eef292b09d6d1e6cd989#diff-53e83fbd35d38823428a77e489dc24c4d2105b316e33a7252c628a5072d929dbR167
 	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVertex.DefaultVersion)
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
