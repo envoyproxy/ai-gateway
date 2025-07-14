@@ -47,7 +47,6 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		MaxTokens:   ptr.To(int64(1024)),
 		Temperature: ptr.To(0.7),
 	}
-
 	t.Run("Vertex Values Configured Correctly", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator()
 		hm, bm, err := translator.RequestBody(nil, openAIReq, false)
@@ -918,7 +917,7 @@ func TestFinishReasonTranslation(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+  for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reason, err := anthropicToOpenAIFinishReason(tt.input)
 			if tt.expectErr {

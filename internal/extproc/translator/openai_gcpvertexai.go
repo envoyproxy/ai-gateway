@@ -20,19 +20,25 @@ import (
 
 // NewChatCompletionOpenAIToGCPVertexAITranslator implements [Factory] for OpenAI to GCP Gemini translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Gemini API format.
-func NewChatCompletionOpenAIToGCPVertexAITranslator() OpenAIChatCompletionTranslator {
-	return &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToGCPVertexAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
-type openAIToGCPVertexAITranslatorV1ChatCompletion struct{}
+type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
+	modelNameOverride string
+}
 
 // RequestBody implements [Translator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherGoogle, openAIReq.Model, GCPMethodGenerateContent)
-
+	modelName := openAIReq.Model
+	if o.modelNameOverride != "" {
+		// Use modelName override if set.
+		modelName = o.modelNameOverride
+	}
+	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherGoogle, modelName, GCPMethodGenerateContent)
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting OpenAI request to Gemini request: %w", err)

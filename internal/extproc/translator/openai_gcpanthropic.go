@@ -35,12 +35,14 @@ const (
 
 var errStreamingNotSupported = errors.New("streaming is not yet supported for GCP Anthropic translation")
 
-// openAIToGCPAnthropicTranslatorV1ChatCompletion where we can store information for streaming requests.
-type openAIToGCPAnthropicTranslatorV1ChatCompletion struct{}
+// NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
+// This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
+func NewChatCompletionOpenAIToGCPAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
+}
 
-// NewChatCompletionOpenAIToGCPAnthropicTranslator creates a new translator.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator() OpenAIChatCompletionTranslator {
-	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{}
+type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
+	modelNameOverride string
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -375,7 +377,6 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 		case openai.ChatMessageRoleAssistant:
 			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
-
 			var messages anthropic.MessageParam
 			messages, err = openAIMessageToAnthropicMessageRoleAssistant(&assistantMessage)
 			if err != nil {
@@ -505,7 +506,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, openAIReq.Model, specifier)
+  modelName := openAIReq.Model
+	if o.modelNameOverride != "" {
+		// Use modelName override if set.
+		modelName = o.modelNameOverride
+	}
+	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, modelName, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/main/vertex/vertex.go#L78
 	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVertex.DefaultVersion)
@@ -561,7 +567,6 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 		// This is an internal failure to create the response.
 		return nil, nil, fmt.Errorf("failed to marshal OpenAI error body: %w", err)
 	}
-
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
 	bodyMutation = &extprocv3.BodyMutation{Mutation: mut}
