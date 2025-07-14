@@ -15,11 +15,13 @@ import (
 
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator() OpenAIChatCompletionTranslator {
-	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{}
+func NewChatCompletionOpenAIToGCPAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
-type openAIToGCPAnthropicTranslatorV1ChatCompletion struct{}
+type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
+	modelNameOverride string
+}
 
 // RequestBody implements [Translator.RequestBody] for GCP Anthropic.
 // This method translates an OpenAI ChatCompletion request to a GCP Anthropic API request.
@@ -27,8 +29,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	_ = onRetry
-	model := openAIReq.Model
-	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, model, GCPMethodGenerateContent)
+	modelName := openAIReq.Model
+	if o.modelNameOverride != "" {
+		// Use modelName override if set.
+		modelName = o.modelNameOverride
+	}
+	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, modelName, GCPMethodGenerateContent)
 
 	// TODO: Implement actual translation from OpenAI to Anthropic request.
 
