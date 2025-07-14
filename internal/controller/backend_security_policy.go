@@ -90,27 +90,6 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		if err != nil {
 			return res, err
 		}
-		secretName := getBSPGeneratedSecretName(bsp)
-		if secretName != "" {
-			var secret *corev1.Secret
-			secret, err = rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
-			if err != nil {
-				return res, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
-					bsp.Namespace, secretName, err)
-			}
-
-			ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme())
-			if !ok {
-				updated := secret.DeepCopy()
-				if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
-					panic(fmt.Errorf("BUG: failed to set controller reference for secret %s/%s: %w", bsp.Namespace, bsp.Name, err))
-				}
-				if err = c.client.Update(ctx, updated); err != nil {
-					return res, fmt.Errorf("failed to update secret %s/%s with owner reference: %w",
-						updated.Namespace, updated.Name, err)
-				}
-			}
-		}
 	}
 	err = c.syncBackendSecurityPolicy(ctx, bsp)
 	return res, err
@@ -204,7 +183,32 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		c.logger.Error(err, "unsupported backend security type", "namespace", bsp.Namespace, "name", bsp.Name)
 		return ctrl.Result{}, err
 	}
-	return c.executeRotation(ctx, rotator, bsp)
+	res, err = c.executeRotation(ctx, rotator, bsp)
+	if err != nil {
+		c.logger.Error(err, "failed to execute rotation", "namespace", bsp.Namespace, "name", bsp.Name)
+		return res, fmt.Errorf("failed to execute rotation for backend security policy %s/%s: %w", bsp.Namespace, bsp.Name, err)
+	}
+
+	if secretName := getBSPGeneratedSecretName(bsp); secretName != "" {
+		var secret *corev1.Secret
+		secret, err = rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
+		if err != nil {
+			return res, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
+				bsp.Namespace, secretName, err)
+		}
+		ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme())
+		if !ok {
+			updated := secret.DeepCopy()
+			if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
+				panic(fmt.Errorf("BUG: failed to set controller reference for secret %s/%s: %w", bsp.Namespace, bsp.Name, err))
+			}
+			if err = c.client.Update(ctx, updated); err != nil {
+				return res, fmt.Errorf("failed to update secret %s/%s with owner reference: %w",
+					updated.Namespace, updated.Name, err)
+			}
+		}
+	}
+	return res, nil
 }
 
 func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
