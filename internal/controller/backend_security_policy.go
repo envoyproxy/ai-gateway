@@ -81,6 +81,9 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
+		return res, nil
+	}
 	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
@@ -202,8 +205,8 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 						fmt.Sprintf("successfully rotated credential for %s in namespace %s of auth type %s, renewing in %f minutes",
 							bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 				} else {
-					c.logger.Error(fmt.Errorf("newly rotated credential is already expired %s",
-						rotationTime), "namespace", bsp.Namespace, "name", bsp.Name)
+					err = fmt.Errorf("newly rotated credential is already expired %s", rotationTime)
+					c.logger.Error(err, err.Error(), "namespace", bsp.Namespace, "name", bsp.Name)
 				}
 			}
 		} else {

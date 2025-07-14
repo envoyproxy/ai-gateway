@@ -43,7 +43,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	// Do it for the second time with a slightly different configuration.
 	var current aigv1a1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &current)
+	// Make sure the finalizer is added.
 	require.NoError(t, err)
+	require.Contains(t, current.ObjectMeta.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 	current.Spec.APISchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")}
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
