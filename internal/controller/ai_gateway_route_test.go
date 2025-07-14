@@ -8,8 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -21,12 +19,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 )
 
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
