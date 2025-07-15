@@ -11,6 +11,7 @@
 package controller
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"sort"
@@ -30,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -197,27 +199,12 @@ func TestStartControllers(t *testing.T) {
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
-					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
+					require.Equal(t, fmt.Sprintf("ai-eg-host-rewrite-%s", route), string(rule.Filters[0].ExtensionRef.Name))
 				}
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
 	}
-
-	// Check if the host rewrite filter exists in the default namespace.
-	t.Run("verify host rewrite filter", func(t *testing.T) {
-		require.Eventually(t, func() bool {
-			var filter egv1a1.HTTPRouteFilter
-			err := c.Get(ctx, client.ObjectKey{Name: "ai-eg-host-rewrite", Namespace: "default"}, &filter)
-			if err != nil {
-				t.Logf("failed to get filter: %v", err)
-				return false
-			}
-			require.Equal(t, "default", filter.Namespace)
-			require.Equal(t, "ai-eg-host-rewrite", filter.Name)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
-	})
 }
 
 func TestAIGatewayRouteController(t *testing.T) {
@@ -315,6 +302,36 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		events := eventCh.RequireItemsEventually(t, 1)
 		require.Equal(t, gatewayName, events[0].Name)
+		hostRewriteKey := client.ObjectKey{
+			Name:      "ai-eg-host-rewrite-myroute",
+			Namespace: "default",
+		}
+		require.Eventually(t, func() bool {
+			var f egv1a1.HTTPRouteFilter
+			err = c.Get(t.Context(), hostRewriteKey, &f)
+			if err != nil {
+				t.Logf("expected to get hostRewriteFilter %s, but got error: %v", hostRewriteKey.Name, err)
+				return false
+			}
+			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
+			require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
+			return true
+		}, 10*time.Second, 200*time.Millisecond)
+		notFoundKey := client.ObjectKey{
+			Name:      "ai-eg-route-not-found-response-myroute",
+			Namespace: "default",
+		}
+		require.Eventually(t, func() bool {
+			var f egv1a1.HTTPRouteFilter
+			err = c.Get(t.Context(), notFoundKey, &f)
+			if err != nil {
+				t.Logf("expected to get notFoundFilter %s, but got error: %v", notFoundKey.Name, err)
+				return false
+			}
+			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
+			require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
+			return true
+		}, 10*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("update", func(t *testing.T) {
