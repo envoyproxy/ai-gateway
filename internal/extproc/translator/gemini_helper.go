@@ -251,6 +251,7 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 // This behavior might need to change in future based on model capabilities.
 // Example Input
 // [
+//
 //	{
 //	  "type": "function",
 //	  "function": {
@@ -273,35 +274,37 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 //	    }
 //	  }
 //	}
+//
 // ]
 //
 // Example Output
 // [
-//  {
-//    "functionDeclarations": [
-//      {
-//        "description": "Add two numbers",
-//        "name": "add",
-//        "parametersJsonSchema": {
-//          "properties": {
-//            "a": {
-//              "type": "integer"
-//            },
-//            "b": {
-//              "type": "integer"
-//            }
-//          },
-//          "required": [
-//            "a",
-//            "b"
-//          ],
-//          "type": "object"
-//        }
-//      }
-//    ]
-//  }
+//
+//	{
+//	  "functionDeclarations": [
+//	    {
+//	      "description": "Add two numbers",
+//	      "name": "add",
+//	      "parametersJsonSchema": {
+//	        "properties": {
+//	          "a": {
+//	            "type": "integer"
+//	          },
+//	          "b": {
+//	            "type": "integer"
+//	          }
+//	        },
+//	        "required": [
+//	          "a",
+//	          "b"
+//	        ],
+//	        "type": "object"
+//	      }
+//	    }
+//	  ]
+//	}
+//
 // ].
-
 func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 	if len(openaiTools) == 0 {
 		return nil, nil

@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -829,21 +828,14 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := openAIReqToGeminiGenerationConfig(tc.input)
-			if tc.expectedErrMsg != "" && err == nil {
-				t.Errorf("expected error but got nil. Expected: %s", tc.expectedErrMsg)
-				return
-			}
-			if tc.expectedErrMsg == "" && err != nil {
-				t.Errorf("unexpected error. Error: %s", err.Error())
-				return
-			}
-			if tc.expectedErrMsg != "" && err != nil && !strings.Contains(err.Error(), tc.expectedErrMsg) {
-				t.Errorf("expected error message %q but got %q", tc.expectedErrMsg, err.Error())
-				return
-			}
+			if tc.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tc.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
 
-			if diff := cmp.Diff(tc.expectedGenerationConfig, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{})); diff != "" {
-				t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+				if diff := cmp.Diff(tc.expectedGenerationConfig, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{})); diff != "" {
+					t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
@@ -969,8 +961,7 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := openAIToolsToGeminiTools(tc.openaiTools)
 			if tc.expectedError != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.expectedError)
+				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
 				if d := cmp.Diff(tc.expected, result, cmpopts.IgnoreUnexported(genai.Schema{})); d != "" {
@@ -1033,16 +1024,12 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := openAIToolChoiceToGeminiToolConfig(tc.input)
 			if tc.expectErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.expectErr) {
-					t.Errorf("expected error %q, got %v", tc.expectErr, err)
+				require.ErrorContains(t, err, tc.expectErr)
+			} else {
+				require.NoError(t, err)
+				if diff := cmp.Diff(tc.expected, got, cmpopts.IgnoreUnexported(genai.ToolConfig{}, genai.FunctionCallingConfig{})); diff != "" {
+					t.Errorf("ToolConfig mismatch (-want +got):\n%s", diff)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if diff := cmp.Diff(tc.expected, got, cmpopts.IgnoreUnexported(genai.ToolConfig{}, genai.FunctionCallingConfig{})); diff != "" {
-				t.Errorf("ToolConfig mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
