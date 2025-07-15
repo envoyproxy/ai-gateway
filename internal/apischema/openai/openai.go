@@ -440,6 +440,7 @@ type Reasoning struct {
 	Summary *string `json:"summary,omitempty"`
 }
 
+// ChatCompletionRequest represents a request structure for chat completion API.
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
 	// Depending on the model you use, different message types (modalities) are supported,
@@ -492,6 +493,11 @@ type ChatCompletionRequest struct {
 	// increasing the model's likelihood to talk about new topics.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-presence_penalty
 	PresencePenalty *float32 `json:"presence_penalty,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Reasoning
+	// o-series models only
+	// refs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
+	Reasoning *Reasoning `json:"reasoning,omitempty"`
 
 	// ResponseFormat is only for GPT models.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-response_format
