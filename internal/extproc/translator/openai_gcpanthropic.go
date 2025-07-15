@@ -19,10 +19,11 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
