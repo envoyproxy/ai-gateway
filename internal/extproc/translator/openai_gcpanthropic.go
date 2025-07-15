@@ -19,11 +19,10 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
-
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
@@ -37,11 +36,15 @@ var errStreamingNotSupported = errors.New("streaming is not yet supported for GC
 
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
-	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
+func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{
+		apiVersion:        apiVersion,
+		modelNameOverride: modelNameOverride,
+	}
 }
 
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
+	apiVersion        string
 	modelNameOverride string
 }
 
@@ -510,7 +513,11 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	pathSuffix := buildGCPModelPathSuffix(GCPModelPublisherAnthropic, modelName, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
-	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVertex.DefaultVersion)
+	anthropicVersion := anthropicVertex.DefaultVersion
+	if o.apiVersion != "" {
+		anthropicVersion = o.apiVersion
+	}
+	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVersion)
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
 	return
