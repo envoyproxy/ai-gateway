@@ -11,6 +11,7 @@
 package controller
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"sort"
@@ -30,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -197,27 +199,12 @@ func TestStartControllers(t *testing.T) {
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
-					require.Equal(t, "ai-eg-host-rewrite", string(rule.Filters[0].ExtensionRef.Name))
+					require.Equal(t, fmt.Sprintf("ai-eg-host-rewrite-%s", route), string(rule.Filters[0].ExtensionRef.Name))
 				}
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
 	}
-
-	// Check if the host rewrite filter exists in the default namespace.
-	t.Run("verify host rewrite filter", func(t *testing.T) {
-		require.Eventually(t, func() bool {
-			var filter egv1a1.HTTPRouteFilter
-			err := c.Get(ctx, client.ObjectKey{Name: "ai-eg-host-rewrite", Namespace: "default"}, &filter)
-			if err != nil {
-				t.Logf("failed to get filter: %v", err)
-				return false
-			}
-			require.Equal(t, "default", filter.Namespace)
-			require.Equal(t, "ai-eg-host-rewrite", filter.Name)
-			return true
-		}, 30*time.Second, 200*time.Millisecond)
-	})
 }
 
 func TestAIGatewayRouteController(t *testing.T) {
@@ -315,6 +302,36 @@ func TestAIGatewayRouteController(t *testing.T) {
 
 		events := eventCh.RequireItemsEventually(t, 1)
 		require.Equal(t, gatewayName, events[0].Name)
+		hostRewriteKey := client.ObjectKey{
+			Name:      "ai-eg-host-rewrite-myroute",
+			Namespace: "default",
+		}
+		require.Eventually(t, func() bool {
+			var f egv1a1.HTTPRouteFilter
+			err = c.Get(t.Context(), hostRewriteKey, &f)
+			if err != nil {
+				t.Logf("expected to get hostRewriteFilter %s, but got error: %v", hostRewriteKey.Name, err)
+				return false
+			}
+			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
+			require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
+			return true
+		}, 10*time.Second, 200*time.Millisecond)
+		notFoundKey := client.ObjectKey{
+			Name:      "ai-eg-route-not-found-response-myroute",
+			Namespace: "default",
+		}
+		require.Eventually(t, func() bool {
+			var f egv1a1.HTTPRouteFilter
+			err = c.Get(t.Context(), notFoundKey, &f)
+			if err != nil {
+				t.Logf("expected to get notFoundFilter %s, but got error: %v", notFoundKey.Name, err)
+				return false
+			}
+			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
+			require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
+			return true
+		}, 10*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -335,15 +352,38 @@ func TestAIGatewayRouteController(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.AIGatewayRoute
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete route", func(t *testing.T) {
+		err := c.Delete(t.Context(), origin)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIGatewayRoute
+			err = c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			events := eventCh.RequireItemsEventually(t, 1)
+			require.Equal(t, gatewayName, events[0].Name)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
@@ -362,7 +402,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		err := mgr.Start(t.Context())
+		err = mgr.Start(t.Context())
 		require.NoError(t, err)
 	}()
 
@@ -431,7 +471,7 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	})
 
 	t.Run("update security policy", func(t *testing.T) {
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			origin := aigv1a1.BackendSecurityPolicy{}
 			require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &origin))
 			origin.Spec.APIKey = nil
@@ -460,15 +500,48 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.Equal(t, originals, backends)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.BackendSecurityPolicy
-			err := c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
+			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete bsp", func(t *testing.T) {
+		err = c.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      backendSecurityPolicyName,
+				Namespace: backendSecurityPolicyNamespace,
+			},
+		})
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var bsp aigv1a1.BackendSecurityPolicy
+			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &bsp)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			backends := eventCh.RequireItemsEventually(t, 2)
+			sort.Slice(backends, func(i, j int) bool {
+				backends[i].TypeMeta = metav1.TypeMeta{}
+				backends[j].TypeMeta = metav1.TypeMeta{}
+				return backends[i].Name < backends[j].Name
+			})
+			require.Equal(t, originals, backends)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }
@@ -581,15 +654,49 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.Equal(t, originals, routes)
 	})
 
-	t.Run("check statuses", func(t *testing.T) {
+	t.Run("check finalizer and status", func(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var r aigv1a1.AIServiceBackend
-			err := c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
+			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
 			require.NoError(t, err)
+			// Check if the finalizer is set.
+			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+				return false
+			}
+
 			if len(r.Status.Conditions) != 1 {
 				return false
 			}
 			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
+
+	t.Run("delete backend", func(t *testing.T) {
+		err = c.Delete(t.Context(), &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      aiServiceBackendName,
+				Namespace: aiServiceBackendNamespace,
+			},
+		})
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIServiceBackend
+			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
+			if err == nil || client.IgnoreNotFound(err) != nil {
+				t.Logf("expected not found error, got: %v", err)
+				return false
+			}
+			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
+			routes := eventCh.RequireItemsEventually(t, 2)
+			sort.Slice(routes, func(i, j int) bool {
+				routes[i].TypeMeta = metav1.TypeMeta{}
+				routes[j].TypeMeta = metav1.TypeMeta{}
+				return routes[i].Name < routes[j].Name
+			})
+			require.Equal(t, originals, routes)
+			return true
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 }

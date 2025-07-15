@@ -17,7 +17,7 @@ Envoy AI Gateway supports provider fallback to ensure high availability and reli
 ## How Fallback Works
 
 - **Primary and Fallback Backends:** You can specify a prioritized list of backends in your `AIGatewayRoute` using `backendRefs`. The first backend is treated as primary, and subsequent backends are considered fallbacks.
-- **Health Checks:** Fallback is triggered based on passive health checks and retry policies, which can be configured using the [`BackendTrafficPolicy`](https://gateway.envoyproxy.io/contributions/design/backend-traffic-policy/) API.
+- **Retry Policy:** Fallback is triggered based on retry policies, which can be configured using the [`BackendTrafficPolicy`](https://gateway.envoyproxy.io/contributions/design/backend-traffic-policy/) API.
 - **Automatic Failover:** When the primary backend becomes unhealthy, Envoy AI Gateway automatically shifts traffic to the next healthy fallback backend.
 
 ## Example
@@ -78,13 +78,13 @@ spec:
 
 ## Configuring Fallback Behavior
 
-Attach a `BackendTrafficPolicy` to the generated `HTTPRoute` to control retry and health check behavior:
+Attach a `BackendTrafficPolicy` to the generated `HTTPRoute` to control retry behavior:
 
 ```yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
-  name: passive-health-check
+  name: provider-fallback
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
@@ -98,20 +98,14 @@ spec:
         maxInterval: 10s
       timeout: 30s
     retryOn:
+      # This ensures that only one attempt is made per priority.
+      # For example, if the primary backend fails, it will not retry on the same backend.
+      numAttemptsPerPriority: 1
       httpStatusCodes:
         - 500
       triggers:
         - connect-failure
         - retriable-status-codes
-  healthCheck:
-    passive:
-      baseEjectionTime: 5s
-      interval: 2s
-      maxEjectionPercent: 100
-      consecutive5XxErrors: 1
-      consecutiveGatewayErrors: 0
-      consecutiveLocalOriginFailures: 1
-      splitExternalLocalOriginErrors: false
 ```
 
 ## References

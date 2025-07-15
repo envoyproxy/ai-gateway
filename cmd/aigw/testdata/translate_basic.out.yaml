@@ -88,7 +88,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -105,7 +105,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -122,7 +122,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
@@ -139,7 +139,7 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-route-not-found-response
+            name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
           type: ExtensionRef
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -176,8 +176,15 @@ status:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
 metadata:
-  name: ai-eg-host-rewrite
+  name: ai-eg-host-rewrite-envoy-ai-gateway-basic
   namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+      controller: true
+      blockOwnerDeletion: true
 spec:
   urlRewrite:
     hostname:
@@ -186,8 +193,15 @@ spec:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
 metadata:
-  name: ai-eg-route-not-found-response
+  name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
   namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+      controller: true
+      blockOwnerDeletion: true
 spec:
   directResponse:
     body:

@@ -3,9 +3,10 @@ module github.com/envoyproxy/ai-gateway
 go 1.24.4
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1
 	github.com/alecthomas/kong v1.12.0
+	github.com/anthropics/anthropic-sdk-go v1.5.0
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
@@ -17,9 +18,10 @@ require (
 	github.com/google/cel-go v0.25.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/openai/openai-go v1.8.2
+	github.com/openai/openai-go v1.10.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
+	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.59.0
@@ -30,7 +32,7 @@ require (
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/api v0.223.0
-	google.golang.org/genai v1.14.0
+	google.golang.org/genai v1.15.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.33.2
@@ -363,7 +365,6 @@ require (
 	github.com/telepresenceio/watchable v0.0.0-20220726211108-9bb86f92afa7 // indirect
 	github.com/tetafro/godot v1.5.0 // indirect
 	github.com/tetratelabs/func-e v1.1.5 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67 // indirect

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	egDefaultVersion     = "v1.4.0"
+	egDefaultVersion     = "v0.0.0-latest"
 	egNamespace          = "envoy-gateway-system"
 	egDefaultServicePort = 80
 

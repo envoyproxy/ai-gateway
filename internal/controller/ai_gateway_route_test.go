@@ -20,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -43,7 +44,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	// Do it for the second time with a slightly different configuration.
 	var current aigv1a1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &current)
+	// Make sure the finalizer is added.
 	require.NoError(t, err)
+	require.Contains(t, current.ObjectMeta.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 	current.Spec.APISchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")}
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
@@ -135,19 +138,25 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		// Defaulting to the empty path, which shouldn't reach in practice.
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
+
+		// Check per AIGatewayRoute has the default host rewrite filter.
+		var f egv1a1.HTTPRouteFilter
+		hostRewriteName := fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteName, Namespace: "ns1"}, &f)
+		require.NoError(t, err)
+		require.Equal(t, hostRewriteName, f.Name)
+		ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
+
+		// Also check per AIGatewayRoute has default route not found response filter.
+		var notFoundFilter egv1a1.HTTPRouteFilter
+		notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: notFoundName, Namespace: "ns1"}, &notFoundFilter)
+		require.NoError(t, err)
+		require.Equal(t, notFoundName, notFoundFilter.Name)
+		ok, _ = ctrlutil.HasOwnerReference(notFoundFilter.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
 	})
-
-	// Check the namespace has the default host rewrite filter.
-	var f egv1a1.HTTPRouteFilter
-	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
-	require.NoError(t, err)
-	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
-
-	// Also check the default route not found response filter.
-	var notFoundFilter egv1a1.HTTPRouteFilter
-	err = s.client.Get(t.Context(), client.ObjectKey{Name: routeNotFoundResponseHTTPFilterName, Namespace: "ns1"}, &notFoundFilter)
-	require.NoError(t, err)
-	require.Equal(t, routeNotFoundResponseHTTPFilterName, notFoundFilter.Name)
 }
 
 func Test_newHTTPRoute(t *testing.T) {
@@ -251,7 +260,7 @@ func Test_newHTTPRoute(t *testing.T) {
 				ExtensionRef: &gwapiv1.LocalObjectReference{
 					Group: "gateway.envoyproxy.io",
 					Kind:  "HTTPRouteFilter",
-					Name:  hostRewriteHTTPFilterName,
+					Name:  gwapiv1.ObjectName(getHostRewriteFilterName("myroute")),
 				},
 			}}
 			expRules := []gwapiv1.HTTPRouteRule{
@@ -293,7 +302,7 @@ func Test_newHTTPRoute(t *testing.T) {
 							ExtensionRef: &gwapiv1.LocalObjectReference{
 								Group: "gateway.envoyproxy.io",
 								Kind:  "HTTPRouteFilter",
-								Name:  routeNotFoundResponseHTTPFilterName,
+								Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName("myroute")),
 							},
 						},
 					},

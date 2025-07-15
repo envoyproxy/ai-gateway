@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -83,6 +84,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Len(t, bsp.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, bsp.Status.Conditions[0].Type)
 	require.Equal(t, "BackendSecurityPolicy reconciled successfully", bsp.Status.Conditions[0].Message)
+	require.Contains(t, bsp.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 
 	// Test the case where the BackendSecurityPolicy is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
@@ -228,6 +230,13 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.rotateCredential(ctx, bsp)
 	require.NoError(t, err)
+
+	// Check the generated secret contains the owner reference to the BackendSecurityPolicy.
+	awsSecretName := rotators.GetBSPSecretName(fmt.Sprintf("%s-OIDC", bspName))
+	awsSecret, err := rotators.LookupSecret(t.Context(), cl, bspNamespace, awsSecretName)
+	require.NoError(t, err)
+	ok, _ := ctrlutil.HasOwnerReference(awsSecret.OwnerReferences, bsp, c.client.Scheme())
+	require.True(t, ok, "expected secret to have owner reference to BackendSecurityPolicy")
 }
 
 func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
@@ -819,6 +828,124 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			default:
 				require.NoError(t, err)
 				require.NotZero(t, res.RequeueAfter)
+			}
+		})
+	}
+}
+
+func TestGetBSPGeneratedSecretName(t *testing.T) {
+	tests := []struct {
+		name         string
+		bsp          *aigv1a1.BackendSecurityPolicy
+		expectedName string
+	}{
+		{
+			name: "AWS without OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "aws-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+							SecretRef: nil,
+						},
+						OIDCExchangeToken: nil,
+					},
+				},
+			},
+			expectedName: "",
+		},
+		{
+			name: "AWS with OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "aws-oidc-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
+							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+								OIDC: egv1a1.OIDC{
+									ClientID: "some-client-id",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedName: "ai-eg-bsp-aws-oidc-bsp",
+		},
+		{
+			name: "Azure without OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "azure-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						ClientSecretRef:   nil,
+						OIDCExchangeToken: nil,
+					},
+				},
+			},
+			expectedName: "",
+		},
+		{
+			name: "Azure with OIDCExchangeToken",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "azure-oidc-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{
+							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
+								OIDC: egv1a1.OIDC{
+									ClientID: "some-client-id",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedName: "ai-eg-bsp-azure-oidc-bsp",
+		},
+		{
+			name: "GCP type",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gcp-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				},
+			},
+			expectedName: "ai-eg-bsp-gcp-bsp",
+		},
+		{
+			name: "APIKey type",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "apikey-bsp",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				},
+			},
+			expectedName: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resultName := getBSPGeneratedSecretName(tt.bsp)
+			if resultName != "" {
+				require.Equal(t, tt.expectedName, resultName)
 			}
 		})
 	}

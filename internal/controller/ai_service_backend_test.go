@@ -81,6 +81,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.Len(t, backend.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, backend.Status.Conditions[0].Type)
 	require.Equal(t, "AIServiceBackend reconciled successfully", backend.Status.Conditions[0].Message)
+	require.Contains(t, backend.ObjectMeta.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be set")
 
 	// Test the case where the AIServiceBackend is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: "mybackend", Namespace: "default"}})

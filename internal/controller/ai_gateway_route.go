@@ -94,11 +94,28 @@ func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
 	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
-// defaultHTTPRouteFilters returns the default HTTPRouteFilters that are required for the AIGatewayRoute to function.
-func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
+func getHostRewriteFilterName(baseName string) string {
+	return fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
+}
+
+func getRouteNotFoundFilterName(baseName string) string {
+	return fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, baseName)
+}
+
+// generateHTTPRouteFilters returns two HTTPRouteFilter with the given AIGatewayRoute.
+func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
+	ns := aiGatewayRoute.Namespace
+	baseName := aiGatewayRoute.Name
+
+	hostRewriteName := getHostRewriteFilterName(baseName)
+	notFoundName := getRouteNotFoundFilterName(baseName)
+
 	return []*egv1a1.HTTPRouteFilter{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: hostRewriteHTTPFilterName, Namespace: ns},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hostRewriteName,
+				Namespace: ns,
+			},
 			Spec: egv1a1.HTTPRouteFilterSpec{
 				URLRewrite: &egv1a1.HTTPURLRewriteFilter{
 					Hostname: &egv1a1.HTTPHostnameModifier{
@@ -108,7 +125,10 @@ func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: routeNotFoundResponseHTTPFilterName, Namespace: ns},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      notFoundName,
+				Namespace: ns,
+			},
 			Spec: egv1a1.HTTPRouteFilterSpec{
 				DirectResponse: &egv1a1.HTTPDirectResponseFilter{
 					StatusCode: ptr.To(404),
@@ -127,12 +147,19 @@ func defaultHTTPRouteFilters(ns string) []*egv1a1.HTTPRouteFilter {
 // syncAIGatewayRoute is the main logic for reconciling the AIGatewayRoute resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	// Check if the static default HTTPRouteFilters exist in the namespace.
-	filters := defaultHTTPRouteFilters(aiGatewayRoute.Namespace)
+	if handleFinalizer(ctx, c.client, c.logger, aiGatewayRoute, c.syncGateways) { // Propagate the AIGatewayRoute deletion all the way up to relevant Gateways.
+		return nil
+	}
+
+	// Check if the static default HTTPRouteFilters exist per AIGatewayRoute.
+	filters := generateHTTPRouteFilters(aiGatewayRoute)
 	for _, base := range filters {
 		var f egv1a1.HTTPRouteFilter
 		if err := c.client.Get(ctx, client.ObjectKey{Name: base.Name, Namespace: base.Namespace}, &f); err != nil {
 			if apierrors.IsNotFound(err) {
+				if err = ctrlutil.SetControllerReference(aiGatewayRoute, base, c.client.Scheme()); err != nil {
+					panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRouteFilter: %w", err))
+				}
 				// Create the filter if it does not exist.
 				if err = c.client.Create(ctx, base); err != nil {
 					return fmt.Errorf("failed to create HTTPRouteFilter %s: %w", f.Name, err)
@@ -196,7 +223,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		ExtensionRef: &gwapiv1.LocalObjectReference{
 			Group: "gateway.envoyproxy.io",
 			Kind:  "HTTPRouteFilter",
-			Name:  hostRewriteHTTPFilterName,
+			Name:  gwapiv1.ObjectName(getHostRewriteFilterName(aiGatewayRoute.Name)),
 		},
 	}}
 	rules := make([]gwapiv1.HTTPRouteRule, 0, len(aiGatewayRoute.Spec.Rules)+1) // +1 for the default rule.
@@ -237,7 +264,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			ExtensionRef: &gwapiv1.LocalObjectReference{
 				Group: "gateway.envoyproxy.io",
 				Kind:  "HTTPRouteFilter",
-				Name:  routeNotFoundResponseHTTPFilterName,
+				Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName(aiGatewayRoute.Name)),
 			},
 		}},
 	})
