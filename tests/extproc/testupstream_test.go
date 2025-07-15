@@ -403,7 +403,7 @@ data: [DONE]
 					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
 					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
 					if body != expectedResponseBody {
-						fmt.Printf("unexpected response:\n%s", cmp.Diff(body, tc.expResponseBody))
+						t.Logf("unexpected response:\n%s", cmp.Diff(body, tc.expResponseBody))
 						return false
 					}
 				} else if tc.expResponseBodyFunc != nil {

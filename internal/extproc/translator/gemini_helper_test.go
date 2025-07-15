@@ -918,13 +918,13 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 							Name:                 "foo",
 							Description:          "Foo function",
 							Parameters:           nil,
-							ParametersJsonSchema: map[string]any(nil),
+							ParametersJsonSchema: nil,
 						},
 						{
 							Name:                 "bar",
 							Description:          "Bar function",
 							Parameters:           nil,
-							ParametersJsonSchema: map[string]any(nil),
+							ParametersJsonSchema: nil,
 						},
 					},
 				},
@@ -938,11 +938,21 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					Function: &openai.FunctionDefinition{
 						Name:        "bad",
 						Description: "Bad function",
-						Parameters:  "not-a-map",
+						Parameters:  "invalid-json",
 					},
 				},
 			},
-			expectedError: "tool's param should be a valid JSON string. invalid JSON schema string provided for tool 'bad'",
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Description:          "Bad function",
+							Name:                 "bad",
+							ParametersJsonSchema: "invalid-json",
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "non-function tool is ignored",

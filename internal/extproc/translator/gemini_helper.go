@@ -258,10 +258,63 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 	return parts, knownToolCalls, nil
 }
 
-// openAIToolsToGeminiTools converts OpenAI tools to Gemini tools
+// openAIToolsToGeminiTools converts OpenAI tools to Gemini tools.
 // This function combines all the openai tools into a single Gemini Tool as distinct function declarations.
 // This is mainly done because some Gemini models do not support multiple tools in a single request.
 // This behavior might need to change in future based on model capabilities.
+// Example Input
+// [
+//	{
+//	  "type": "function",
+//	  "function": {
+//	    "name": "add",
+//	    "description": "Add two numbers",
+//	    "parameters": {
+//	      "properties": {
+//	        "a": {
+//	          "type": "integer"
+//	        },
+//	        "b": {
+//	          "type": "integer"
+//	        }
+//	      },
+//	      "required": [
+//	        "a",
+//	        "b"
+//	      ],
+//	      "type": "object"
+//	    }
+//	  }
+//	}
+// ]
+//
+// Example Output
+// [
+//  {
+//    "functionDeclarations": [
+//      {
+//        "description": "Add two numbers",
+//        "name": "add",
+//        "parametersJsonSchema": {
+//          "properties": {
+//            "a": {
+//              "type": "integer"
+//            },
+//            "b": {
+//              "type": "integer"
+//            }
+//          },
+//          "required": [
+//            "a",
+//            "b"
+//          ],
+//          "type": "object"
+//        }
+//      }
+//    ]
+//  }
+// ].
+
 func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 	if len(openaiTools) == 0 {
 		return nil, nil
@@ -270,23 +323,10 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 	for _, tool := range openaiTools {
 		if tool.Type == openai.ToolTypeFunction {
 			if tool.Function != nil {
-				var params map[string]any
-				var err error
-
-				if tool.Function.Parameters != nil {
-					switch paramsRaw := tool.Function.Parameters.(type) {
-					case string:
-						if err = json.Unmarshal([]byte(paramsRaw), &params); err != nil {
-							return nil, fmt.Errorf("tool's param should be a valid JSON string. invalid JSON schema string provided for tool '%s': %w", tool.Function.Name, err)
-						}
-					case map[string]any:
-						params = paramsRaw
-					}
-				}
 				functionDecl := &genai.FunctionDeclaration{
 					Name:                 tool.Function.Name,
 					Description:          tool.Function.Description,
-					ParametersJsonSchema: params,
+					ParametersJsonSchema: tool.Function.Parameters,
 				}
 				functionDecls = append(functionDecls, functionDecl)
 			}
@@ -299,6 +339,25 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 }
 
 // openAIToolChoiceToGeminiToolConfig converts OpenAI tool_choice to Gemini ToolConfig.
+// Example Input
+//
+//	{
+//	 "type": "function",
+//	 "function": {
+//	   "name": "myfunc"
+//	 }
+//	}
+//
+// Example Output
+//
+//	{
+//	 "functionCallingConfig": {
+//	   "mode": "ANY",
+//	   "allowedFunctionNames": [
+//	     "myfunc"
+//	   ]
+//	 }
+//	}
 func openAIToolChoiceToGeminiToolConfig(toolChoice interface{}) (*genai.ToolConfig, error) {
 	if toolChoice == nil {
 		return nil, nil
