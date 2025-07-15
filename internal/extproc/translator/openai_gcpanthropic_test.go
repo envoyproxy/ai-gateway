@@ -192,9 +192,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.ErrorContains(t, err, "the maximum number of tokens must be set for Anthropic, got nil instead")
 	})
 	t.Run("API Version Override", func(t *testing.T) {
-		customApiVersion := "bedrock-2023-05-31"
+		customAPIVersion := "bedrock-2023-05-31"
 		// Instantiate the translator with the custom API version.
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(customApiVersion, "")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(customAPIVersion, "")
 
 		// Call RequestBody with a standard request.
 		_, bm, err := translator.RequestBody(nil, openAIReq, false)
@@ -203,7 +203,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 
 		// Check that the anthropic_version in the body uses the custom version.
 		body := bm.GetBody()
-		require.Equal(t, customApiVersion, gjson.GetBytes(body, "anthropic_version").String())
+		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
 }
 
