@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -310,16 +309,13 @@ func TestAIGatewayRouteController(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var f egv1a1.HTTPRouteFilter
 			err = c.Get(t.Context(), hostRewriteKey, &f)
-			if err == nil {
-				return true
-			}
-			if !apierrors.IsNotFound(err) {
-				t.Logf("unexpected error when fetching filter %s: %v", hostRewriteKey, err)
+			if err != nil {
+				t.Logf("expected to get hostRewriteFilter %s, but got error: %v", hostRewriteKey.Name, err)
 				return false
 			}
 			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
 			require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
-			return false
+			return true
 		}, 10*time.Second, 200*time.Millisecond)
 		notFoundKey := client.ObjectKey{
 			Name:      "ai-eg-route-not-found-response-myroute",
@@ -328,16 +324,13 @@ func TestAIGatewayRouteController(t *testing.T) {
 		require.Eventually(t, func() bool {
 			var f egv1a1.HTTPRouteFilter
 			err = c.Get(t.Context(), notFoundKey, &f)
-			if err == nil {
-				return true
-			}
-			if !apierrors.IsNotFound(err) {
-				t.Logf("unexpected error when fetching filter %s: %v", notFoundKey, err)
+			if err != nil {
+				t.Logf("expected to get notFoundFilter %s, but got error: %v", notFoundKey.Name, err)
 				return false
 			}
 			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
 			require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
-			return false
+			return true
 		}, 10*time.Second, 200*time.Millisecond)
 	})
 
