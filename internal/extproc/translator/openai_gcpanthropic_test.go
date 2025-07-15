@@ -48,7 +48,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		Temperature: ptr.To(0.7),
 	}
 	t.Run("Vertex Values Configured Correctly", func(t *testing.T) {
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		hm, bm, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
@@ -72,7 +72,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	t.Run("Model Name Override", func(t *testing.T) {
 		overrideModelName := "claude-3"
 		// Instantiate the translator with the model name override.
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(overrideModelName)
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", overrideModelName)
 
 		// Call RequestBody with the original request, which has a different model name.
 		hm, _, err := translator.RequestBody(nil, openAIReq, false)
@@ -108,7 +108,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 				},
 			},
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, bm, err := translator.RequestBody(nil, imageReq, false)
 		require.NoError(t, err)
 		body := bm.GetBody()
@@ -132,7 +132,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 			MaxTokens: ptr.To(int64(100)),
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, bm, err := translator.RequestBody(nil, multiSystemReq, false)
 		require.NoError(t, err)
 		body := bm.GetBody()
@@ -148,7 +148,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			MaxTokens: ptr.To(int64(100)),
 			Stream:    true,
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, streamReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), errStreamingNotSupported.Error())
@@ -161,7 +161,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			MaxTokens:   ptr.To(int64(100)),
 			Temperature: ptr.To(2.5),
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, invalidTempReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
@@ -174,7 +174,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			MaxTokens:   ptr.To(int64(100)),
 			Temperature: ptr.To(-2.5),
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, invalidTempReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
@@ -187,15 +187,29 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: nil,
 		}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
 		require.ErrorContains(t, err, "the maximum number of tokens must be set for Anthropic, got nil instead")
+	})
+	t.Run("API Version Override", func(t *testing.T) {
+		customAPIVersion := "bedrock-2023-05-31"
+		// Instantiate the translator with the custom API version.
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(customAPIVersion, "")
+
+		// Call RequestBody with a standard request.
+		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+
+		// Check that the anthropic_version in the body uses the custom version.
+		body := bm.GetBody()
+		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid json body", func(t *testing.T) {
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal body")
@@ -272,7 +286,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			body, err := json.Marshal(tt.inputResponse)
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
-			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("")
+			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
