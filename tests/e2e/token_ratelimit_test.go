@@ -53,6 +53,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 
 		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		if resp.StatusCode == http.StatusOK {
 			var oaiBody openai.ChatCompletion
 			require.NoError(t, json.Unmarshal(body, &oaiBody))
@@ -113,6 +114,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		}
 		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
 		if resp.StatusCode != http.StatusOK {
 			t.Logf("Failed to query Prometheus: status=%s", resp.Status)

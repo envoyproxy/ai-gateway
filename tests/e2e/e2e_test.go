@@ -34,9 +34,8 @@ const (
 var egVersion = func() string {
 	if v, ok := os.LookupEnv("EG_VERSION"); ok {
 		return v
-	} else {
-		return egDefaultVersion
 	}
+	return egDefaultVersion
 }()
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
@@ -63,7 +62,7 @@ func TestMain(m *testing.M) {
 
 	run := false
 	defer func() {
-		// If the setup or some tests panic, try to collect the cluster logs
+		// If the setup or some tests panic, try to collect the cluster logs.
 		if r := recover(); r != nil {
 			cleanupKindCluster(true)
 		}
@@ -103,7 +102,7 @@ func TestMain(m *testing.M) {
 
 	cleanupKindCluster(code != 0)
 
-	os.Exit(code)
+	os.Exit(code) // nolint: gocritic
 }
 
 func initKindCluster(ctx context.Context) (err error) {
@@ -211,12 +210,12 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm_crd := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
 		"../../manifests/charts/ai-gateway-crds-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
-	helm_crd.Stdout = os.Stdout
-	helm_crd.Stderr = os.Stderr
-	if err = helm_crd.Run(); err != nil {
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
 		return
 	}
 

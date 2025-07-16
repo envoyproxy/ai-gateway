@@ -52,7 +52,7 @@ precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-t
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
-	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc ./...
+	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
