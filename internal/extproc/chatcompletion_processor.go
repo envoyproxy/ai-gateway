@@ -405,7 +405,7 @@ func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, content
 }
 
 func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, modelNameOverride, backendName string) (*structpb.Struct, error) {
-	metadataCost := make(map[string]*structpb.Value, len(config.requestCosts))
+	metadata := make(map[string]*structpb.Value, len(config.requestCosts)+2)
 	for i := range config.requestCosts {
 		rc := &config.requestCosts[i]
 		var cost uint32
@@ -432,33 +432,28 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
 		}
-		metadataCost[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 
-	metadataRoute := make(map[string]*structpb.Value, 2)
 	if modelNameOverride != "" {
-		metadataRoute["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: modelNameOverride}}
+		metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: modelNameOverride}}
 	}
 
 	if backendName != "" {
-		metadataRoute["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
 	}
 
-	metadata := &structpb.Struct{
-		Fields: map[string]*structpb.Value{},
-	}
-
-	if len(metadataCost) != 0 {
-		metadata.Fields[config.metadataNamespace] = &structpb.Value{Kind: &structpb.Value_StructValue{StructValue: &structpb.Struct{Fields: metadataCost}}}
-	}
-
-	if len(metadataRoute) != 0 {
-		metadata.Fields["route"] = &structpb.Value{Kind: &structpb.Value_StructValue{StructValue: &structpb.Struct{Fields: metadataRoute}}}
-	}
-
-	if len(metadata.Fields) == 0 {
+	if len(metadata) == 0 {
 		return nil, nil
 	}
 
-	return metadata, nil
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			config.metadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{Fields: metadata},
+				},
+			},
+		},
+	}, nil
 }
