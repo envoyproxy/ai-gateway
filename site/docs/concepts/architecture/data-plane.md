@@ -56,7 +56,7 @@ sequenceDiagram
     Client->>Envoy: Request
     Envoy->>Processor: Router-level ExtProc Request
     Note over Processor: Extract Model Name
-    Processor-->>Envoy: ;
+    Processor-->>Envoy: ClearRouteCache;
     Envoy->>RLS: Check Rate Limit
     RLS-->>Envoy: ;
     loop Retry/Fallback loop
