@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -19,11 +20,12 @@ import (
 )
 
 const (
-	GCPModelPublisherGoogle    = "google"
-	GCPModelPublisherAnthropic = "anthropic"
-	GCPMethodGenerateContent   = "generateContent"
-	GCPMethodRawPredict        = "rawPredict"
-	HTTPHeaderKeyContentLength = "Content-Length"
+	GCPModelPublisherGoogle        = "google"
+	GCPModelPublisherAnthropic     = "anthropic"
+	GCPMethodGenerateContent       = "generateContent"
+	GCPMethodStreamGenerateContent = "streamGenerateContent"
+	GCPMethodRawPredict            = "rawPredict"
+	HTTPHeaderKeyContentLength     = "Content-Length"
 )
 
 // -------------------------------------------------------------
@@ -514,6 +516,10 @@ func geminiFinishReasonToOpenAI(reason genai.FinishReason) openai.ChatCompletion
 		return openai.ChatCompletionChoicesFinishReasonStop
 	case genai.FinishReasonMaxTokens:
 		return openai.ChatCompletionChoicesFinishReasonLength
+	case "":
+		// For intermediate chunks in a streaming response, the finish reason is an empty string.
+		// This is normal behavior and should not be treated as an error.
+		return ""
 	default:
 		return openai.ChatCompletionChoicesFinishReasonContentFilter
 	}
@@ -623,7 +629,55 @@ func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) openai.
 	}
 }
 
-func buildGCPModelPathSuffix(publisher, model, gcpMethod string) string {
+func buildGCPModelPathSuffix(publisher, model, gcpMethod string, pathParams map[string]string) string {
 	pathSuffix := fmt.Sprintf("publishers/%s/models/%s:%s", publisher, model, gcpMethod)
+	if len(pathParams) > 0 {
+		params := make([]string, 0, len(pathParams))
+		for k, v := range pathParams {
+			params = append(params, fmt.Sprintf("%s=%s", k, url.QueryEscape(v)))
+		}
+		pathSuffix += "?" + strings.Join(params, "&")
+	}
 	return pathSuffix
+}
+
+// geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
+func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]openai.ChatCompletionResponseChunkChoice, error) {
+	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+
+		// Create the streaming choice.
+		choice := openai.ChatCompletionResponseChunkChoice{
+			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
+		}
+
+		if candidate.Content != nil {
+			delta := &openai.ChatCompletionResponseChunkChoiceDelta{
+				Role: openai.ChatMessageRoleAssistant,
+			}
+
+			// Extract text from parts for streaming (delta).
+			content := extractTextFromGeminiParts(candidate.Content.Parts)
+			if content != "" {
+				delta.Content = &content
+			}
+
+			// Extract tool calls if any.
+			toolCalls, err := extractToolCallsFromGeminiParts(candidate.Content.Parts)
+			if err != nil {
+				return nil, fmt.Errorf("error extracting tool calls: %w", err)
+			}
+			delta.ToolCalls = toolCalls
+
+			choice.Delta = delta
+		}
+
+		choices = append(choices, choice)
+	}
+
+	return choices, nil
 }

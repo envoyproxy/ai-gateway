@@ -20,6 +20,7 @@ const (
 	contentTypeHeaderName  = "content-type"
 	awsErrorTypeHeaderName = "x-amzn-errortype"
 	jsonContentType        = "application/json"
+	eventStreamContentType = "text/event-stream"
 	openAIBackendError     = "OpenAIBackendError"
 	awsBedrockBackendError = "AWSBedrockBackendError"
 )
