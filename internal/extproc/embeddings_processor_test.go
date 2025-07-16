@@ -194,9 +194,9 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			GetStructValue().Fields["cel_int"].GetNumberValue())
 		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
-		require.Equal(t, "some_backend", md.Fields["route"].
+		require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["backend_name"].GetStringValue())
-		require.Equal(t, "some_model", md.Fields["route"].
+		require.Equal(t, "some_model", md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["model_name_override"].GetStringValue())
 	})
 }
