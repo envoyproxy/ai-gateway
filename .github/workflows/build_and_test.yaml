@@ -58,6 +58,7 @@ jobs:
           key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - name: Ensure `make precommit` is executed
         run: make check
+
   unittest:
     name: Unit Test
     needs: [style]
@@ -96,7 +97,7 @@ jobs:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
-        run: make test-coverage
+        run: make test-coverage COVERAGE_ARGS=--github-action-output
 
   test_crdcel:
     name: CRD CEL Validation Test
