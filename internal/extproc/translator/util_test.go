@@ -99,7 +99,7 @@ func TestBuildRequestMutations(t *testing.T) {
 				},
 				{
 					Header: &corev3.HeaderValue{
-						Key:      HTTPHeaderKeyContentLength,
+						Key:      httpHeaderKeyContentLength,
 						RawValue: []byte("15"),
 					},
 				},
@@ -127,7 +127,7 @@ func TestBuildRequestMutations(t *testing.T) {
 			wantHeaders: []*corev3.HeaderValueOption{
 				{
 					Header: &corev3.HeaderValue{
-						Key:      HTTPHeaderKeyContentLength,
+						Key:      httpHeaderKeyContentLength,
 						RawValue: []byte("9"),
 					},
 				},

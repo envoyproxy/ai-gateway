@@ -20,12 +20,12 @@ import (
 )
 
 const (
-	GCPModelPublisherGoogle        = "google"
-	GCPModelPublisherAnthropic     = "anthropic"
-	GCPMethodGenerateContent       = "generateContent"
-	GCPMethodStreamGenerateContent = "streamGenerateContent"
-	GCPMethodRawPredict            = "rawPredict"
-	HTTPHeaderKeyContentLength     = "Content-Length"
+	gcpModelPublisherGoogle        = "google"
+	gcpModelPublisherAnthropic     = "anthropic"
+	gcpMethodGenerateContent       = "generateContent"
+	gcpMethodStreamGenerateContent = "streamGenerateContent"
+	gcpMethodRawPredict            = "rawPredict"
+	httpHeaderKeyContentLength     = "Content-Length"
 )
 
 // -------------------------------------------------------------

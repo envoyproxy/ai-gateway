@@ -73,7 +73,7 @@ func buildRequestMutations(path string, reqBody []byte) (*ext_procv3.HeaderMutat
 		// Set the "content-length" header.
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
-				Key:      HTTPHeaderKeyContentLength,
+				Key:      httpHeaderKeyContentLength,
 				RawValue: []byte(strconv.Itoa(len(reqBody))),
 			},
 		})
