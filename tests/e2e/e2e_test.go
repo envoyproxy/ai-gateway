@@ -10,6 +10,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -29,6 +30,7 @@ const (
 
 	kindClusterName = "envoy-ai-gateway"
 	kindLogDir      = "./logs"
+	metallbVersion  = "v0.13.10"
 )
 
 var egVersion = func() string {
@@ -72,6 +74,11 @@ func TestMain(m *testing.M) {
 	}()
 
 	if err := initKindCluster(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	if err := initMetalLB(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -143,6 +150,166 @@ func initKindCluster(ctx context.Context) (err error) {
 		}
 	}
 	return nil
+}
+
+func initMetalLB(ctx context.Context) (err error) {
+	initLog("Installing MetalLB")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
+	}()
+
+	// Install MetalLB manifests.
+	initLog("\tApplying MetalLB manifests")
+	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/metallb/metallb/%s/config/manifests/metallb-native.yaml", metallbVersion)
+	if err = kubectlApplyManifest(ctx, manifestURL); err != nil {
+		return fmt.Errorf("failed to apply MetalLB manifests: %w", err)
+	}
+
+	// Create memberlist secret if it doesn't exist.
+	initLog("\tCreating memberlist secret if needed")
+	cmd := kubectl(ctx, "get", "secret", "-n", "metallb-system", "memberlist", "--no-headers", "--ignore-not-found", "-o", "custom-columns=NAME:.metadata.name")
+	cmd.Stdout = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check memberlist secret: %w", err)
+	}
+
+	if strings.TrimSpace(string(out)) == "" {
+		// Generate random secret key.
+		cmd = exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
+		cmd.Stderr = os.Stderr
+		var secretKey []byte
+		secretKey, err = cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to generate secret key: %w", err)
+		}
+
+		cmd = kubectl(ctx, "create", "secret", "generic", "-n", "metallb-system", "memberlist", "--from-literal=secretkey="+strings.TrimSpace(string(secretKey)))
+		if err = cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create memberlist secret: %w", err)
+		}
+	}
+
+	// Wait for MetalLB deployments to be ready.
+	initLog("\tWaiting for MetalLB controller deployment to be ready")
+	if err = kubectlWaitForDeploymentReady("metallb-system", "controller"); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB controller: %w", err)
+	}
+
+	initLog("\tWaiting for MetalLB speaker daemonset to be ready")
+	if err = kubectlWaitForDaemonSetReady("metallb-system", "speaker"); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB speaker: %w", err)
+	}
+
+	// Configure IP address pools based on Docker network IPAM.
+	initLog("\tConfiguring IP address pools")
+	if err = configureMetalLBAddressPools(ctx); err != nil {
+		return fmt.Errorf("failed to configure MetalLB address pools: %w", err)
+	}
+
+	return nil
+}
+
+func configureMetalLBAddressPools(ctx context.Context) error {
+	// Get Docker network information for kind cluster.
+	cmd := exec.CommandContext(ctx, "docker", "network", "inspect", "kind")
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to inspect docker network: %w", err)
+	}
+
+	// Parse JSON output.
+	var networks []struct {
+		IPAM struct {
+			Config []struct {
+				Subnet string `json:"Subnet"`
+			} `json:"Config"`
+		} `json:"IPAM"`
+	}
+
+	if err := json.Unmarshal(out, &networks); err != nil {
+		return fmt.Errorf("failed to parse docker network info: %w", err)
+	}
+
+	if len(networks) == 0 || len(networks[0].IPAM.Config) == 0 {
+		return fmt.Errorf("no IPAM config found in docker network")
+	}
+
+	// Find IPv4 subnet and calculate address range.
+	var addressRanges []string
+	for _, config := range networks[0].IPAM.Config {
+		subnet := config.Subnet
+		if !strings.Contains(subnet, ":") { // IPv4.
+			// Extract network prefix (e.g., "172.18.0.0/16" -> "172.18.0").
+			parts := strings.Split(subnet, ".")
+			if len(parts) >= 3 {
+				addressPrefix := strings.Join(parts[:3], ".")
+				addressRange := fmt.Sprintf("%s.200-%s.250", addressPrefix, addressPrefix)
+				addressRanges = append(addressRanges, fmt.Sprintf("    - %s", addressRange))
+			}
+		}
+	}
+
+	if len(addressRanges) == 0 {
+		return fmt.Errorf("no valid IPv4 address ranges found")
+	}
+
+	// Create MetalLB configuration manifest.
+	manifest := fmt.Sprintf(`apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  namespace: metallb-system
+  name: kube-services
+spec:
+  addresses:
+%s
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: kube-services
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - kube-services`, strings.Join(addressRanges, "\n"))
+
+	// Apply configuration with retries.
+	const retryInterval = 5 * time.Second
+	const timeout = 2 * time.Minute
+
+	retryCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var lastErr error
+	attempt := 1
+
+	for {
+		select {
+		case <-retryCtx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("timeout applying MetalLB configuration after %d attempts, last error: %w", attempt-1, lastErr)
+			}
+			return fmt.Errorf("timeout applying MetalLB configuration after %d attempts", attempt-1)
+		default:
+			if err := kubectlApplyManifestStdin(ctx, manifest); err == nil {
+				return nil
+			} else {
+				lastErr = err
+				if strings.Contains(err.Error(), "webhook") && strings.Contains(err.Error(), "connection refused") {
+					// This is expected during MetalLB startup, continue retrying.
+					fmt.Printf("\t\tAttempt %d: MetalLB webhook not ready yet, retrying in %v...\n", attempt, retryInterval)
+				} else {
+					// Other errors might be more serious, but still retry.
+					fmt.Printf("\t\tAttempt %d: Error applying MetalLB config: %v, retrying in %v...\n", attempt, err, retryInterval)
+				}
+				attempt++
+				time.Sleep(retryInterval)
+			}
+		}
+	}
 }
 
 func cleanupKindCluster(testsFailed bool) {
@@ -289,6 +456,23 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
+	}
+	return
+}
+
+func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
+	// Wait for daemonset to be created.
+	cmd := kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"daemonset/"+daemonset, "--for=create")
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for daemonset %s in namespace %s: %w", daemonset, namespace, err)
+	}
+
+	// Wait for daemonset pods to be ready using jsonpath.
+	cmd = kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"daemonset/"+daemonset, "--for=jsonpath={.status.numberReady}=1")
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for daemonset %s pods to be ready in namespace %s: %w", daemonset, namespace, err)
 	}
 	return
 }
