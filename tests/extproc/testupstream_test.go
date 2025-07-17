@@ -95,6 +95,8 @@ func TestWithTestUpstream(t *testing.T) {
 		// The value is a base64 encoded string of comma separated key-value pairs.
 		// E.g. "key1:value1,key2:value2".
 		responseHeaders,
+		// expRawQuery is the expected raw query to be sent to the test upstream.
+		expRawQuery string
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
 		// expHost is the expected host to be sent to the test upstream.
@@ -265,6 +267,44 @@ data: [DONE]
 `,
 		},
 		{
+			name:           "gcp-vertexai - /v1/chat/completions - streaming",
+			backend:        "gcp-vertexai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}], "stream": true}`,
+			expRequestBody: `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:        "gcp-region-aiplatform.googleapis.com",
+			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:streamGenerateContent",
+			expRawQuery:    "alt=sse",
+			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":"! How"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" can I"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" help"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" you"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" today"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":"?"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":7,"totalTokenCount":17}}`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"! How","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" can I","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" help","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" you","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" today","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"completion_tokens":7,"prompt_tokens":10,"total_tokens":17}}
+
+data: [DONE]
+`,
+		},
+		{
 			name:            "openai - /v1/chat/completions - error response",
 			backend:         "openai",
 			path:            "/v1/chat/completions",
@@ -370,6 +410,9 @@ data: [DONE]
 					)
 				}
 
+				if tc.expRawQuery != "" {
+					req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
+				}
 				if tc.expHost != "" {
 					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 				}
@@ -403,7 +446,7 @@ data: [DONE]
 					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
 					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
 					if body != expectedResponseBody {
-						t.Logf("unexpected response:\n%s", cmp.Diff(body, tc.expResponseBody))
+						t.Logf("unexpected response (-want +got):\n%s", cmp.Diff(tc.expResponseBody, body))
 						return false
 					}
 				} else if tc.expResponseBodyFunc != nil {

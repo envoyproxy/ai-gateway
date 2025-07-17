@@ -15,6 +15,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/genai"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -226,15 +227,15 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	}
 
 	// Convert usage to pointer if available.
-	var usage openai.ChatCompletionResponseUsage
+	var usage *openai.ChatCompletionResponseUsage
 	if chunk.UsageMetadata != nil {
-		usage = geminiUsageToOpenAIUsage(chunk.UsageMetadata)
+		usage = ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
 	}
 
 	return openai.ChatCompletionResponseChunk{
 		Object:  "chat.completion.chunk",
 		Choices: choices,
-		Usage:   &usage,
+		Usage:   usage,
 	}
 }
 

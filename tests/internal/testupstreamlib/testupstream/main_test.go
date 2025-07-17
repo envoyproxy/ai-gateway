@@ -330,6 +330,29 @@ func Test_main(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
 	})
+	t.Run("expected raw query not match", func(t *testing.T) {
+		t.Parallel()
+		request, err := http.NewRequest("GET",
+			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
+		require.NoError(t, err)
+
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("/")))
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("expected request body")))
+		request.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, "alt=sse")
+
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		bdy, err := io.ReadAll(response.Body)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, response.StatusCode)
+		require.Contains(t, string(bdy), "unexpected raw query: got , expected alt=sse")
+	})
 
 	t.Run("expected host match", func(t *testing.T) {
 		t.Parallel()

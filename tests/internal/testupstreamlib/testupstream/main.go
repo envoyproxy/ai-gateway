@@ -155,6 +155,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if expectedRawQuery := r.Header.Get(testupstreamlib.ExpectedRawQueryHeaderKey); expectedRawQuery != "" {
+		if r.URL.RawQuery != expectedRawQuery {
+			logger.Printf("unexpected raw query: got %q, expected %q\n", r.URL.RawQuery, expectedRawQuery)
+			http.Error(w, "unexpected raw query: got "+r.URL.RawQuery+", expected "+expectedRawQuery, http.StatusBadRequest)
+			return
+		}
+	}
+
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		logger.Println("failed to read the request body")
