@@ -63,21 +63,27 @@ func TestMain(m *testing.M) {
 var envoyYamlBase string
 
 var (
-	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
-	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
-	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
-	gcpVertexAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
-	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
-	groqSchema        = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
-	grokSchema        = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
-	sambaNovaSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
-	deepInfraSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1/openai"}
+	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
+	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
+	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic}
+	geminiSchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
+	groqSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
+	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	sambaNovaSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	deepInfraSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1/openai"}
 
 	testUpstreamOpenAIBackend      = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamModelNameOverride  = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
 	testUpstreamAAWSBackend        = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
 	testUpstreamAzureBackend       = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
 	testUpstreamGCPVertexAIBackend = filterapi.Backend{Name: "testupstream-gcp-vertexai", Schema: gcpVertexAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{
+		AccessToken: fakeGCPAuthToken,
+		Region:      "gcp-region",
+		ProjectName: "gcp-project-name",
+	}}}
+	testUpstreamGCPAnthropicAIBackend = filterapi.Backend{Name: "testupstream-gcp-anthropicai", Schema: gcpAnthropicAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{
 		AccessToken: fakeGCPAuthToken,
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
@@ -119,7 +125,7 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(envoyYaml), 0o600))
 
 	// Starts the Envoy proxy.
-	cmd := exec.CommandContext(t.Context(), "envoy",
+	cmd := exec.CommandContext(t.Context(), "func-e run",
 		"-c", envoyYamlPath,
 		"--log-level", "warn",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
