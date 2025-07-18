@@ -124,8 +124,9 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 # This runs the unit tests for the codebase, excluding the integration tests.
 .PHONY: test
 test: ## Run the unit tests for the codebase. This doesn't run the integration tests like test-* targets.
-	@echo "test => ./..."
-	@go test $(GO_TEST_ARGS) $(go list ./... | grep -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc")
+	@PKGS=$$(go list ./... | grep -v -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc"); \
+	  echo "Running unit tests for packages: $$PKGS"; \
+	  go test $(GO_TEST_ARGS) $$PKGS
 
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
