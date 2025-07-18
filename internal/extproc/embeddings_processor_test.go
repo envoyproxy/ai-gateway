@@ -249,8 +249,10 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 	t.Run("ok", func(t *testing.T) {
 		someBody := embeddingBodyFromModel(t, "some-model")
 		headers := map[string]string{":path": "/foo", modelKey: "some-model"}
-		headerMut := &extprocv3.HeaderMutation{}
-		bodyMut := &extprocv3.BodyMutation{}
+		headerMut := &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
+		}
+		bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("some body")}}
 
 		var expBody openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
@@ -264,6 +266,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 			translator:             mt,
 			originalRequestBodyRaw: someBody,
 			originalRequestBody:    &expBody,
+			handler:                &mockBackendAuthHandler{},
 		}
 		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
 		require.NoError(t, err)
@@ -293,5 +296,39 @@ func TestEmbeddings_ParseBody(t *testing.T) {
 		require.Error(t, err)
 		require.Empty(t, modelName)
 		require.Nil(t, rb)
+	})
+}
+
+func TestEmbeddingsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseBody(t *testing.T) {
+	t.Run("no ok path with passthrough", func(t *testing.T) {
+		p := &embeddingsProcessorRouterFilter{}
+		_, err := p.ProcessResponseHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		_, err = p.ProcessResponseBody(t.Context(), nil)
+		require.NoError(t, err)
+	})
+	t.Run("ok path with upstream filter", func(t *testing.T) {
+		p := &embeddingsProcessorRouterFilter{
+			upstreamFilter: &embeddingsProcessorUpstreamFilter{
+				translator: &mockEmbeddingTranslator{t: t, expHeaders: map[string]string{}},
+				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+				metrics:    &mockEmbeddingsMetrics{},
+				config:     &processorConfig{metadataNamespace: ""},
+			},
+		}
+		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		resp, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("some body")})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+		require.True(t, ok)
+		require.NotNil(t, re)
+		require.NotNil(t, re.ResponseBody)
+		require.NotNil(t, re.ResponseBody.Response)
+		require.IsType(t, &extprocv3.BodyMutation{}, re.ResponseBody.Response.BodyMutation)
+		require.IsType(t, &extprocv3.HeaderMutation{}, re.ResponseBody.Response.HeaderMutation)
 	})
 }
