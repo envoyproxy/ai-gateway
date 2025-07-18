@@ -125,7 +125,7 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(envoyYaml), 0o600))
 
 	// Starts the Envoy proxy.
-	cmd := exec.CommandContext(t.Context(), "func-e run",
+	cmd := exec.CommandContext(t.Context(), "envoy",
 		"-c", envoyYamlPath,
 		"--log-level", "warn",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),

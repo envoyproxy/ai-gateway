@@ -645,7 +645,7 @@ static_resources:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
-            http_protocol_options: { }
+            http_protocol_options: {}
           http_filters:
             - name: upstream_extproc
               typed_config:
