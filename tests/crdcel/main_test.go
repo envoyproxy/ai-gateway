@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_crdcel
-
 package celvalidation
 
 import (
@@ -140,7 +138,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "azure_multiple_auth.yaml",
 			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
 		},
-		// CEL validation test cases - these should fail due to type mismatch
+		// CEL validation test cases - these should fail due to type mismatch.
 		{
 			name:   "apikey_with_aws_credentials.yaml",
 			expErr: "When type is APIKey, only apiKey field should be set",
@@ -169,7 +167,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "gcp_with_apikey.yaml",
 			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
 		},
-		// Valid test cases - these should pass
+		// Valid test cases - these should pass.
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},

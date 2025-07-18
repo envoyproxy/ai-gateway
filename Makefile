@@ -121,11 +121,12 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 
 ##@ Testing
 
-# This runs the unit tests for the codebase.
+# This runs the unit tests for the codebase, excluding the integration tests.
 .PHONY: test
-test: ## Run the unit tests for the codebase.
-	@echo "test => ./..."
-	@go test $(GO_TEST_ARGS) ./...
+test: ## Run the unit tests for the codebase. This doesn't run the integration tests like test-* targets.
+	@PKGS=$$(go list ./... | grep -v -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc"); \
+	  echo "Running unit tests for packages: $$PKGS"; \
+	  go test $(GO_TEST_ARGS) $$PKGS
 
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
@@ -143,7 +144,7 @@ ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 test-crdcel: apigen ## Run the integration tests of CEL validation in CRD definitions with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
@@ -155,23 +156,21 @@ test-extproc: build.extproc ## Run the integration tests for extproc without con
 	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc
+	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e
 test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
-	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
-
-
+	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
