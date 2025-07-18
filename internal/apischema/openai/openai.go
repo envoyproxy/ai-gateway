@@ -550,6 +550,9 @@ type ChatCompletionRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
 	User string `json:"user,omitempty"`
+
+	// ExtraBody: Additional request body parameters for extensions like AI Gateway JSON patches
+	ExtraBody *ExtraBody `json:"extra_body,omitempty"` //nolint:tagliatelle //follow openai api
 }
 
 type StreamOptions struct {
@@ -897,4 +900,22 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	}
 	*(*time.Time)(t) = time.Unix(q, 0).UTC()
 	return nil
+}
+
+// ExtraBody contains additional request body parameters for AI Gateway extensions
+type ExtraBody struct {
+	AIGateway *AIGatewayExtensions `json:"aigateway.envoy.io,omitempty"`
+}
+
+// AIGatewayExtensions contains AI Gateway specific extensions
+type AIGatewayExtensions struct {
+	JSONPatches map[string][]JSONPatch `json:"json_patches,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// JSONPatch represents a single JSON patch operation
+// Follows RFC 6902 JSON Patch specification
+type JSONPatch struct {
+	Op    string      `json:"op"`    // Operation: "add", "replace"
+	Path  string      `json:"path"`  // JSON Pointer path
+	Value interface{} `json:"value"` // Value for "add", "replace" operations
 }

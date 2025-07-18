@@ -26,6 +26,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/translator/jsonpatch"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -73,6 +74,8 @@ type chatCompletionProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.ChatCompletionRequest
 	originalRequestBodyRaw []byte
+	// extractedPatches contains JSON patches extracted from extra_body field.
+	extractedPatches map[string][]openai.JSONPatch
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -100,12 +103,13 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	model, body, err := parseOpenAIChatCompletionBody(rawBody)
+	model, body, patches, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
+	c.extractedPatches = patches
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
@@ -141,9 +145,11 @@ type chatCompletionProcessorUpstreamFilter struct {
 	responseEncoding       string
 	modelNameOverride      string
 	backendName            string
+	backendSchemaName      string // Store the backend schema name for patch matching.
 	handler                backendauth.Handler
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
+	patchProcessor         *jsonpatch.Processor
 	translator             translator.OpenAIChatCompletionTranslator
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
@@ -195,6 +201,30 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
+
+	// Apply JSON patches after translation if patches exist.
+	if c.patchProcessor != nil {
+		// If the body mutation is nil, we use the original request body raw.
+		var bodyToPatch []byte
+		if bodyMutation != nil && bodyMutation.GetBody() != nil {
+			bodyToPatch = bodyMutation.GetBody()
+		} else {
+			bodyToPatch = c.originalRequestBodyRaw
+		}
+
+		var patchedBody []byte
+		patchedBody, err = c.patchProcessor.ApplyPatches(bodyToPatch, c.backendSchemaName)
+		if err != nil {
+			c.logger.Error("failed to apply JSON patches", "error", err, "schema", c.backendSchemaName)
+			return nil, fmt.Errorf("failed to apply JSON patches: %w", err)
+		}
+		bodyMutation = &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{Body: patchedBody},
+		}
+		c.logger.Debug("applied JSON patches to request", "schema", c.backendSchemaName)
+
+	}
+
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	} else {
@@ -350,6 +380,12 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+	c.backendSchemaName = string(b.Schema.Name) // Store the backend schema name for patch matching.
+	if len(rp.extractedPatches) > 0 {
+		// NewProcessor throws error only when input param is empty list.
+		// since we are guaranteed to have patches here, we can safely ignore the error.
+		c.patchProcessor, _ = jsonpatch.NewProcessor(rp.extractedPatches)
+	}
 	c.handler = backendHandler
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
@@ -377,12 +413,16 @@ func (c *chatCompletionProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(me
 	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
 }
 
-func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, err error) {
+func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, patches map[string][]openai.JSONPatch, err error) {
 	var openAIReq openai.ChatCompletionRequest
-	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
-		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
+	if err = json.Unmarshal(body.Body, &openAIReq); err != nil {
+		return "", nil, nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	return openAIReq.Model, &openAIReq, nil
+	patches, err = jsonpatch.ExtractPatches(openAIReq.ExtraBody)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("failed to extract JSON patches: %w", err)
+	}
+	return openAIReq.Model, &openAIReq, patches, nil
 }
 
 // buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
