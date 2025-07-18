@@ -144,7 +144,7 @@ ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 test-crdcel: apigen ## Run the integration tests of CEL validation in CRD definitions with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
@@ -163,7 +163,7 @@ test-extproc: build.extproc ## Run the integration tests for extproc without con
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
