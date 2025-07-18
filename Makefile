@@ -121,11 +121,11 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 
 ##@ Testing
 
-# This runs the unit tests for the codebase. This doesn't run the various integration tests in ./tests directory.
+# This runs the unit tests for the codebase, excluding the integration tests.
 .PHONY: test
-test: ## Run the unit tests for the codebase.
+test: ## Run the unit tests for the codebase. This doesn't run the integration tests like test-* targets.
 	@echo "test => ./..."
-	@go test $(GO_TEST_ARGS) $(go list ./... | grep -v tests/)
+	@go test $(GO_TEST_ARGS) $(go list ./... | grep -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc")
 
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
