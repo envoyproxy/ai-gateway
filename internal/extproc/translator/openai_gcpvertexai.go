@@ -48,12 +48,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	o.stream = openAIReq.Stream
 
 	// Choose the correct endpoint based on streaming.
-	var pathParams map[string]string
+	var pathParams string
 	method := gcpMethodGenerateContent
 	if o.stream {
 		// For streaming requests, use the streamGenerateContent endpoint with SSE format.
 		method = gcpMethodStreamGenerateContent
-		pathParams = map[string]string{"alt": "sse"}
+		pathParams = "alt=sse"
 	}
 
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherGoogle, modelName, method, pathParams)
