@@ -16,9 +16,19 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 )
 
+const (
+	// EndpointPickerHeEndpointPickerHeaderKeyader is the header key used to specify the target backend endpoint.
+	EndpointPickerHeaderKey = "x-gateway-destination-endpoint"
+)
+
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
 // i.e., the unique identifier for a backend that is associated with a specific
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// ClusterRefInferencePool generates a unique reference for an InferencePool cluster.
+func ClusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
+	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
 }

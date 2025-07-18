@@ -214,14 +214,23 @@ type AIGatewayRouteSpec struct {
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || (self.backendRefs.all(ref, !has(ref.group) && !has(ref.kind)) || self.backendRefs.all(ref, has(ref.group) && has(ref.kind)))", message="cannot mix InferencePool and AIServiceBackend references in the same rule"
+// +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind)) || size(self.backendRefs) == 1", message="only one InferencePool backend is allowed per rule"
 type AIGatewayRouteRule struct {
-	// BackendRefs is the list of AIServiceBackend that this rule will route the traffic to.
+	// BackendRefs is the list of backends that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
 	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
 	//
-	// By configuring multiple backends, you can achieve the fallback behavior in the case of
-	// the primary backend is not available combined with the BackendTrafficPolicy of Envoy Gateway.
+	// BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
+	// from the Gateway API Inference Extension. When referencing InferencePool resources:
+	// - Only one InferencePool backend is allowed per rule
+	// - Cannot mix InferencePool with AIServiceBackend references in the same rule
+	// - Fallback behavior is handled by the InferencePool's endpoint picker
+	//
+	// For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends
+	// combined with the BackendTrafficPolicy of Envoy Gateway.
 	// Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as
 	// https://gateway.envoyproxy.io/docs/tasks/traffic/retry/.
 	//
@@ -277,17 +286,42 @@ type AIGatewayRouteRule struct {
 }
 
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
+// It can reference either an AIServiceBackend or an InferencePool resource.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.group) && !has(self.kind) || (has(self.group) && has(self.kind))", message="group and kind must be specified together"
+// +kubebuilder:validation:XValidation:rule="!has(self.group) || (self.group == 'inference.networking.x-k8s.io' && self.kind == 'InferencePool')", message="only InferencePool from inference.networking.x-k8s.io group is supported"
 type AIGatewayRouteRuleBackendRef struct {
-	// Name is the name of the AIServiceBackend.
+	// Name is the name of the backend resource.
+	// When Group and Kind are not specified, this refers to an AIServiceBackend.
+	// When Group and Kind are specified, this refers to the resource of the specified type.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
+	// Group is the group of the backend resource.
+	// When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).
+	// Currently, only "inference.networking.x-k8s.io" is supported for InferencePool resources.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	Group *string `json:"group,omitempty"`
+
+	// Kind is the kind of the backend resource.
+	// When not specified, defaults to AIServiceBackend.
+	// Currently, only "InferencePool" is supported when Group is specified.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^$|^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$`
+	Kind *string `json:"kind,omitempty"`
+
 	// Name of the model in the backend. If provided this will override the name provided in the request.
+	// This field is ignored when referencing InferencePool resources.
 	ModelNameOverride string `json:"modelNameOverride,omitempty"`
 
-	// Weight is the weight of the AIServiceBackend. This is exactly the same as the weight in
+	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
 	//
@@ -297,9 +331,10 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=1
 	Weight *int32 `json:"weight,omitempty"`
-	// Priority is the priority of the AIServiceBackend. This sets the priority on the underlying endpoints.
+	// Priority is the priority of the backend. This sets the priority on the underlying endpoints.
 	// See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
 	// Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+	// This field is ignored when referencing InferencePool resources.
 	//
 	// Default is 0.
 	//

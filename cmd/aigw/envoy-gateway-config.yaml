@@ -23,11 +23,25 @@ logging:
 extensionApis:
   enableBackend: true
 extensionManager:
+  backendResources:
+    - group: inference.networking.x-k8s.io
+      kind: InferencePool
+      version: v1alpha2
   hooks:
     xdsTranslator:
+      translation:
+        listener:
+          includeAll: true
+        route:
+          includeAll: true
+        cluster:
+          includeAll: true
+        secret:
+          includeAll: true
       post:
-        - VirtualHost
         - Translation
+        - Cluster
+        - Route
   service:
     fqdn:
       hostname: localhost
