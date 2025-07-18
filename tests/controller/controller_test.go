@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_controller
-
 // Package controller tests the internal/controller package using envtest.
 // This is sort of the end-to-end test for the controller package, but without testing the
 // actual interaction with the Envoy Gateway as well as the external process.
