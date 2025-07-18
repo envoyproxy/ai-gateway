@@ -48,15 +48,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	o.stream = openAIReq.Stream
 
 	// Choose the correct endpoint based on streaming.
-	var pathParams string
-	method := gcpMethodGenerateContent
+	var pathSuffix string
 	if o.stream {
 		// For streaming requests, use the streamGenerateContent endpoint with SSE format.
-		method = gcpMethodStreamGenerateContent
-		pathParams = "alt=sse"
+		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, modelName, gcpMethodStreamGenerateContent, "alt=sse")
+	} else {
+		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, modelName, gcpMethodGenerateContent)
 	}
-
-	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherGoogle, modelName, method, pathParams)
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting OpenAI request to Gemini request: %w", err)

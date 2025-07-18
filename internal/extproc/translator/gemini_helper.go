@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
-	"k8s.io/utils/strings/slices"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -633,9 +632,6 @@ func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) openai.
 // buildGCPModelPathSuffix constructs a path Suffix with an optional queryParams where each string is in the form of "%s=%s".
 func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...string) string {
 	pathSuffix := fmt.Sprintf("publishers/%s/models/%s:%s", publisher, model, gcpMethod)
-
-	// If there are no query parameters, return the path suffix as is.
-	queryParams = slices.Filter(queryParams[:0], queryParams, func(q string) bool { return q != "" })
 
 	if len(queryParams) > 0 {
 		pathSuffix += "?" + strings.Join(queryParams, "&")
