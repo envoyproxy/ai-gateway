@@ -349,3 +349,11 @@ func (m *mockEmbeddingsMetrics) RequireTokensRecorded(t *testing.T, count int) {
 }
 
 var _ x.EmbeddingsMetrics = &mockEmbeddingsMetrics{}
+
+// mockBackendAuthHandler implements [backendauth.Handler] for testing.
+type mockBackendAuthHandler struct{}
+
+// Do implements [backendauth.Handler.Do].
+func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) error {
+	return nil
+}
