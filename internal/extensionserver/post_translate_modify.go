@@ -341,58 +341,64 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = mustToAny(po)
 }
 
+// maybeModifyListenerAndRoutes modifies listeners and routes to support InferencePool backends.
+// This function performs the following operations:
+// 1. Identifies listeners and routes that use InferencePool backends
+// 2. Adds endpoint picker (EPP) external processor filters to relevant listeners
+// 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
+// This ensures that only routes targeting InferencePool backends go through the endpoint picker.
 func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) {
-	listenerRouteMatrix := make(map[string]string)
-	listenerMatrix := make(map[string]*listenerv3.Listener)
+	listenerNameToRouteName := make(map[string]string)
+	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
 		if strings.HasPrefix(listener.Name, "envoy-gateway") {
 			continue
 		}
 		routeConfigName := findListenerRouteConfig(listener)
-		listenerRouteMatrix[listener.Name] = routeConfigName
-		listenerMatrix[listener.Name] = listener
+		listenerNameToRouteName[listener.Name] = routeConfigName
+		listenerNameToListener[listener.Name] = listener
 	}
 
 	// inferencePoolRoutes builds a matrix of route configs and the inference pools they use.
-	routeCfgMatrix := make(map[string]*routev3.RouteConfiguration)
-	inferencePoolRoutes := make(map[string]map[string]*gwaiev1a2.InferencePool)
+	routeNameToRoute := make(map[string]*routev3.RouteConfiguration)
+	routeNameToVHRouteNameToInferencePool := make(map[string]map[string]*gwaiev1a2.InferencePool)
 	for _, routeCfg := range routes {
-		routeCfgMatrix[routeCfg.Name] = routeCfg
+		routeNameToRoute[routeCfg.Name] = routeCfg
 		for _, vh := range routeCfg.VirtualHosts {
 			for _, route := range vh.Routes {
 				if pool := getInferencePoolByMetadata(route.Metadata); pool != nil {
-					if inferencePoolRoutes[routeCfg.Name] == nil {
-						inferencePoolRoutes[routeCfg.Name] = make(map[string]*gwaiev1a2.InferencePool)
+					if routeNameToVHRouteNameToInferencePool[routeCfg.Name] == nil {
+						routeNameToVHRouteNameToInferencePool[routeCfg.Name] = make(map[string]*gwaiev1a2.InferencePool)
 					}
-					inferencePoolRoutes[routeCfg.Name][route.Name] = pool
+					routeNameToVHRouteNameToInferencePool[routeCfg.Name][route.Name] = pool
 				}
 			}
 		}
 	}
 
-	// listenerPoolMatrix builds a matrix of listeners and the inference pools they use.
-	listenerPoolMatrix := make(map[string][]*gwaiev1a2.InferencePool)
-	for listener, routeCfgName := range listenerRouteMatrix {
-		if routeCfgMatrix[routeCfgName] == nil {
+	// listenerToInferencePools builds a matrix of listeners and the inference pools they use.
+	listenerToInferencePools := make(map[string][]*gwaiev1a2.InferencePool)
+	for listener, routeCfgName := range listenerNameToRouteName {
+		if routeNameToRoute[routeCfgName] == nil {
 			continue
 		}
-		if inferencePoolRoutes[routeCfgName] == nil {
+		if routeNameToVHRouteNameToInferencePool[routeCfgName] == nil {
 			continue
 		}
-		for _, pool := range inferencePoolRoutes[routeCfgName] {
-			if listenerPoolMatrix[listener] == nil {
-				listenerPoolMatrix[listener] = make([]*gwaiev1a2.InferencePool, 0)
+		for _, pool := range routeNameToVHRouteNameToInferencePool[routeCfgName] {
+			if listenerToInferencePools[listener] == nil {
+				listenerToInferencePools[listener] = make([]*gwaiev1a2.InferencePool, 0)
 			}
-			listenerPoolMatrix[listener] = append(listenerPoolMatrix[listener], pool)
+			listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
 		}
 	}
 
 	// patch the listeners, the route configs and the virtual hosts with inference pool filters.
-	for listener, pools := range listenerPoolMatrix {
+	for listener, pools := range listenerToInferencePools {
 		s.log.Info("patching listener with inference pool filters", "listener", listener)
-		s.patchListenerWithInferencePoolFilters(listenerMatrix[listener], pools)
-		routeCfgName := listenerRouteMatrix[listener]
-		routeCfg := routeCfgMatrix[routeCfgName]
+		s.patchListenerWithInferencePoolFilters(listenerNameToListener[listener], pools)
+		routeCfgName := listenerNameToRouteName[listener]
+		routeCfg := routeNameToRoute[routeCfgName]
 		if routeCfg == nil {
 			continue
 		}
@@ -411,7 +417,7 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 	if defaultFC != nil {
 		filterChains = append(filterChains, defaultFC)
 	}
-	// Go over all of the chains, and add the dummy inference pool http filter.
+	// Go over all of the chains, and add the endpoint picker external processor filters.
 	for _, currChain := range filterChains {
 		httpConManager, hcmIndex, err := findHCM(currChain)
 		if err != nil {

@@ -248,7 +248,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 					}},
 				)
 			} else {
-				// Handle AIServiceBackend reference (existing logic).
+				// Handle AIServiceBackend reference.
 				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
 				if err != nil {
 					return fmt.Errorf("AIServiceBackend %s not found", dstName)

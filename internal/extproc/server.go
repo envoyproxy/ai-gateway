@@ -286,7 +286,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, isEn
 	// This should contain the endpoint metadata.
 	hostMetadata, ok := attributes.Fields[metadataFieldKey]
 	if !ok {
-		return status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
+		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
 	}
 	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
 	var metadata corev3.Metadata

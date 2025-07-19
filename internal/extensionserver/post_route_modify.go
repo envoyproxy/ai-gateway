@@ -31,6 +31,13 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 
 	// If we found an InferencePool, configure the route with the ext_proc per-route config.
 	if inferencePools != nil {
+		if len(inferencePools) != 1 {
+			panic("BUG: at most one inferencepool can be referenced per route rule")
+		}
+		// Disable auto host rewrite to prevent Envoy from overriding the host header
+		// set by the endpoint picker. The endpoint picker sets the destination via
+		// x-gateway-destination-endpoint header and we need to preserve the original
+		// host for proper routing to the selected endpoint.
 		req.Route.GetRoute().HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
 			AutoHostRewrite: wrapperspb.Bool(false),
 		}
