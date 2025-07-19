@@ -58,49 +58,6 @@ func TestPerRouteRuleRefBackendName(t *testing.T) {
 	}
 }
 
-func TestClusterRefInferencePool(t *testing.T) {
-	tests := []struct {
-		name        string
-		namespace   string
-		poolName    string
-		serviceName string
-		servicePort uint32
-		expected    string
-	}{
-		{
-			name:        "basic case",
-			namespace:   "default",
-			poolName:    "pool1",
-			serviceName: "service1",
-			servicePort: 8080,
-			expected:    "default/pool1/service1/8080",
-		},
-		{
-			name:        "different port",
-			namespace:   "test-ns",
-			poolName:    "my-pool",
-			serviceName: "my-service",
-			servicePort: 9090,
-			expected:    "test-ns/my-pool/my-service/9090",
-		},
-		{
-			name:        "with special characters",
-			namespace:   "ns-with-dash",
-			poolName:    "pool_with_underscore",
-			serviceName: "service-with-dash",
-			servicePort: 443,
-			expected:    "ns-with-dash/pool_with_underscore/service-with-dash/443",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ClusterRefInferencePool(tt.namespace, tt.poolName, tt.serviceName, tt.servicePort)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestConstants(t *testing.T) {
 	// Test that constants have expected values
 	require.Equal(t, "aigateway.envoy.io", InternalEndpointMetadataNamespace)

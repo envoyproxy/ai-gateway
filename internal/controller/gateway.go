@@ -244,6 +244,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
+					// We assume that InferencePools are all OpenAI schema.
 					schema := aiGatewayRoute.Spec.APISchema
 					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaName(schema.Name), Version: ptr.Deref(schema.Version, "v1")}
 				} else {

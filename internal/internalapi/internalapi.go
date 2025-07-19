@@ -17,7 +17,9 @@ const (
 )
 
 const (
-	// EndpointPickerHeEndpointPickerHeaderKeyader is the header key used to specify the target backend endpoint.
+	// EndpointPickerHeaderKey is the header key used to specify the target backend endpoint.
+	// This is the default header name in the reference implementation:
+	// https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/2b5b337b45c3289e5f9367b2c19deef021722fcd/pkg/epp/server/runserver.go#L63
 	EndpointPickerHeaderKey = "x-gateway-destination-endpoint"
 )
 
@@ -26,9 +28,4 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
-}
-
-// ClusterRefInferencePool generates a unique reference for an InferencePool cluster.
-func ClusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
-	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
 }

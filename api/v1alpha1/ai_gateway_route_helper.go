@@ -25,7 +25,6 @@ const (
 func (r *AIGatewayRouteRule) GetTimeoutsOrDefault() *gwapiv1.HTTPRouteTimeouts {
 	defaultTimeout := defaultRequestTimeout
 
-	// Handle nil receiver
 	if r == nil || r.Timeouts == nil {
 		// If no timeouts are specified, use default request timeout.
 		return &gwapiv1.HTTPRouteTimeouts{

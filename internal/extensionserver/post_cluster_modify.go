@@ -7,6 +7,7 @@ package extensionserver
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
@@ -16,6 +17,11 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// ClusterRefInferencePool generates a unique reference for an InferencePool cluster.
+func ClusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
+	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
+}
 
 // PostClusterModify is called by Envoy Gateway to allow extensions to modify clusters after they are generated.
 // This method specifically handles InferencePool backend references by configuring clusters with ORIGINAL_DST
@@ -40,6 +46,9 @@ func (s *Server) PostClusterModify(_ context.Context, req *egextension.PostClust
 	// referenced in the AIGatewayRoute's BackendRefs with non-empty Group and Kind fields.
 	// If we found an InferencePool, configure the cluster for ORIGINAL_DST.
 	if inferencePools := s.constructInferencePoolsFrom(req.PostClusterContext.BackendExtensionResources); inferencePools != nil {
+		if len(inferencePools) != 1 {
+			panic("BUG: at most one inferencepool can be referenced per route rule")
+		}
 		s.handleInferencePoolCluster(req.Cluster, inferencePools[0])
 	}
 
