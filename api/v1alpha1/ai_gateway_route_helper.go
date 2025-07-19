@@ -13,6 +13,11 @@ const (
 	// defaultRequestTimeout is the default timeout for HTTP requests when not specified.
 	// Changed from Envoy Gateway's default of 15s to 60s for AI workloads.
 	defaultRequestTimeout gwapiv1.Duration = "60s"
+
+	// inferencePoolGroup is the API group for InferencePool resources.
+	inferencePoolGroup = "inference.networking.x-k8s.io"
+	// inferencePoolKind is the kind for InferencePool resources.
+	inferencePoolKind = "InferencePool"
 )
 
 // GetTimeoutsWithDefaults returns the timeouts with default values applied when not specified.
@@ -20,7 +25,7 @@ const (
 func (r *AIGatewayRouteRule) GetTimeoutsOrDefault() *gwapiv1.HTTPRouteTimeouts {
 	defaultTimeout := defaultRequestTimeout
 
-	if r.Timeouts == nil {
+	if r == nil || r.Timeouts == nil {
 		// If no timeouts are specified, use default request timeout.
 		return &gwapiv1.HTTPRouteTimeouts{
 			Request: &defaultTimeout,
@@ -36,4 +41,44 @@ func (r *AIGatewayRouteRule) GetTimeoutsOrDefault() *gwapiv1.HTTPRouteTimeouts {
 
 	// Return as-is if request timeout is already specified.
 	return r.Timeouts
+}
+
+// IsInferencePool returns true if the backend reference points to an InferencePool resource.
+func (ref *AIGatewayRouteRuleBackendRef) IsInferencePool() bool {
+	if ref == nil {
+		return false
+	}
+	return ref.Group != nil && ref.Kind != nil &&
+		*ref.Group == inferencePoolGroup && *ref.Kind == inferencePoolKind
+}
+
+// IsAIServiceBackend returns true if the backend reference points to an AIServiceBackend resource.
+func (ref *AIGatewayRouteRuleBackendRef) IsAIServiceBackend() bool {
+	return !ref.IsInferencePool()
+}
+
+// HasInferencePoolBackends returns true if the rule contains any InferencePool backend references.
+func (r *AIGatewayRouteRule) HasInferencePoolBackends() bool {
+	if r == nil {
+		return false
+	}
+	for _, ref := range r.BackendRefs {
+		if ref.IsInferencePool() {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAIServiceBackends returns true if the rule contains any AIServiceBackend references.
+func (r *AIGatewayRouteRule) HasAIServiceBackends() bool {
+	if r == nil {
+		return false
+	}
+	for _, ref := range r.BackendRefs {
+		if ref.IsAIServiceBackend() {
+			return true
+		}
+	}
+	return false
 }

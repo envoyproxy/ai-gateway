@@ -233,16 +233,33 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		for j := range rule.BackendRefs {
 			br := &rule.BackendRefs[j]
 			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
-			backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
-			if err != nil {
-				return fmt.Errorf("AIServiceBackend %s not found", dstName)
+
+			if br.IsInferencePool() {
+				// Handle InferencePool backend reference.
+				backendRefs = append(backendRefs,
+					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Group:     (*gwapiv1.Group)(br.Group),
+							Kind:      (*gwapiv1.Kind)(br.Kind),
+							Name:      gwapiv1.ObjectName(br.Name),
+							Namespace: (*gwapiv1.Namespace)(&aiGatewayRoute.Namespace),
+						},
+						Weight: br.Weight,
+					}},
+				)
+			} else {
+				// Handle AIServiceBackend reference.
+				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
+				if err != nil {
+					return fmt.Errorf("AIServiceBackend %s not found", dstName)
+				}
+				backendRefs = append(backendRefs,
+					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
+						BackendObjectReference: backend.Spec.BackendRef,
+						Weight:                 br.Weight,
+					}},
+				)
 			}
-			backendRefs = append(backendRefs,
-				gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
-					BackendObjectReference: backend.Spec.BackendRef,
-					Weight:                 br.Weight,
-				}},
-			)
 		}
 		var matches []gwapiv1.HTTPRouteMatch
 		for j := range rule.Matches {

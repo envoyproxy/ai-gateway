@@ -243,18 +243,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 				b := filterapi.Backend{}
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
-				var backendObj *aigv1a1.AIServiceBackend
-				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
-				}
-				b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
-				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+				if backendRef.IsInferencePool() {
+					// We assume that InferencePools are all OpenAI schema.
+					schema := aiGatewayRoute.Spec.APISchema
+					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaName(schema.Name), Version: ptr.Deref(schema.Version, "v1")}
+				} else {
+					var backendObj *aigv1a1.AIServiceBackend
+					backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 					if err != nil {
-						return fmt.Errorf("failed to create backend auth: %w", err)
+						return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
+					}
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
+						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+						if err != nil {
+							return fmt.Errorf("failed to create backend auth: %w", err)
+						}
 					}
 				}
+
 				ec.Backends = append(ec.Backends, b)
 			}
 

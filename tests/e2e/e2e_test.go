@@ -86,7 +86,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	if err := installInferenceExtensionCRD(ctx); err != nil {
+	if err := setupInferencePoolEnvironment(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -328,8 +328,44 @@ func cleanupKindCluster(testsFailed bool) {
 }
 
 func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.4.0/manifests.yaml"
 	return kubectlApplyManifest(ctx, infExtURL)
+}
+
+func installVLLMDeployment(ctx context.Context) (err error) {
+	const vllmURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml"
+	return kubectlApplyManifest(ctx, vllmURL)
+}
+
+func installInferenceModel(ctx context.Context) (err error) {
+	const inferenceModelURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencemodel.yaml"
+	return kubectlApplyManifest(ctx, inferenceModelURL)
+}
+
+func installInferencePoolResources(ctx context.Context) (err error) {
+	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencepool-resources.yaml"
+	return kubectlApplyManifest(ctx, inferencePoolURL)
+}
+
+func setupInferencePoolEnvironment(ctx context.Context) (err error) {
+	// Install all InferencePool related resources in sequence.
+	if err = installInferenceExtensionCRD(ctx); err != nil {
+		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
+	}
+
+	if err = installVLLMDeployment(ctx); err != nil {
+		return fmt.Errorf("failed to install vLLM deployment: %w", err)
+	}
+
+	if err = installInferenceModel(ctx); err != nil {
+		return fmt.Errorf("failed to install inference model: %w", err)
+	}
+
+	if err = installInferencePoolResources(ctx); err != nil {
+		return fmt.Errorf("failed to install inference pool resources: %w", err)
+	}
+
+	return nil
 }
 
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
@@ -489,6 +525,10 @@ func requireWaitForGatewayPodReady(t *testing.T, selector string) {
 		return strings.Contains(string(out), "ai-gateway-extproc")
 	}, 2*time.Minute, 1*time.Second)
 
+	requireWaitForPodReady(t, selector)
+}
+
+func requireWaitForPodReady(t *testing.T, selector string) {
 	// This repeats the wait subcommand in order to be able to wait for the
 	// resources not created yet.
 	require.Eventually(t, func() bool {

@@ -48,6 +48,23 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "parent_refs_invalid_kind.yaml",
 			expErr: `spec.parentRefs: Invalid value: "array": only Gateway is supported`,
 		},
+		{name: "inference_pool_valid.yaml"},
+		{
+			name:   "inference_pool_mixed_backends.yaml",
+			expErr: "spec.rules[0]: Invalid value: \"object\": cannot mix InferencePool and AIServiceBackend references in the same rule",
+		},
+		{
+			name:   "inference_pool_multiple.yaml",
+			expErr: "spec.rules[0]: Invalid value: \"object\": only one InferencePool backend is allowed per rule",
+		},
+		{
+			name:   "inference_pool_partial_ref.yaml",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": group and kind must be specified together",
+		},
+		{
+			name:   "inference_pool_unsupported_group.yaml",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.x-k8s.io group is supported",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
