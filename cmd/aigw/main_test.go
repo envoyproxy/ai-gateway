@@ -153,12 +153,20 @@ Flags:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := &bytes.Buffer{}
+			// Mock install and uninstall functions for testing
+			mockInstall := func(ctx context.Context, cmd cmdInstall, stdout, stderr io.Writer) error {
+				return nil
+			}
+			mockUninstall := func(ctx context.Context, cmd cmdUninstall, stdout, stderr io.Writer) error {
+				return nil
+			}
+
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf, mockInstall, mockUninstall)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf, mockInstall, mockUninstall)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})

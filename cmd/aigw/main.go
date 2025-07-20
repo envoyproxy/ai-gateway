@@ -27,6 +27,10 @@ type (
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
 		// Run is the sub-command parsed by the `cmdRun` struct.
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
+		// Install is the sub-command parsed by the `cmdInstall` struct.
+		Install cmdInstall `cmd:"" help:"Install Envoy AI Gateway and its dependencies to a Kubernetes cluster."`
+		// Uninstall is the sub-command parsed by the `cmdUninstall` struct.
+		Uninstall cmdUninstall `cmd:"" help:"Uninstall Envoy AI Gateway and its dependencies from a Kubernetes cluster."`
 	}
 	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
@@ -45,10 +49,12 @@ type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
 	runFn           subCmdFn[cmdRun]
+	installFn       subCmdFn[cmdInstall]
+	uninstallFn     subCmdFn[cmdUninstall]
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run, install, uninstall)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -59,9 +65,13 @@ func main() {
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 //   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
+//   - if is the function to call to install the AI Gateway. Mainly for testing.
+//   - uf is the function to call to uninstall the AI Gateway. Mainly for testing.
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	tf translateFn,
 	rf runFn,
+	inf installFn,
+	uf uninstallFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -87,6 +97,16 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		err = rf(ctx, c.Run, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
+		}
+	case "install":
+		err = inf(ctx, c.Install, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Error installing: %v", err)
+		}
+	case "uninstall":
+		err = uf(ctx, c.Uninstall, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Error uninstalling: %v", err)
 		}
 	default:
 		panic("unreachable")
