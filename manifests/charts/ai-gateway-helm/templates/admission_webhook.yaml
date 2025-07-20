@@ -37,6 +37,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: {{ .Values.controller.mutatingWebhook.certManager.certificateName }}
+  namespace: {{ .Release.Namespace }}
 spec:
   commonName: {{ include "ai-gateway-helm.controller.fullname" . }}.{{ .Release.Namespace }}.svc
   dnsNames:
@@ -50,6 +51,7 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: {{ .Values.controller.mutatingWebhook.certManager.issuerName }}
+  namespace: {{ .Release.Namespace }}
 spec:
   selfSigned: {}
 {{- else }}
@@ -58,6 +60,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+  namespace: {{ .Release.Namespace }}
 stringData:
   ca.crt: |
     -----BEGIN CERTIFICATE-----

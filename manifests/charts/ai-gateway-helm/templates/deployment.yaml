@@ -7,6 +7,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "ai-gateway-helm.controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ai-gateway-helm.labels" . | nindent 4 }}
 spec:
