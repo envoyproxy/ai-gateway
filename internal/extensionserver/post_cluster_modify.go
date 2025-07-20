@@ -73,7 +73,7 @@ func (s *Server) handleInferencePoolCluster(cluster *clusterv3.Cluster, inferenc
 	cluster.LbPolicy = clusterv3.Cluster_CLUSTER_PROVIDED
 
 	// Set a reasonable connection timeout. This is quite long to accommodate AI workloads.
-	cluster.ConnectTimeout = durationpb.New(1000 * time.Second)
+	cluster.ConnectTimeout = durationpb.New(10 * time.Second)
 
 	// Configure original destination load balancer to use the x-gateway-destination-endpoint HTTP header.
 	// The endpoint picker service will set this header to specify the target backend endpoint.

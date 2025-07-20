@@ -1106,7 +1106,7 @@ func TestPostClusterModify(t *testing.T) {
 		require.NotNil(t, cluster.ClusterDiscoveryType)
 		require.Equal(t, clusterv3.Cluster_ORIGINAL_DST, cluster.ClusterDiscoveryType.(*clusterv3.Cluster_Type).Type)
 		require.Equal(t, clusterv3.Cluster_CLUSTER_PROVIDED, cluster.LbPolicy)
-		require.Equal(t, durationpb.New(1000*time.Second), cluster.ConnectTimeout)
+		require.Equal(t, durationpb.New(10*time.Second), cluster.ConnectTimeout)
 		require.NotNil(t, cluster.LbConfig)
 		require.Nil(t, cluster.LoadBalancingPolicy)
 		require.Nil(t, cluster.EdsClusterConfig)
