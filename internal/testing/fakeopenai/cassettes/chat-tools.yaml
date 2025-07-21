@@ -1,0 +1,134 @@
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: -1
+        host: api.openai.com
+        body: |-
+            {
+              "messages": [
+                {
+                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4o-mini",
+              "tools": [
+                {
+                  "function": {
+                    "description": "Get the current weather in a given location",
+                    "name": "get_weather",
+                    "parameters": {
+                      "properties": {
+                        "location": {
+                          "description": "The city and state, e.g. San Francisco, CA",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "location"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "type": "function"
+                }
+              ]
+            }
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: -1
+        uncompressed: true
+        body: |
+            {
+              "id": "chatcmpl-BupIGRXl5WBRXY7ERXY5wRCCUZCFx",
+              "object": "chat.completion",
+              "created": 1752883240,
+              "model": "gpt-4o-mini-2024-07-18",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "South Atlantic Ocean.",
+                    "refusal": null,
+                    "annotations": []
+                  },
+                  "logprobs": null,
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 75,
+                "completion_tokens": 5,
+                "total_tokens": 80,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "audio_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0,
+                  "audio_tokens": 0,
+                  "accepted_prediction_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                }
+              },
+              "service_tier": "default",
+              "system_fingerprint": null
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9615f09b29a55fda-SIN
+            Content-Type:
+                - application/json
+            Date:
+                - Sat, 19 Jul 2025 00:00:41 GMT
+            Openai-Processing-Ms:
+                - "390"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "394"
+            X-Ratelimit-Limit-Requests:
+                - "10000"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "9993"
+            X-Ratelimit-Remaining-Tokens:
+                - "199982"
+            X-Ratelimit-Reset-Requests:
+                - 53.09s
+            X-Ratelimit-Reset-Tokens:
+                - 5ms
+            X-Request-Id:
+                - req_3ecbe2c08327d9744d046feb552008b7
+        status: 200 OK
+        code: 200
+        duration: 867.5205ms

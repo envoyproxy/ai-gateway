@@ -1,1 +1,2 @@
 manifests/charts/ai-gateway-helm
+internal/testing/fakeopenai/cassettes

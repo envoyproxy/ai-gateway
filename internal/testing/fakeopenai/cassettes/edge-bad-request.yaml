@@ -1,0 +1,88 @@
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: -1
+        host: api.openai.com
+        body: |-
+            {
+              "max_tokens": 0,
+              "messages": [
+                {
+                  "content": null,
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4o-mini",
+              "temperature": -0.5
+            }
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 233
+        body: |-
+            {
+              "error": {
+                "message": "Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.",
+                "type": "invalid_request_error",
+                "param": "max_tokens",
+                "code": "integer_below_min_value"
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9615f036cdc4f88e-SIN
+            Content-Length:
+                - "233"
+            Content-Type:
+                - application/json
+            Date:
+                - Sat, 19 Jul 2025 00:00:24 GMT
+            Openai-Processing-Ms:
+                - "12"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "15"
+            X-Ratelimit-Limit-Requests:
+                - "10000"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "9999"
+            X-Ratelimit-Remaining-Tokens:
+                - "199997"
+            X-Ratelimit-Reset-Requests:
+                - 8.64s
+            X-Ratelimit-Reset-Tokens:
+                - 0s
+            X-Request-Id:
+                - req_1dc7b85f8ebfa0399df08127f569cf58
+        status: 400 Bad Request
+        code: 400
+        duration: 543.120541ms

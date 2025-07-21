@@ -1,0 +1,89 @@
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: -1
+        host: api.openai.com
+        body: |-
+            {
+              "messages": [
+                {
+                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4o-mini",
+              "response_format": {
+                "type": "json_object"
+              }
+            }
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 219
+        body: |-
+            {
+              "error": {
+                "message": "'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.",
+                "type": "invalid_request_error",
+                "param": "messages",
+                "code": null
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9615f0cc1c0b5fda-SIN
+            Content-Length:
+                - "219"
+            Content-Type:
+                - application/json
+            Date:
+                - Sat, 19 Jul 2025 00:00:48 GMT
+            Openai-Processing-Ms:
+                - "12"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "15"
+            X-Ratelimit-Limit-Requests:
+                - "10000"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "9991"
+            X-Ratelimit-Remaining-Tokens:
+                - "199982"
+            X-Ratelimit-Reset-Requests:
+                - 1m11.38s
+            X-Ratelimit-Reset-Tokens:
+                - 5ms
+            X-Request-Id:
+                - req_1f438d1c1ec33d52740f1a325173d2d8
+        status: 400 Bad Request
+        code: 400
+        duration: 284.841542ms

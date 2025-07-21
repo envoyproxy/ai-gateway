@@ -160,6 +160,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
 		}
 	}()
+
+	// Emit startup message to stderr when all listeners are ready.
+	fmt.Fprintln(stderr, "AI Gateway External Processor is ready")
+
 	return s.Serve(lis)
 }
 

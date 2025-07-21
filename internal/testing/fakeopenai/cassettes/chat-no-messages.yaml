@@ -1,0 +1,80 @@
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: -1
+        host: api.openai.com
+        body: |-
+            {
+              "model": "gpt-4o-mini"
+            }
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 181
+        body: |-
+            {
+              "error": {
+                "message": "Missing required parameter: 'messages'.",
+                "type": "invalid_request_error",
+                "param": "messages",
+                "code": "missing_required_parameter"
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9615f0d8adce5fda-SIN
+            Content-Length:
+                - "181"
+            Content-Type:
+                - application/json
+            Date:
+                - Sat, 19 Jul 2025 00:00:50 GMT
+            Openai-Processing-Ms:
+                - "20"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "24"
+            X-Ratelimit-Limit-Requests:
+                - "10000"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "9989"
+            X-Ratelimit-Remaining-Tokens:
+                - "199998"
+            X-Ratelimit-Reset-Requests:
+                - 1m26.652s
+            X-Ratelimit-Reset-Tokens:
+                - 0s
+            X-Request-Id:
+                - req_50d93cc31a3b66339c145c1170e24998
+        status: 400 Bad Request
+        code: 400
+        duration: 292.129625ms
