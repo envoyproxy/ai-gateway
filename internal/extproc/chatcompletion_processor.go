@@ -346,13 +346,6 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	rp.upstreamFilterCount++
 	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
-	// If we are using endpoint picker and no modelNameOverride is provided, use the model name from the request.
-	// this can prevent 400 no Content-Length header, using request body length error from the testupstream, since.
-	// the route level endpoint picker ext-proc will remove this header.
-	// So set this explicitly, when it is empty can trigger the content-length header to be set when processing header.
-	if c.modelNameOverride == "" && isEndpointPicker {
-		c.modelNameOverride = c.requestHeaders[c.config.modelNameHeaderKey]
-	}
 	c.backendName = b.Name
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
