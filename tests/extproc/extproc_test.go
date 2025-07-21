@@ -42,7 +42,6 @@ func TestMain(m *testing.M) {
 		log.Fatalf("envoy binary not found in PATH: %v", err)
 	}
 
-	// continue existing code.
 	const fakeServerPort = 1066
 	// This is a fake server that returns a 500 error for all requests.
 	mux := http.NewServeMux()
