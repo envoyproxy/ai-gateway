@@ -153,7 +153,7 @@ func requireEnvoy(t *testing.T, listenerPort, extProcPort, openAIPort int) {
 }
 
 // TestEnvironment holds all the services needed for OTEL tests.
-type TestEnvironment struct {
+type testEnvironment struct {
 	ListenerPort int
 	openAIServer *fakeopenai.Server
 }
