@@ -43,7 +43,7 @@ func TestServer_ExistingCassette(t *testing.T) {
 
 	// Verify it's a valid OpenAI response.
 	require.Contains(t, string(body), "chat.completion")
-	require.Contains(t, string(body), "Southern Ocean")
+	require.Contains(t, string(body), "Hello! How can I assist you today?")
 }
 
 func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
@@ -64,8 +64,8 @@ func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	// Should get 404 with clear error message.
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	// Should get 400 with clear error message.
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
@@ -74,7 +74,7 @@ func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
 	errorMsg := string(body)
 	require.Contains(t, errorMsg, "FakeOpenAI Error:")
 	require.Contains(t, errorMsg, "No cassette found")
-	require.Contains(t, errorMsg, "set OPENAI_API_KEY")
+	require.Contains(t, errorMsg, "X-Cassette-Name header")
 }
 
 func TestServer_MissingCassette_WithAPIKey(t *testing.T) {
@@ -181,7 +181,7 @@ func TestServer_DifferentEndpoints(t *testing.T) {
 		resp.Body.Close()
 
 		// Should get error response since we don't have cassettes for these.
-		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
 	}
 }
@@ -193,12 +193,12 @@ func TestServer_JSONMatching(t *testing.T) {
 
 	// Make request with same content as chat-basic but different JSON formatting.
 	// This tests that JSON matching works despite different formatting.
-	reqBody := `{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Answer in up to 3 words: Which ocean contains Bouvet Island?"}]}`
+	reqBody := `{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello!"}]}`
 
 	req, err := http.NewRequest("POST", server.URL()+"/v1/chat/completions", bytes.NewReader([]byte(reqBody)))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cassette-Name", CassetteChatBasic)
+	req.Header.Set(CassetteNameHeader, CassetteChatBasic.String())
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

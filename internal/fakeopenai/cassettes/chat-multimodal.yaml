@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,7 +6,7 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
+        content_length: 490
         host: api.openai.com
         body: |-
             {
@@ -16,12 +15,12 @@ interactions:
                 {
                   "content": [
                     {
-                      "text": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                      "text": "What is in this image?",
                       "type": "text"
                     },
                     {
                       "image_url": {
-                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg"
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
                       },
                       "type": "image_url"
                     }
@@ -29,55 +28,60 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4o-mini"
+              "model": "gpt-4.1-nano"
             }
         headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "490"
             Content-Type:
                 - application/json
+            User-Agent:
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: -1
-        uncompressed: true
-        body: |
+        content_length: 1010
+        body: |-
             {
-              "id": "chatcmpl-BupII9igyIpXdvYIN8W7Cqeetcw4p",
-              "object": "chat.completion",
-              "created": 1752883242,
-              "model": "gpt-4o-mini-2024-07-18",
               "choices": [
                 {
+                  "finish_reason": "stop",
                   "index": 0,
-                  "message": {
-                    "role": "assistant",
-                    "content": "South Atlantic Ocean.",
-                    "refusal": null,
-                    "annotations": []
-                  },
                   "logprobs": null,
-                  "finish_reason": "stop"
+                  "message": {
+                    "annotations": [],
+                    "content": "The image shows a wooden pathway or boardwalk running through a lush green field or meadow, with trees in the distance. The sky is partly cloudy with blue and white clouds, suggesting a bright and peaceful day.",
+                    "refusal": null,
+                    "role": "assistant"
+                  }
                 }
               ],
-              "usage": {
-                "prompt_tokens": 8522,
-                "completion_tokens": 4,
-                "total_tokens": 8526,
-                "prompt_tokens_details": {
-                  "cached_tokens": 0,
-                  "audio_tokens": 0
-                },
-                "completion_tokens_details": {
-                  "reasoning_tokens": 0,
-                  "audio_tokens": 0,
-                  "accepted_prediction_tokens": 0,
-                  "rejected_prediction_tokens": 0
-                }
-              },
+              "created": 1753158982,
+              "id": "chatcmpl-Bvz1iNWdUzQzIXlWE8hWMH2rtLjDR",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null
+              "system_fingerprint": null,
+              "usage": {
+                "completion_tokens": 42,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 3675,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 3717
+              }
             }
         headers:
             Access-Control-Expose-Headers:
@@ -87,13 +91,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9615f0a5fab45fda-SIN
+                - 96303c92da4c5876-KUL
             Content-Type:
                 - application/json
             Date:
-                - Sat, 19 Jul 2025 00:00:43 GMT
+                - Tue, 22 Jul 2025 04:36:23 GMT
             Openai-Processing-Ms:
-                - "903"
+                - "2052"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -105,27 +109,27 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "761"
+                - "1628"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
-                - "10000"
+                - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
             X-Ratelimit-Remaining-Input-Images:
                 - "49999"
             X-Ratelimit-Remaining-Requests:
-                - "9993"
+                - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199217"
+                - "199226"
             X-Ratelimit-Reset-Input-Images:
                 - 1ms
             X-Ratelimit-Reset-Requests:
-                - 1m0.211s
+                - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 234ms
+                - 231ms
             X-Request-Id:
-                - req_3efd2799733a176fd4f8496f1acfc5c9
+                - req_9184eda2e6a501f33f6026db8b590d22
         status: 200 OK
         code: 200
-        duration: 1.169438542s
+        duration: 2.370478875s

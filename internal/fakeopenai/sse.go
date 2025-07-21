@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// SSEEvent represents a Server-Sent Event..
+// SSEEvent represents a Server-Sent Event.
 type SSEEvent struct {
 	Event string
 	Data  string
@@ -22,7 +22,7 @@ type SSEEvent struct {
 	Retry string
 }
 
-// ChatCompletionChunk represents a chunk from the OpenAI streaming API..
+// ChatCompletionChunk represents a chunk from the OpenAI streaming API.
 type ChatCompletionChunk struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -43,26 +43,26 @@ type ChatCompletionChunk struct {
 	} `json:"usage,omitempty"`
 }
 
-// SSEReader reads Server-Sent Events from an io.Reader..
+// SSEReader reads Server-Sent Events from an io.Reader.
 type SSEReader struct {
 	scanner *bufio.Scanner
 }
 
-// NewSSEReader creates a new SSE reader..
+// NewSSEReader creates a new SSE reader.
 func NewSSEReader(r io.Reader) *SSEReader {
 	return &SSEReader{
 		scanner: bufio.NewScanner(r),
 	}
 }
 
-// ReadEvent reads the next SSE event from the stream..
+// ReadEvent reads the next SSE event from the stream.
 func (r *SSEReader) ReadEvent() (*SSEEvent, error) {
 	event := &SSEEvent{}
 
 	for r.scanner.Scan() {
 		line := r.scanner.Text()
 
-		// Empty line signals end of event..
+		// Empty line signals end of event.
 		if line == "" {
 			if event.Data != "" || event.Event != "" {
 				return event, nil
@@ -70,7 +70,7 @@ func (r *SSEReader) ReadEvent() (*SSEEvent, error) {
 			continue
 		}
 
-		// Parse field..
+		// Parse field.
 		switch {
 		case strings.HasPrefix(line, "data:"):
 			event.Data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
@@ -87,7 +87,7 @@ func (r *SSEReader) ReadEvent() (*SSEEvent, error) {
 		return nil, err
 	}
 
-	// Check if we have a partial event at EOF..
+	// Check if we have a partial event at EOF.
 	if event.Data != "" || event.Event != "" {
 		return event, io.EOF
 	}
@@ -95,7 +95,7 @@ func (r *SSEReader) ReadEvent() (*SSEEvent, error) {
 	return nil, io.EOF
 }
 
-// ReadChatCompletionStream reads and parses OpenAI chat completion chunks from an SSE stream..
+// ReadChatCompletionStream reads and parses OpenAI chat completion chunks from an SSE stream.
 func ReadChatCompletionStream(r io.Reader) ([]ChatCompletionChunk, string, error) {
 	reader := NewSSEReader(r)
 	var chunks []ChatCompletionChunk
@@ -110,26 +110,26 @@ func ReadChatCompletionStream(r io.Reader) ([]ChatCompletionChunk, string, error
 			return nil, "", fmt.Errorf("failed to read SSE event: %w", err)
 		}
 
-		// Skip empty events..
+		// Skip empty events.
 		if event.Data == "" {
 			continue
 		}
 
-		// Check for end of stream..
+		// Check for end of stream.
 		if event.Data == "[DONE]" {
 			break
 		}
 
-		// Parse JSON chunk..
+		// Parse JSON chunk.
 		var chunk ChatCompletionChunk
 		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
-			// Skip malformed chunks..
+			// Skip malformed chunks.
 			continue
 		}
 
 		chunks = append(chunks, chunk)
 
-		// Concatenate content from delta..
+		// Concatenate content from delta.
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 			fullContent.WriteString(chunk.Choices[0].Delta.Content)
 		}
@@ -138,9 +138,9 @@ func ReadChatCompletionStream(r io.Reader) ([]ChatCompletionChunk, string, error
 	return chunks, fullContent.String(), nil
 }
 
-// ExtractTokenUsage extracts token usage from the chunks (usually in the last chunk with usage info)..
+// ExtractTokenUsage extracts token usage from the chunks (usually in the last chunk with usage info).
 func ExtractTokenUsage(chunks []ChatCompletionChunk) (promptTokens, completionTokens, totalTokens int) {
-	// Look for usage information in chunks (usually in the last chunk)..
+	// Look for usage information in chunks (usually in the last chunk).
 	for i := len(chunks) - 1; i >= 0; i-- {
 		if chunks[i].Usage != nil {
 			return chunks[i].Usage.PromptTokens,

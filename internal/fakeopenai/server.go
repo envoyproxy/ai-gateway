@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-//go:embed cassettes/*.yaml
+//go:embed cassettes
 var embeddedCassettes embed.FS
 
 // Server represents a fake OpenAI API server that replays cassette recordings.

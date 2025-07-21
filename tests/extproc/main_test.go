@@ -20,7 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/testing/fakeopenai"
+	"github.com/envoyproxy/ai-gateway/internal/fakeopenai"
 )
 
 // extprocBin holds the path to the compiled extproc binary.
@@ -78,17 +78,20 @@ func waitForExtProcReady(stderrReader io.Reader) {
 	<-done
 }
 
-func requireExtProcNew(t *testing.T, stdout io.Writer, extProcPort, metricsPort, healthPort int, envs ...string) {
+func requireExtProcNew(t *testing.T, output io.Writer, extProcPort, metricsPort, healthPort int, envs ...string) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, extprocConfig, 0o600))
 
-	// Create a pipe to capture stderr..
+	// Create a pipe to capture stderr for startup detection.
 	stderrReader, stderrWriter, err := os.Pipe()
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), extprocBin)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderrWriter // Only write to our pipe, not to os.Stderr.
+	// Capture both stdout and stderr to the output buffer.
+	cmd.Stdout = output
+	// Create a multi-writer to write stderr to both our pipe (for startup detection) and the buffer.
+	stderrMultiWriter := io.MultiWriter(stderrWriter, output)
+	cmd.Stderr = stderrMultiWriter
 	cmd.Args = append(cmd.Args,
 		"-configPath", configPath,
 		"-extProcAddr", fmt.Sprintf(":%d", extProcPort),
@@ -118,7 +121,7 @@ func replaceTokens(content string, replacements map[string]string) string {
 	return result
 }
 
-func requireEnvoy(t *testing.T, listenerPort, extProcPort, openAIPort int) {
+func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extProcPort, openAIPort int) {
 	tmpDir := t.TempDir()
 
 	// Replace Docker-specific values with test values.
@@ -135,7 +138,7 @@ func requireEnvoy(t *testing.T, listenerPort, extProcPort, openAIPort int) {
 	envoyYamlPath := tmpDir + "/envoy.yaml"
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(processedConfig), 0o600))
 
-	// Create a pipe to capture stderr.
+	// Create a pipe to capture stderr for startup detection.
 	stderrReader, stderrWriter, err := os.Pipe()
 	require.NoError(t, err)
 
@@ -144,8 +147,11 @@ func requireEnvoy(t *testing.T, listenerPort, extProcPort, openAIPort int) {
 		"--log-level", "info",
 		"--concurrency", strconv.Itoa(maxInt(runtime.NumCPU(), 2)),
 	)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = stderrWriter // Only write to our pipe, not to os.Stderr.
+	// Capture both stdout and stderr to the output buffer.
+	cmd.Stdout = output
+	// Create a multi-writer to write stderr to both our pipe (for startup detection) and the buffer.
+	stderrMultiWriter := io.MultiWriter(stderrWriter, output)
+	cmd.Stderr = stderrMultiWriter
 	require.NoError(t, cmd.Start())
 
 	// Wait for Envoy to emit "starting main dispatch loop".
@@ -154,19 +160,21 @@ func requireEnvoy(t *testing.T, listenerPort, extProcPort, openAIPort int) {
 
 // TestEnvironment holds all the services needed for OTEL tests.
 type testEnvironment struct {
-	ListenerPort int
+	listenerPort int
 	openAIServer *fakeopenai.Server
+	envoyOut     *strings.Builder
+	extprocOut   *strings.Builder
 }
 
 // Close cleans up all resources in reverse order.
-func (t *TestEnvironment) Close() {
+func (t *testEnvironment) Close() {
 	if t.openAIServer != nil {
-		t.openAIServer.Close()
+		_ = t.openAIServer.Close()
 	}
 }
 
-// SetupTestEnvironment starts all required services and returns ports and a closer.
-func SetupTestEnvironment(t *testing.T) *TestEnvironment {
+// setupTestEnvironment starts all required services and returns ports and a closer.
+func setupTestEnvironment(t *testing.T) *testEnvironment {
 	// Start fake OpenAI server.
 	openAIServer, err := fakeopenai.NewServer()
 	require.NoError(t, err, "failed to create fake OpenAI server")
@@ -182,14 +190,20 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 	healthPort, err := getRandomPort()
 	require.NoError(t, err)
 
+	// Create output buffers.
+	extprocOutput := &strings.Builder{}
+	envoyOutput := &strings.Builder{}
+
 	// Start ExtProc.
-	requireExtProcNew(t, io.Discard, extProcPort, metricsPort, healthPort)
+	requireExtProcNew(t, extprocOutput, extProcPort, metricsPort, healthPort)
 
-	// Start Envoy.
-	requireEnvoy(t, listenerPort, extProcPort, openAIPort)
+	// Start Envoy with buffer.
+	requireEnvoyWithOutput(t, envoyOutput, listenerPort, extProcPort, openAIPort)
 
-	return &TestEnvironment{
-		ListenerPort: listenerPort,
+	return &testEnvironment{
+		listenerPort: listenerPort,
 		openAIServer: openAIServer,
+		envoyOut:     envoyOutput,
+		extprocOut:   extprocOutput,
 	}
 }

@@ -23,74 +23,57 @@ func TestNewRequest(t *testing.T) {
 
 	// Test matrix with all cassettes and their expected status.
 	tests := []struct {
-		cassetteName   string
+		cassetteName   CassetteName
 		expectedStatus int
-		description    string
 	}{
 		{
 			cassetteName:   CassetteChatBasic,
 			expectedStatus: http.StatusOK,
-			description:    "Basic chat completion request",
 		},
 		{
 			cassetteName:   CassetteChatStreaming,
 			expectedStatus: http.StatusOK,
-			description:    "Streaming chat completion request",
 		},
 		{
 			cassetteName:   CassetteChatTools,
 			expectedStatus: http.StatusOK,
-			description:    "Chat completion with function tools",
 		},
 		{
 			cassetteName:   CassetteChatMultimodal,
 			expectedStatus: http.StatusOK,
-			description:    "Multimodal chat with text and image",
 		},
 		{
 			cassetteName:   CassetteChatMultiturn,
 			expectedStatus: http.StatusOK,
-			description:    "Multi-turn conversation with history",
 		},
 		{
 			cassetteName:   CassetteChatJSONMode,
-			expectedStatus: http.StatusBadRequest,
-			description:    "JSON mode request (should fail without 'json' in message)",
+			expectedStatus: http.StatusOK,
 		},
 		{
 			cassetteName:   CassetteChatNoMessages,
 			expectedStatus: http.StatusBadRequest,
-			description:    "Request missing required messages field",
-		},
-		{
-			cassetteName:   CassetteChatBadModel,
-			expectedStatus: http.StatusNotFound,
-			description:    "Request with invalid model name",
 		},
 		{
 			cassetteName:   CassetteChatParallelTools,
 			expectedStatus: http.StatusOK,
-			description:    "Parallel function calling enabled",
 		},
 		{
-			cassetteName:   CassetteEdgeBadRequest,
+			cassetteName:   CassetteChatBadRequest,
 			expectedStatus: http.StatusBadRequest,
-			description:    "Request with multiple validation errors",
 		},
 		{
-			cassetteName:   CassetteEdgeBase64Image,
+			cassetteName:   CassetteChatBase64Image,
 			expectedStatus: http.StatusOK,
-			description:    "Request with base64-encoded image",
 		},
 		{
 			cassetteName:   CassetteChatUnknownModel,
 			expectedStatus: http.StatusNotFound,
-			description:    "Request with non-existent model",
 		},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.cassetteName, func(t *testing.T) {
+		t.Run(tc.cassetteName.String(), func(t *testing.T) {
 			// Create request using NewRequest.
 			req, err := NewRequest(baseURL, tc.cassetteName)
 			require.NoError(t, err, "NewRequest should succeed for known cassette")
@@ -99,7 +82,7 @@ func TestNewRequest(t *testing.T) {
 			require.Equal(t, http.MethodPost, req.Method)
 			require.Equal(t, baseURL+"/chat/completions", req.URL.String())
 			require.Equal(t, "application/json", req.Header.Get("Content-Type"))
-			require.Equal(t, tc.cassetteName, req.Header.Get("X-Cassette-Name"))
+			require.Equal(t, tc.cassetteName, CassetteName(req.Header.Get(CassetteNameHeader)))
 
 			// Verify request body matches expected from requestBodies map.
 			body, err := io.ReadAll(req.Body)
@@ -116,10 +99,13 @@ func TestNewRequest(t *testing.T) {
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
-			// Verify expected status code.
+			body, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			// Verify the expected status code.
 			require.Equal(t, tc.expectedStatus, resp.StatusCode,
-				"Expected status %d for %s (%s), got %d",
-				tc.expectedStatus, tc.cassetteName, tc.description, resp.StatusCode)
+				"Expected status %d for %s, got %d: %s",
+				tc.expectedStatus, tc.cassetteName, resp.StatusCode, body)
 		})
 	}
 
@@ -134,8 +120,7 @@ func TestNewRequest(t *testing.T) {
 // TestCassetteCompleteness ensures all cassette constants have corresponding request bodies.
 func TestCassetteCompleteness(t *testing.T) {
 	// List of all cassette constants.
-	cassettes := []string{
-		CassetteChatBadModel,
+	cassettes := []CassetteName{
 		CassetteChatBasic,
 		CassetteChatJSONMode,
 		CassetteChatMultimodal,
@@ -145,13 +130,13 @@ func TestCassetteCompleteness(t *testing.T) {
 		CassetteChatStreaming,
 		CassetteChatTools,
 		CassetteChatUnknownModel,
-		CassetteEdgeBadRequest,
-		CassetteEdgeBase64Image,
+		CassetteChatBadRequest,
+		CassetteChatBase64Image,
 	}
 
 	// Verify each cassette has a request body.
 	for _, cassette := range cassettes {
-		t.Run(cassette, func(t *testing.T) {
+		t.Run(cassette.String(), func(t *testing.T) {
 			body, ok := requestBodies[cassette]
 			require.True(t, ok, "Cassette %s should have a request body", cassette)
 			require.NotEmpty(t, body, "Request body for cassette %s should not be empty", cassette)

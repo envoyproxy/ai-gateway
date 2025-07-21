@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,7 +6,7 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
+        content_length: 428
         host: api.openai.com
         body: |-
             {
@@ -15,7 +14,7 @@ interactions:
                 {
                   "content": [
                     {
-                      "text": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                      "text": "What's in this image?",
                       "type": "text"
                     },
                     {
@@ -28,55 +27,60 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4o-mini"
+              "model": "gpt-4.1-nano"
             }
         headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "428"
             Content-Type:
                 - application/json
+            User-Agent:
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: -1
-        uncompressed: true
-        body: |
+        content_length: 905
+        body: |-
             {
-              "id": "chatcmpl-BupI5HOPx9XYbtKOofKJiQdBRTvnT",
-              "object": "chat.completion",
-              "created": 1752883229,
-              "model": "gpt-4o-mini-2024-07-18",
               "choices": [
                 {
+                  "finish_reason": "stop",
                   "index": 0,
-                  "message": {
-                    "role": "assistant",
-                    "content": "South Atlantic Ocean.",
-                    "refusal": null,
-                    "annotations": []
-                  },
                   "logprobs": null,
-                  "finish_reason": "stop"
+                  "message": {
+                    "annotations": [],
+                    "content": "It looks like the image is empty or there was an issue with uploading. Could you please try sending it again?",
+                    "refusal": null,
+                    "role": "assistant"
+                  }
                 }
               ],
-              "usage": {
-                "prompt_tokens": 8522,
-                "completion_tokens": 4,
-                "total_tokens": 8526,
-                "prompt_tokens_details": {
-                  "cached_tokens": 0,
-                  "audio_tokens": 0
-                },
-                "completion_tokens_details": {
-                  "reasoning_tokens": 0,
-                  "audio_tokens": 0,
-                  "accepted_prediction_tokens": 0,
-                  "rejected_prediction_tokens": 0
-                }
-              },
+              "created": 1753158993,
+              "id": "chatcmpl-Bvz1teiJfRwx7v2j3vmwmu82u8bHy",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null
+              "system_fingerprint": null,
+              "usage": {
+                "completion_tokens": 23,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 16,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 39
+              }
             }
         headers:
             Access-Control-Expose-Headers:
@@ -86,13 +90,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9615f055ede6f88e-SIN
+                - 96303cde79525876-KUL
             Content-Type:
                 - application/json
             Date:
-                - Sat, 19 Jul 2025 00:00:29 GMT
+                - Tue, 22 Jul 2025 04:36:34 GMT
             Openai-Processing-Ms:
-                - "363"
+                - "482"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -104,27 +108,27 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "331"
+                - "458"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
-                - "10000"
+                - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
             X-Ratelimit-Remaining-Input-Images:
                 - "49999"
             X-Ratelimit-Remaining-Requests:
-                - "9995"
+                - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199217"
+                - "199227"
             X-Ratelimit-Reset-Input-Images:
                 - 1ms
             X-Ratelimit-Reset-Requests:
-                - 38.467s
+                - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 234ms
+                - 231ms
             X-Request-Id:
-                - req_e7ef6b9933bec24716aa9926a6e7ae9b
+                - req_c33238d249e8b088019d2cccb4c9ff2c
         status: 200 OK
         code: 200
-        duration: 636.760458ms
+        duration: 791.51675ms

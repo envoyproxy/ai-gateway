@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,83 +6,73 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
-        host: ""
+        content_length: 224
+        host: api.openai.com
         body: |-
             {
               "messages": [
                 {
-                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                  "content": "Generate a JSON object with three properties: name, age, and city.",
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano"
+              "model": "gpt-4.1-nano",
+              "response_format": {
+                "type": "json_object"
+              }
             }
         headers:
-            Accept:
-                - application/json
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "224"
             Content-Type:
                 - application/json
             User-Agent:
-                - OpenAI/Go 1.8.2
-            X-Stainless-Arch:
-                - arm64
-            X-Stainless-Lang:
-                - go
-            X-Stainless-Os:
-                - MacOS
-            X-Stainless-Package-Version:
-                - 1.8.2
-            X-Stainless-Retry-Count:
-                - "0"
-            X-Stainless-Runtime:
-                - go
-            X-Stainless-Runtime-Version:
-                - go1.24.4
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: -1
-        uncompressed: true
-        body: |
+        content_length: 869
+        body: |-
             {
-              "id": "chatcmpl-BpYvY6uXAMC7BF9cEriK2br4THEou",
-              "object": "chat.completion",
-              "created": 1751628688,
-              "model": "gpt-4.1-nano-2025-04-14",
               "choices": [
                 {
+                  "finish_reason": "stop",
                   "index": 0,
-                  "message": {
-                    "role": "assistant",
-                    "content": "Southern Ocean",
-                    "refusal": null,
-                    "annotations": []
-                  },
                   "logprobs": null,
-                  "finish_reason": "stop"
+                  "message": {
+                    "annotations": [],
+                    "content": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
+                    "refusal": null,
+                    "role": "assistant"
+                  }
                 }
               ],
-              "usage": {
-                "prompt_tokens": 22,
-                "completion_tokens": 2,
-                "total_tokens": 24,
-                "prompt_tokens_details": {
-                  "cached_tokens": 0,
-                  "audio_tokens": 0
-                },
-                "completion_tokens_details": {
-                  "reasoning_tokens": 0,
-                  "audio_tokens": 0,
-                  "accepted_prediction_tokens": 0,
-                  "rejected_prediction_tokens": 0
-                }
-              },
+              "created": 1753158988,
+              "id": "chatcmpl-Bvz1o4yvSlHIo4hE7gaGVCzwnXlCb",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": "fp_38343a2f8f"
+              "system_fingerprint": null,
+              "usage": {
+                "completion_tokens": 25,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 22,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 47
+              }
             }
         headers:
             Access-Control-Expose-Headers:
@@ -93,13 +82,15 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 959e4be0b99d0548-SIN
+                - 96303cbac95f5876-KUL
             Content-Type:
                 - application/json
             Date:
-                - Fri, 04 Jul 2025 11:31:28 GMT
+                - Tue, 22 Jul 2025 04:36:28 GMT
             Openai-Processing-Ms:
-                - "193"
+                - "552"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
                 - "2020-10-01"
             Server:
@@ -109,7 +100,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "198"
+                - "556"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -117,13 +108,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199982"
+                - "199981"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 5ms
             X-Request-Id:
-                - req_d931a4202edc0fd70cf299579aaf623e
+                - req_7726cb1ae4a17aba3eec5e5c81e57e46
         status: 200 OK
         code: 200
-        duration: 1.023946958s
+        duration: 892.181875ms

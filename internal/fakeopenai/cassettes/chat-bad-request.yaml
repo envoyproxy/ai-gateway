@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,29 +6,43 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
+        content_length: 148
         host: api.openai.com
         body: |-
             {
-              "model": "gpt-4o-mini"
+              "max_tokens": 0,
+              "messages": [
+                {
+                  "content": null,
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4.1-nano",
+              "temperature": -0.5
             }
         headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "148"
             Content-Type:
                 - application/json
+            User-Agent:
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 181
+        content_length: 233
         body: |-
             {
               "error": {
-                "message": "Missing required parameter: 'messages'.",
-                "type": "invalid_request_error",
-                "param": "messages",
-                "code": "missing_required_parameter"
+                "code": "integer_below_min_value",
+                "message": "Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.",
+                "param": "max_tokens",
+                "type": "invalid_request_error"
               }
             }
         headers:
@@ -40,15 +53,15 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9615f0d8adce5fda-SIN
+                - 96303cd94eeb5876-KUL
             Content-Length:
-                - "181"
+                - "233"
             Content-Type:
                 - application/json
             Date:
-                - Sat, 19 Jul 2025 00:00:50 GMT
+                - Tue, 22 Jul 2025 04:36:33 GMT
             Openai-Processing-Ms:
-                - "20"
+                - "10"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -60,21 +73,21 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "24"
+                - "15"
             X-Ratelimit-Limit-Requests:
-                - "10000"
+                - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
             X-Ratelimit-Remaining-Requests:
-                - "9989"
+                - "499"
             X-Ratelimit-Remaining-Tokens:
                 - "199998"
             X-Ratelimit-Reset-Requests:
-                - 1m26.652s
+                - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 0s
             X-Request-Id:
-                - req_50d93cc31a3b66339c145c1170e24998
+                - req_d8febc7674db13aeeb70908b24c4aebd
         status: 400 Bad Request
         code: 400
-        duration: 292.129625ms
+        duration: 410.303416ms

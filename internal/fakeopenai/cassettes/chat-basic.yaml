@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,78 +6,70 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
+        content_length: 110
         host: api.openai.com
         body: |-
             {
               "messages": [
                 {
-                  "content": "You are a helpful assistant.",
-                  "role": "system"
-                },
-                {
-                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
-                  "role": "user"
-                },
-                {
-                  "content": "Southern Ocean.",
-                  "role": "assistant"
-                },
-                {
-                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
+                  "content": "Hello!",
                   "role": "user"
                 }
               ],
-              "model": "gpt-4o-mini",
-              "temperature": 0.7
+              "model": "gpt-4.1-nano"
             }
         headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "110"
             Content-Type:
                 - application/json
+            User-Agent:
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: -1
-        uncompressed: true
-        body: |
+        content_length: 828
+        body: |-
             {
-              "id": "chatcmpl-BupILtXaOEg1A5XNUHbkFOdLPGA3N",
-              "object": "chat.completion",
-              "created": 1752883245,
-              "model": "gpt-4o-mini-2024-07-18",
               "choices": [
                 {
+                  "finish_reason": "stop",
                   "index": 0,
-                  "message": {
-                    "role": "assistant",
-                    "content": "South Atlantic.",
-                    "refusal": null,
-                    "annotations": []
-                  },
                   "logprobs": null,
-                  "finish_reason": "stop"
+                  "message": {
+                    "annotations": [],
+                    "content": "Hello! How can I assist you today?",
+                    "refusal": null,
+                    "role": "assistant"
+                  }
                 }
               ],
-              "usage": {
-                "prompt_tokens": 58,
-                "completion_tokens": 3,
-                "total_tokens": 61,
-                "prompt_tokens_details": {
-                  "cached_tokens": 0,
-                  "audio_tokens": 0
-                },
-                "completion_tokens_details": {
-                  "reasoning_tokens": 0,
-                  "audio_tokens": 0,
-                  "accepted_prediction_tokens": 0,
-                  "rejected_prediction_tokens": 0
-                }
-              },
+              "created": 1753158974,
+              "id": "chatcmpl-Bvz1a5W2Zpze5C8RA8KBox4K6vFsi",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null
+              "system_fingerprint": null,
+              "usage": {
+                "completion_tokens": 9,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 9,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 18
+              }
             }
         headers:
             Access-Control-Expose-Headers:
@@ -88,13 +79,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9615f0b49f885fda-SIN
+                - 96303c676b635876-KUL
             Content-Type:
                 - application/json
             Date:
-                - Sat, 19 Jul 2025 00:00:46 GMT
+                - Tue, 22 Jul 2025 04:36:15 GMT
             Openai-Processing-Ms:
-                - "326"
+                - "378"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -106,21 +97,21 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "334"
+                - "381"
             X-Ratelimit-Limit-Requests:
-                - "10000"
+                - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
             X-Ratelimit-Remaining-Requests:
-                - "9992"
+                - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199953"
+                - "199996"
             X-Ratelimit-Reset-Requests:
-                - 1m5.228s
+                - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 13ms
+                - 1ms
             X-Request-Id:
-                - req_3717e9a3b0717207f045b67566ad4680
+                - req_caee08ec9b7e6fa5a17ab3b5377db9f5
         status: 200 OK
         code: 200
-        duration: 1.875892375s
+        duration: 853.4515ms

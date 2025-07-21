@@ -19,7 +19,7 @@ EXTPROC_BIN=/path/to/extproc go test -v
 
 ## Recording HTTP Sessions
 
-The tests use the [fakeopenai](../../internal/testing/fakeopenai) package to
+The tests use the [fakeopenai](../../internal/fakeopenai) package to
 simulate OpenAI API responses. This package provides a fake OpenAI server that
 replays pre-recorded API interactions (cassettes), ensuring tests are fast,
 deterministic, and can run without API keys.
@@ -30,6 +30,7 @@ You can run the ExtProc with Envoy and Ollama using Docker Compose to debug
 issues found in automated tests.
 
 [docker-compose.yml](docker-compose.yaml) sets up the following:
+
 - **Envoy** (port 1975): Ingress proxy with ExtProc filter that routes OpenAI requests to Ollama
 - **ExtProc**: Adds OpenInference tracing (internal ports: gRPC :1063, metrics :1064, health :1065)
 
@@ -38,11 +39,13 @@ issues found in automated tests.
 For manual testing with real Ollama, you can use Docker Compose:
 
 1. **Start Ollama** on your host machine:
+
    ```bash
    OLLAMA_HOST=0.0.0.0 ollama serve
    ```
 
 2. **Run the stack**:
+
    ```bash
    # Start the stack (from this directory)
    docker compose up --force-recreate --wait -d

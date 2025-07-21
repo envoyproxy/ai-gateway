@@ -1,4 +1,3 @@
-
 ---
 version: 2
 interactions:
@@ -7,38 +6,35 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: -1
+        content_length: 29
         host: api.openai.com
         body: |-
             {
-              "messages": [
-                {
-                  "content": "Answer in up to 3 words: Which ocean contains Bouvet Island?",
-                  "role": "user"
-                }
-              ],
-              "model": "gpt-4o-mini",
-              "response_format": {
-                "type": "json_object"
-              }
+              "model": "gpt-4.1-nano"
             }
         headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "29"
             Content-Type:
                 - application/json
+            User-Agent:
+                - Go-http-client/1.1
         url: https://api.openai.com/v1/chat/completions
         method: POST
       response:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 219
+        content_length: 181
         body: |-
             {
               "error": {
-                "message": "'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.",
-                "type": "invalid_request_error",
+                "code": "missing_required_parameter",
+                "message": "Missing required parameter: 'messages'.",
                 "param": "messages",
-                "code": null
+                "type": "invalid_request_error"
               }
             }
         headers:
@@ -49,15 +45,15 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9615f0cc1c0b5fda-SIN
+                - 96303cc5ffc95876-KUL
             Content-Length:
-                - "219"
+                - "181"
             Content-Type:
                 - application/json
             Date:
-                - Sat, 19 Jul 2025 00:00:48 GMT
+                - Tue, 22 Jul 2025 04:36:30 GMT
             Openai-Processing-Ms:
-                - "12"
+                - "28"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -69,21 +65,21 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "15"
+                - "32"
             X-Ratelimit-Limit-Requests:
-                - "10000"
+                - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
             X-Ratelimit-Remaining-Requests:
-                - "9991"
+                - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199982"
+                - "199998"
             X-Ratelimit-Reset-Requests:
-                - 1m11.38s
+                - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 5ms
+                - 0s
             X-Request-Id:
-                - req_1f438d1c1ec33d52740f1a325173d2d8
+                - req_2ca418e201f14e6a2c382dad004f23ff
         status: 400 Bad Request
         code: 400
-        duration: 284.841542ms
+        duration: 332.325417ms

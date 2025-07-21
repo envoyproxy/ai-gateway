@@ -92,7 +92,7 @@ data: test2
 }
 
 func TestReadChatCompletionStream(t *testing.T) {
-	// Sample streaming response from OpenAI..
+	// Sample streaming response from OpenAI.
 	streamData := `data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
 
 data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
@@ -114,19 +114,19 @@ data: [DONE]
 	require.Len(t, chunks, 6)
 	require.Equal(t, "Hello world!", content)
 
-	// Check first chunk (role)..
+	// Check first chunk (role).
 	require.Equal(t, "assistant", chunks[0].Choices[0].Delta.Role)
 	require.Empty(t, chunks[0].Choices[0].Delta.Content)
 
-	// Check content chunks..
+	// Check content chunks.
 	require.Equal(t, "Hello", chunks[1].Choices[0].Delta.Content)
 	require.Equal(t, " world", chunks[2].Choices[0].Delta.Content)
 	require.Equal(t, "!", chunks[3].Choices[0].Delta.Content)
 
-	// Check finish reason..
+	// Check finish reason.
 	require.Equal(t, "stop", chunks[4].Choices[0].FinishReason)
 
-	// Check usage..
+	// Check usage.
 	promptTokens, completionTokens, totalTokens := ExtractTokenUsage(chunks)
 	require.Equal(t, 10, promptTokens)
 	require.Equal(t, 3, completionTokens)
@@ -134,7 +134,7 @@ data: [DONE]
 }
 
 func TestReadChatCompletionStream_MalformedData(t *testing.T) {
-	// Stream with some malformed data..
+	// Stream with some malformed data.
 	streamData := `data: {"valid": "json"}
 
 data: {invalid json
@@ -147,11 +147,11 @@ data: [DONE]
 
 	chunks, content, err := ReadChatCompletionStream(strings.NewReader(streamData))
 	require.NoError(t, err)
-	// The first valid JSON is parsed as a chunk even though it's not a chat completion chunk..
-	// The malformed JSON is skipped..
-	// The valid chat completion chunk is parsed..
+	// The first valid JSON is parsed as a chunk even though it's not a chat completion chunk.
+	// The malformed JSON is skipped.
+	// The valid chat completion chunk is parsed.
 	require.Len(t, chunks, 2)
-	require.Equal(t, "test", content) // Only content from actual chat completion chunks..
+	require.Equal(t, "test", content) // Only content from actual chat completion chunks.
 }
 
 func TestExtractTokenUsage_NoUsage(t *testing.T) {
