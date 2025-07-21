@@ -356,7 +356,9 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
 	if isEndpointPicker {
-		c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride), slog.String("originalRequestBodyRaw", string(c.originalRequestBodyRaw)))
+		if c.logger.Enabled(ctx, slog.LevelDebug) {
+			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
+		}
 	}
 	rp.upstreamFilter = c
 	return

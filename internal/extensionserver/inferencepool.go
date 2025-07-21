@@ -159,7 +159,7 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1a2.Infere
 	// Store InferencePool reference as metadata for later retrieval.
 	// The reference includes all information needed to build EPP clusters and filters.
 	m.Fields[internalMetadataInferencePoolKey] = structpb.NewStringValue(
-		ClusterRefInferencePool(
+		clusterRefInferencePool(
 			inferencePool.Namespace,
 			inferencePool.Name,
 			string(inferencePool.Spec.EndpointPickerConfig.ExtensionRef.Name),

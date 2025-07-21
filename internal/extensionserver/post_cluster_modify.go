@@ -18,8 +18,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// ClusterRefInferencePool generates a unique reference for an InferencePool cluster.
-func ClusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
+// clusterRefInferencePool generates a unique reference for an InferencePool cluster.
+func clusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
 	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
 }
 
