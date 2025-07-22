@@ -155,12 +155,18 @@ graph TD
 
 ### Future work
 
+OpenAI is not the only inference API supported, but it is special as it is
+the most common frontend and backend for AI Gateway. This is why we expose the
+requests, as we will often proxy these even if the backend is not OpenAI
+compatible.
+
 The recording process would remain consistent for other cloud services, such as
 Anthropic or Bedrock, though there could be variations in how requests are
 scrubbed for secrets or handled for request signing. In a future refactoring,
 we could extract the core recording infrastructure into a separate package,
-reducing this one to just cassette constants and OpenAI-specific recording
-details. This approach would enable reuse of most of the code.
+reducing this one to just cassette constants and OpenAI-specific request
+recording and handling details. Most of the code could be reused for other
+backends.
 
 For additional insights, refer to OpenTelemetry instrumentation, which often
 employs VCR for LLM frameworks as well.

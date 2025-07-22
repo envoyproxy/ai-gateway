@@ -16,7 +16,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// Cassette is an HTTP interaction recording
+// Cassette is an HTTP interaction recording.
 type Cassette int
 
 // Cassette names for testing.
@@ -44,7 +44,7 @@ const (
 	CassetteChatBadRequest
 	// CassetteChatBase64Image is a request with a base64-encoded image.
 	CassetteChatBase64Image
-	_cassetteNameEnd // Sentinel value for iteration
+	_cassetteNameEnd // Sentinel value for iteration.
 )
 
 // stringValues maps Cassette values to their string representations.
