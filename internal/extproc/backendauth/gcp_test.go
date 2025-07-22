@@ -21,10 +21,10 @@ import (
 
 func TestNewGCPHandler(t *testing.T) {
 	testCases := []struct {
-		name        string
-		gcpAuth     *filterapi.GCPAuth
-		wantHandler *gcpHandler
-		wantError   bool
+		name         string
+		gcpAuth      *filterapi.GCPAuth
+		wantHandler  *gcpHandler
+		wantErrorMsg string
 	}{
 		{
 			name: "valid config",
@@ -38,21 +38,30 @@ func TestNewGCPHandler(t *testing.T) {
 				region:         "us-central1",
 				projectName:    "test-project",
 			},
-			wantError: false,
 		},
 		{
-			name:        "nil config",
-			gcpAuth:     nil,
-			wantHandler: nil,
-			wantError:   true,
+			name: "missing auth token",
+			gcpAuth: &filterapi.GCPAuth{
+				AccessToken: "",
+				Region:      "us-central1",
+				ProjectName: "test-project",
+			},
+			wantHandler:  nil,
+			wantErrorMsg: "GCP access token cannot be empty",
+		},
+		{
+			name:         "nil config",
+			gcpAuth:      nil,
+			wantHandler:  nil,
+			wantErrorMsg: "GCP auth configuration cannot be nil",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			handler, err := newGCPHandler(tc.gcpAuth)
-			if tc.wantError {
-				require.Error(t, err)
+			if tc.wantErrorMsg != "" {
+				require.ErrorContains(t, err, tc.wantErrorMsg)
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, handler)
