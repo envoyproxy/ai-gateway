@@ -760,7 +760,7 @@ Current implementation is able to support InferencePool using AIGatewayRoute as 
 
 But there are some advantages for AIGatewayRoute + InferencePool:
 
-+ Native OpenAPI Support: we can use native Open AI Spec to call different inference pool in a same listener, because we support to parse the mode from the body, and refresh the cache with route level ai-gw extproc. But using HTTPRoute directly cannot do that, it has to add more routeMatch to do it in a same listener like headerMatch, or separate it into different listeners.
++ Native OpenAI Support: we can use native Open AI Spec to call different inference pool in a same listener, because we support to parse the mode from the body, and refresh the cache with route level ai-gw extproc. But using HTTPRoute directly cannot do that, it has to add more routeMatch to do it in a same listener like headerMatch, or separate it into different listeners.
 + Token Ratelimit: we can support token ratelimit, for the self hosted models, we can extract the token usage from the response and reduce the rate limit budget.
 + Advanced Observability: we can expose more metrics in our ai-gw ext-proc.
 
