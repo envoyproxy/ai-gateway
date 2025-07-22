@@ -127,8 +127,8 @@ spec:
           ports:
             - containerPort: 9002
             - containerPort: 9003
-        - name: metrics
-          containerPort: 9090
+            - name: metrics
+              containerPort: 9090
           livenessProbe:
             grpc:
               port: 9003
