@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -148,6 +149,8 @@ func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extPro
 		"-c", envoyYamlPath,
 		"--log-level", "info",
 		"--concurrency", strconv.Itoa(maxInt(runtime.NumCPU(), 2)),
+		// This allows multiple Envoy instances to run in parallel.
+		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 	)
 	// Capture both stdout and stderr to the output buffer.
 	cmd.Stdout = output

@@ -129,6 +129,8 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 		"-c", envoyYamlPath,
 		"--log-level", "warn",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
+		// This allows multiple Envoy instances to run in parallel.
+		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
