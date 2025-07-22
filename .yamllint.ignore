@@ -1,2 +1,2 @@
-qmanifests/charts/ai-gateway-helm
+manifests/charts/ai-gateway-helm
 internal/fakeopenai/cassettes

@@ -6,6 +6,7 @@
 package fakeopenai
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
@@ -89,7 +90,9 @@ func TestNewRequest(t *testing.T) {
 			require.NoError(t, err)
 			expectedBody, ok := requestBodies[tc.cassetteName]
 			require.True(t, ok, "Should have request body for cassette %s", tc.cassetteName)
-			require.JSONEq(t, expectedBody, string(body), "Request body should match expected for %s", tc.cassetteName)
+			expectedJSON, err := json.Marshal(expectedBody)
+			require.NoError(t, err)
+			require.JSONEq(t, string(expectedJSON), string(body), "Request body should match expected for %s", tc.cassetteName)
 
 			// Actually send the request to verify it works with the fake server.
 			req, err = NewRequest(baseURL, tc.cassetteName) // Recreate since we consumed the body.

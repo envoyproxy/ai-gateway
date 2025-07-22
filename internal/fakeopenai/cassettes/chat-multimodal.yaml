@@ -34,7 +34,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "490"
+                - "332"
             Content-Type:
                 - application/json
             User-Agent:
@@ -45,7 +45,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1010
+        content_length: 995
         body: |-
             {
               "choices": [
@@ -55,20 +55,20 @@ interactions:
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "The image shows a wooden pathway or boardwalk running through a lush green field or meadow, with trees in the distance. The sky is partly cloudy with blue and white clouds, suggesting a bright and peaceful day.",
+                    "content": "This image shows a wooden pathway or boardwalk cutting through a lush, green grassy field under a partly cloudy sky. The scene appears peaceful and natural, with trees and bushes in the distance.",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753158982,
-              "id": "chatcmpl-Bvz1iNWdUzQzIXlWE8hWMH2rtLjDR",
+              "created": 1753162012,
+              "id": "chatcmpl-Bvzoa1bfMP6Un9WZKOGEAG0gdnYum",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
               "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 42,
+                "completion_tokens": 38,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
@@ -80,7 +80,7 @@ interactions:
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 3717
+                "total_tokens": 3713
               }
             }
         headers:
@@ -91,13 +91,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303c92da4c5876-KUL
+                - 963086899c62e580-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:23 GMT
+                - Tue, 22 Jul 2025 05:26:54 GMT
             Openai-Processing-Ms:
-                - "2052"
+                - "3144"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -109,7 +109,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "1628"
+                - "2865"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
@@ -129,7 +129,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 231ms
             X-Request-Id:
-                - req_9184eda2e6a501f33f6026db8b590d22
+                - req_c3c893208a63eb61aff9dacfd1a70a44
         status: 200 OK
         code: 200
-        duration: 2.370478875s
+        duration: 3.5672045s

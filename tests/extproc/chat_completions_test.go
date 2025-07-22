@@ -46,8 +46,8 @@ func TestChatCompletions(t *testing.T) {
       }
     }
   ],
-  "created": 1753158974,
-  "id": "chatcmpl-Bvz1a5W2Zpze5C8RA8KBox4K6vFsi",
+  "created": 1753162006,
+  "id": "chatcmpl-BvzoUDLRFA18TkSzKSxeGRL5XpbRr",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
@@ -72,29 +72,29 @@ func TestChatCompletions(t *testing.T) {
 		},
 		{
 			name: fakeopenai.CassetteChatStreaming,
-			expectResponseBody: `data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+			expectResponseBody: `data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" How"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" How"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" assist"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" assist"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" today"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":" today"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
 
-data: {"id":"chatcmpl-Bvz1cLxlCNSNS3qJL9JpAdpbrnggX","object":"chat.completion.chunk","created":1753158976,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[],"usage":{"prompt_tokens":19,"completion_tokens":9,"total_tokens":28,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+data: {"id":"chatcmpl-BvzoWhZJbwLOqU99BTljeM8ve29kc","object":"chat.completion.chunk","created":1753162008,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[],"usage":{"prompt_tokens":19,"completion_tokens":9,"total_tokens":28,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
 
 data: [DONE]
 
@@ -117,32 +117,32 @@ data: [DONE]
         "tool_calls": [
           {
             "function": {
-              "arguments": "{\"location\": \"Boston, MA\"}",
+              "arguments": "{\"location\": \"Boston\"}",
               "name": "get_current_weather"
             },
-            "id": "call_D3F3FgeNpo7YYla1fW7I0cu4",
+            "id": "call_26LsX7EjeYJZFKQVtq7cZKmC",
             "type": "function"
           },
           {
             "function": {
-              "arguments": "{\"location\": \"Boston, MA\"}",
+              "arguments": "{\"location\": \"Boston\"}",
               "name": "get_current_weather"
             },
-            "id": "call_bEF70X0NXwdKE3UPd0DKMBsO",
+            "id": "call_pQt0Pxu6mOA30pUBGfiTTgn1",
             "type": "function"
           }
         ]
       }
     }
   ],
-  "created": 1753158977,
-  "id": "chatcmpl-Bvz1dGgYteqrsbxUHK04G7k238oG1",
+  "created": 1753162009,
+  "id": "chatcmpl-BvzoXS47ObBgHCv5ypPuJjnUQcSk9",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
   "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 50,
+    "completion_tokens": 46,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -154,7 +154,7 @@ data: [DONE]
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 131
+    "total_tokens": 127
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -169,20 +169,20 @@ data: [DONE]
       "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "The image shows a wooden pathway or boardwalk running through a lush green field or meadow, with trees in the distance. The sky is partly cloudy with blue and white clouds, suggesting a bright and peaceful day.",
+        "content": "This image shows a wooden pathway or boardwalk cutting through a lush, green grassy field under a partly cloudy sky. The scene appears peaceful and natural, with trees and bushes in the distance.",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753158982,
-  "id": "chatcmpl-Bvz1iNWdUzQzIXlWE8hWMH2rtLjDR",
+  "created": 1753162012,
+  "id": "chatcmpl-Bvzoa1bfMP6Un9WZKOGEAG0gdnYum",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
   "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 42,
+    "completion_tokens": 38,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -194,7 +194,7 @@ data: [DONE]
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 3717
+    "total_tokens": 3713
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -209,20 +209,20 @@ data: [DONE]
       "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "I don't have access to real-time weather data. However, you can check the current weather for your location using a weather app on your device, or by searching \"weather\" followed by your location on a search engine. If you tell me your location, I can help you find the best way to get the latest weather information!",
+        "content": "I don't have real-time access to current weather data. However, I can help you find the weather forecast if you tell me your location. Alternatively, you can check a weather website or app for the latest updates. How can I assist you further?",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753158986,
-  "id": "chatcmpl-Bvz1mWg3RzUcZqHGSKiwxeRgIuzcw",
+  "created": 1753162021,
+  "id": "chatcmpl-BvzojqxiCJvlfUn7EkHrdDbGaNqwg",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
   "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 66,
+    "completion_tokens": 50,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -234,7 +234,7 @@ data: [DONE]
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 107
+    "total_tokens": 91
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -255,8 +255,8 @@ data: [DONE]
       }
     }
   ],
-  "created": 1753158988,
-  "id": "chatcmpl-Bvz1o4yvSlHIo4hE7gaGVCzwnXlCb",
+  "created": 1753162057,
+  "id": "chatcmpl-BvzpJO8f3GTzaZ025BmH3BB7H6oKv",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
@@ -283,8 +283,8 @@ data: [DONE]
 			name: fakeopenai.CassetteChatNoMessages,
 			expectResponseBody: `{
   "error": {
-    "code": "missing_required_parameter",
-    "message": "Missing required parameter: 'messages'.",
+    "code": "empty_array",
+    "message": "Invalid 'messages': empty array. Expected an array with minimum length 1, but got an empty array instead.",
     "param": "messages",
     "type": "invalid_request_error"
   }
@@ -307,24 +307,32 @@ data: [DONE]
         "tool_calls": [
           {
             "function": {
-              "arguments": "{\"location\":\"San Francisco\"}",
+              "arguments": "{\"location\": \"San Francisco, CA\"}",
               "name": "get_current_weather"
             },
-            "id": "call_DHUvMd9gdjnyNtquborNDiMr",
+            "id": "call_D6u1WUoe5SU9K153FitUAhfw",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"location\": \"San Francisco, CA\"}",
+              "name": "get_current_weather"
+            },
+            "id": "call_aQlRzPlzkHJ29YluNaXlVfuT",
             "type": "function"
           }
         ]
       }
     }
   ],
-  "created": 1753158991,
-  "id": "chatcmpl-Bvz1rrnlzLEvhGDcP7UHZH7U3xJ50",
+  "created": 1753162059,
+  "id": "chatcmpl-BvzpL1xt8QNyiT9xFDZp0olg9pSEx",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
   "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 16,
+    "completion_tokens": 52,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -336,7 +344,7 @@ data: [DONE]
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 97
+    "total_tokens": 133
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -363,20 +371,20 @@ data: [DONE]
       "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "It looks like the image is empty or there was an issue with uploading. Could you please try sending it again?",
+        "content": "It seems the image didn't load properly. Could you please try uploading it again?",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753158993,
-  "id": "chatcmpl-Bvz1teiJfRwx7v2j3vmwmu82u8bHy",
+  "created": 1753162062,
+  "id": "chatcmpl-BvzpObAOzjs99gvHvWxmnRoOx9tP3",
   "model": "gpt-4.1-nano-2025-04-14",
   "object": "chat.completion",
   "service_tier": "default",
   "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 23,
+    "completion_tokens": 16,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -388,7 +396,7 @@ data: [DONE]
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 39
+    "total_tokens": 32
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -413,7 +421,7 @@ data: [DONE]
 		if wasBadGateway {
 			t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", env.extprocOut.String())
 			t.Logf("=== Envoy Output (stdout + stderr) ===\n%s", env.envoyOut.String())
-			return // rather than also failing subsequent tests which confuses root cause.
+			return // rather than also failing subsequent tests, which confuses root cause.
 		}
 		t.Run(tc.name.String(), func(t *testing.T) {
 			req, err := fakeopenai.NewRequest(fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.name)

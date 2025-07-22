@@ -6,17 +6,18 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 29
+        content_length: 47
         host: api.openai.com
         body: |-
             {
+              "messages": [],
               "model": "gpt-4.1-nano"
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "29"
+                - "38"
             Content-Type:
                 - application/json
             User-Agent:
@@ -27,12 +28,12 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 181
+        content_length: 232
         body: |-
             {
               "error": {
-                "code": "missing_required_parameter",
-                "message": "Missing required parameter: 'messages'.",
+                "code": "empty_array",
+                "message": "Invalid 'messages': empty array. Expected an array with minimum length 1, but got an empty array instead.",
                 "param": "messages",
                 "type": "invalid_request_error"
               }
@@ -45,15 +46,15 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cc5ffc95876-KUL
+                - 963087b49acde580-KUL
             Content-Length:
-                - "181"
+                - "232"
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:30 GMT
+                - Tue, 22 Jul 2025 05:27:39 GMT
             Openai-Processing-Ms:
-                - "28"
+                - "10"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -65,7 +66,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "32"
+                - "12"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -79,7 +80,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 0s
             X-Request-Id:
-                - req_2ca418e201f14e6a2c382dad004f23ff
+                - a2e8fc13-ba34-4779-a7a9-5f537407103e
         status: 400 Bad Request
         code: 400
-        duration: 332.325417ms
+        duration: 381.3125ms

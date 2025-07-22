@@ -22,7 +22,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "116"
+                - "78"
             Content-Type:
                 - application/json
             User-Agent:
@@ -49,11 +49,11 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303ce86e5d5876-KUL
+                - 963087d4289ae580-KUL
             Content-Type:
                 - application/json; charset=utf-8
             Date:
-                - Tue, 22 Jul 2025 04:36:35 GMT
+                - Tue, 22 Jul 2025 05:27:44 GMT
             Server:
                 - cloudflare
             Strict-Transport-Security:
@@ -63,7 +63,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Request-Id:
-                - f585fa28-c58f-40ee-8166-b7a1bf0aa514
+                - req_a282785522a2adc2c5b96a62bfeaacd1
         status: 404 Not Found
         code: 404
-        duration: 352.643041ms
+        duration: 775.834042ms

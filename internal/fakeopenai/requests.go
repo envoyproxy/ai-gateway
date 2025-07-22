@@ -7,8 +7,13 @@ package fakeopenai
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"k8s.io/utils/ptr"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // CassetteName represents cassette names for testing.
@@ -67,8 +72,14 @@ func NewRequest(baseURL string, cassetteName CassetteName) (*http.Request, error
 		return nil, fmt.Errorf("unknown cassette name: %s", cassetteName)
 	}
 
+	// Marshal the request body to JSON.
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
 	// Create the request.
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/chat/completions", bytes.NewReader([]byte(requestBody)))
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -85,196 +96,275 @@ func NewRequest(baseURL string, cassetteName CassetteName) (*http.Request, error
 //
 // Prefer bodies in the OpenAI OpenAPI examples to making them up manually.
 // See https://github.com/openai/openai-openapi/tree/manual_spec
-var requestBodies = map[CassetteName]string{
-	CassetteChatBasic: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello!"
-    }
-  ]
-}`,
-	CassetteChatStreaming: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "developer",
-      "content": "You are a helpful assistant."
-    },
-    {
-      "role": "user",
-      "content": "Hello!"
-    }
-  ],
-  "stream": true,
-  "stream_options": {
-    "include_usage": true
-  }
-}`,
-	CassetteChatTools: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": "What is the weather like in Boston today?"
-    }
-  ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "get_current_weather",
-        "description": "Get the current weather in a given location",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {
-              "type": "string",
-              "description": "The city and state, e.g. San Francisco, CA"
-            },
-            "unit": {
-              "type": "string",
-              "enum": ["celsius", "fahrenheit"]
-            }
-          },
-          "required": ["location"]
-        }
-      }
-    }
-  ],
-  "tool_choice": "auto"
-}`,
-	CassetteChatMultimodal: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "What is in this image?"
-        },
-        {
-          "type": "image_url",
-          "image_url": {
-            "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-          }
-        }
-      ]
-    }
-  ],
-  "max_tokens": 100
-}`,
-	CassetteChatMultiturn: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "developer",
-      "content": "You are a helpful assistant."
-    },
-    {
-      "role": "user",
-      "content": "Hello!"
-    },
-    {
-      "role": "assistant",
-      "content": "Hello! How can I assist you today?"
-    },
-    {
-      "role": "user",
-      "content": "What's the weather like?"
-    }
-  ],
-  "temperature": 0.7
-}`,
-	CassetteChatJSONMode: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Generate a JSON object with three properties: name, age, and city."
-    }
-  ],
-  "response_format": {
-    "type": "json_object"
-  }
-}`,
-	CassetteChatNoMessages: `{
-  "model": "gpt-4.1-nano"
-}`,
-	CassetteChatParallelTools: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": "What is the weather like in San Francisco?"
-    }
-  ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "get_current_weather",
-        "description": "Get the current weather in a given location",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {
-              "type": "string",
-              "description": "The city and state, e.g. San Francisco, CA"
-            },
-            "unit": {
-              "type": "string",
-              "enum": ["celsius", "fahrenheit"]
-            }
-          },
-          "required": ["location"]
-        }
-      }
-    }
-  ],
-  "tool_choice": "auto",
-  "parallel_tool_calls": true
-}`,
-	CassetteChatBadRequest: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": null
-    }
-  ],
-  "temperature": -0.5,
-  "max_tokens": 0
-}`,
-	CassetteChatBase64Image: `{
-  "model": "gpt-4.1-nano",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "What's in this image?"
-        },
-        {
-          "type": "image_url",
-          "image_url": {
-            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-          }
-        }
-      ]
-    }
-  ]
-}`,
-	CassetteChatUnknownModel: `{
-  "model": "gpt-4.1-nano-wrong",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello!"
-    }
-  ]
-}`,
+var requestBodies = map[CassetteName]*openai.ChatCompletionRequest{
+	CassetteChatBasic: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Hello!",
+					},
+				},
+			},
+		},
+	},
+	CassetteChatStreaming: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleDeveloper,
+				Value: openai.ChatCompletionDeveloperMessageParam{
+					Role: openai.ChatMessageRoleDeveloper,
+					Content: openai.StringOrArray{
+						Value: "You are a helpful assistant.",
+					},
+				},
+			},
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Hello!",
+					},
+				},
+			},
+		},
+		Stream: true,
+		StreamOptions: &openai.StreamOptions{
+			IncludeUsage: true,
+		},
+	},
+	CassetteChatTools: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "What is the weather like in Boston today?",
+					},
+				},
+			},
+		},
+		Tools: []openai.Tool{
+			{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        "get_current_weather",
+					Description: "Get the current weather in a given location",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"location": map[string]interface{}{
+								"type":        "string",
+								"description": "The city and state, e.g. San Francisco, CA",
+							},
+							"unit": map[string]interface{}{
+								"type": "string",
+								"enum": []interface{}{"celsius", "fahrenheit"},
+							},
+						},
+						"required": []interface{}{"location"},
+					},
+				},
+			},
+		},
+		ToolChoice: "auto",
+	},
+	CassetteChatMultimodal: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: []openai.ChatCompletionContentPartUserUnionParam{
+							{
+								TextContent: &openai.ChatCompletionContentPartTextParam{
+									Type: string(openai.ChatCompletionContentPartTextTypeText),
+									Text: "What is in this image?",
+								},
+							},
+							{
+								ImageContent: &openai.ChatCompletionContentPartImageParam{
+									Type: openai.ChatCompletionContentPartImageTypeImageURL,
+									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+										URL: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		MaxTokens: ptr.To[int64](100),
+	},
+	CassetteChatMultiturn: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleDeveloper,
+				Value: openai.ChatCompletionDeveloperMessageParam{
+					Role: openai.ChatMessageRoleDeveloper,
+					Content: openai.StringOrArray{
+						Value: "You are a helpful assistant.",
+					},
+				},
+			},
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Hello!",
+					},
+				},
+			},
+			{
+				Type: openai.ChatMessageRoleAssistant,
+				Value: openai.ChatCompletionAssistantMessageParam{
+					Role: openai.ChatMessageRoleAssistant,
+					Content: openai.StringOrAssistantRoleContentUnion{
+						Value: "Hello! How can I assist you today?",
+					},
+				},
+			},
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "What's the weather like?",
+					},
+				},
+			},
+		},
+		Temperature: ptr.To(0.7),
+	},
+	CassetteChatJSONMode: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Generate a JSON object with three properties: name, age, and city.",
+					},
+				},
+			},
+		},
+		ResponseFormat: &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		},
+	},
+	CassetteChatNoMessages: {
+		Model:    openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{},
+	},
+	CassetteChatParallelTools: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "What is the weather like in San Francisco?",
+					},
+				},
+			},
+		},
+		Tools: []openai.Tool{
+			{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        "get_current_weather",
+					Description: "Get the current weather in a given location",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"location": map[string]interface{}{
+								"type":        "string",
+								"description": "The city and state, e.g. San Francisco, CA",
+							},
+							"unit": map[string]interface{}{
+								"type": "string",
+								"enum": []interface{}{"celsius", "fahrenheit"},
+							},
+						},
+						"required": []interface{}{"location"},
+					},
+				},
+			},
+		},
+		ToolChoice:        "auto",
+		ParallelToolCalls: ptr.To(true),
+	},
+	CassetteChatBadRequest: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: nil,
+					},
+				},
+			},
+		},
+		Temperature: ptr.To(-0.5),
+		MaxTokens:   ptr.To[int64](0),
+	},
+	CassetteChatBase64Image: {
+		Model: openai.ModelGPT41Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: []openai.ChatCompletionContentPartUserUnionParam{
+							{
+								TextContent: &openai.ChatCompletionContentPartTextParam{
+									Type: string(openai.ChatCompletionContentPartTextTypeText),
+									Text: "What's in this image?",
+								},
+							},
+							{
+								ImageContent: &openai.ChatCompletionContentPartImageParam{
+									Type: openai.ChatCompletionContentPartImageTypeImageURL,
+									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+										URL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	CassetteChatUnknownModel: {
+		Model: "gpt-4.1-nano-wrong",
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Hello!",
+					},
+				},
+			},
+		},
+	},
 }

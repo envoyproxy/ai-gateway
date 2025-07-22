@@ -24,7 +24,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "148"
+                - "102"
             Content-Type:
                 - application/json
             User-Agent:
@@ -53,15 +53,15 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cd94eeb5876-KUL
+                - 963087c4caf0e580-KUL
             Content-Length:
                 - "233"
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:33 GMT
+                - Tue, 22 Jul 2025 05:27:41 GMT
             Openai-Processing-Ms:
-                - "10"
+                - "11"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -73,7 +73,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "15"
+                - "14"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -81,13 +81,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199998"
+                - "199997"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 0s
             X-Request-Id:
-                - req_d8febc7674db13aeeb70908b24c4aebd
+                - req_6b0e241346cd940cb87f851150345ea2
         status: 400 Bad Request
         code: 400
-        duration: 410.303416ms
+        duration: 347.307208ms

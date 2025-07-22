@@ -52,7 +52,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "794"
+                - "503"
             Content-Type:
                 - application/json
             User-Agent:
@@ -63,7 +63,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1093
+        content_length: 1359
         body: |-
             {
               "choices": [
@@ -79,24 +79,32 @@ interactions:
                     "tool_calls": [
                       {
                         "function": {
-                          "arguments": "{\"location\":\"San Francisco\"}",
+                          "arguments": "{\"location\": \"San Francisco, CA\"}",
                           "name": "get_current_weather"
                         },
-                        "id": "call_DHUvMd9gdjnyNtquborNDiMr",
+                        "id": "call_D6u1WUoe5SU9K153FitUAhfw",
+                        "type": "function"
+                      },
+                      {
+                        "function": {
+                          "arguments": "{\"location\": \"San Francisco, CA\"}",
+                          "name": "get_current_weather"
+                        },
+                        "id": "call_aQlRzPlzkHJ29YluNaXlVfuT",
                         "type": "function"
                       }
                     ]
                   }
                 }
               ],
-              "created": 1753158991,
-              "id": "chatcmpl-Bvz1rrnlzLEvhGDcP7UHZH7U3xJ50",
+              "created": 1753162059,
+              "id": "chatcmpl-BvzpL1xt8QNyiT9xFDZp0olg9pSEx",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
               "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 16,
+                "completion_tokens": 52,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
@@ -108,7 +116,7 @@ interactions:
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 97
+                "total_tokens": 133
               }
             }
         headers:
@@ -119,13 +127,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cca18895876-KUL
+                - 963087b95b90e580-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:31 GMT
+                - Tue, 22 Jul 2025 05:27:40 GMT
             Openai-Processing-Ms:
-                - "360"
+                - "613"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -137,7 +145,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "363"
+                - "620"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -145,13 +153,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199986"
+                - "199987"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 3ms
             X-Request-Id:
-                - 1fb262ed-c15b-4c07-bdb2-b10975924902
+                - req_ce34af16c966b5df11e0b240f401058f
         status: 200 OK
         code: 200
-        duration: 1.212082333s
+        duration: 910.667292ms

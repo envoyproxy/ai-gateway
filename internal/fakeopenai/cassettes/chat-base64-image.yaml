@@ -33,7 +33,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "428"
+                - "274"
             Content-Type:
                 - application/json
             User-Agent:
@@ -44,7 +44,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 905
+        content_length: 877
         body: |-
             {
               "choices": [
@@ -54,20 +54,20 @@ interactions:
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "It looks like the image is empty or there was an issue with uploading. Could you please try sending it again?",
+                    "content": "It seems the image didn't load properly. Could you please try uploading it again?",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753158993,
-              "id": "chatcmpl-Bvz1teiJfRwx7v2j3vmwmu82u8bHy",
+              "created": 1753162062,
+              "id": "chatcmpl-BvzpObAOzjs99gvHvWxmnRoOx9tP3",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
               "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 23,
+                "completion_tokens": 16,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
@@ -79,7 +79,7 @@ interactions:
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 39
+                "total_tokens": 32
               }
             }
         headers:
@@ -90,13 +90,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cde79525876-KUL
+                - 963087c92c33e580-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:34 GMT
+                - Tue, 22 Jul 2025 05:27:43 GMT
             Openai-Processing-Ms:
-                - "482"
+                - "528"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -108,7 +108,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "458"
+                - "512"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
@@ -128,7 +128,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 231ms
             X-Request-Id:
-                - req_c33238d249e8b088019d2cccb4c9ff2c
+                - req_3837ed73f5b1dd7805411b52bd36065e
         status: 200 OK
         code: 200
-        duration: 791.51675ms
+        duration: 878.325208ms

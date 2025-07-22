@@ -35,7 +35,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "393"
+                - "273"
             Content-Type:
                 - application/json
             User-Agent:
@@ -46,7 +46,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1116
+        content_length: 1038
         body: |-
             {
               "choices": [
@@ -56,20 +56,20 @@ interactions:
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "I don't have access to real-time weather data. However, you can check the current weather for your location using a weather app on your device, or by searching \"weather\" followed by your location on a search engine. If you tell me your location, I can help you find the best way to get the latest weather information!",
+                    "content": "I don't have real-time access to current weather data. However, I can help you find the weather forecast if you tell me your location. Alternatively, you can check a weather website or app for the latest updates. How can I assist you further?",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753158986,
-              "id": "chatcmpl-Bvz1mWg3RzUcZqHGSKiwxeRgIuzcw",
+              "created": 1753162021,
+              "id": "chatcmpl-BvzojqxiCJvlfUn7EkHrdDbGaNqwg",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
               "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 66,
+                "completion_tokens": 50,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
@@ -81,7 +81,7 @@ interactions:
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 107
+                "total_tokens": 91
               }
             }
         headers:
@@ -92,13 +92,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cb07d095876-KUL
+                - 963086b63e3ee580-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:27 GMT
+                - Tue, 22 Jul 2025 05:27:17 GMT
             Openai-Processing-Ms:
-                - "519"
+                - "16147"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -110,7 +110,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "532"
+                - "16152"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -118,13 +118,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199971"
+                - "199972"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 8ms
             X-Request-Id:
-                - req_4b316f691158f8f1fb823071e8919812
+                - req_38d4f47e4f8bda9ff1652ede5f136b92
         status: 200 OK
         code: 200
-        duration: 821.145458ms
+        duration: 19.396106583s

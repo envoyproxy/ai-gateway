@@ -25,7 +25,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "224"
+                - "173"
             Content-Type:
                 - application/json
             User-Agent:
@@ -52,8 +52,8 @@ interactions:
                   }
                 }
               ],
-              "created": 1753158988,
-              "id": "chatcmpl-Bvz1o4yvSlHIo4hE7gaGVCzwnXlCb",
+              "created": 1753162057,
+              "id": "chatcmpl-BvzpJO8f3GTzaZ025BmH3BB7H6oKv",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
@@ -82,13 +82,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96303cbac95f5876-KUL
+                - 963087a8bc96e580-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 04:36:28 GMT
+                - Tue, 22 Jul 2025 05:27:37 GMT
             Openai-Processing-Ms:
-                - "552"
+                - "487"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -100,7 +100,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "556"
+                - "582"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -114,7 +114,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 5ms
             X-Request-Id:
-                - req_7726cb1ae4a17aba3eec5e5c81e57e46
+                - req_ee2667196b30e03666675e379c010ad5
         status: 200 OK
         code: 200
-        duration: 892.181875ms
+        duration: 951.315417ms
