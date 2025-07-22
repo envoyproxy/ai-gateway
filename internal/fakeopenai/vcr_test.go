@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -334,4 +335,252 @@ func TestLoadCassettes_EmbeddedFS(t *testing.T) {
 	require.True(t, cassetteNames["chat-basic.yaml"])
 	require.True(t, cassetteNames["chat-streaming.yaml"])
 	require.True(t, cassetteNames["chat-tools.yaml"])
+}
+
+// TestRecorderOptions tests the VCR recorder options configuration.
+func TestRecorderOptions(t *testing.T) {
+	cfg := defaultConfig()
+	opts := recorderOptions(cfg)
+
+	// Should return 3 options: mode, matcher, and hook.
+	require.Len(t, opts, 3)
+}
+
+// TestRequestMatcher tests the custom request matcher function.
+func TestRequestMatcher(t *testing.T) {
+	cfg := defaultConfig()
+	matcher := requestMatcher(cfg)
+
+	tests := []struct {
+		name     string
+		httpReq  *http.Request
+		cassReq  cassette.Request
+		expected bool
+	}{
+		{
+			name:    "method mismatch",
+			httpReq: httptest.NewRequest("GET", "https://api.openai.com/v1/models", nil),
+			cassReq: cassette.Request{
+				Method: "POST",
+				URL:    "https://api.openai.com/v1/models",
+			},
+			expected: false,
+		},
+		{
+			name:    "URL mismatch",
+			httpReq: httptest.NewRequest("GET", "https://api.openai.com/v1/models", nil),
+			cassReq: cassette.Request{
+				Method: "GET",
+				URL:    "https://api.openai.com/v1/chat/completions",
+			},
+			expected: false,
+		},
+		{
+			name: "headers mismatch",
+			httpReq: func() *http.Request {
+				req := httptest.NewRequest("GET", "https://api.openai.com/v1/models", nil)
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			cassReq: cassette.Request{
+				Method: "GET",
+				URL:    "https://api.openai.com/v1/models",
+				Headers: map[string][]string{
+					"Content-Type": {"text/plain"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "exact match with headers",
+			httpReq: func() *http.Request {
+				req := httptest.NewRequest("GET", "https://api.openai.com/v1/models", nil)
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			cassReq: cassette.Request{
+				Method: "GET",
+				URL:    "https://api.openai.com/v1/models",
+				Headers: map[string][]string{
+					"Content-Type": {"application/json"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "JSON body semantic match",
+			httpReq: func() *http.Request {
+				req := httptest.NewRequest("POST", "https://api.openai.com/v1/chat/completions",
+					strings.NewReader(`{"model":"gpt-4","messages":[{"role":"user","content":"test"}]}`))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			cassReq: cassette.Request{
+				Method: "POST",
+				URL:    "https://api.openai.com/v1/chat/completions",
+				Headers: map[string][]string{
+					"Content-Type": {"application/json"},
+				},
+				Body: `{"messages":[{"content":"test","role":"user"}],"model":"gpt-4"}`, // Different order.
+			},
+			expected: true,
+		},
+		{
+			name: "non-JSON body exact match",
+			httpReq: httptest.NewRequest("POST", "https://api.openai.com/v1/test",
+				strings.NewReader("plain text body")),
+			cassReq: cassette.Request{
+				Method: "POST",
+				URL:    "https://api.openai.com/v1/test",
+				Body:   "plain text body",
+			},
+			expected: true,
+		},
+		{
+			name:    "empty body match",
+			httpReq: httptest.NewRequest("GET", "https://api.openai.com/v1/models", nil),
+			cassReq: cassette.Request{
+				Method: "GET",
+				URL:    "https://api.openai.com/v1/models",
+			},
+			expected: true,
+		},
+		{
+			name: "body read error simulation",
+			httpReq: func() *http.Request {
+				req := httptest.NewRequest("POST", "https://api.openai.com/v1/test", &errorReader{})
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			cassReq: cassette.Request{
+				Method: "POST",
+				URL:    "https://api.openai.com/v1/test",
+				Headers: map[string][]string{
+					"Content-Type": {"application/json"},
+				},
+				Body: `{"test":"data"}`,
+			},
+			expected: false, // Should fail due to read error.
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := matcher(tc.httpReq, tc.cassReq)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestPrettyPrintJSON_InvalidJSON tests pretty printing with invalid JSON.
+func TestPrettyPrintJSON_InvalidJSON(t *testing.T) {
+	// Test with invalid JSON - should return unchanged.
+	invalid := "not valid json {"
+	result, err := prettyPrintJSON(invalid)
+	require.NoError(t, err)
+	require.Equal(t, invalid, result)
+}
+
+// TestAfterCaptureHook_NonJSONContent tests the hook with non-JSON content.
+func TestAfterCaptureHook_NonJSONContent(t *testing.T) {
+	cfg := defaultConfig()
+	hook := afterCaptureHook(cfg)
+
+	interaction := &cassette.Interaction{
+		Request: cassette.Request{
+			Headers: map[string][]string{
+				"Content-Type": {"text/plain"},
+			},
+			Body: "plain text request",
+		},
+		Response: cassette.Response{
+			Headers: map[string][]string{
+				"Content-Type": {"text/html"},
+			},
+			Body: "<html>response</html>",
+		},
+	}
+
+	err := hook(interaction)
+	require.NoError(t, err)
+
+	// Bodies should remain unchanged (not pretty-printed).
+	require.Equal(t, "plain text request", interaction.Request.Body)
+	require.Equal(t, "<html>response</html>", interaction.Response.Body)
+
+	// Content lengths should be updated.
+	require.Equal(t, int64(len("plain text request")), interaction.Request.ContentLength)
+	require.Equal(t, int64(len("<html>response</html>")), interaction.Response.ContentLength)
+}
+
+// TestAfterCaptureHook_InvalidGzip tests the hook with invalid gzip data.
+func TestAfterCaptureHook_InvalidGzip(t *testing.T) {
+	cfg := defaultConfig()
+	hook := afterCaptureHook(cfg)
+
+	interaction := &cassette.Interaction{
+		Request: cassette.Request{
+			Headers: map[string][]string{},
+			Body:    "",
+		},
+		Response: cassette.Response{
+			Headers: map[string][]string{
+				"Content-Encoding": {"gzip"},
+			},
+			Body: "not valid gzip data",
+		},
+	}
+
+	err := hook(interaction)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "gzip")
+}
+
+// TestAfterCaptureHook_GzipReadError tests the hook with truncated gzip data.
+func TestAfterCaptureHook_GzipReadError(t *testing.T) {
+	cfg := defaultConfig()
+	hook := afterCaptureHook(cfg)
+
+	// Create truncated gzip data that passes header check but fails on read.
+	truncatedGzip := []byte{0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff} // Valid gzip header but incomplete.
+
+	interaction := &cassette.Interaction{
+		Request: cassette.Request{
+			Headers: map[string][]string{},
+			Body:    "",
+		},
+		Response: cassette.Response{
+			Headers: map[string][]string{
+				"Content-Encoding": {"gzip"},
+			},
+			Body: string(truncatedGzip),
+		},
+	}
+
+	err := hook(interaction)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decompress")
+}
+
+// TestAfterCaptureHook_InvalidJSONInRequest tests hook with invalid JSON in request.
+func TestAfterCaptureHook_InvalidJSONInRequest(t *testing.T) {
+	cfg := defaultConfig()
+	hook := afterCaptureHook(cfg)
+
+	interaction := &cassette.Interaction{
+		Request: cassette.Request{
+			Headers: map[string][]string{
+				"Content-Type": {"application/json"},
+			},
+			Body: "invalid json {",
+		},
+		Response: cassette.Response{
+			Headers: map[string][]string{},
+			Body:    "response",
+		},
+	}
+
+	err := hook(interaction)
+	require.NoError(t, err) // prettyPrintJSON returns unchanged body without error for invalid JSON.
+	require.Equal(t, "invalid json {", interaction.Request.Body)
 }

@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package vcr
 
 import (
 	"bufio"
@@ -206,4 +206,17 @@ func setupTestEnvironment(t *testing.T) *testEnvironment {
 		envoyOut:     envoyOutput,
 		extprocOut:   extprocOutput,
 	}
+}
+
+// TestMain sets up the test environment once for all tests.
+func TestMain(m *testing.M) {
+	var err error
+	// Build extproc binary once for all tests.
+	if extprocBin, err = buildExtProcOnDemand(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start tests due to build error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run tests.
+	os.Exit(m.Run())
 }

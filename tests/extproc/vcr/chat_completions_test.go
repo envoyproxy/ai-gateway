@@ -3,12 +3,13 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package vcr
 
 import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -436,6 +437,11 @@ data: [DONE]
 
 			if resp.StatusCode == http.StatusBadGateway {
 				wasBadGateway = true
+			}
+			// Log on "unsupported path" error for debugging.
+			if strings.Contains(string(body), "unsupported path") {
+				t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", env.extprocOut.String())
+				t.Logf("=== Envoy Output (stdout + stderr) ===\n%s", env.envoyOut.String())
 			}
 			// Safe to use assert as no nil risk and response body explains status.
 			assert.Equal(t, tc.expectStatusCode, resp.StatusCode)

@@ -9,7 +9,6 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -33,15 +32,6 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	var err error
-	// Build extproc binary once for all tests.
-	if extprocBin, err = buildExtProcOnDemand(); err != nil {
-		log.Fatalf("failed to start tests due to build error: %v", err)
-	}
-	if _, err = exec.LookPath("envoy"); err != nil {
-		log.Fatalf("envoy binary not found in PATH: %v", err)
-	}
-
 	const fakeServerPort = 1066
 	// This is a fake server that returns a 500 error for all requests.
 	mux := http.NewServeMux()
@@ -98,12 +88,12 @@ var (
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
 	}}}
-	// This always failing backend is configured to have AWS Bedrock schema so that.
+	// This always failing backend is configured to have AWS Bedrock schema so that
 	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
 	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
 )
 
-// requireExtProc starts the external processor with the provided executable and configPath.
+// requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
 //
 // The config must be in YAML format specified in [filterapi.Config] type.

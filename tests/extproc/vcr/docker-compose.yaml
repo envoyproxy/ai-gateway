@@ -13,7 +13,7 @@ services:
     container_name: extproc-build
     working_dir: /workspace
     volumes:
-      - ../..:/workspace
+      - ../../..:/workspace
       - extproc-target:/workspace/out
     command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc"]
 
@@ -39,7 +39,7 @@ services:
     environment:
       OLLAMA_HOST: localhost:11434  # instead of IP 127.0.0.1
     env_file:
-      - ../../.env.ollama
+      - ../../../.env.ollama
     entrypoint: sh
     command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
     extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
@@ -66,7 +66,7 @@ services:
     container_name: openai-client
     profiles: ["test"]
     env_file:
-      - ../../.env.ollama
+      - ../../../.env.ollama
     depends_on:
       envoy:
         condition: service_started

@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package vcr
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // buildExtProcOnDemand builds the extproc binary unless EXTPROC_BIN is set.
@@ -49,11 +50,12 @@ func buildExtProc() (string, error) {
 	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/extproc")
 	cmd.Dir = projectRoot
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	var stderr strings.Builder
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to build extproc: %w", err)
+		return "", fmt.Errorf("failed to build extproc: %w\nstderr: %s", err, stderr.String())
 	}
 
 	// Make executable.
