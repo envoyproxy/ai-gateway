@@ -659,11 +659,11 @@ sequenceDiagram
     AIServer->>EG: List/Watch Envoy Gateway CRDs (Gateway/HTTPRoute/EnvoyExtensionPolicy/Backend)
     Note over EG: Translate CRDs to xDS configuration
     Note over EAGES: Implemented PostRouteModify/PostClusterModify/PostTranslateModify Hooks
-    EG->>EAGES: Invoke PostRouteModify Hook 
+    EG->>EAGES: Invoke PostRouteModify Hook
     EAGES-->>EG: Modify Envoy Route Config (Add EPP Metadata)
-    EG->>EAGES: Invoke PostClusterModify Hook 
+    EG->>EAGES: Invoke PostClusterModify Hook
     EAGES-->>EG: Modify Envoy Cluster Config (Modify Cluster with HostOverride LBPolicy or Original Dst)
-    EG->>EAGES: Invoke PostTranslateModify Hook 
+    EG->>EAGES: Invoke PostTranslateModify Hook
     EAGES-->>EG: Modify Envoy Listeners and Routes Config (Insert EPP extproc in relevant listeners and disable EPP extproc in un related routes)
     EG ->> Proxy: Generate final xDS configuration
     Note over Proxy: Ready to forward downstream requests
@@ -681,11 +681,11 @@ sequenceDiagram
     AIServer->>EG: List/Watch Envoy Gateway CRDs (Gateway/HTTPRoute/EnvoyExtensionPolicy/Backend)
     Note over EG: Translate CRDs to xDS configuration
     Note over EAGES: Implemented PostRouteModify/PostClusterModify/PostTranslateModify Hooks
-    EG->>EAGES: Invoke PostRouteModify Hook 
+    EG->>EAGES: Invoke PostRouteModify Hook
     EAGES-->>EG: Modify Envoy Route Config (Add EPP Metadata)
-    EG->>EAGES: Invoke PostClusterModify Hook 
+    EG->>EAGES: Invoke PostClusterModify Hook
     EAGES-->>EG: Modify Envoy Cluster Config (Modify Cluster with HostOverride LBPolicy or Original Dst)
-    EG->>EAGES: Invoke PostTranslateModify Hook 
+    EG->>EAGES: Invoke PostTranslateModify Hook
     EAGES-->>EG: Modify Envoy Listeners and Routes Config (Insert EPP extproc in relevant listeners and disable EPP extproc in un related routes)
     EG ->> Proxy: Generate final xDS configuration
     Note over Proxy: Ready to forward downstream requests
