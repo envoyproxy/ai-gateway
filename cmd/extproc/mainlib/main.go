@@ -163,8 +163,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}()
 
 	// Emit startup message to stderr when all listeners are ready.
-	fmt.Fprintln(stderr, "AI Gateway External Processor is ready")
-
+	l.Info("AI Gateway External Processor is ready")
 	return s.Serve(lis)
 }
 
