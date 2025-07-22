@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -115,7 +114,7 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 			toolChoice = anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: choice}}
 			toolChoice.OfTool.DisableParallelToolUse = disableParallelToolUse
 		default:
-			return toolChoice, fmt.Errorf("invalid tool_choice value '%s'", choice)
+			return toolChoice, fmt.Errorf("unsupported tool_choice value: %s", choice)
 		}
 	case openai.ToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
@@ -151,11 +150,36 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
 			if openAITool.Function.Parameters != nil {
-				toolParam.InputSchema = anthropic.ToolInputSchemaParam{
-					Properties: openAITool.Function.Parameters,
-					// TODO: support extra fields.
-					ExtraFields: nil,
+				paramsMap, ok := openAITool.Function.Parameters.(map[string]interface{})
+				if !ok {
+					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
+					return
 				}
+
+				inputSchema := anthropic.ToolInputSchemaParam{}
+
+				var typeVal string
+				if typeVal, ok = paramsMap["type"].(string); ok {
+					inputSchema.Type = constant.Object(typeVal)
+				}
+
+				var propsVal map[string]interface{}
+				if propsVal, ok = paramsMap["properties"].(map[string]interface{}); ok {
+					inputSchema.Properties = propsVal
+				}
+
+				var requiredVal []interface{}
+				if requiredVal, ok = paramsMap["required"].([]interface{}); ok {
+					requiredSlice := make([]string, len(requiredVal))
+					for i, v := range requiredVal {
+						if s, ok := v.(string); ok {
+							requiredSlice[i] = s
+						}
+					}
+					inputSchema.Required = requiredSlice
+				}
+
+				toolParam.InputSchema = inputSchema
 			}
 
 			anthropicTools = append(anthropicTools, anthropic.ToolUnionParam{OfTool: &toolParam})
@@ -452,7 +476,9 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 // into the parameter struct required by the Anthropic SDK.
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
-	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	//maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	defaultMaxTokens := int64(800)
+	maxTokens := &defaultMaxTokens
 	if maxTokens == nil {
 		err = fmt.Errorf("the maximum number of tokens must be set for Anthropic, got nil instead")
 		return
@@ -532,7 +558,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	modelName := openAIReq.Model
+	//TODO: remove
+	modelName := strings.TrimPrefix(openAIReq.Model, "gcp.")
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
 		modelName = o.modelNameOverride
