@@ -25,6 +25,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -337,6 +338,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	defer func() {
 		c.metrics.RecordRequestCompletion(ctx, err == nil)
 	}()
+	pickedEndpoint, isEndpointPicker := c.requestHeaders[internalapi.EndpointPickerHeaderKey]
 	rp, ok := routeProcessor.(*chatCompletionProcessorRouterFilter)
 	if !ok {
 		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
@@ -353,6 +355,11 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
+	if isEndpointPicker {
+		if c.logger.Enabled(ctx, slog.LevelDebug) {
+			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
+		}
+	}
 	rp.upstreamFilter = c
 	return
 }

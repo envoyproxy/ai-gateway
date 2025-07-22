@@ -16,6 +16,13 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 )
 
+const (
+	// EndpointPickerHeaderKey is the header key used to specify the target backend endpoint.
+	// This is the default header name in the reference implementation:
+	// https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/2b5b337b45c3289e5f9367b2c19deef021722fcd/pkg/epp/server/runserver.go#L63
+	EndpointPickerHeaderKey = "x-gateway-destination-endpoint"
+)
+
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
 // i.e., the unique identifier for a backend that is associated with a specific
 // route rule in a specific AIGatewayRoute.

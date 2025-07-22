@@ -1,0 +1,62 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: inference-pool-with-aigwroute
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: inference-pool-with-aigwroute
+  namespace: default
+spec:
+  gatewayClassName: inference-pool-with-aigwroute
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: inference-pool-with-aigwroute
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  targetRefs:
+    - name: inference-pool-with-aigwroute
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: meta-llama/Llama-3.1-8B-Instruct
+      backendRefs:
+        - group: inference.networking.x-k8s.io
+          kind: InferencePool
+          name: vllm-llama3-8b-instruct
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: mistral:latest
+      backendRefs:
+        - group: inference.networking.x-k8s.io
+          kind: InferencePool
+          name: mistral
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: some-cool-self-hosted-model
+      backendRefs:
+        - name: envoy-ai-gateway-basic-testupstream

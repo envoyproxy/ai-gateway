@@ -191,8 +191,9 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				s.logger.Error("cannot get processor", slog.String("error", err.Error()))
 				return status.Error(codes.NotFound, err.Error())
 			}
+			_, isEndpoinPicker := headersMap[internalapi.EndpointPickerHeaderKey]
 			if isUpstreamFilter {
-				if err = s.setBackend(ctx, p, reqID, req); err != nil {
+				if err = s.setBackend(ctx, p, reqID, isEndpoinPicker, req); err != nil {
 					s.logger.Error("error processing request message", slog.String("error", err.Error()))
 					return status.Errorf(codes.Unknown, "error processing request message: %v", err)
 				}
@@ -271,18 +272,22 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 
 // setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
 // if the processor is an upstream filter.
-func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, req *extprocv3.ProcessingRequest) error {
+func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, isEndpointPicker bool, req *extprocv3.ProcessingRequest) error {
 	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
-
-	// This should contain the endpoint metadata.
-	hostMetadata, ok := attributes.Fields["xds.upstream_host_metadata"]
-	if !ok {
-		return status.Error(codes.Internal, "missing xds.upstream_host_metadata in request")
+	var metadataFieldKey string
+	if isEndpointPicker {
+		metadataFieldKey = "xds.cluster_metadata"
+	} else {
+		metadataFieldKey = "xds.upstream_host_metadata"
 	}
-
+	// This should contain the endpoint metadata.
+	hostMetadata, ok := attributes.Fields[metadataFieldKey]
+	if !ok {
+		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
+	}
 	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
 	var metadata corev3.Metadata
 	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
