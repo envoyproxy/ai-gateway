@@ -26,10 +26,10 @@ import (
 // extprocBin holds the path to the compiled extproc binary.
 var extprocBin string
 
-//go:embed envoy_aigw_local.yaml
+//go:embed envoy.yaml
 var envoyConfig string
 
-//go:embed extproc_aigw.yaml
+//go:embed extproc.yaml
 var extprocConfig []byte
 
 // getRandomPort returns a random available port.

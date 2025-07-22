@@ -25,7 +25,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - extproc-target:/app
-      - ./extproc_aigw.yaml:/etc/extproc/config.yaml:ro
+      - ./extproc.yaml:/etc/extproc/config.yaml:ro
     # ExtProc ports (internal to Docker network, consumed by Envoy):
     # - 1063: gRPC service
     # - 1064: metrics
@@ -54,7 +54,7 @@ services:
       ollama-pull:
         condition: service_completed_successfully
     volumes:
-      - ./envoy_aigw_local.yaml:/etc/envoy/envoy.yaml:ro
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
     ports:
       - "1062:1062"  # HTTP ingress
     extra_hosts:

@@ -7,7 +7,7 @@ Integration tests for AI Gateway's external processor. Tests here build
 
 ```bash
 # From the current directory - no need for make
-cd tests/extproc
+cd tests/extproc/vcr
 go test -v
 
 # Run specific tests
