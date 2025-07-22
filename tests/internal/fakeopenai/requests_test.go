@@ -24,7 +24,7 @@ func TestNewRequest(t *testing.T) {
 
 	// Test matrix with all cassettes and their expected status.
 	tests := []struct {
-		cassetteName   CassetteName
+		cassetteName   Cassette
 		expectedStatus int
 	}{
 		{
@@ -83,7 +83,7 @@ func TestNewRequest(t *testing.T) {
 			require.Equal(t, http.MethodPost, req.Method)
 			require.Equal(t, baseURL+"/chat/completions", req.URL.String())
 			require.Equal(t, "application/json", req.Header.Get("Content-Type"))
-			require.Equal(t, tc.cassetteName, CassetteName(req.Header.Get(CassetteNameHeader)))
+			require.Equal(t, tc.cassetteName.String(), req.Header.Get(CassetteNameHeader))
 
 			// Verify request body matches expected from requestBodies map.
 			body, err := io.ReadAll(req.Body)
@@ -114,7 +114,7 @@ func TestNewRequest(t *testing.T) {
 
 	// Test error case - unknown cassette.
 	t.Run("unknown-cassette", func(t *testing.T) {
-		_, err := NewRequest(baseURL, "non-existent-cassette")
+		_, err := NewRequest(baseURL, Cassette(999))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown cassette name")
 	})
@@ -122,20 +122,8 @@ func TestNewRequest(t *testing.T) {
 
 // TestCassetteCompleteness ensures all cassette constants have corresponding request bodies.
 func TestCassetteCompleteness(t *testing.T) {
-	// List of all cassette constants.
-	cassettes := []CassetteName{
-		CassetteChatBasic,
-		CassetteChatJSONMode,
-		CassetteChatMultimodal,
-		CassetteChatMultiturn,
-		CassetteChatNoMessages,
-		CassetteChatParallelTools,
-		CassetteChatStreaming,
-		CassetteChatTools,
-		CassetteChatUnknownModel,
-		CassetteChatBadRequest,
-		CassetteChatBase64Image,
-	}
+	// Get all cassette constants.
+	cassettes := AllCassettes()
 
 	// Verify each cassette has a request body.
 	for _, cassette := range cassettes {

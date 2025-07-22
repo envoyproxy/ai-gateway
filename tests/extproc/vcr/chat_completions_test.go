@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/fakeopenai"
+	"github.com/envoyproxy/ai-gateway/tests/internal/fakeopenai"
 )
 
 func TestChatCompletions(t *testing.T) {
@@ -26,7 +26,7 @@ func TestChatCompletions(t *testing.T) {
 	// Define test cases for different request types.
 	// These expectations match the actual responses from the fake OpenAI server cassettes.
 	tests := []struct {
-		name               fakeopenai.CassetteName
+		name               fakeopenai.Cassette
 		expectResponseBody string
 		expectStatusCode   int
 	}{

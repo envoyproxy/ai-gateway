@@ -16,56 +16,74 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// CassetteName represents cassette names for testing.
-type CassetteName string
-
-// String returns the string representation of the cassette name.
-func (c CassetteName) String() string {
-	return string(c)
-}
+// Cassette is an HTTP interaction recording
+type Cassette int
 
 // Cassette names for testing.
 const (
 	// CassetteChatBasic is the canonical OpenAI chat completion request.
-	CassetteChatBasic CassetteName = "chat-basic"
-
+	CassetteChatBasic Cassette = iota
 	// CassetteChatJSONMode is a chat completion request with JSON response format.
-	CassetteChatJSONMode CassetteName = "chat-json-mode"
-
+	CassetteChatJSONMode
 	// CassetteChatMultimodal is a multimodal chat request with text and image inputs.
-	CassetteChatMultimodal CassetteName = "chat-multimodal"
-
+	CassetteChatMultimodal
 	// CassetteChatMultiturn is a multi-turn conversation with message history.
-	CassetteChatMultiturn CassetteName = "chat-multiturn"
-
+	CassetteChatMultiturn
 	// CassetteChatNoMessages is a request missing the required messages field.
-	CassetteChatNoMessages CassetteName = "chat-no-messages"
-
+	CassetteChatNoMessages
 	// CassetteChatParallelTools is a chat completion with parallel function calling enabled.
-	CassetteChatParallelTools CassetteName = "chat-parallel-tools"
-
+	CassetteChatParallelTools
 	// CassetteChatStreaming is the canonical OpenAI chat completion request,
 	// with streaming enabled.
-	CassetteChatStreaming CassetteName = "chat-streaming"
-
+	CassetteChatStreaming
 	// CassetteChatTools is a chat completion request with function tools.
-	CassetteChatTools CassetteName = "chat-tools"
-
+	CassetteChatTools
 	// CassetteChatUnknownModel is a request with a non-existent model.
-	CassetteChatUnknownModel CassetteName = "chat-unknown-model"
-
+	CassetteChatUnknownModel
 	// CassetteChatBadRequest is a request with multiple validation errors.
-	CassetteChatBadRequest CassetteName = "chat-bad-request"
-
+	CassetteChatBadRequest
 	// CassetteChatBase64Image is a request with a base64-encoded image.
-	CassetteChatBase64Image CassetteName = "chat-base64-image"
+	CassetteChatBase64Image
+	_cassetteNameEnd // Sentinel value for iteration
 )
+
+// stringValues maps Cassette values to their string representations.
+var stringValues = map[Cassette]string{
+	CassetteChatBasic:         "chat-basic",
+	CassetteChatJSONMode:      "chat-json-mode",
+	CassetteChatMultimodal:    "chat-multimodal",
+	CassetteChatMultiturn:     "chat-multiturn",
+	CassetteChatNoMessages:    "chat-no-messages",
+	CassetteChatParallelTools: "chat-parallel-tools",
+	CassetteChatStreaming:     "chat-streaming",
+	CassetteChatTools:         "chat-tools",
+	CassetteChatUnknownModel:  "chat-unknown-model",
+	CassetteChatBadRequest:    "chat-bad-request",
+	CassetteChatBase64Image:   "chat-base64-image",
+}
+
+// String returns the string representation of the cassette name.
+func (c Cassette) String() string {
+	if s, ok := stringValues[c]; ok {
+		return s
+	}
+	return "unknown"
+}
+
+// AllCassettes returns a slice of all available cassette names.
+func AllCassettes() []Cassette {
+	result := make([]Cassette, 0, int(_cassetteNameEnd))
+	for i := Cassette(0); i < _cassetteNameEnd; i++ {
+		result = append(result, i)
+	}
+	return result
+}
 
 // NewRequest creates a new HTTP request for the given cassette.
 //
 // The returned request is an http.MethodPost with the body and
 // CassetteNameHeader according to the pre-recorded cassette.
-func NewRequest(baseURL string, cassetteName CassetteName) (*http.Request, error) {
+func NewRequest(baseURL string, cassetteName Cassette) (*http.Request, error) {
 	// Get the request body for this cassette.
 	requestBody, ok := requestBodies[cassetteName]
 	if !ok {
@@ -86,7 +104,7 @@ func NewRequest(baseURL string, cassetteName CassetteName) (*http.Request, error
 
 	// Set headers.
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cassette-Name", string(cassetteName))
+	req.Header.Set("X-Cassette-Name", cassetteName.String())
 
 	return req, nil
 }
@@ -96,7 +114,7 @@ func NewRequest(baseURL string, cassetteName CassetteName) (*http.Request, error
 //
 // Prefer bodies in the OpenAI OpenAPI examples to making them up manually.
 // See https://github.com/openai/openai-openapi/tree/manual_spec
-var requestBodies = map[CassetteName]*openai.ChatCompletionRequest{
+var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 	CassetteChatBasic: {
 		Model: openai.ModelGPT41Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{

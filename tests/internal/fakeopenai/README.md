@@ -63,20 +63,43 @@ To record a new cassette, follow these steps:
    const (
    	// ... existing constants
    	// CassetteChatFeatureX includes feature X, added to OpenAI version 1.2.3.
-   	CassetteChatFeatureX = "chat-feature-x"
+   	CassetteChatFeatureX
+   	_cassetteNameEnd // Keep this at the end
    )
+   ```
+
+   > **Note**: The constants use `iota` enumeration, so your new constant must be added
+   > before `_cassetteNameEnd` to be included in the `AllCassettes()` iteration.
+
+   Also add its string mapping:
+
+   ```go
+   var stringValues = map[CassetteName]string{
+   	// ... existing mappings
+   	CassetteChatFeatureX: "chat-feature-x",
+   }
    ```
 
 2. **Add the request body** for your test to [requests.go](requests.go):
 
    ```go
-   var requestBodies = map[string]string{
+   var requestBodies = map[CassetteName]*openai.ChatCompletionRequest{
    	// ... existing entries
-   	CassetteChatFeatureX: `{
-         "model": "gpt-4.1-nano",
-         "messages": [{"role": "user", "content": "Your test prompt"}],
-         // Add your feature-specific fields here
-       }`,
+   	CassetteChatFeatureX: {
+   		Model: openai.ModelGPT41Nano,
+   		Messages: []openai.ChatCompletionMessageParamUnion{
+   			{
+   				Type: openai.ChatMessageRoleUser,
+   				Value: openai.ChatCompletionUserMessageParam{
+   					Role: openai.ChatMessageRoleUser,
+   					Content: openai.StringOrUserRoleContentUnion{
+   						Value: "Your test prompt",
+   					},
+   				},
+   			},
+   		},
+   		// Add your feature-specific fields here
+   	},
    }
    ```
 
@@ -97,7 +120,7 @@ To record a new cassette, follow these steps:
    OPENAI_API_KEY=sk-.. go test -run TestNewRequest -v
    ```
 
-5. **Commit both the new cassette file and code changes**
+5. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
 
 ## Flowchart of Request Handling
 
@@ -107,17 +130,19 @@ graph TD
     B -->|Yes| C[Search for specific cassette]
     B -->|No| D[Search all cassettes]
 
-    C --> E{Match found?}
+    C --> E{Cassette found?}
     D --> F{Match found?}
 
-    E -->|Yes| G[Return recorded response]
-    F -->|Yes| G
-
+    E -->|Yes| G{Interaction matches?}
     E -->|No| H{API key set?}
+    F -->|Yes| P[Return recorded response]
     F -->|No| I[Return 400 error:\nInclude X-Cassette-Name header]
 
+    G -->|Yes| P
+    G -->|No| O[Return 409 error:\nInteraction out of date]
+
     H -->|Yes| J[Record new interaction]
-    H -->|No| K[Return 400 error:\nNo cassette found]
+    H -->|No| K[Return 500 error:\nNo cassette found]
 
     J --> L[Make real API call]
     L --> M[Save to cassette file\nwith .yaml extension]
@@ -125,4 +150,26 @@ graph TD
 
     style I fill:#f96
     style K fill:#f96
+    style O fill:#fa6
 ```
+
+### Future work
+
+The recording process would remain consistent for other cloud services, such as
+Anthropic or Bedrock, though there could be variations in how requests are
+scrubbed for secrets or handled for request signing. In a future refactoring,
+we could extract the core recording infrastructure into a separate package,
+reducing this one to just cassette constants and OpenAI-specific recording
+details. This approach would enable reuse of most of the code.
+
+For additional insights, refer to OpenTelemetry instrumentation, which often
+employs VCR for LLM frameworks as well.
+
+Here are key parts of the OpenTelemetry Botocore Bedrock instrumentation that
+deals with request signing and recording:
+- [test_botocore_bedrock.py#](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/77f3171bd4d0ca8eb5501c8c493364f7b6c8859a/instrumentation/opentelemetry-instrumentation-botocore/tests/test_botocore_bedrock.py#L403)
+- [conftest.py](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/77f3171bd4d0ca8eb5501c8c493364f7b6c8859a/instrumentation/opentelemetry-instrumentation-botocore/tests/conftest.py#L77)
+
+Here are key parts of OpenInference Anthropic instrumentation, which handles
+their endpoint.
+- [test_instrumentor.py](https://github.com/Arize-ai/openinference/blob/main/python/instrumentation/openinference-instrumentation-anthropic/tests/openinference/anthropic/test_instrumentor.py)

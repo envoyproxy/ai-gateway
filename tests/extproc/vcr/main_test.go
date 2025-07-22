@@ -20,7 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/fakeopenai"
+	"github.com/envoyproxy/ai-gateway/tests/internal/fakeopenai"
 )
 
 // extprocBin holds the path to the compiled extproc binary.
