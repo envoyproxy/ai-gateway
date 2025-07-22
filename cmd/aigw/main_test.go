@@ -47,6 +47,12 @@ Commands:
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
 
+  install [flags]
+    Install Envoy AI Gateway and its dependencies to a Kubernetes cluster.
+
+  uninstall [flags]
+    Uninstall Envoy AI Gateway and its dependencies from a Kubernetes cluster.
+
 Run "aigw <command> --help" for more information on a command.
 `,
 			expPanicCode: ptr.To(0),
@@ -153,12 +159,20 @@ Flags:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := &bytes.Buffer{}
+			// Mock install and uninstall functions for testing
+			mockInstall := func(_ context.Context, _ cmdInstall, _, _ io.Writer) error {
+				return nil
+			}
+			mockUninstall := func(_ context.Context, _ cmdUninstall, _, _ io.Writer) error {
+				return nil
+			}
+
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf, mockInstall, mockUninstall)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf, mockInstall, mockUninstall)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})
