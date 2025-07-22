@@ -543,6 +543,52 @@ func TestMessageTranslation(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "multiple tool messages aggregated correctly",
+			inputMessages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleTool,
+					Value: openai.ChatCompletionToolMessageParam{
+						ToolCallID: "tool_1",
+						Content:    openai.StringOrArray{Value: `{"temp": "72F"}`},
+					},
+				},
+				{
+					Type: openai.ChatMessageRoleTool,
+					Value: openai.ChatCompletionToolMessageParam{
+						ToolCallID: "tool_2",
+						Content:    openai.StringOrArray{Value: `{"time": "16:00"}`},
+					},
+				},
+			},
+			expectedAnthropicMsgs: []anthropic.MessageParam{
+				{
+					Role: anthropic.MessageParamRoleUser,
+					Content: []anthropic.ContentBlockParamUnion{
+						{
+							OfToolResult: &anthropic.ToolResultBlockParam{
+								ToolUseID: "tool_1",
+								Type:      "tool_result",
+								Content: []anthropic.ToolResultBlockParamContentUnion{
+									{OfText: &anthropic.TextBlockParam{Text: `{"temp": "72F"}`, Type: "text"}},
+								},
+								IsError: anthropic.Bool(false),
+							},
+						},
+						{
+							OfToolResult: &anthropic.ToolResultBlockParam{
+								ToolUseID: "tool_2",
+								Type:      "tool_result",
+								Content: []anthropic.ToolResultBlockParamContentUnion{
+									{OfText: &anthropic.TextBlockParam{Text: `{"time": "16:00"}`, Type: "text"}},
+								},
+								IsError: anthropic.Bool(false),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -562,7 +608,7 @@ func TestMessageTranslation(t *testing.T) {
 					require.Len(t, actualMsg.Content, len(expectedMsg.Content), "Number of content blocks should match")
 					for j, expectedContent := range expectedMsg.Content {
 						actualContent := actualMsg.Content[j]
-						require.Equal(t, expectedContent.GetType(), actualContent.GetType(), "Content block types should match")
+						require.Equal(t, *expectedContent.GetType(), *actualContent.GetType(), "Content block types should match")
 						if expectedContent.OfText != nil {
 							require.NotNil(t, actualContent.OfText)
 							require.Equal(t, expectedContent.OfText.Text, actualContent.OfText.Text)
@@ -919,6 +965,14 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
 			},
 			expectErr: false,
+		},
+		{
+			name: "unsupported tool_choice type",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools:      openaiTestTool,
+				ToolChoice: 123, // Use an integer to trigger the default case.
+			},
+			expectErr: true,
 		},
 	}
 
