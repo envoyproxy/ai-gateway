@@ -96,7 +96,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 // the function will return nil.
 func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	defer func() {
-		if errors.Is(err, context.Canceled) {
+		// Don't err the caller about normal shutdown scenarios.
+		if errors.Is(err, context.Canceled) || errors.Is(err, grpc.ErrServerStopped) {
 			err = nil
 		}
 	}()
