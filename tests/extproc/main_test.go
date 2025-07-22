@@ -126,7 +126,7 @@ func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extPro
 
 	// Replace Docker-specific values with test values.
 	replacements := map[string]string{
-		"1975":                 strconv.Itoa(listenerPort),
+		"1062":                 strconv.Itoa(listenerPort),
 		"1063":                 strconv.Itoa(extProcPort),
 		"extproc":              "127.0.0.1",
 		"11434":                strconv.Itoa(openAIPort),

@@ -9,7 +9,7 @@ static_resources:
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 1975  # Same as aigw
+        port_value: 1062
     filter_chains:
     - filters:
       - name: envoy.filters.network.http_connection_manager

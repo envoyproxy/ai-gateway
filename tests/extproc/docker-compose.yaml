@@ -56,7 +56,7 @@ services:
     volumes:
       - ./envoy_aigw_local.yaml:/etc/envoy/envoy.yaml:ro
     ports:
-      - "1975:1975"  # HTTP ingress (Same as aigw)
+      - "1062:1062"  # HTTP ingress
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Needed to access Ollama running on the host
     command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
@@ -75,7 +75,7 @@ services:
       - -c
       - |
         curl -s -w %{http_code} \
-          -X POST http://envoy:1975/v1/chat/completions \
+          -X POST http://envoy:1062/v1/chat/completions \
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
           -d "{\"model\":\"$$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]}"
