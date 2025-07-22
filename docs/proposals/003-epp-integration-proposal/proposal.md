@@ -666,7 +666,7 @@ sequenceDiagram
     EG->>EAGES: Invoke PostTranslateModify Hook 
     EAGES-->>EG: Modify Envoy Listeners and Routes Config (Insert EPP extproc in relevant listeners and disable EPP extproc in un related routes)
     EG ->> Proxy: Generate final xDS configuration
-    Note over Proxy: Ready to foward downstream requests
+    Note over Proxy: Ready to forward downstream requests
 ```
 
 The logics flow for HTTPRoute + InferencePool is like:
@@ -688,7 +688,7 @@ sequenceDiagram
     EG->>EAGES: Invoke PostTranslateModify Hook 
     EAGES-->>EG: Modify Envoy Listeners and Routes Config (Insert EPP extproc in relevant listeners and disable EPP extproc in un related routes)
     EG ->> Proxy: Generate final xDS configuration
-    Note over Proxy: Ready to foward downstream requests
+    Note over Proxy: Ready to forward downstream requests
 ```
 
 ## Request Flow
@@ -715,7 +715,7 @@ sequenceDiagram
     EPP-->>Envoy: Add Picked Endpoint in Header and Metadata;
 
     loop Retry/Fallback loop
-    Note over Envoy: Foward Based on Picked Endpoint (Original Dst or HostOverride LbPolicy)
+    Note over Envoy: Forward Based on Picked Endpoint (Original Dst or HostOverride LbPolicy)
     Envoy->>Processor: Upstream level ExtProc Request
     Note over Processor: Request-Transform
     Processor-->>Envoy: ;
@@ -746,7 +746,7 @@ sequenceDiagram
     EPP-->>Envoy: Add Picked Endpoint in Header and Metadata;
 
     loop Retry/Fallback loop
-    Note over Envoy: Foward Based on Picked Endpoint (Original Dst or HostOverride LbPolicy)
+    Note over Envoy: Forward Based on Picked Endpoint (Original Dst or HostOverride LbPolicy)
     Envoy->>SelfHosted: Forward Request
     SelfHosted-->>Envoy: Response
     end
