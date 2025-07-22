@@ -47,19 +47,12 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
+precommit: tidy apigen apidoc format lint editorconfig yamllint helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
 	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
-
-.PHONY: codespell
-CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
-CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
-codespell: $(CODESPELL) ## Spell check the codebase.
-	@echo "spell => ./..."
-	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
 
 .PHONY: yamllint
 yamllint: $(YAMLLINT) ## Lint yaml files.

@@ -26,7 +26,6 @@ header:
     - '**/.gitignore'
     - '**/.helmignore'
     - .trivyignore
-    - '.codespell.*'
     - .editorconfig
     - .golangci.yml
     - .testcoverage.yml
