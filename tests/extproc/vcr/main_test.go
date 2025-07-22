@@ -7,6 +7,7 @@ package vcr
 
 import (
 	"bufio"
+	"bytes"
 	_ "embed"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -162,8 +164,8 @@ func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extPro
 type testEnvironment struct {
 	listenerPort int
 	openAIServer *fakeopenai.Server
-	envoyOut     *strings.Builder
-	extprocOut   *strings.Builder
+	envoyOut     *syncBuffer
+	extprocOut   *syncBuffer
 }
 
 // Close cleans up all resources in reverse order.
@@ -191,8 +193,8 @@ func setupTestEnvironment(t *testing.T) *testEnvironment {
 	require.NoError(t, err)
 
 	// Create output buffers.
-	extprocOutput := &strings.Builder{}
-	envoyOutput := &strings.Builder{}
+	extprocOutput := newSyncBuffer()
+	envoyOutput := newSyncBuffer()
 
 	// Start ExtProc.
 	requireExtProcNew(t, extprocOutput, extProcPort, metricsPort, healthPort)
@@ -219,4 +221,28 @@ func TestMain(m *testing.M) {
 
 	// Run tests.
 	os.Exit(m.Run())
+}
+
+// syncBuffer is a bytes.Buffer that is safe for concurrent read/write access.
+type syncBuffer struct {
+	mu sync.RWMutex
+	b  *bytes.Buffer
+}
+
+// Write implements io.Writer for syncBuffer.
+func (s *syncBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+// String implements fmt.Stringer for syncBuffer.
+func (s *syncBuffer) String() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.b.String()
+}
+
+func newSyncBuffer() *syncBuffer {
+	return &syncBuffer{b: bytes.NewBuffer(nil)}
 }
