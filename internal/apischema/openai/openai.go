@@ -27,6 +27,11 @@ const (
 	ChatMessageRoleTool      = "tool"
 )
 
+// Model names for testing.
+const (
+	ModelGPT41Nano = "gpt-4.1-nano"
+)
+
 // ChatCompletionContentPartRefusalType The type of the content part.
 type ChatCompletionContentPartRefusalType string
 
@@ -150,6 +155,19 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 	return nil
 }
 
+func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
+	if c.TextContent != nil {
+		return json.Marshal(c.TextContent)
+	}
+	if c.InputAudioContent != nil {
+		return json.Marshal(c.InputAudioContent)
+	}
+	if c.ImageContent != nil {
+		return json.Marshal(c.ImageContent)
+	}
+	return nil, errors.New("no content to marshal")
+}
+
 type StringOrAssistantRoleContentUnion struct {
 	Value interface{}
 }
@@ -170,6 +188,10 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return errors.New("cannot unmarshal JSON data as string or assistant content parts")
+}
+
+func (s StringOrAssistantRoleContentUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
 }
 
 type StringOrArray struct {
@@ -203,6 +225,10 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of string")
 }
 
+func (s StringOrArray) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
+}
+
 type StringOrUserRoleContentUnion struct {
 	Value interface{}
 }
@@ -223,6 +249,10 @@ func (s *StringOrUserRoleContentUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of content parts")
+}
+
+func (s StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
 }
 
 type ChatCompletionMessageParamUnion struct {
@@ -283,6 +313,10 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("unknown ChatCompletionMessageParam type: %v", role)
 	}
 	return nil
+}
+
+func (c ChatCompletionMessageParamUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Value)
 }
 
 // ChatCompletionUserMessageParam Messages sent by an end user, containing prompts or additional context
@@ -364,7 +398,7 @@ type ChatCompletionAssistantMessageParam struct {
 	Role string `json:"role"`
 	// Data about a previous audio response from the model.
 	// [Learn more](https://platform.openai.com/docs/guides/audio).
-	Audio ChatCompletionAssistantMessageParamAudio `json:"audio,omitempty"`
+	Audio ChatCompletionAssistantMessageParamAudio `json:"audio,omitzero"`
 	// The contents of the assistant message. Required unless `tool_calls` or
 	// `function_call` is specified.
 	Content StringOrAssistantRoleContentUnion `json:"content"`

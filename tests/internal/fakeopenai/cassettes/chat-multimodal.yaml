@@ -1,0 +1,135 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 490
+        host: api.openai.com
+        body: |-
+            {
+              "max_tokens": 100,
+              "messages": [
+                {
+                  "content": [
+                    {
+                      "text": "What is in this image?",
+                      "type": "text"
+                    },
+                    {
+                      "image_url": {
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+                      },
+                      "type": "image_url"
+                    }
+                  ],
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4.1-nano"
+            }
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "332"
+            Content-Type:
+                - application/json
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 995
+        body: |-
+            {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "logprobs": null,
+                  "message": {
+                    "annotations": [],
+                    "content": "This image shows a wooden pathway or boardwalk cutting through a lush, green grassy field under a partly cloudy sky. The scene appears peaceful and natural, with trees and bushes in the distance.",
+                    "refusal": null,
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1753162012,
+              "id": "chatcmpl-Bvzoa1bfMP6Un9WZKOGEAG0gdnYum",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
+              "service_tier": "default",
+              "system_fingerprint": null,
+              "usage": {
+                "completion_tokens": 38,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 3675,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 3713
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 963086899c62e580-KUL
+            Content-Type:
+                - application/json
+            Date:
+                - Tue, 22 Jul 2025 05:26:54 GMT
+            Openai-Processing-Ms:
+                - "3144"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "2865"
+            X-Ratelimit-Limit-Input-Images:
+                - "50000"
+            X-Ratelimit-Limit-Requests:
+                - "500"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Input-Images:
+                - "49999"
+            X-Ratelimit-Remaining-Requests:
+                - "499"
+            X-Ratelimit-Remaining-Tokens:
+                - "199226"
+            X-Ratelimit-Reset-Input-Images:
+                - 1ms
+            X-Ratelimit-Reset-Requests:
+                - 120ms
+            X-Ratelimit-Reset-Tokens:
+                - 231ms
+            X-Request-Id:
+                - req_c3c893208a63eb61aff9dacfd1a70a44
+        status: 200 OK
+        code: 200
+        duration: 3.5672045s

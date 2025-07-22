@@ -6,6 +6,7 @@
 package mainlib
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,4 +207,55 @@ func TestStartHealthCheckServer(t *testing.T) {
 			require.Equal(t, http.StatusOK, res.StatusCode)
 		})
 	}
+}
+
+// TestExtProcStartupMessage ensures other programs can rely on the startup message to STDERR.
+func TestExtProcStartupMessage(t *testing.T) {
+	// Create a temporary config file.
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`metadataNamespace: test_ns
+schema:
+  name: OpenAI
+  version: v1
+modelNameHeaderKey: x-model-name
+backends:
+- name: openai
+  schema:
+    name: OpenAI
+    version: v1
+`), 0o600))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// Create a pipe for stderr.
+	stderrR, stderrW := io.Pipe()
+
+	// Start a goroutine to scan stderr until it reaches "AI Gateway External Processor is ready" written by envoy.
+	go func() {
+		scanner := bufio.NewScanner(stderrR)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "AI Gateway External Processor is ready") {
+				cancel() // interrupts extproc.
+				return
+			}
+		}
+	}()
+
+	// Run ExtProc in a goroutine on ephemeral ports.
+	errCh := make(chan error, 1)
+	go func() {
+		args := []string{
+			"-configPath", configPath,
+			"-extProcAddr", ":0",
+			"-metricsPort", "0",
+			"-healthPort", "0",
+		}
+		errCh <- Main(ctx, args, stderrW)
+	}()
+
+	// block until the context is canceled or an error occurs.
+	err := <-errCh
+	require.NoError(t, err)
 }

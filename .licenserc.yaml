@@ -36,3 +36,5 @@ header:
     - pre-commit.sh
     - tests/extproc/testdata/server.key
     - tests/extproc/testdata/server.crt
+    - .env.ollama
+    - tests/internal/fakeopenai/cassettes
