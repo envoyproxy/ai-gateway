@@ -1,0 +1,48 @@
+# This is intentionally a separate workflow file than build_and_test.yaml since we want to run the precommit check on
+# any PRs regardless of the files changed, including documentation changes, etc.
+name: Precommit Check
+on:
+  pull_request:
+    branches:
+      - 'main'
+      - 'release/**'
+
+  push:
+    branches:
+      - 'main'
+      - 'release/**'
+
+concurrency:
+  # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.actor }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    name: Check
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - name: Ensure `make precommit` is executed
+        run: make check
