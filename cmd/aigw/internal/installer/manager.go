@@ -52,7 +52,7 @@ type InstallOptions struct {
 
 // Install performs the complete installation process.
 func (m *Manager) Install(ctx context.Context, opts InstallOptions) error {
-	steps := []string{
+	mainSteps := []string{
 		"Checking prerequisites",
 		"Installing Envoy Gateway",
 		"Installing AI Gateway",
@@ -60,40 +60,44 @@ func (m *Manager) Install(ctx context.Context, opts InstallOptions) error {
 		"Verifying installation",
 	}
 
-	progress := ui.NewStepProgress(m.output.Writer(), steps)
-	progress.Start()
+	progress := ui.NewDetailedStepProgress(m.output.Writer(), "🚀 AI Gateway Installation", mainSteps)
 
 	// Step 1: Check prerequisites
+	progress.StartMainStep(nil)
 	if err := m.checkPrerequisites(ctx); err != nil {
-		progress.FailCurrentStep()
+		progress.Fail()
 		return fmt.Errorf("prerequisites check failed: %w", err)
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 2: Install Envoy Gateway
+	progress.StartMainStep(nil)
 	if err := m.installEnvoyGateway(ctx, opts); err != nil {
-		progress.FailCurrentStep()
+		progress.Fail()
 		return fmt.Errorf("envoy gateway installation failed: %w", err)
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 3: Install AI Gateway
+	progress.StartMainStep(nil)
 	if err := m.installAIGateway(ctx, opts); err != nil {
-		progress.FailCurrentStep()
+		progress.Fail()
 		return fmt.Errorf("ai gateway installation failed: %w", err)
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 4: Configure Envoy Gateway
+	progress.StartMainStep(nil)
 	if err := m.configureEnvoyGateway(ctx, opts); err != nil {
-		progress.FailCurrentStep()
+		progress.Fail()
 		return fmt.Errorf("envoy gateway configuration failed: %w", err)
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 5: Verify installation
+	progress.StartMainStep(nil)
 	if err := m.verifyInstallation(ctx, opts); err != nil {
-		progress.FailCurrentStep()
+		progress.Fail()
 		return fmt.Errorf("installation verification failed: %w", err)
 	}
 
@@ -103,35 +107,38 @@ func (m *Manager) Install(ctx context.Context, opts InstallOptions) error {
 
 // Uninstall performs the complete uninstallation process.
 func (m *Manager) Uninstall(ctx context.Context, opts InstallOptions) error {
-	steps := []string{
+	mainSteps := []string{
 		"Removing AI Gateway configuration",
 		"Uninstalling AI Gateway",
 		"Uninstalling Envoy Gateway",
 		"Cleaning up resources",
 	}
 
-	progress := ui.NewStepProgress(m.output.Writer(), steps)
-	progress.Start()
+	progress := ui.NewDetailedStepProgress(m.output.Writer(), "🗑️  AI Gateway Uninstallation", mainSteps)
 
 	// Step 1: Remove AI Gateway configuration
+	progress.StartMainStep(nil)
 	if err := m.removeAIGatewayConfig(ctx, opts); err != nil {
 		m.output.Warning(fmt.Sprintf("Failed to remove AI Gateway configuration: %v", err))
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 2: Uninstall AI Gateway
+	progress.StartMainStep(nil)
 	if err := m.uninstallAIGateway(ctx, opts); err != nil {
 		m.output.Warning(fmt.Sprintf("Failed to uninstall AI Gateway: %v", err))
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 3: Uninstall Envoy Gateway
+	progress.StartMainStep(nil)
 	if err := m.uninstallEnvoyGateway(ctx, opts); err != nil {
 		m.output.Warning(fmt.Sprintf("Failed to uninstall Envoy Gateway: %v", err))
 	}
-	progress.NextStep()
+	progress.NextMainStep()
 
 	// Step 4: Clean up resources
+	progress.StartMainStep(nil)
 	if err := m.cleanupResources(ctx, opts); err != nil {
 		m.output.Warning(fmt.Sprintf("Failed to clean up resources: %v", err))
 	}
@@ -254,7 +261,7 @@ func (m *Manager) uninstallEnvoyGateway(ctx context.Context, opts InstallOptions
 }
 
 // removeAIGatewayConfig removes AI Gateway configuration.
-func (m *Manager) removeAIGatewayConfig(ctx context.Context, opts InstallOptions) error {
+func (m *Manager) removeAIGatewayConfig(_ context.Context, _ InstallOptions) error {
 	if m.dryRun {
 		m.output.Info("DRY RUN: Would remove AI Gateway configuration")
 		return nil
@@ -266,7 +273,7 @@ func (m *Manager) removeAIGatewayConfig(ctx context.Context, opts InstallOptions
 }
 
 // cleanupResources cleans up remaining resources.
-func (m *Manager) cleanupResources(ctx context.Context, opts InstallOptions) error {
+func (m *Manager) cleanupResources(_ context.Context, _ InstallOptions) error {
 	if m.dryRun {
 		m.output.Info("DRY RUN: Would clean up resources")
 		return nil

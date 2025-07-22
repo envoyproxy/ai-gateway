@@ -40,7 +40,7 @@ func NewHelmClient(restConfig *rest.Config) *HelmClient {
 // InstallOrUpgradeChart installs or upgrades a Helm chart.
 func (h *HelmClient) InstallOrUpgradeChart(ctx context.Context, opts ChartOptions) error {
 	actionConfig := &action.Configuration{}
-	if err := actionConfig.Init(h.settings.RESTClientGetter(), opts.Namespace, os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) {}); err != nil {
+	if err := actionConfig.Init(h.settings.RESTClientGetter(), opts.Namespace, os.Getenv("HELM_DRIVER"), func(_ string, _ ...interface{}) {}); err != nil {
 		return fmt.Errorf("failed to initialize helm action config: %w", err)
 	}
 
@@ -48,20 +48,18 @@ func (h *HelmClient) InstallOrUpgradeChart(ctx context.Context, opts ChartOption
 	histClient := action.NewHistory(actionConfig)
 	histClient.Max = 1
 	_, err := histClient.Run(opts.ReleaseName)
-
 	if err != nil {
 		// Release doesn't exist, install it
 		return h.installChart(ctx, actionConfig, opts)
-	} else {
-		// Release exists, upgrade it
-		return h.upgradeChart(ctx, actionConfig, opts)
 	}
+	// Release exists, upgrade it
+	return h.upgradeChart(ctx, actionConfig, opts)
 }
 
 // UninstallChart uninstalls a Helm chart.
-func (h *HelmClient) UninstallChart(ctx context.Context, releaseName, namespace string, timeout time.Duration) error {
+func (h *HelmClient) UninstallChart(_ context.Context, releaseName, namespace string, timeout time.Duration) error {
 	actionConfig := &action.Configuration{}
-	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) {}); err != nil {
+	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(_ string, _ ...interface{}) {}); err != nil {
 		return fmt.Errorf("failed to initialize helm action config: %w", err)
 	}
 
@@ -180,7 +178,7 @@ func (h *HelmClient) loadOCIChart(chartRef, version string) (*chart.Chart, error
 }
 
 // loadRepoChart loads a chart from a repository.
-func (h *HelmClient) loadRepoChart(chartRef, version string) (*chart.Chart, error) {
+func (h *HelmClient) loadRepoChart(_, _ string) (*chart.Chart, error) {
 	// This is a simplified implementation
 	// In a real implementation, you would need to handle repository management
 	return nil, fmt.Errorf("repository charts not implemented yet")
@@ -200,9 +198,9 @@ type ChartOptions struct {
 }
 
 // GetReleaseStatus gets the status of a Helm release.
-func (h *HelmClient) GetReleaseStatus(ctx context.Context, releaseName, namespace string) (string, error) {
+func (h *HelmClient) GetReleaseStatus(_ context.Context, releaseName, namespace string) (string, error) {
 	actionConfig := &action.Configuration{}
-	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) {}); err != nil {
+	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(_ string, _ ...interface{}) {}); err != nil {
 		return "", fmt.Errorf("failed to initialize helm action config: %w", err)
 	}
 
@@ -216,9 +214,9 @@ func (h *HelmClient) GetReleaseStatus(ctx context.Context, releaseName, namespac
 }
 
 // ListReleases lists all Helm releases in a namespace.
-func (h *HelmClient) ListReleases(ctx context.Context, namespace string) ([]*release.Release, error) {
+func (h *HelmClient) ListReleases(_ context.Context, namespace string) ([]*release.Release, error) {
 	actionConfig := &action.Configuration{}
-	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) {}); err != nil {
+	if err := actionConfig.Init(h.settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), func(_ string, _ ...interface{}) {}); err != nil {
 		return nil, fmt.Errorf("failed to initialize helm action config: %w", err)
 	}
 

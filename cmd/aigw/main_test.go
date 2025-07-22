@@ -47,6 +47,12 @@ Commands:
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
 
+  install [flags]
+    Install Envoy AI Gateway and its dependencies to a Kubernetes cluster.
+
+  uninstall [flags]
+    Uninstall Envoy AI Gateway and its dependencies from a Kubernetes cluster.
+
 Run "aigw <command> --help" for more information on a command.
 `,
 			expPanicCode: ptr.To(0),
@@ -154,10 +160,10 @@ Flags:
 		t.Run(tt.name, func(t *testing.T) {
 			out := &bytes.Buffer{}
 			// Mock install and uninstall functions for testing
-			mockInstall := func(ctx context.Context, cmd cmdInstall, stdout, stderr io.Writer) error {
+			mockInstall := func(_ context.Context, _ cmdInstall, _, _ io.Writer) error {
 				return nil
 			}
-			mockUninstall := func(ctx context.Context, cmd cmdUninstall, stdout, stderr io.Writer) error {
+			mockUninstall := func(_ context.Context, _ cmdUninstall, _, _ io.Writer) error {
 				return nil
 			}
 

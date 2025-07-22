@@ -8,6 +8,7 @@ package installer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -138,7 +139,7 @@ func (c *ConfigManager) applyConfigFile(ctx context.Context, config ConfigFile) 
 		var obj unstructured.Unstructured
 		err := decoder.Decode(&obj)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			spinner.ErrorAndStop(fmt.Sprintf("Failed to parse %s", config.Name))
@@ -241,7 +242,7 @@ func (c *ConfigManager) restartEnvoyGateway(ctx context.Context, namespace strin
 }
 
 // RemoveConfiguration removes AI Gateway configuration from Envoy Gateway.
-func (c *ConfigManager) RemoveConfiguration(ctx context.Context, opts ConfigOptions) error {
+func (c *ConfigManager) RemoveConfiguration(_ context.Context, _ ConfigOptions) error {
 	c.output.Info("Removing AI Gateway configuration from Envoy Gateway...")
 
 	// This would remove the configuration files that were applied

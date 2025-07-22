@@ -56,7 +56,7 @@ func (c *Client) Config() *rest.Config {
 }
 
 // CheckConnection verifies the connection to the Kubernetes cluster.
-func (c *Client) CheckConnection(ctx context.Context) error {
+func (c *Client) CheckConnection(_ context.Context) error {
 	_, err := c.clientset.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("failed to connect to kubernetes cluster: %w", err)
@@ -65,7 +65,7 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 }
 
 // GetServerVersion returns the Kubernetes server version.
-func (c *Client) GetServerVersion(ctx context.Context) (string, error) {
+func (c *Client) GetServerVersion(_ context.Context) (string, error) {
 	version, err := c.clientset.Discovery().ServerVersion()
 	if err != nil {
 		return "", fmt.Errorf("failed to get server version: %w", err)
@@ -74,7 +74,7 @@ func (c *Client) GetServerVersion(ctx context.Context) (string, error) {
 }
 
 // CheckMinimumVersion checks if the cluster meets the minimum version requirement.
-func (c *Client) CheckMinimumVersion(ctx context.Context, minVersion string) error {
+func (c *Client) CheckMinimumVersion(_ context.Context, minVersion string) error {
 	version, err := c.clientset.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("failed to get server version: %w", err)

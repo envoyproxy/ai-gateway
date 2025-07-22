@@ -171,6 +171,38 @@ func (o *Output) ConfirmPrompt(message string) bool {
 	return response == "y" || response == "yes"
 }
 
+// ConfirmWithDefault prompts the user for confirmation with a default value.
+func (o *Output) ConfirmWithDefault(message string, defaultValue bool) bool {
+	defaultText := "y/N"
+	if defaultValue {
+		defaultText = "Y/n"
+	}
+
+	o.Printf("%s %s [%s]: ", YellowBold.Sprint("?"), message, defaultText)
+
+	var response string
+	_, _ = fmt.Scanln(&response)
+
+	if response == "" {
+		return defaultValue
+	}
+
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
+}
+
+// ConfirmStep prompts the user to confirm a specific installation step.
+func (o *Output) ConfirmStep(stepName string, description string, defaultValue bool) bool {
+	o.EmptyLine()
+	o.Subheader(fmt.Sprintf("📋 %s", stepName))
+	if description != "" {
+		o.Info(description)
+		o.EmptyLine()
+	}
+
+	return o.ConfirmWithDefault(fmt.Sprintf("Do you want to proceed with %s?", stepName), defaultValue)
+}
+
 // Banner prints a banner with the given title.
 func (o *Output) Banner(title string) {
 	width := len(title) + 4

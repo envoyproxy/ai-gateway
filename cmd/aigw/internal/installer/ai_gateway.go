@@ -8,7 +8,6 @@ package installer
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/cmd/aigw/internal/k8s"
@@ -61,13 +60,23 @@ func (a *AIGatewayInstaller) Install(ctx context.Context, opts AIGatewayOptions)
 		}
 	}
 
-	// Install AI Gateway using command line helm to work around namespace issues
+	// Install AI Gateway using Helm Go SDK
+	chartOpts := k8s.ChartOptions{
+		ChartRef:        "oci://docker.io/envoyproxy/ai-gateway-helm",
+		ReleaseName:     "aieg",
+		Namespace:       opts.Namespace,
+		Version:         opts.Version,
+		Values:          a.getDefaultValues(),
+		Wait:            true,
+		Timeout:         opts.Timeout,
+		CreateNamespace: opts.CreateNamespace,
+		SkipCRDs:        opts.SkipCRDs,
+	}
 
 	spinner := ui.NewSpinner(a.output.Writer(), "Installing AI Gateway chart...")
 	spinner.Start()
 
-	// Use command line helm to work around namespace issues in the AI Gateway chart
-	err := a.installAIGatewayWithCLI(ctx, opts)
+	err := a.helmClient.InstallOrUpgradeChart(ctx, chartOpts)
 	if err != nil {
 		spinner.ErrorAndStop("Failed to install AI Gateway")
 		return fmt.Errorf("failed to install ai gateway chart: %w", err)
@@ -233,33 +242,4 @@ func (a *AIGatewayInstaller) GetInstallationInfo(ctx context.Context, namespace 
 	}
 
 	return info, nil
-}
-
-// installAIGatewayWithCLI installs AI Gateway using command line helm to work around namespace issues.
-func (a *AIGatewayInstaller) installAIGatewayWithCLI(ctx context.Context, opts AIGatewayOptions) error {
-	// Use command line helm to install with proper namespace handling
-	chartRef := "oci://docker.io/envoyproxy/ai-gateway-helm"
-
-	// Build helm install command
-	args := []string{
-		"install", "aieg", chartRef,
-		"--namespace", opts.Namespace,
-		"--create-namespace",
-		"--version", opts.Version,
-		"--wait",
-		"--timeout", opts.Timeout.String(),
-	}
-
-	if opts.SkipCRDs {
-		args = append(args, "--skip-crds")
-	}
-
-	// Execute helm install
-	cmd := exec.CommandContext(ctx, "helm", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("helm install failed: %w, output: %s", err, string(output))
-	}
-
-	return nil
 }
