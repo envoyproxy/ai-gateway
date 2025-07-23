@@ -6,7 +6,7 @@ sidebar_position: 2
 
 # HTTPRoute + InferencePool Guide
 
-This guide demonstrates how to use InferencePool with standard Gateway API HTTPRoute for intelligent inference routing. This approach provides basic load balancing and endpoint selection capabilities for inference workloads.
+This guide shows how to use InferencePool with the standard Gateway API HTTPRoute for intelligent inference routing. This approach provides basic load balancing and endpoint selection capabilities for inference workloads.
 
 ![](/img/inference-httproute.svg)
 
