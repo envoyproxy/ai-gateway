@@ -108,7 +108,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
                          {"role": "developer", "content": "you are a helpful dev assistant"},
                          {"role": "user", "content": "what do you see in this image"},
                          {"role": "tool", "content": "some tool", "tool_call_id": "123"},
-                         {"role": "assistant", "content": {"text": "you are a helpful assistant"}}
+			                   {"role": "assistant", "content": "you are a helpful assistant"}
                     ]}
 `),
 			out: &ChatCompletionRequest{
@@ -152,7 +152,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						Value: ChatCompletionAssistantMessageParam{
 							Role:    ChatMessageRoleAssistant,
-							Content: StringOrAssistantRoleContentUnion{Value: ChatCompletionAssistantMessageParamContent{Text: ptr.To("you are a helpful assistant")}},
+							Content: StringOrAssistantRoleContentUnion{Value: "you are a helpful assistant"},
 						},
 						Type: ChatMessageRoleAssistant,
 					},
@@ -164,7 +164,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 			in: []byte(`{"model": "gpu-o4",
                         "messages": [
                          {"role": "assistant", "content": "you are a helpful assistant"},
-                         {"role": "assistant", "content": "{'text': 'you are a helpful assistant'}"}
+			                   {"role": "assistant", "content": [{"text": "you are a helpful assistant content", "type": "text"}]}
                     ]}
 `),
 			out: &ChatCompletionRequest{
@@ -179,8 +179,10 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					},
 					{
 						Value: ChatCompletionAssistantMessageParam{
-							Role:    ChatMessageRoleAssistant,
-							Content: StringOrAssistantRoleContentUnion{Value: "{'text': 'you are a helpful assistant'}"},
+							Role: ChatMessageRoleAssistant,
+							Content: StringOrAssistantRoleContentUnion{Value: []ChatCompletionAssistantMessageParamContent{
+								{Text: ptr.To("you are a helpful assistant content"), Type: "text"},
+							}},
 						},
 						Type: ChatMessageRoleAssistant,
 					},
