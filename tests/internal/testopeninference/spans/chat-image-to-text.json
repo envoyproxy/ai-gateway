@@ -1,0 +1,146 @@
+{
+  "traceId":  "3IkC1P02PhfaCyyKVobb8A==",
+  "spanId":  "G1a3oK9qi9s=",
+  "flags":  256,
+  "name":  "ChatCompletion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "startTimeUnixNano":  "1753566702898125860",
+  "endTimeUnixNano":  "1753566702903718812",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"messages\": [{\"content\": [{\"text\": \"Answer in up to 5 words: What's in this image?\", \"type\": \"text\"}, {\"image_url\": {\"url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII=\"}, \"type\": \"image_url\"}], \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\"}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"id\":\"chatcmpl-Bx5kjGx7JwhMgT2Ov820b7pO9CYrv\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":\"A colorful Nintendo Switch game\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1753423165,\"model\":\"gpt-4.1-nano-2025-04-14\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_38343a2f8f\",\"usage\":{\"completion_tokens\":5,\"prompt_tokens\":24,\"total_tokens\":29,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"gpt-4.1-nano\"}"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.role",
+      "value":  {
+        "stringValue":  "user"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.contents.0.message_content.type",
+      "value":  {
+        "stringValue":  "text"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.contents.0.message_content.text",
+      "value":  {
+        "stringValue":  "Answer in up to 5 words: What's in this image?"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.contents.1.message_content.type",
+      "value":  {
+        "stringValue":  "image"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.contents.1.message_content.image.image.url",
+      "value":  {
+        "stringValue":  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII="
+      }
+    },
+    {
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "gpt-4.1-nano-2025-04-14"
+      }
+    },
+    {
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "29"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "24"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "5"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.cache_read",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.reasoning",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.role",
+      "value":  {
+        "stringValue":  "assistant"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.content",
+      "value":  {
+        "stringValue":  "A colorful Nintendo Switch game"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
+}
