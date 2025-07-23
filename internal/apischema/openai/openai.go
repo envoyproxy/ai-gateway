@@ -180,7 +180,7 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var content ChatCompletionAssistantMessageParamContent
+	var content []ChatCompletionAssistantMessageParamContent
 	err = json.Unmarshal(data, &content)
 	if err == nil {
 		s.Value = content
