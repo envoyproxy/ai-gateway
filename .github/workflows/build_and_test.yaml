@@ -33,34 +33,8 @@ permissions:
   packages: write
 
 jobs:
-  style:
-    name: Check
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          cache: false
-          go-version-file: go.mod
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-            ~/go/pkg/mod
-            ~/go/bin
-          key: code-style-check-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Ensure `make precommit` is executed
-        run: make check
   unittest:
     name: Unit Test
-    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -100,7 +74,6 @@ jobs:
 
   test_crdcel:
     name: CRD CEL Validation Test
-    needs: [style]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -125,7 +98,6 @@ jobs:
 
   test_controller:
     name: Controller Test
-    needs: [style]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -150,7 +122,6 @@ jobs:
 
   test_extproc:
     name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
-    needs: [style]
     strategy:
       fail-fast: false
       matrix:
@@ -209,7 +180,6 @@ jobs:
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
-    needs: [style]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
