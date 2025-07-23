@@ -32,17 +32,34 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with valid metrics.
 	t.Run("endpointpicker_with_aigwroute_valid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
 	})
 
 	// Test connectivity to inferencePool + inference pods with invalid metrics.
 	t.Run("endpointpicker_with_aigwroute_invalid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, egSelector, "mistral:latest")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "mistral:latest")
 	})
 
 	// Test connectivity to aiservicebackend within the same aigatewayroute with inferencePool.
 	t.Run("endpointpicker_with_aigwroute_aiservicebackend", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, egSelector, "some-cool-self-hosted-model")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "some-cool-self-hosted-model")
+	})
+
+	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
+	t.Run("endpointpicker_with_compressed_json_body", func(t *testing.T) {
+		testInferenceGatewayConnectivity(t, egSelector, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`)
+	})
+
+	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body which will be compressed by the EPP.
+	t.Run("endpointpicker_with_uncompressed_json_body", func(t *testing.T) {
+		testInferenceGatewayConnectivity(t, egSelector, `
+{
+	"model": "meta-llama/Llama-3.1-8B-Instruct",
+	"messages": [{
+		"role": "user",
+		"content": "Say this is a test"
+	}]
+}`)
 	})
 
 	t.Cleanup(func() {
@@ -58,7 +75,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with valid metrics.
 	t.Run("endpointpicker_with_httproute_valid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
 	})
 
 	t.Cleanup(func() {
@@ -66,29 +83,28 @@ func TestInferencePoolIntegration(t *testing.T) {
 	})
 }
 
-// testInferenceGatewayConnectivity tests that the Gateway is accessible and returns a 200 status code
-// for a valid request to the InferencePool backend.
-func testInferenceGatewayConnectivity(t *testing.T, egSelector, model string) {
+// testInferenceGatewayConnectivityByModel tests that the Gateway is accessible and returns a 200 status code
+// for a valid request to the InferencePool backend for a specific model.
+func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model string) {
+	testInferenceGatewayConnectivity(t, egSelector,
+		fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model))
+}
+
+func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
-		// Create a request to the InferencePool backend with the correct model header.
-		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model)
-		t.Logf("Request body: %s", requestBody)
-		req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
-		if err != nil {
-			t.Logf("failed to create request: %v", err)
-			return false
-		}
-
-		// Set required headers for InferencePool routing.
-		req.Header.Set("Content-Type", "application/json")
-
 		// Set timeout context.
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
-		req = req.WithContext(ctx)
+		// Create a request to the InferencePool backend with the correct model header.
+		requestBody := body
+		t.Logf("Request body: %s", requestBody)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		require.NoError(t, err)
+		// Set required headers for InferencePool routing.
+		req.Header.Set("Content-Type", "application/json")
 
 		// Make the request.
 		resp, err := http.DefaultClient.Do(req)
@@ -100,11 +116,7 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, model string) {
 
 		// Read response body for debugging.
 		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Logf("failed to read response body: %v", err)
-			return false
-		}
-
+		require.NoError(t, err, "failed to read response body")
 		t.Logf("Response status: %d, body: %s", resp.StatusCode, string(body))
 
 		// Check for successful response (200 OK).
@@ -114,11 +126,7 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, model string) {
 		}
 
 		// Verify we got a valid response body (should contain some content).
-		if len(body) == 0 {
-			t.Logf("empty response body")
-			return false
-		}
-
+		require.NotEmpty(t, body, "response body should not be empty")
 		t.Logf("Gateway connectivity test passed: status=%d", resp.StatusCode)
 		return true
 	}, 2*time.Minute, 5*time.Second, "Gateway should be accessible and return 200 status code")
