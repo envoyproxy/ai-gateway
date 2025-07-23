@@ -1,9 +1,9 @@
 # Envoy AI Gateway
 Envoy AI Gateway is an open source project for using [Envoy Gateway](https://github.com/envoyproxy/gateway) to handle request traffic from application clients to Generative AI services.
 
-## Architecture
+## Usage
 
-Envoy AI Gateway follows a two-tier gateway design, with a centralized API traffic entry point and a self-hosted model serving cluster. The centralized gateway handles authentication, top-level routing, and global rate limiting, while the self-hosted model serving cluster provides fine-grained control over internal model access.
+When using Envoy AI Gateway, we refer to a two-tier gateway pattern. **The Tier One Gateway** functions as a centralized entry point, and the **Tier Two Gateway** handles ingress traffic to a self-hosted model serving cluster. The **The Tier One Gateway** handles authentication, top-level routing, and global rate limiting, while the **Tier Two Gateway** provides fine-grained control over internal model access.
 
 ![](site/blog/images/aigw-ref.drawio.png)
 
