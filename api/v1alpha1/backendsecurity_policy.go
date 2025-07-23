@@ -130,6 +130,12 @@ type GCPWorkloadIdentityFederationConfig struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	WorkloadIdentityPoolName string `json:"workloadIdentityPoolName"`
+
+	// ServiceAccountImpersonation is the service account impersonation configuration.
+	// This is used to impersonate a service account when getting access token.
+	//
+	// +optional
+	ServiceAccountImpersonation *GCPServiceAccountImpersonationConfig `json:"serviceAccountImpersonation,omitempty"`
 }
 
 type GCPOIDCExchangeToken struct {
@@ -174,12 +180,6 @@ type BackendSecurityPolicyGCPCredentials struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
-
-	// ServiceAccountImpersonation is the service account impersonation configuration.
-	// This is used to impersonate a service account when getting access token.
-	//
-	// +optional
-	ServiceAccountImpersonation *GCPServiceAccountImpersonationConfig `json:"serviceAccountImpersonation,omitempty"`
 
 	// WorkloadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation.
 	//

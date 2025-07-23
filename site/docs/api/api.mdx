@@ -880,11 +880,6 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
   required="true"
   description="Region is the GCP region associated with the policy."
 /><ApiField
-  name="serviceAccountImpersonation"
-  type="[GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)"
-  required="false"
-  description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
-/><ApiField
   name="workloadIdentityFederationConfig"
   type="[GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
   required="true"
@@ -1061,7 +1056,7 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
 
 
 **Appears in:**
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 
 
 
@@ -1110,6 +1105,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   type="string"
   required="true"
   description="WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en"
+/><ApiField
+  name="serviceAccountImpersonation"
+  type="[GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)"
+  required="false"
+  description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
 

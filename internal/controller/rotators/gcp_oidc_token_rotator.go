@@ -184,11 +184,11 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	// 3. Exchange the STS token for a GCP service account access token.
 	// The STS token is used to impersonate a GCP service account.
 	var gcpAccessToken *tokenprovider.TokenExpiry
-	if r.gcpCredentials.ServiceAccountImpersonation != nil {
-		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.ServiceAccountImpersonation, r.gcpCredentials.ProjectName)
+	if r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation != nil {
+		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation, r.gcpCredentials.ProjectName)
 		if err != nil {
 			saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com",
-				r.gcpCredentials.ServiceAccountImpersonation.ServiceAccountName,
+				r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation.ServiceAccountName,
 				r.gcpCredentials.ProjectName)
 			r.logger.Error(err, "failed to impersonate GCP service account",
 				"serviceAccount", saEmail,

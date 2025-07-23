@@ -212,7 +212,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 				},
 			}
 			if !tt.skipServiceAccountImpersonation {
-				gcpCredentials.ServiceAccountImpersonation = &aigv1a1.GCPServiceAccountImpersonationConfig{
+				gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation = &aigv1a1.GCPServiceAccountImpersonationConfig{
 					ServiceAccountName: "test-service-account",
 				}
 			}
@@ -707,13 +707,13 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 						ProjectName: "test-project",
 						Region:      "us-central1",
-						ServiceAccountImpersonation: &aigv1a1.GCPServiceAccountImpersonationConfig{
-							ServiceAccountName: "test-service-account",
-						},
 						WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
 							ProjectID:                    "test-project-id",
 							WorkloadIdentityPoolName:     "test-pool-name",
 							WorkloadIdentityProviderName: "test-provider",
+							ServiceAccountImpersonation: &aigv1a1.GCPServiceAccountImpersonationConfig{
+								ServiceAccountName: "test-service-account",
+							},
 							OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
 								BackendSecurityPolicyOIDC: validOIDCConfig,
 							},

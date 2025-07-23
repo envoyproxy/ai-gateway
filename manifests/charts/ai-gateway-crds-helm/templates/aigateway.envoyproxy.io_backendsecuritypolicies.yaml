@@ -2817,19 +2817,6 @@ spec:
                     description: Region is the GCP region associated with the policy.
                     minLength: 1
                     type: string
-                  serviceAccountImpersonation:
-                    description: |-
-                      ServiceAccountImpersonation is the service account impersonation configuration.
-                      This is used to impersonate a service account when getting access token.
-                    properties:
-                      serviceAccountName:
-                        description: ServiceAccountName is the name of the service
-                          account to impersonate.
-                        minLength: 1
-                        type: string
-                    required:
-                    - serviceAccountName
-                    type: object
                   workloadIdentityFederationConfig:
                     description: WorkloadIdentityFederationConfig is the configuration
                       for the GCP Workload Identity Federation.
@@ -4129,6 +4116,19 @@ spec:
                         description: ProjectID is the GCP project ID.
                         minLength: 1
                         type: string
+                      serviceAccountImpersonation:
+                        description: |-
+                          ServiceAccountImpersonation is the service account impersonation configuration.
+                          This is used to impersonate a service account when getting access token.
+                        properties:
+                          serviceAccountName:
+                            description: ServiceAccountName is the name of the service
+                              account to impersonate.
+                            minLength: 1
+                            type: string
+                        required:
+                        - serviceAccountName
+                        type: object
                       workloadIdentityPoolName:
                         description: |-
                           WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.
