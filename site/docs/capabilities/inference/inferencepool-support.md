@@ -45,7 +45,7 @@ sequenceDiagram
     Envoy->>RLS: Check Rate Limit
     RLS-->>Envoy: Rate limit OK
     Envoy->>Processor: Router-level ExtProc Request
-    Note over Processor: Extract Model Name & Routing
+    Note over Processor: Extract Model Name
     Processor-->>Envoy: ClearRouteCache
     Envoy->>EPP: Router-level ExtProc Request
     Note over EPP: Pick Optimal Endpoint
