@@ -826,14 +826,48 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Name:        "get_weather",
 						Description: anthropic.String("Get the weather"),
 						InputSchema: anthropic.ToolInputSchemaParam{
+							Type: "object",
 							Properties: map[string]interface{}{
+								"location": map[string]interface{}{"type": "string"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "tool_definition_with_required_field",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get the weather with a required location",
+							Parameters: map[string]interface{}{
 								"type": "object",
 								"properties": map[string]interface{}{
 									"location": map[string]interface{}{"type": "string"},
+									"unit":     map[string]interface{}{"type": "string"},
 								},
+								"required": []interface{}{"location"},
 							},
-							Type:        "function",
-							ExtraFields: nil,
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:        "get_weather",
+						Description: anthropic.String("Get the weather with a required location"),
+						InputSchema: anthropic.ToolInputSchemaParam{
+							Type: "object",
+							Properties: map[string]interface{}{
+								"location": map[string]interface{}{"type": "string"},
+								"unit":     map[string]interface{}{"type": "string"},
+							},
+							Required: []string{"location"},
 						},
 					},
 				},

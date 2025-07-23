@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -476,9 +477,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 // into the parameter struct required by the Anthropic SDK.
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
-	//maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
-	defaultMaxTokens := int64(800)
-	maxTokens := &defaultMaxTokens
+	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 	if maxTokens == nil {
 		err = fmt.Errorf("the maximum number of tokens must be set for Anthropic, got nil instead")
 		return
@@ -558,8 +557,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	//TODO: remove
-	modelName := strings.TrimPrefix(openAIReq.Model, "gcp.")
+	modelName := openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
 		modelName = o.modelNameOverride
