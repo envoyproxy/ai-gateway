@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package fakeopenai
+package testopenai
 
 import (
 	"encoding/json"
@@ -15,9 +15,8 @@ import (
 )
 
 func TestNewRequest(t *testing.T) {
-	// Start fake OpenAI server.
-	server, err := NewServer()
-	require.NoError(t, err)
+	// Start test OpenAI server.
+	server := newTestServer(t)
 	defer server.Close()
 
 	baseURL := server.URL()
@@ -64,12 +63,36 @@ func TestNewRequest(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			cassetteName:   CassetteChatBase64Image,
+			cassetteName:   CassetteChatImageToText,
 			expectedStatus: http.StatusOK,
 		},
 		{
 			cassetteName:   CassetteChatUnknownModel,
 			expectedStatus: http.StatusNotFound,
+		},
+		{
+			cassetteName:   CassetteChatReasoning,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			cassetteName:   CassetteChatTextToImageTool,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			cassetteName:   CassetteChatAudioToText,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			cassetteName:   CassetteChatTextToAudio,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			cassetteName:   CassetteChatDetailedUsage,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			cassetteName:   CassetteChatStreamingDetailedUsage,
+			expectedStatus: http.StatusOK,
 		},
 	}
 
@@ -123,7 +146,7 @@ func TestNewRequest(t *testing.T) {
 // TestCassetteCompleteness ensures all cassette constants have corresponding request bodies.
 func TestCassetteCompleteness(t *testing.T) {
 	// Get all cassette constants.
-	cassettes := AllCassettes()
+	cassettes := ChatCassettes()
 
 	// Verify each cassette has a request body.
 	for _, cassette := range cassettes {

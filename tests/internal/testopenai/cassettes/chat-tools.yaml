@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 ---
 version: 2
 interactions:
@@ -6,18 +11,17 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 866
+        content_length: 834
         host: api.openai.com
         body: |-
             {
               "messages": [
                 {
-                  "content": "What is the weather like in San Francisco?",
+                  "content": "What is the weather like in Boston today?",
                   "role": "user"
                 }
               ],
               "model": "gpt-4.1-nano",
-              "parallel_tool_calls": true,
               "tool_choice": "auto",
               "tools": [
                 {
@@ -52,7 +56,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "503"
+                - "475"
             Content-Type:
                 - application/json
             User-Agent:
@@ -63,7 +67,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1359
+        content_length: 1348
         body: |-
             {
               "choices": [
@@ -79,32 +83,32 @@ interactions:
                     "tool_calls": [
                       {
                         "function": {
-                          "arguments": "{\"location\": \"San Francisco, CA\"}",
+                          "arguments": "{\"location\": \"Boston\"}",
                           "name": "get_current_weather"
                         },
-                        "id": "call_D6u1WUoe5SU9K153FitUAhfw",
+                        "id": "call_1o2wGNYyriaQFlwkmvBmkJs7",
                         "type": "function"
                       },
                       {
                         "function": {
-                          "arguments": "{\"location\": \"San Francisco, CA\"}",
+                          "arguments": "{\"location\": \"Boston\"}",
                           "name": "get_current_weather"
                         },
-                        "id": "call_aQlRzPlzkHJ29YluNaXlVfuT",
+                        "id": "call_vLHpymLmyGCbjCxUJZf0aP45",
                         "type": "function"
                       }
                     ]
                   }
                 }
               ],
-              "created": 1753162059,
-              "id": "chatcmpl-BvzpL1xt8QNyiT9xFDZp0olg9pSEx",
+              "created": 1753423148,
+              "id": "chatcmpl-Bx5kSOQua7eWnIemycaUxlSzwmHyi",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null,
+              "system_fingerprint": "fp_38343a2f8f",
               "usage": {
-                "completion_tokens": 52,
+                "completion_tokens": 46,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
@@ -116,7 +120,7 @@ interactions:
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 133
+                "total_tokens": 127
               }
             }
         headers:
@@ -127,13 +131,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 963087b95b90e580-KUL
+                - 96496df6cf20e547-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 05:27:40 GMT
+                - Fri, 25 Jul 2025 05:59:09 GMT
             Openai-Processing-Ms:
-                - "613"
+                - "485"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -145,7 +149,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "620"
+                - "488"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -153,13 +157,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199987"
+                - "199986"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 3ms
             X-Request-Id:
-                - req_ce34af16c966b5df11e0b240f401058f
+                - req_2722816faa7c08a4ff5d433d562531e2
         status: 200 OK
         code: 200
-        duration: 910.667292ms
+        duration: 1.091188208s

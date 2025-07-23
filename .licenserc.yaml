@@ -37,4 +37,4 @@ header:
     - tests/extproc/testdata/server.key
     - tests/extproc/testdata/server.crt
     - .env.ollama
-    - tests/internal/fakeopenai/cassettes
+    - tests/internal/testopenai/cassettes

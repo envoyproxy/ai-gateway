@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 ---
 version: 2
 interactions:
@@ -6,35 +11,26 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 490
+        content_length: 224
         host: api.openai.com
         body: |-
             {
-              "max_tokens": 100,
               "messages": [
                 {
-                  "content": [
-                    {
-                      "text": "What is in this image?",
-                      "type": "text"
-                    },
-                    {
-                      "image_url": {
-                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-                      },
-                      "type": "image_url"
-                    }
-                  ],
+                  "content": "Generate a JSON object with three properties: name, age, and city.",
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano"
+              "model": "gpt-4.1-nano",
+              "response_format": {
+                "type": "json_object"
+              }
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "332"
+                - "173"
             Content-Type:
                 - application/json
             User-Agent:
@@ -45,7 +41,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 995
+        content_length: 880
         body: |-
             {
               "choices": [
@@ -55,32 +51,32 @@ interactions:
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "This image shows a wooden pathway or boardwalk cutting through a lush, green grassy field under a partly cloudy sky. The scene appears peaceful and natural, with trees and bushes in the distance.",
+                    "content": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753162012,
-              "id": "chatcmpl-Bvzoa1bfMP6Un9WZKOGEAG0gdnYum",
+              "created": 1753423157,
+              "id": "chatcmpl-Bx5kbEUUMAowmenXgOVnlnUEiEZws",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null,
+              "system_fingerprint": "fp_38343a2f8f",
               "usage": {
-                "completion_tokens": 38,
+                "completion_tokens": 25,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
                   "reasoning_tokens": 0,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 3675,
+                "prompt_tokens": 22,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 3713
+                "total_tokens": 47
               }
             }
         headers:
@@ -91,13 +87,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 963086899c62e580-KUL
+                - 96496e2ff80fe547-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 05:26:54 GMT
+                - Fri, 25 Jul 2025 05:59:18 GMT
             Openai-Processing-Ms:
-                - "3144"
+                - "531"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -109,27 +105,21 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "2865"
-            X-Ratelimit-Limit-Input-Images:
-                - "50000"
+                - "542"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
                 - "200000"
-            X-Ratelimit-Remaining-Input-Images:
-                - "49999"
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199226"
-            X-Ratelimit-Reset-Input-Images:
-                - 1ms
+                - "199981"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 231ms
+                - 5ms
             X-Request-Id:
-                - req_c3c893208a63eb61aff9dacfd1a70a44
+                - req_36ad695987ede380f7f072212f50d9dc
         status: 200 OK
         code: 200
-        duration: 3.5672045s
+        duration: 857.576167ms

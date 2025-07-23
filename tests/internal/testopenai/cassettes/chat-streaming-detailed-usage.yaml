@@ -1,0 +1,103 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 204
+        host: api.openai.com
+        body: |-
+            {
+              "max_tokens": 10,
+              "messages": [
+                {
+                  "content": "Say hello",
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4.1-nano",
+              "stream": true,
+              "stream_options": {
+                "include_usage": true
+              }
+            }
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "145"
+            Content-Type:
+                - application/json
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 1729
+        body: |+
+            data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+            data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+            data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+            data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
+
+            data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+            data: [DONE]
+
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 96496fcb291be547-KUL
+            Content-Type:
+                - text/event-stream; charset=utf-8
+            Date:
+                - Fri, 25 Jul 2025 06:00:23 GMT
+            Openai-Processing-Ms:
+                - "186"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "191"
+            X-Ratelimit-Limit-Requests:
+                - "500"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "499"
+            X-Ratelimit-Remaining-Tokens:
+                - "199995"
+            X-Ratelimit-Reset-Requests:
+                - 120ms
+            X-Ratelimit-Reset-Tokens:
+                - 1ms
+            X-Request-Id:
+                - req_5a9170a37c82b3c77b92f3747b85705f
+        status: 200 OK
+        code: 200
+        duration: 499.348208ms

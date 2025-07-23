@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package fakeopenai
+package testopenai
 
 import (
 	"bytes"
@@ -25,55 +25,52 @@ const CassetteNameHeader = "X-Cassette-Name"
 
 type cassetteHandler struct {
 	apiBase      string
-	cassettes    []*cassette.Cassette
+	cassettes    map[string]*cassette.Cassette
 	cassettesDir string
 	apiKey       string
+	// requestHeadersToRedact contains headers to not emit when logging request matching errors.
+	requestHeadersToRedact map[string]struct{}
 }
 
 // ServeHTTP implements http.Handler by matching requests against recorded cassettes.
 func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Normalize the request URL to match cassette format.
-	originalPath := r.URL.Path
-	// Strip /v1 prefix if present since apiBase already includes it.
-	pathForAPI := strings.TrimPrefix(r.URL.Path, "/v1")
-	r.URL, _ = url.Parse(h.apiBase + pathForAPI)
-
 	// Read the request body.
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.errorResponse(w, http.StatusInternalServerError, "Failed to read request body: %v", err)
 		return
 	}
-	// Restore the body for matching.
+	// Restore the body for potential future use.
 	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	// Normalize the request URL to match cassette format, including query parameters.
+	originalPath := r.URL.Path
+	pathForAPI := strings.TrimPrefix(r.URL.Path, "/v1")
+	u, err := url.Parse(h.apiBase + pathForAPI)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, "Failed to parse URL: %v", err)
+		return
+	}
+	u.RawQuery = r.URL.RawQuery
+	r.URL = u
 
 	// Check if a specific cassette is requested.
 	cassetteName := r.Header.Get(CassetteNameHeader)
 	if cassetteName != "" {
-		// Match against interactions from the specific cassette only.
-		// Note: We load all cassettes but filter by name when X-Cassette-Name is provided.
-		for _, c := range h.cassettes {
-			// Check if this cassette matches the requested name.
-			// Cassettes are loaded with paths like "cassettes/name.yaml".
-			cassetteNameWithExt := cassetteName + ".yaml"
-			if c.Name == cassetteName || c.Name == cassetteNameWithExt ||
-				strings.HasSuffix(c.Name, "/"+cassetteName) || strings.HasSuffix(c.Name, "/"+cassetteNameWithExt) {
-				for _, interaction := range c.Interactions {
-					if matchRequest(r, interaction.Request) {
-						writeResponse(w, interaction)
-						return
-					}
+		c := h.cassettes[cassetteName]
+		if c != nil {
+			for _, interaction := range c.Interactions {
+				if h.matchRequest(r, interaction.Request, body) {
+					writeResponse(w, interaction)
+					return
 				}
-				// We found the cassette but no matching interaction.
-				cassetteFile := cassetteName
-				if !strings.HasSuffix(cassetteFile, ".yaml") {
-					cassetteFile += ".yaml"
-				}
-				h.errorResponse(w, http.StatusConflict,
-					"Interaction out of date for %s %s. To re-record, delete cassettes/%s and re-run with OPENAI_API_KEY set.",
-					r.Method, originalPath, cassetteFile)
-				return
 			}
+			// We found the cassette but no matching interaction.
+			cassetteFile := cassetteName + ".yaml"
+			h.errorResponse(w, http.StatusConflict,
+				"Interaction out of date for %s %s. To re-record, delete %s/%s and re-run with OPENAI_API_KEY set.",
+				r.Method, originalPath, h.cassettesDir, cassetteFile)
+			return
 		}
 
 		// No matching cassette found.
@@ -97,7 +94,7 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// No specific cassette requested - try to find a match in all cassettes.
 	for _, c := range h.cassettes {
 		for _, interaction := range c.Interactions {
-			if matchRequest(r, interaction.Request) {
+			if h.matchRequest(r, interaction.Request, body) {
 				// Found a match! Return the recorded response.
 				writeResponse(w, interaction)
 				return
@@ -105,7 +102,7 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.errorResponse(w, http.StatusBadRequest,
+	h.errorResponseWithRequestDetails(w, r, body, http.StatusBadRequest,
 		"No cassette found for %s %s. To record a new cassette, include the %s header with the cassette name.",
 		r.Method, originalPath, CassetteNameHeader)
 }
@@ -113,9 +110,53 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // errorResponse sends a clearly marked error response.
 func (h *cassetteHandler) errorResponse(w http.ResponseWriter, code int, format string, args ...interface{}) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-FakeOpenAI-Error", "true")
+	w.Header().Set("X-TestOpenAI-Error", "true")
 	w.WriteHeader(code)
-	fmt.Fprintf(w, "FakeOpenAI Error: "+format+"\n", args...)
+	fmt.Fprintf(w, "TestOpenAI Error: "+format+"\n", args...)
+}
+
+// errorResponseWithRequestDetails sends an error response with detailed request information,
+// formatted similar to testify assertions for easy debugging.
+func (h *cassetteHandler) errorResponseWithRequestDetails(w http.ResponseWriter, r *http.Request, body []byte, code int, format string, args ...interface{}) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-TestOpenAI-Error", "true")
+	w.WriteHeader(code)
+
+	// Main error message.
+	fmt.Fprintf(w, "TestOpenAI Error: "+format+"\n", args...)
+
+	// Request details formatted like testify.
+	fmt.Fprintln(w, "\n--- Actual Request Details ---")
+	fmt.Fprintf(w, "Method:      %s\n", r.Method)
+	fmt.Fprintf(w, "Path:        %s\n", r.URL.Path)
+	fmt.Fprintf(w, "Query:       %s\n", r.URL.RawQuery)
+
+	fmt.Fprintln(w, "\nHeaders:")
+	// Scrub sensitive headers.
+	for key, values := range r.Header {
+		if _, ok := h.requestHeadersToRedact[strings.ToLower(key)]; ok {
+			fmt.Fprintf(w, "  %s: [REDACTED]\n", key)
+		} else {
+			for _, value := range values {
+				fmt.Fprintf(w, "  %s: %s\n", key, value)
+			}
+		}
+	}
+
+	// Body.
+	fmt.Fprintln(w, "\nBody:")
+	if len(body) == 0 {
+		fmt.Fprintln(w, "  <empty>")
+	} else {
+		// Pretty print if it looks like JSON.
+		bodyStr := string(body)
+		if strings.TrimSpace(bodyStr) != "" && (strings.HasPrefix(strings.TrimSpace(bodyStr), "{") || strings.HasPrefix(strings.TrimSpace(bodyStr), "[")) {
+			fmt.Fprintf(w, "  %s\n", bodyStr)
+		} else {
+			fmt.Fprintf(w, "  %q\n", bodyStr)
+		}
+	}
+	fmt.Fprintln(w, "\n--- End Request Details ---")
 }
 
 // recordNewInteraction attempts to make a real API call and record the response.
@@ -128,8 +169,7 @@ func (h *cassetteHandler) recordNewInteraction(r *http.Request, body []byte, w h
 	// Create cassette path. The VCR recorder will add .yaml extension automatically.
 	cassettePath := filepath.Join(h.cassettesDir, cassetteName)
 
-	opts := recorderOptions(defaultConfig())
-	rec, err := recorder.New(cassettePath, opts...)
+	rec, err := recorder.New(cassettePath, recorderOptions...)
 	if err != nil {
 		return fmt.Errorf("failed to create recorder: %w", err)
 	}
@@ -202,32 +242,24 @@ func writeResponse(w http.ResponseWriter, interaction *cassette.Interaction) {
 }
 
 // matchRequest checks if an HTTP request matches a cassette request.
-func matchRequest(r *http.Request, i cassette.Request) bool {
+func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body []byte) bool {
 	// Match method.
 	if r.Method != i.Method {
 		return false
 	}
 
-	// Match URL path (cassettes use full URL, but we only care about path).
-	if !strings.HasSuffix(i.URL, r.URL.Path) {
+	// Match full URL (including query parameters).
+	if i.URL != r.URL.String() {
 		return false
 	}
-
-	// Read request body for comparison.
-	rBodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		return false
-	}
-	// Restore body.
-	r.Body = io.NopCloser(bytes.NewReader(rBodyBytes))
 
 	// For JSON requests, do semantic comparison.
 	if isJSON(r.Header.Get("Content-Type")) || isJSON(getHeaderValue(i.Headers, "Content-Type")) {
-		return matchJSONBodies(string(rBodyBytes), i.Body)
+		return matchJSONBodies(string(body), i.Body)
 	}
 
 	// For non-JSON, exact match.
-	return string(rBodyBytes) == i.Body
+	return string(body) == i.Body
 }
 
 // isJSON checks if a content type indicates JSON.

@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 ---
 version: 2
 interactions:
@@ -6,36 +11,53 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 393
+        content_length: 866
         host: api.openai.com
         body: |-
             {
               "messages": [
                 {
-                  "content": "You are a helpful assistant.",
-                  "role": "developer"
-                },
-                {
-                  "content": "Hello!",
-                  "role": "user"
-                },
-                {
-                  "content": "Hello! How can I assist you today?",
-                  "role": "assistant"
-                },
-                {
-                  "content": "What's the weather like?",
+                  "content": "What is the weather like in San Francisco?",
                   "role": "user"
                 }
               ],
               "model": "gpt-4.1-nano",
-              "temperature": 0.7
+              "parallel_tool_calls": true,
+              "tool_choice": "auto",
+              "tools": [
+                {
+                  "function": {
+                    "description": "Get the current weather in a given location",
+                    "name": "get_current_weather",
+                    "parameters": {
+                      "properties": {
+                        "location": {
+                          "description": "The city and state, e.g. San Francisco, CA",
+                          "type": "string"
+                        },
+                        "unit": {
+                          "enum": [
+                            "celsius",
+                            "fahrenheit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "location"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "type": "function"
+                }
+              ]
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "273"
+                - "503"
             Content-Type:
                 - application/json
             User-Agent:
@@ -46,42 +68,52 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1038
+        content_length: 1104
         body: |-
             {
               "choices": [
                 {
-                  "finish_reason": "stop",
+                  "finish_reason": "tool_calls",
                   "index": 0,
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "I don't have real-time access to current weather data. However, I can help you find the weather forecast if you tell me your location. Alternatively, you can check a weather website or app for the latest updates. How can I assist you further?",
+                    "content": null,
                     "refusal": null,
-                    "role": "assistant"
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"location\":\"San Francisco\"}",
+                          "name": "get_current_weather"
+                        },
+                        "id": "call_tJS1YOMPgrRQ0uOhzX6u3xRW",
+                        "type": "function"
+                      }
+                    ]
                   }
                 }
               ],
-              "created": 1753162021,
-              "id": "chatcmpl-BvzojqxiCJvlfUn7EkHrdDbGaNqwg",
+              "created": 1753423163,
+              "id": "chatcmpl-Bx5kh1kb0qKYD3a7CmCaJwAbMohnb",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null,
+              "system_fingerprint": "fp_38343a2f8f",
               "usage": {
-                "completion_tokens": 50,
+                "completion_tokens": 16,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
                   "reasoning_tokens": 0,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 41,
+                "prompt_tokens": 81,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 91
+                "total_tokens": 97
               }
             }
         headers:
@@ -92,13 +124,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 963086b63e3ee580-KUL
+                - 96496e501cc6e547-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 05:27:17 GMT
+                - Fri, 25 Jul 2025 05:59:23 GMT
             Openai-Processing-Ms:
-                - "16147"
+                - "365"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -110,7 +142,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "16152"
+                - "368"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -118,13 +150,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199972"
+                - "199987"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 8ms
+                - 3ms
             X-Request-Id:
-                - req_38d4f47e4f8bda9ff1652ede5f136b92
+                - ba183b02-a1f8-466d-ba69-9a53c7c4d4c4
         status: 200 OK
         code: 200
-        duration: 19.396106583s
+        duration: 729.002208ms

@@ -1,6 +1,6 @@
-# Fake OpenAI Test Server
+# Test OpenAI Server
 
-This package provides a fake OpenAI API server for testing AI Gateway functionality
+This package provides a test OpenAI API server for testing AI Gateway functionality
 without requiring actual API access or credentials.
 
 Pre-recorded OpenAI request/responses are stored as YAML files in the
@@ -8,7 +8,7 @@ Pre-recorded OpenAI request/responses are stored as YAML files in the
 
 ## Overview
 
-The fake server works by:
+The test server works by:
 
 1. Automatically loading all pre-recorded API interactions from embedded "cassette" YAML files
 2. Matching incoming requests against recorded interactions based on the `X-Cassette-Name` header
@@ -28,17 +28,17 @@ This approach provides:
 ```go
 import (
 	"testing"
-	"github.com/envoyproxy/ai-gateway/internal/fakeopenai"
+	"github.com/envoyproxy/ai-gateway/internal/testopenai"
 )
 
 func TestMyFeature(t *testing.T) {
 	// Create server on random port - cassettes are automatically loaded
-	server, err := fakeopenai.NewServer()
+	server, err := testopenai.NewServer()
 	require.NoError(t, err)
 	defer server.Close()
 
 	// Create a request for a specific cassette
-	req, err := fakeopenai.NewRequest(server.URL(), fakeopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(server.URL(), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 
 	// Make the request
@@ -49,7 +49,7 @@ func TestMyFeature(t *testing.T) {
 
 ## Recording New Cassettes
 
-The fake server can record new interactions when:
+The test server can record new interactions when:
 
 - No matching cassette is found
 - `OPENAI_API_KEY` is set in the environment
@@ -116,7 +116,7 @@ To record a new cassette, follow these steps:
 4. **Run `TestNewRequest`** with your OpenAI API key set:
 
    ```bash
-   cd internal/fakeopenai
+   cd internal/testopenai
    OPENAI_API_KEY=sk-.. go test -run TestNewRequest -v
    ```
 

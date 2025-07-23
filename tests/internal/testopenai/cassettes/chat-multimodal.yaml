@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 ---
 version: 2
 interactions:
@@ -6,20 +11,21 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 428
+        content_length: 490
         host: api.openai.com
         body: |-
             {
+              "max_tokens": 100,
               "messages": [
                 {
                   "content": [
                     {
-                      "text": "What's in this image?",
+                      "text": "What is in this image?",
                       "type": "text"
                     },
                     {
                       "image_url": {
-                        "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
                       },
                       "type": "image_url"
                     }
@@ -33,7 +39,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "274"
+                - "332"
             Content-Type:
                 - application/json
             User-Agent:
@@ -44,7 +50,7 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 877
+        content_length: 1018
         body: |-
             {
               "choices": [
@@ -54,32 +60,32 @@ interactions:
                   "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "It seems the image didn't load properly. Could you please try uploading it again?",
+                    "content": "This image shows a wooden pathway running through a lush, green grassy field under a partly cloudy blue sky. The scene appears peaceful and rural, with trees in the distance and vibrant natural surroundings.",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753162062,
-              "id": "chatcmpl-BvzpObAOzjs99gvHvWxmnRoOx9tP3",
+              "created": 1753423151,
+              "id": "chatcmpl-Bx5kVc7U7izUQncE24gOSCVWJld1e",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null,
+              "system_fingerprint": "fp_38343a2f8f",
               "usage": {
-                "completion_tokens": 16,
+                "completion_tokens": 38,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
                   "reasoning_tokens": 0,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 16,
+                "prompt_tokens": 3675,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 32
+                "total_tokens": 3713
               }
             }
         headers:
@@ -90,13 +96,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 963087c92c33e580-KUL
+                - 96496e047b01e547-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 05:27:43 GMT
+                - Fri, 25 Jul 2025 05:59:12 GMT
             Openai-Processing-Ms:
-                - "528"
+                - "1457"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -108,7 +114,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "512"
+                - "1144"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
@@ -128,7 +134,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 231ms
             X-Request-Id:
-                - req_3837ed73f5b1dd7805411b52bd36065e
+                - 4d1f1549-c82d-4916-8bd9-3b757946c581
         status: 200 OK
         code: 200
-        duration: 878.325208ms
+        duration: 1.978446292s

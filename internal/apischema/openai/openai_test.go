@@ -654,3 +654,242 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, *req.Temperature, *decoded.Temperature)
 	require.Equal(t, *req.MaxTokens, *decoded.MaxTokens)
 }
+
+func TestChatCompletionResponseUsageDetails(t *testing.T) {
+	t.Run("with zero values omitted", func(t *testing.T) {
+		// Test that zero values are omitted.
+		usage := ChatCompletionResponseUsage{
+			CompletionTokens: 9,
+			PromptTokens:     19,
+			TotalTokens:      28,
+			CompletionTokensDetails: &CompletionTokensDetails{
+				AcceptedPredictionTokens: 0,
+				AudioTokens:              0,
+				ReasoningTokens:          0,
+				RejectedPredictionTokens: 0,
+			},
+			PromptTokensDetails: &PromptTokensDetails{
+				AudioTokens:  0,
+				CachedTokens: 0,
+			},
+		}
+
+		// Marshal to JSON.
+		jsonData, err := json.Marshal(usage)
+		require.NoError(t, err)
+
+		expected := `{"completion_tokens":9,"prompt_tokens":19,"total_tokens":28,"completion_tokens_details":{},"prompt_tokens_details":{}}`
+		require.JSONEq(t, expected, string(jsonData))
+	})
+
+	t.Run("with non-zero values", func(t *testing.T) {
+		// Test with actual non-zero values.
+		usage := ChatCompletionResponseUsage{
+			CompletionTokens: 11,
+			PromptTokens:     37,
+			TotalTokens:      48,
+			CompletionTokensDetails: &CompletionTokensDetails{
+				AcceptedPredictionTokens: 0,
+				AudioTokens:              256,
+				ReasoningTokens:          832,
+				RejectedPredictionTokens: 0,
+			},
+			PromptTokensDetails: &PromptTokensDetails{
+				AudioTokens:  8,
+				CachedTokens: 384,
+			},
+		}
+
+		// Marshal to JSON.
+		jsonData, err := json.Marshal(usage)
+		require.NoError(t, err)
+
+		expected := `{
+			"completion_tokens": 11,
+			"prompt_tokens": 37,
+			"total_tokens": 48,
+			"completion_tokens_details": {
+				"audio_tokens": 256,
+				"reasoning_tokens": 832
+			},
+			"prompt_tokens_details": {
+				"audio_tokens": 8,
+				"cached_tokens": 384
+			}
+		}`
+		require.JSONEq(t, expected, string(jsonData))
+
+		// Unmarshal and verify.
+		var decoded ChatCompletionResponseUsage
+		err = json.Unmarshal(jsonData, &decoded)
+		require.NoError(t, err)
+
+		require.Equal(t, usage.CompletionTokens, decoded.CompletionTokens)
+		require.Equal(t, usage.PromptTokens, decoded.PromptTokens)
+		require.Equal(t, usage.TotalTokens, decoded.TotalTokens)
+		require.NotNil(t, decoded.CompletionTokensDetails)
+		require.Equal(t, 256, decoded.CompletionTokensDetails.AudioTokens)
+		require.Equal(t, 832, decoded.CompletionTokensDetails.ReasoningTokens)
+		require.NotNil(t, decoded.PromptTokensDetails)
+		require.Equal(t, 8, decoded.PromptTokensDetails.AudioTokens)
+		require.Equal(t, 384, decoded.PromptTokensDetails.CachedTokens)
+	})
+}
+
+func TestChatCompletionResponseWithNewFields(t *testing.T) {
+	// Test the new fields added to ChatCompletionResponse.
+	resp := ChatCompletionResponse{
+		ID:                "chatcmpl-test123",
+		Created:           1753162006,
+		Model:             "gpt-4.1-nano",
+		ServiceTier:       "default",
+		SystemFingerprint: "",
+		Object:            "chat.completion",
+		Choices: []ChatCompletionResponseChoice{
+			{
+				Index:        0,
+				FinishReason: ChatCompletionChoicesFinishReasonStop,
+				Message: ChatCompletionResponseChoiceMessage{
+					Role:    "assistant",
+					Content: ptr.To("Hello!"),
+				},
+			},
+		},
+		Usage: ChatCompletionResponseUsage{
+			CompletionTokens: 1,
+			PromptTokens:     5,
+			TotalTokens:      6,
+		},
+	}
+
+	// Marshal to JSON.
+	jsonData, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	// Unmarshal back.
+	var decoded ChatCompletionResponse
+	err = json.Unmarshal(jsonData, &decoded)
+	require.NoError(t, err)
+
+	// Verify all fields.
+	require.Equal(t, resp.ID, decoded.ID)
+	require.Equal(t, resp.Created, decoded.Created)
+	require.Equal(t, resp.Model, decoded.Model)
+	require.Equal(t, resp.ServiceTier, decoded.ServiceTier)
+	require.Equal(t, resp.SystemFingerprint, decoded.SystemFingerprint)
+	require.Equal(t, resp.Object, decoded.Object)
+}
+
+func TestChatCompletionRequestModalities(t *testing.T) {
+	// Test modalities field from OpenAI OpenAPI YAML examples.
+	t.Run("text and audio modalities", func(t *testing.T) {
+		jsonStr := `{
+			"model": "gpt-4o-audio-preview",
+			"messages": [{"role": "user", "content": "Hello!"}],
+			"modalities": ["text", "audio"]
+		}`
+
+		var req ChatCompletionRequest
+		err := json.Unmarshal([]byte(jsonStr), &req)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-audio-preview", req.Model)
+		require.Equal(t, []ChatCompletionModality{ChatCompletionModalityText, ChatCompletionModalityAudio}, req.Modalities)
+
+		// Marshal back and verify.
+		marshaled, err := json.Marshal(req)
+		require.NoError(t, err)
+		require.Contains(t, string(marshaled), `"modalities":["text","audio"]`)
+	})
+
+	t.Run("text only modality", func(t *testing.T) {
+		jsonStr := `{
+			"model": "gpt-4.1-nano",
+			"messages": [{"role": "user", "content": "Hi"}],
+			"modalities": ["text"]
+		}`
+
+		var req ChatCompletionRequest
+		err := json.Unmarshal([]byte(jsonStr), &req)
+		require.NoError(t, err)
+		require.Equal(t, []ChatCompletionModality{ChatCompletionModalityText}, req.Modalities)
+	})
+}
+
+func TestChatCompletionRequestAudio(t *testing.T) {
+	// Test audio parameters from OpenAI OpenAPI YAML examples.
+	t.Run("audio output parameters", func(t *testing.T) {
+		jsonStr := `{
+			"model": "gpt-4o-audio-preview",
+			"messages": [{"role": "user", "content": "Hello!"}],
+			"modalities": ["audio"],
+			"audio": {
+				"voice": "alloy",
+				"format": "wav"
+			}
+		}`
+
+		var req ChatCompletionRequest
+		err := json.Unmarshal([]byte(jsonStr), &req)
+		require.NoError(t, err)
+		require.NotNil(t, req.Audio)
+		require.Equal(t, ChatCompletionAudioVoiceAlloy, req.Audio.Voice)
+		require.Equal(t, ChatCompletionAudioFormatWav, req.Audio.Format)
+
+		// Marshal back and verify.
+		marshaled, err := json.Marshal(req)
+		require.NoError(t, err)
+		require.Contains(t, string(marshaled), `"audio":{"voice":"alloy","format":"wav"}`)
+	})
+
+	t.Run("all audio formats", func(t *testing.T) {
+		formats := []ChatCompletionAudioFormat{
+			ChatCompletionAudioFormatWav,
+			ChatCompletionAudioFormatAAC,
+			ChatCompletionAudioFormatMP3,
+			ChatCompletionAudioFormatFlac,
+			ChatCompletionAudioFormatOpus,
+			ChatCompletionAudioFormatPCM16,
+		}
+
+		for _, format := range formats {
+			audio := ChatCompletionAudioParam{
+				Voice:  ChatCompletionAudioVoiceNova,
+				Format: format,
+			}
+			data, err := json.Marshal(audio)
+			require.NoError(t, err)
+			require.Contains(t, string(data), string(format))
+		}
+	})
+}
+
+func TestPredictionContent(t *testing.T) {
+	// Test prediction content from OpenAI OpenAPI YAML examples.
+	t.Run("prediction with string content", func(t *testing.T) {
+		jsonStr := `{
+			"model": "gpt-4.1-nano",
+			"messages": [{"role": "user", "content": "Complete this: Hello"}],
+			"prediction": {
+				"type": "content",
+				"content": "Hello world!"
+			}
+		}`
+
+		var req ChatCompletionRequest
+		err := json.Unmarshal([]byte(jsonStr), &req)
+		require.NoError(t, err)
+		require.NotNil(t, req.PredictionContent)
+		require.Equal(t, PredictionContentTypeContent, req.PredictionContent.Type)
+		require.Equal(t, "Hello world!", req.PredictionContent.Content.Value)
+
+		// Marshal back and verify.
+		marshaled, err := json.Marshal(req)
+		require.NoError(t, err)
+		require.Contains(t, string(marshaled), `"prediction":{"type":"content","content":"Hello world!"}`)
+	})
+
+	t.Run("prediction content type constant", func(t *testing.T) {
+		// Verify the constant value matches OpenAPI spec.
+		require.Equal(t, PredictionContentTypeContent, PredictionContentType("content"))
+	})
+}

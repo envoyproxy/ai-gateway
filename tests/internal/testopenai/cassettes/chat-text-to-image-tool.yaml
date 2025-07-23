@@ -1,3 +1,8 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
 ---
 version: 2
 interactions:
@@ -6,39 +11,42 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 834
+        content_length: 1120
         host: api.openai.com
         body: |-
             {
+              "max_tokens": 150,
               "messages": [
                 {
-                  "content": "What is the weather like in Boston today?",
+                  "content": "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.",
+                  "role": "system"
+                },
+                {
+                  "content": "Draw a simple, minimalist image of a cute cat playing with a ball of yarn in a sketch style.",
                   "role": "user"
                 }
               ],
               "model": "gpt-4.1-nano",
-              "tool_choice": "auto",
+              "tool_choice": {
+                "function": {
+                  "name": "generate_image"
+                },
+                "type": "function"
+              },
               "tools": [
                 {
                   "function": {
-                    "description": "Get the current weather in a given location",
-                    "name": "get_current_weather",
+                    "description": "Generate a simple, minimalist image based on the given prompt in sketch style with low quality for cost efficiency.",
+                    "name": "generate_image",
                     "parameters": {
                       "properties": {
-                        "location": {
-                          "description": "The city and state, e.g. San Francisco, CA",
-                          "type": "string"
-                        },
-                        "unit": {
-                          "enum": [
-                            "celsius",
-                            "fahrenheit"
-                          ],
+                        "prompt": {
+                          "description": "The text description of the image to generate.",
                           "type": "string"
                         }
                       },
                       "required": [
-                        "location"
+                        "prompt"
                       ],
                       "type": "object"
                     }
@@ -51,7 +59,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "475"
+                - "811"
             Content-Type:
                 - application/json
             User-Agent:
@@ -62,12 +70,12 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1337
+        content_length: 1164
         body: |-
             {
               "choices": [
                 {
-                  "finish_reason": "tool_calls",
+                  "finish_reason": "stop",
                   "index": 0,
                   "logprobs": null,
                   "message": {
@@ -78,44 +86,36 @@ interactions:
                     "tool_calls": [
                       {
                         "function": {
-                          "arguments": "{\"location\": \"Boston\"}",
-                          "name": "get_current_weather"
+                          "arguments": "{\"prompt\":\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\"}",
+                          "name": "generate_image"
                         },
-                        "id": "call_26LsX7EjeYJZFKQVtq7cZKmC",
-                        "type": "function"
-                      },
-                      {
-                        "function": {
-                          "arguments": "{\"location\": \"Boston\"}",
-                          "name": "get_current_weather"
-                        },
-                        "id": "call_pQt0Pxu6mOA30pUBGfiTTgn1",
+                        "id": "call_nhKKLlnwC3sew7xv4rnYpqVH",
                         "type": "function"
                       }
                     ]
                   }
                 }
               ],
-              "created": 1753162009,
-              "id": "chatcmpl-BvzoXS47ObBgHCv5ypPuJjnUQcSk9",
+              "created": 1753423214,
+              "id": "chatcmpl-Bx5lWqI4bV0HErS7PX8Q3CUHXoFni",
               "model": "gpt-4.1-nano-2025-04-14",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": null,
+              "system_fingerprint": "fp_38343a2f8f",
               "usage": {
-                "completion_tokens": 46,
+                "completion_tokens": 22,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
                   "reasoning_tokens": 0,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 81,
+                "prompt_tokens": 131,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 127
+                "total_tokens": 153
               }
             }
         headers:
@@ -126,13 +126,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 9630867decb1e580-KUL
+                - 96496f931fe2e547-KUL
             Content-Type:
                 - application/json
             Date:
-                - Tue, 22 Jul 2025 05:26:50 GMT
+                - Fri, 25 Jul 2025 06:00:15 GMT
             Openai-Processing-Ms:
-                - "505"
+                - "418"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -144,7 +144,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "509"
+                - "425"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -152,13 +152,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199987"
+                - "199928"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 3ms
+                - 21ms
             X-Request-Id:
-                - 7a022348-51cc-4df0-a08e-043039f28375
+                - req_688a526bfe1bc5abdd9ef8b550fd9ad0
         status: 200 OK
         code: 200
-        duration: 934.572125ms
+        duration: 767.381875ms

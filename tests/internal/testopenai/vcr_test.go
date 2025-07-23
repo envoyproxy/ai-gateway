@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package fakeopenai
+package testopenai
 
 import (
 	"bytes"
@@ -31,33 +31,6 @@ func gzipJSON(t *testing.T, jsonStr string) []byte {
 	err = gz.Close()
 	require.NoError(t, err)
 	return buf.Bytes()
-}
-
-// TestVCR_YAMLExtensionHandling tests that we don't add double .yaml extensions.
-func TestVCR_YAMLExtensionHandling(t *testing.T) {
-	tempDir := t.TempDir()
-
-	// Test that recorder doesn't add extra .yaml.
-	tests := []struct {
-		cassetteName string
-		expectedFile string
-	}{
-		{"test-case", "test-case.yaml"},
-		{"test-case.yaml", "test-case.yaml.yaml"}, // VCR always adds .yaml.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.cassetteName, func(t *testing.T) {
-			// Create a minimal cassette file path.
-			cassettePath := filepath.Join(tempDir, tc.cassetteName)
-
-			// The recorder will add .yaml automatically.
-			expectedPath := filepath.Join(tempDir, tc.expectedFile)
-
-			// Verify our understanding of VCR behavior.
-			require.Equal(t, expectedPath, cassettePath+".yaml")
-		})
-	}
 }
 
 // TestVCR_DurationUnmarshaling tests that cassettes with Duration fields work correctly.
@@ -104,9 +77,8 @@ func TestVCR_DurationUnmarshaling(t *testing.T) {
 	require.Equal(t, 500*time.Millisecond, loaded.Interactions[0].Response.Duration)
 }
 
-// TestVCR_HTMLEscaping tests that HTML characters are not escaped in cassette files.
-func TestVCR_HTMLEscaping(t *testing.T) {
-	// Test that prettyPrintJSON doesn't escape HTML characters.
+// TestPrettyPrintJSON tests that HTML characters are not escaped in cassette files.
+func TestPrettyPrintJSON(t *testing.T) {
 	jsonWithHTML := `{"message":"Use <div> tags & check > and < symbols","url":"https://example.com?a=1&b=2"}`
 
 	pretty, err := prettyPrintJSON(jsonWithHTML)
@@ -123,8 +95,8 @@ func TestVCR_HTMLEscaping(t *testing.T) {
 	require.Contains(t, pretty, `&`)
 }
 
-// TestVCR_JSONMatching tests semantic JSON matching ignoring formatting.
-func TestVCR_JSONMatching(t *testing.T) {
+// TestMatchJSONBodies tests semantic JSON matching ignoring formatting.
+func TestMatchJSONBodies(t *testing.T) {
 	tests := []struct {
 		name     string
 		body1    string
@@ -177,8 +149,8 @@ func TestVCR_JSONMatching(t *testing.T) {
 	}
 }
 
-// TestVCR_HeaderFiltering tests that sensitive and tracing headers are filtered correctly.
-func TestVCR_HeaderFiltering(t *testing.T) {
+// TestFilterHeaders tests that sensitive and tracing headers are filtered correctly.
+func TestFilterHeaders(t *testing.T) {
 	headers := http.Header{
 		"Authorization":   {"Bearer secret-token"},
 		"Content-Type":    {"application/json"},
@@ -189,26 +161,22 @@ func TestVCR_HeaderFiltering(t *testing.T) {
 		"X-Custom-Header": {"should-remain"},
 	}
 
-	cfg := defaultConfig()
-	filtered := filterHeaders(headers, cfg.HeadersToIgnoreForMatching)
+	filtered := filterHeaders(headers, requestHeadersToRedact)
 
-	// Should keep non-sensitive headers.
-	require.Contains(t, filtered, "Authorization")
+	// Should remove non-sensitive headers.
 	require.Contains(t, filtered, "Content-Type")
 	require.Contains(t, filtered, "User-Agent")
 	require.Contains(t, filtered, "X-Custom-Header")
 
-	// Should remove tracing headers.
+	// Should remove sensitive and tracing headers.
+	require.NotContains(t, filtered, "Authorization")
 	require.NotContains(t, filtered, "x-b3-traceid") // Headers are case-sensitive.
 	require.NotContains(t, filtered, "x-b3-spanid")
 	require.NotContains(t, filtered, "traceparent")
 }
 
-// TestVCR_AfterCaptureHook tests the cassette sanitization process.
-func TestVCR_AfterCaptureHook(t *testing.T) {
-	cfg := defaultConfig()
-	hook := afterCaptureHook(cfg)
-
+// TestAfterCaptureHook tests the cassette sanitization process.
+func TestAfterCaptureHook(t *testing.T) {
 	// Create a test interaction with sensitive data and gzipped response.
 	interaction := &cassette.Interaction{
 		Request: cassette.Request{
@@ -230,7 +198,7 @@ func TestVCR_AfterCaptureHook(t *testing.T) {
 		},
 	}
 
-	err := hook(interaction)
+	err := afterCaptureHook(interaction)
 	require.NoError(t, err)
 
 	// Request headers should be sanitized.
@@ -258,8 +226,7 @@ func TestVCR_AfterCaptureHook(t *testing.T) {
 // TestHandler_OutdatedCassette tests the error when cassette doesn't match request.
 func TestHandler_OutdatedCassette(t *testing.T) {
 	// Create server.
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Make a request that specifies chat-basic but with different content.
@@ -275,7 +242,7 @@ func TestHandler_OutdatedCassette(t *testing.T) {
 
 	// Should get conflict status.
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
-	require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
+	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -291,8 +258,7 @@ func TestHandler_NoAPIKeyError(t *testing.T) {
 	// Ensure no API key.
 	t.Setenv("OPENAI_API_KEY", "")
 
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Request with cassette name that doesn't exist.
@@ -308,7 +274,7 @@ func TestHandler_NoAPIKeyError(t *testing.T) {
 
 	// Should get internal server error (no API key to record).
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
+	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -327,30 +293,16 @@ func TestLoadCassettes_EmbeddedFS(t *testing.T) {
 	require.NotEmpty(t, cassettes)
 
 	// Check specific cassettes exist.
-	cassetteNames := make(map[string]bool)
 	for _, c := range cassettes {
-		cassetteNames[filepath.Base(c.Name)] = true
+		if filepath.Base(c.Name) == CassetteChatBasic.String()+".yaml" {
+			return
+		}
 	}
-
-	require.True(t, cassetteNames["chat-basic.yaml"])
-	require.True(t, cassetteNames["chat-streaming.yaml"])
-	require.True(t, cassetteNames["chat-tools.yaml"])
-}
-
-// TestRecorderOptions tests the VCR recorder options configuration.
-func TestRecorderOptions(t *testing.T) {
-	cfg := defaultConfig()
-	opts := recorderOptions(cfg)
-
-	// Should return 3 options: mode, matcher, and hook.
-	require.Len(t, opts, 3)
+	t.Errorf("cassette directory is incorrect")
 }
 
 // TestRequestMatcher tests the custom request matcher function.
 func TestRequestMatcher(t *testing.T) {
-	cfg := defaultConfig()
-	matcher := requestMatcher(cfg)
-
 	tests := []struct {
 		name     string
 		httpReq  *http.Request
@@ -466,7 +418,7 @@ func TestRequestMatcher(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := matcher(tc.httpReq, tc.cassReq)
+			result := requestMatcher(tc.httpReq, tc.cassReq)
 			require.Equal(t, tc.expected, result)
 		})
 	}
@@ -483,9 +435,6 @@ func TestPrettyPrintJSON_InvalidJSON(t *testing.T) {
 
 // TestAfterCaptureHook_NonJSONContent tests the hook with non-JSON content.
 func TestAfterCaptureHook_NonJSONContent(t *testing.T) {
-	cfg := defaultConfig()
-	hook := afterCaptureHook(cfg)
-
 	interaction := &cassette.Interaction{
 		Request: cassette.Request{
 			Headers: map[string][]string{
@@ -501,7 +450,7 @@ func TestAfterCaptureHook_NonJSONContent(t *testing.T) {
 		},
 	}
 
-	err := hook(interaction)
+	err := afterCaptureHook(interaction)
 	require.NoError(t, err)
 
 	// Bodies should remain unchanged (not pretty-printed).
@@ -515,9 +464,6 @@ func TestAfterCaptureHook_NonJSONContent(t *testing.T) {
 
 // TestAfterCaptureHook_InvalidGzip tests the hook with invalid gzip data.
 func TestAfterCaptureHook_InvalidGzip(t *testing.T) {
-	cfg := defaultConfig()
-	hook := afterCaptureHook(cfg)
-
 	interaction := &cassette.Interaction{
 		Request: cassette.Request{
 			Headers: map[string][]string{},
@@ -531,16 +477,13 @@ func TestAfterCaptureHook_InvalidGzip(t *testing.T) {
 		},
 	}
 
-	err := hook(interaction)
+	err := afterCaptureHook(interaction)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "gzip")
 }
 
 // TestAfterCaptureHook_GzipReadError tests the hook with truncated gzip data.
 func TestAfterCaptureHook_GzipReadError(t *testing.T) {
-	cfg := defaultConfig()
-	hook := afterCaptureHook(cfg)
-
 	// Create truncated gzip data that passes header check but fails on read.
 	truncatedGzip := []byte{0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff} // Valid gzip header but incomplete.
 
@@ -557,16 +500,13 @@ func TestAfterCaptureHook_GzipReadError(t *testing.T) {
 		},
 	}
 
-	err := hook(interaction)
+	err := afterCaptureHook(interaction)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "decompress")
 }
 
 // TestAfterCaptureHook_InvalidJSONInRequest tests hook with invalid JSON in request.
 func TestAfterCaptureHook_InvalidJSONInRequest(t *testing.T) {
-	cfg := defaultConfig()
-	hook := afterCaptureHook(cfg)
-
 	interaction := &cassette.Interaction{
 		Request: cassette.Request{
 			Headers: map[string][]string{
@@ -580,7 +520,7 @@ func TestAfterCaptureHook_InvalidJSONInRequest(t *testing.T) {
 		},
 	}
 
-	err := hook(interaction)
+	err := afterCaptureHook(interaction)
 	require.NoError(t, err) // prettyPrintJSON returns unchanged body without error for invalid JSON.
 	require.Equal(t, "invalid json {", interaction.Request.Body)
 }

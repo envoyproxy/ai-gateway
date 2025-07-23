@@ -29,7 +29,15 @@ const (
 
 // Model names for testing.
 const (
+	// ModelGPT41Nano is the cheapest model usable with /chat/completions.
 	ModelGPT41Nano = "gpt-4.1-nano"
+	// ModelO3Mini is the cheapest reasoning model usable with /chat/completions.
+	ModelO3Mini = "o3-mini"
+	// ModelGPT4oMiniAudioPreview is the cheapest audio synthesis model usable with /chat/completions.
+	ModelGPT4oMiniAudioPreview = "gpt-4o-mini-audio-preview"
+	// ModelGPT4oAudioPreview s the cheapest audio transcription model usable with /chat/completions.
+	// Note: gpt-4o-mini-transcribe is NOT a chat model, so cannot be used with /v1/chat/completions.
+	ModelGPT4oAudioPreview = "gpt-4o-audio-preview"
 )
 
 // ChatCompletionContentPartRefusalType The type of the content part.
@@ -475,6 +483,84 @@ type Reasoning struct {
 }
 
 // ChatCompletionRequest represents a request structure for chat completion API.
+// ChatCompletionModality represents the output types that the model can generate.
+type ChatCompletionModality string
+
+const (
+	// ChatCompletionModalityText represents text output.
+	ChatCompletionModalityText ChatCompletionModality = "text"
+	// ChatCompletionModalityAudio represents audio output.
+	ChatCompletionModalityAudio ChatCompletionModality = "audio"
+)
+
+// ChatCompletionAudioVoice represents available voices for audio output.
+type ChatCompletionAudioVoice string
+
+const (
+	// ChatCompletionAudioVoiceAlloy represents the alloy voice.
+	ChatCompletionAudioVoiceAlloy ChatCompletionAudioVoice = "alloy"
+	// ChatCompletionAudioVoiceAsh represents the ash voice.
+	ChatCompletionAudioVoiceAsh ChatCompletionAudioVoice = "ash"
+	// ChatCompletionAudioVoiceBallad represents the ballad voice.
+	ChatCompletionAudioVoiceBallad ChatCompletionAudioVoice = "ballad"
+	// ChatCompletionAudioVoiceCoral represents the coral voice.
+	ChatCompletionAudioVoiceCoral ChatCompletionAudioVoice = "coral"
+	// ChatCompletionAudioVoiceEcho represents the echo voice.
+	ChatCompletionAudioVoiceEcho ChatCompletionAudioVoice = "echo"
+	// ChatCompletionAudioVoiceFable represents the fable voice.
+	ChatCompletionAudioVoiceFable ChatCompletionAudioVoice = "fable"
+	// ChatCompletionAudioVoiceNova represents the nova voice.
+	ChatCompletionAudioVoiceNova ChatCompletionAudioVoice = "nova"
+	// ChatCompletionAudioVoiceOnyx represents the onyx voice.
+	ChatCompletionAudioVoiceOnyx ChatCompletionAudioVoice = "onyx"
+	// ChatCompletionAudioVoiceSage represents the sage voice.
+	ChatCompletionAudioVoiceSage ChatCompletionAudioVoice = "sage"
+	// ChatCompletionAudioVoiceShimmer represents the shimmer voice.
+	ChatCompletionAudioVoiceShimmer ChatCompletionAudioVoice = "shimmer"
+)
+
+// ChatCompletionAudioFormat represents the output audio format.
+type ChatCompletionAudioFormat string
+
+const (
+	// ChatCompletionAudioFormatWav represents WAV audio format.
+	ChatCompletionAudioFormatWav ChatCompletionAudioFormat = "wav"
+	// ChatCompletionAudioFormatAAC represents AAC audio format.
+	ChatCompletionAudioFormatAAC ChatCompletionAudioFormat = "aac"
+	// ChatCompletionAudioFormatMP3 represents MP3 audio format.
+	ChatCompletionAudioFormatMP3 ChatCompletionAudioFormat = "mp3"
+	// ChatCompletionAudioFormatFlac represents FLAC audio format.
+	ChatCompletionAudioFormatFlac ChatCompletionAudioFormat = "flac"
+	// ChatCompletionAudioFormatOpus represents Opus audio format.
+	ChatCompletionAudioFormatOpus ChatCompletionAudioFormat = "opus"
+	// ChatCompletionAudioFormatPCM16 represents PCM16 audio format.
+	ChatCompletionAudioFormatPCM16 ChatCompletionAudioFormat = "pcm16"
+)
+
+// ChatCompletionAudioParam represents parameters for audio output. Required when audio output is requested with modalities: ["audio"].
+type ChatCompletionAudioParam struct {
+	// Voice specifies the voice the model uses to respond. Supported voices are alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, and shimmer.
+	Voice ChatCompletionAudioVoice `json:"voice"`
+	// Format specifies the output audio format. Must be one of wav, mp3, flac, opus, or pcm16.
+	Format ChatCompletionAudioFormat `json:"format"`
+}
+
+// PredictionContentType represents the type of predicted content.
+type PredictionContentType string
+
+const (
+	// PredictionContentTypeContent represents static content prediction.
+	PredictionContentTypeContent PredictionContentType = "content"
+)
+
+// PredictionContent represents static predicted output content, such as the content of a text file that is being regenerated.
+type PredictionContent struct {
+	// Type is the type of the predicted content you want to provide. This type is currently always content.
+	Type PredictionContentType `json:"type"`
+	// Content is the content that should be matched when generating a model response. If generated tokens would match this content, the entire model response can be returned much more quickly.
+	Content StringOrArray `json:"content"`
+}
+
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
 	// Depending on the model you use, different message types (modalities) are supported,
@@ -572,10 +658,14 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-response_format
 	Tools []Tool `json:"tools,omitempty"`
 
-	// ToolChoice specifies a specific tool to be used by name (given in the tool definition),
-	// or use "auto" to auto select the most appropriate.
+	// ToolChoice controls which (if any) tool is called by the model.
+	// `none` means the model will not call any tool and instead generates a message.
+	// `auto` means the model can pick between generating a message or calling one or more tools.
+	// `required` means the model must call one or more tools.
+	// Specifying a particular tool via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.
+	// `none` is the default when no tools are present. `auto` is the default if tools are present.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
-	ToolChoice any `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+	ToolChoice ChatCompletionToolChoice `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
@@ -584,6 +674,15 @@ type ChatCompletionRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
 	User string `json:"user,omitempty"`
+
+	// Modalities specifies the output types that you would like the model to generate. Most models are capable of generating text, which is the default. The gpt-4o-audio-preview model can also generate audio.
+	Modalities []ChatCompletionModality `json:"modalities,omitempty"`
+
+	// Audio specifies parameters for audio output. Required when audio output is requested with modalities: ["audio"].
+	Audio *ChatCompletionAudioParam `json:"audio,omitempty"`
+
+	// PredictionContent provides configuration for a Predicted Output, which can greatly improve response times when large parts of the model response are known ahead of time.
+	PredictionContent *PredictionContent `json:"prediction,omitempty"`
 }
 
 type StreamOptions struct {
@@ -597,7 +696,8 @@ type StreamOptions struct {
 type ToolType string
 
 const (
-	ToolTypeFunction ToolType = "function"
+	ToolTypeFunction        ToolType = "function"
+	ToolTypeImageGeneration ToolType = "image_generation"
 )
 
 type Tool struct {
@@ -605,17 +705,54 @@ type Tool struct {
 	Function *FunctionDefinition `json:"function,omitempty"`
 }
 
+// ToolChoice represents the choice of tool.
 type ToolChoice struct {
 	Type     ToolType     `json:"type"`
 	Function ToolFunction `json:"function,omitempty"`
 }
 
+// ToolFunction represents the function to call.
 type ToolFunction struct {
 	Name string `json:"name"`
 }
 
+// ToolChoiceType represents the type of tool choice.
+type ToolChoiceType string
+
+const (
+	// ToolChoiceTypeNone means the model will not call any tool and instead generates a message.
+	ToolChoiceTypeNone ToolChoiceType = "none"
+	// ToolChoiceTypeAuto means the model can pick between generating a message or calling one or more tools.
+	ToolChoiceTypeAuto ToolChoiceType = "auto"
+	// ToolChoiceTypeRequired means the model must call one or more tools.
+	ToolChoiceTypeRequired ToolChoiceType = "required"
+	// ToolChoiceTypeFunction is used when specifying a particular function.
+	ToolChoiceTypeFunction ToolChoiceType = "function"
+)
+
+// ChatCompletionToolChoice represents the tool choice for chat completions.
+// It can be either a string (none, auto, required) or a ChatCompletionNamedToolChoice object.
+type ChatCompletionToolChoice interface{}
+
+// ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
+type ChatCompletionNamedToolChoice struct {
+	// Type is the type of the tool. Currently, only `function` is supported.
+	Type ToolChoiceType `json:"type"`
+	// Function specifies the function to call.
+	Function ChatCompletionNamedToolChoiceFunction `json:"function"`
+}
+
+// ChatCompletionNamedToolChoiceFunction represents the function to call.
+type ChatCompletionNamedToolChoiceFunction struct {
+	// Name is the name of the function to call.
+	Name string `json:"name"`
+}
+
+// FunctionDefinition represents a function that can be called.
 type FunctionDefinition struct {
-	Name        string `json:"name"`
+	// Name is the name of the function to be called. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 64.
+	Name string `json:"name"`
+	// Description is a description of what the function does, used by the model to choose when and how to call the function.
 	Description string `json:"description,omitempty"`
 	Strict      bool   `json:"strict,omitempty"`
 	// Parameters is an object describing the function.
@@ -654,9 +791,23 @@ type LogProbs struct {
 // ChatCompletionResponse represents a response from /v1/chat/completions.
 // https://platform.openai.com/docs/api-reference/chat/object
 type ChatCompletionResponse struct {
+	// ID is a unique identifier for the chat completion.
+	ID string `json:"id,omitempty"`
 	// Choices are described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
 	Choices []ChatCompletionResponseChoice `json:"choices,omitempty"`
+
+	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
+	Created int64 `json:"created,omitzero"`
+
+	// Model is the model used for the chat completion.
+	Model string `json:"model,omitempty"`
+
+	// ServiceTier is the service tier used for the completion.
+	ServiceTier string `json:"service_tier,omitempty"`
+
+	// SystemFingerprint represents the backend configuration that the model runs with.
+	SystemFingerprint string `json:"system_fingerprint,omitempty"`
 
 	// Object is always "chat.completion" for completions.
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-object
@@ -757,17 +908,58 @@ type ChatCompletionResponseChoiceMessage struct {
 // ChatCompletionResponseUsage is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
 type ChatCompletionResponseUsage struct {
-	CompletionTokens int `json:"completion_tokens,omitempty"`
-	PromptTokens     int `json:"prompt_tokens,omitempty"`
-	TotalTokens      int `json:"total_tokens,omitempty"`
+	// Number of tokens in the generated completion.
+	CompletionTokens int `json:"completion_tokens,omitzero"`
+	// Number of tokens in the prompt.
+	PromptTokens int `json:"prompt_tokens,omitzero"`
+	// Total number of tokens used in the request (prompt + completion).
+	TotalTokens             int                      `json:"total_tokens,omitzero"`
+	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitzero"`
+	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitzero"`
+}
+
+// CompletionTokensDetails breakdown of tokens used in a completion.
+type CompletionTokensDetails struct {
+	// When using Predicted Outputs, the number of tokens in the prediction that appeared in the completion.
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitzero"`
+	// Audio input tokens generated by the model.
+	AudioTokens int `json:"audio_tokens,omitzero"`
+	// Tokens generated by the model for reasoning.
+	ReasoningTokens int `json:"reasoning_tokens,omitzero"`
+	// When using Predicted Outputs, the number of tokens in the prediction that did not appear in the completion.
+	// However, like reasoning tokens, these tokens are still counted in the total completion tokens
+	// for purposes of billing, output, and context window limits.
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitzero"`
+}
+
+// PromptTokensDetails breakdown of tokens used in the prompt.
+type PromptTokensDetails struct {
+	// Audio input tokens present in the prompt.
+	AudioTokens int `json:"audio_tokens,omitzero"`
+	// Cached tokens present in the prompt.
+	CachedTokens int `json:"cached_tokens,omitzero"`
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat-create-messages
 type ChatCompletionResponseChunk struct {
+	// ID is a unique identifier for the chat completion chunk.
+	ID string `json:"id,omitempty"`
 	// Choices are described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 	Choices []ChatCompletionResponseChunkChoice `json:"choices,omitempty"`
+
+	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
+	Created int64 `json:"created,omitzero"`
+
+	// Model is the model used for the chat completion.
+	Model string `json:"model,omitempty"`
+
+	// ServiceTier is the service tier used for the completion.
+	ServiceTier string `json:"service_tier,omitempty"`
+
+	// SystemFingerprint represents the backend configuration that the model runs with.
+	SystemFingerprint string `json:"system_fingerprint,omitempty"`
 
 	// Object is always "chat.completion.chunk" for completions.
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-object

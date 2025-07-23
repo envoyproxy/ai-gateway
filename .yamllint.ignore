@@ -1,2 +1,2 @@
 manifests/charts/ai-gateway-helm
-tests/internal/fakeopenai/cassettes
+tests/internal/testopenai/cassettes

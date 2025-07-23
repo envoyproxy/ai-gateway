@@ -19,8 +19,8 @@ EXTPROC_BIN=/path/to/extproc go test -v
 
 ## Recording HTTP Sessions
 
-The tests use the [fakeopenai](../../internal/fakeopenai) package to
-simulate OpenAI API responses. This package provides a fake OpenAI server that
+The tests use the [testopenai](../../internal/testopenai) package to
+simulate OpenAI API responses. This package provides a test OpenAI server that
 replays pre-recorded API interactions (cassettes), ensuring tests are fast,
 deterministic, and can run without API keys.
 

@@ -3,13 +3,16 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package fakeopenai
+package testopenai
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -50,7 +53,7 @@ func TestRecordNewInteraction(t *testing.T) {
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "fake-api-key",
-		cassettes:    []*cassette.Cassette{},
+		cassettes:    map[string]*cassette.Cassette{},
 	}
 
 	// Create a test request.
@@ -90,7 +93,7 @@ func TestRecordNewInteraction_Errors(t *testing.T) {
 		apiBase:      "https://api.openai.com/v1",
 		cassettesDir: "/dev/null/cannot-create-dir",
 		apiKey:       "test-key",
-		cassettes:    []*cassette.Cassette{},
+		cassettes:    map[string]*cassette.Cassette{},
 	}
 
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader("{}"))
@@ -116,7 +119,7 @@ func TestRecordNewInteraction_ServerError(t *testing.T) {
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "test-key",
-		cassettes:    []*cassette.Cassette{},
+		cassettes:    map[string]*cassette.Cassette{},
 	}
 
 	body := `{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"test"}]}`
@@ -165,7 +168,7 @@ func TestRecordNewInteraction_WithHeaders(t *testing.T) {
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "test-key",
-		cassettes:    []*cassette.Cassette{},
+		cassettes:    map[string]*cassette.Cassette{},
 	}
 
 	body := `{"model":"gpt-3.5-turbo"}`
@@ -198,7 +201,7 @@ func TestRecordNewInteraction_NoAPIKey(t *testing.T) {
 		apiBase:      "https://api.openai.com/v1",
 		cassettesDir: t.TempDir(),
 		apiKey:       "", // No API key.
-		cassettes:    []*cassette.Cassette{},
+		cassettes:    map[string]*cassette.Cassette{},
 	}
 
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader("{}"))
@@ -208,7 +211,7 @@ func TestRecordNewInteraction_NoAPIKey(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	expected := "FakeOpenAI Error: No cassette found for POST /v1/chat/completions. To record new cassettes, set OPENAI_API_KEY environment variable and provide X-Cassette-Name header.\n"
+	expected := "TestOpenAI Error: No cassette found for POST /v1/chat/completions. To record new cassettes, set OPENAI_API_KEY environment variable and provide X-Cassette-Name header.\n"
 	require.Equal(t, expected, w.Body.String())
 }
 
@@ -264,6 +267,9 @@ func TestGetHeaderValue(t *testing.T) {
 func TestMatchRequest_EdgeCases(t *testing.T) {
 	// Test body read error simulation is tricky with standard http.Request.
 	// Instead test other edge cases.
+	h := &cassetteHandler{
+		apiBase: "https://api.openai.com/v1",
+	}
 
 	tests := []struct {
 		name     string
@@ -313,10 +319,28 @@ func TestMatchRequest_EdgeCases(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := matchRequest(tc.req, tc.cassReq)
+			// Normalize URL as in ServeHTTP.
+			pathForAPI := strings.TrimPrefix(tc.req.URL.Path, "/v1")
+			u, err := url.Parse(h.apiBase + pathForAPI)
+			require.NoError(t, err)
+			u.RawQuery = tc.req.URL.RawQuery
+			tc.req.URL = u
+
+			body, err := io.ReadAll(tc.req.Body)
+			require.NoError(t, err)
+			tc.req.Body = io.NopCloser(bytes.NewReader(body))
+
+			result := h.matchRequest(tc.req, tc.cassReq, body)
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+// errorReader simulates a body that fails to read.
+type errorReader struct{}
+
+func (*errorReader) Read([]byte) (n int, err error) {
+	return 0, fmt.Errorf("read error")
 }
 
 // TestServeHTTP_ComplexScenarios tests more complex handler scenarios.
@@ -324,8 +348,8 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 	// Create a handler with some test cassettes.
 	handler := &cassetteHandler{
 		apiBase: "https://api.openai.com/v1",
-		cassettes: []*cassette.Cassette{
-			{
+		cassettes: map[string]*cassette.Cassette{
+			"test-cassette": {
 				Name: "test-cassette",
 				Interactions: []*cassette.Interaction{
 					{
@@ -347,7 +371,7 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 					},
 				},
 			},
-			{
+			"named-with-path": {
 				Name: "cassettes/named-with-path.yaml",
 				Interactions: []*cassette.Interaction{
 					{
@@ -437,7 +461,7 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 func TestServeHTTP_BodyReadError(t *testing.T) {
 	handler := &cassetteHandler{
 		apiBase:   "https://api.openai.com/v1",
-		cassettes: []*cassette.Cassette{},
+		cassettes: map[string]*cassette.Cassette{},
 	}
 
 	// Create a request with a body that fails on read.
@@ -447,27 +471,7 @@ func TestServeHTTP_BodyReadError(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	require.Equal(t, "FakeOpenAI Error: Failed to read request body: unexpected EOF\n", w.Body.String())
-}
-
-// TestMatchRequest_BodyReadError tests matchRequest with body read error.
-func TestMatchRequest_BodyReadError(t *testing.T) {
-	req := httptest.NewRequest("POST", "/v1/test", &errorReader{})
-	cassReq := cassette.Request{
-		Method: "POST",
-		URL:    "https://api.openai.com/v1/test",
-		Body:   "test",
-	}
-
-	result := matchRequest(req, cassReq)
-	require.False(t, result)
-}
-
-// errorReader is a reader that always returns an error.
-type errorReader struct{}
-
-func (e *errorReader) Read(_ []byte) (n int, err error) {
-	return 0, io.ErrUnexpectedEOF
+	require.Equal(t, "TestOpenAI Error: Failed to read request body: read error\n", w.Body.String())
 }
 
 // TestWriteResponse_ComplexHeaders tests writing responses with multiple header values.

@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package fakeopenai
+package testopenai
 
 import (
 	"bytes"
@@ -19,8 +19,7 @@ import (
 
 func TestServer_ExistingCassette(t *testing.T) {
 	// Test that an existing cassette (chat-basic) works.
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Make the same request as in chat-basic cassette.
@@ -50,8 +49,7 @@ func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
 	// Ensure OPENAI_API_KEY is not set.
 	t.Setenv("OPENAI_API_KEY", "")
 
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Make a request that won't match any cassette.
@@ -66,13 +64,13 @@ func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
 
 	// Should get 400 with clear error message.
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
+	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	errorMsg := string(body)
-	require.Contains(t, errorMsg, "FakeOpenAI Error:")
+	require.Contains(t, errorMsg, "TestOpenAI Error:")
 	require.Contains(t, errorMsg, "No cassette found")
 	require.Contains(t, errorMsg, "X-Cassette-Name header")
 }
@@ -81,8 +79,7 @@ func TestServer_MissingCassette_WithAPIKey(t *testing.T) {
 	// Set a fake API key.
 	t.Setenv("OPENAI_API_KEY", "test-key")
 
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Make a request that won't match any cassette.
@@ -97,13 +94,13 @@ func TestServer_MissingCassette_WithAPIKey(t *testing.T) {
 
 	// Should get 400 with clear error message about missing header.
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
+	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	errorMsg := string(body)
-	require.Contains(t, errorMsg, "FakeOpenAI Error:")
+	require.Contains(t, errorMsg, "TestOpenAI Error:")
 	require.Contains(t, errorMsg, "No cassette found")
 	require.Contains(t, errorMsg, CassetteNameHeader)
 }
@@ -116,7 +113,7 @@ func TestServer_Recording(t *testing.T) {
 
 	// Use temp directory for recording.
 	tempDir := t.TempDir()
-	server, err := NewServer(WithCassettesDir(tempDir))
+	server, err := newServer(embeddedCassettes, tempDir)
 	require.NoError(t, err)
 	defer server.Close()
 
@@ -161,8 +158,7 @@ func TestServer_Recording(t *testing.T) {
 }
 
 func TestServer_DifferentEndpoints(t *testing.T) {
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Test that we handle different endpoints correctly.
@@ -182,13 +178,12 @@ func TestServer_DifferentEndpoints(t *testing.T) {
 
 		// Should get error response since we don't have cassettes for these.
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-		require.Equal(t, "true", resp.Header.Get("X-FakeOpenAI-Error"))
+		require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 	}
 }
 
 func TestServer_JSONMatching(t *testing.T) {
-	server, err := NewServer()
-	require.NoError(t, err)
+	server := newTestServer(t)
 	defer server.Close()
 
 	// Make request with same content as chat-basic but different JSON formatting.
@@ -206,4 +201,10 @@ func TestServer_JSONMatching(t *testing.T) {
 
 	// Should still match despite different formatting.
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func newTestServer(t *testing.T) *Server {
+	server, err := newServer(embeddedCassettes, t.TempDir())
+	require.NoError(t, err)
+	return server
 }

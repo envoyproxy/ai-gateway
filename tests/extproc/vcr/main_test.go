@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/fakeopenai"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
 // extprocBin holds the path to the compiled extproc binary.
@@ -81,7 +81,7 @@ func waitForExtProcReady(stderrReader io.Reader) {
 	<-done
 }
 
-func requireExtProcNew(t *testing.T, output io.Writer, extProcPort, metricsPort, healthPort int, envs ...string) {
+func requireExtProc(t *testing.T, output io.Writer, extProcPort, metricsPort, healthPort int, envs ...string) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, extprocConfig, 0o600))
 
@@ -124,7 +124,7 @@ func replaceTokens(content string, replacements map[string]string) string {
 	return result
 }
 
-func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extProcPort, openAIPort int) {
+func requireEnvoy(t *testing.T, output io.Writer, listenerPort, extProcPort, openAIPort int) {
 	tmpDir := t.TempDir()
 
 	// Replace Docker-specific values with test values.
@@ -163,26 +163,31 @@ func requireEnvoyWithOutput(t *testing.T, output io.Writer, listenerPort, extPro
 	waitForEnvoyReady(stderrReader)
 }
 
-// TestEnvironment holds all the services needed for OTEL tests.
+// testEnvironment holds all the services needed for tests.
 type testEnvironment struct {
 	listenerPort int
-	openAIServer *fakeopenai.Server
+	openAIServer *testopenai.Server
 	envoyOut     *syncBuffer
 	extprocOut   *syncBuffer
 }
 
+func (e *testEnvironment) logEnvoyAndExtProc(t *testing.T) {
+	t.Logf("=== Envoy Output (stdout + stderr) ===\n%s", e.envoyOut.String())
+	t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", e.extprocOut.String())
+}
+
 // Close cleans up all resources in reverse order.
-func (t *testEnvironment) Close() {
-	if t.openAIServer != nil {
-		_ = t.openAIServer.Close()
+func (e *testEnvironment) Close() {
+	if e.openAIServer != nil {
+		_ = e.openAIServer.Close()
 	}
 }
 
 // setupTestEnvironment starts all required services and returns ports and a closer.
 func setupTestEnvironment(t *testing.T) *testEnvironment {
-	// Start fake OpenAI server.
-	openAIServer, err := fakeopenai.NewServer()
-	require.NoError(t, err, "failed to create fake OpenAI server")
+	// Start test OpenAI server.
+	openAIServer, err := testopenai.NewServer()
+	require.NoError(t, err, "failed to create test OpenAI server")
 	openAIPort := openAIServer.Port()
 
 	// Get random ports for all services.
@@ -200,10 +205,10 @@ func setupTestEnvironment(t *testing.T) *testEnvironment {
 	envoyOutput := newSyncBuffer()
 
 	// Start ExtProc.
-	requireExtProcNew(t, extprocOutput, extProcPort, metricsPort, healthPort)
+	requireExtProc(t, extprocOutput, extProcPort, metricsPort, healthPort)
 
-	// Start Envoy with buffer.
-	requireEnvoyWithOutput(t, envoyOutput, listenerPort, extProcPort, openAIPort)
+	// Start Envoy.
+	requireEnvoy(t, envoyOutput, listenerPort, extProcPort, openAIPort)
 
 	return &testEnvironment{
 		listenerPort: listenerPort,
