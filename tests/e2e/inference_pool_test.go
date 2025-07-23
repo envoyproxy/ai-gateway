@@ -47,20 +47,19 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
 	t.Run("endpointpicker_with_compressed_json_body", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`, egSelector)
+		testInferenceGatewayConnectivity(t, egSelector, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`)
 	})
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body which will be compressed by the EPP.
 	t.Run("endpointpicker_with_uncompressed_json_body", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, `
+		testInferenceGatewayConnectivity(t, egSelector, `
 {
 	"model": "meta-llama/Llama-3.1-8B-Instruct",
 	"messages": [{
 		"role": "user",
 		"content": "Say this is a test"
 	}]
-}
-`, egSelector)
+}`)
 	})
 
 	t.Cleanup(func() {
@@ -91,7 +90,7 @@ func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model str
 		fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model))
 }
 
-func testInferenceGatewayConnectivity(t *testing.T, body, egSelector string) {
+func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
