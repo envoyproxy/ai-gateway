@@ -87,7 +87,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 // testInferenceGatewayConnectivityByModel tests that the Gateway is accessible and returns a 200 status code
 // for a valid request to the InferencePool backend for a specific model.
 func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model string) {
-	testInferenceGatewayConnectivityByModel(t, egSelector,
+	testInferenceGatewayConnectivity(t, egSelector,
 		fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model))
 }
 
