@@ -50,9 +50,17 @@ func TestInferencePoolIntegration(t *testing.T) {
 		testInferenceGatewayConnectivity(t, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`, egSelector)
 	})
 
-	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
+	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body which will be compressed by the EPP.
 	t.Run("endpointpicker_with_uncompressed_json_body", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`, egSelector)
+		testInferenceGatewayConnectivity(t, `
+{
+	"model": "meta-llama/Llama-3.1-8B-Instruct",
+	"messages": [{
+		"role": "user",
+		"content": "Say this is a test"
+	}]
+}
+`, egSelector)
 	})
 
 	t.Cleanup(func() {
