@@ -47,12 +47,12 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
 	t.Run("endpointpicker_with_compressed_json_body", func(t *testing.T) {
-		testInferenceGatewayJsonFormat(t, requestBodyJsonCompressedTemplate, egSelector)
+		testInferenceGatewayJSONFormat(t, requestBodyJSONCompressedTemplate, egSelector)
 	})
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
 	t.Run("endpointpicker_with_uncompressed_json_body", func(t *testing.T) {
-		testInferenceGatewayJsonFormat(t, requestBodyJsonUnCompressedTemplate, egSelector)
+		testInferenceGatewayJSONFormat(t, requestBodyJSONUnCompressedTemplate, egSelector)
 	})
 
 	t.Cleanup(func() {
@@ -134,7 +134,7 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, model string) {
 	}, 2*time.Minute, 5*time.Second, "Gateway should be accessible and return 200 status code")
 }
 
-const requestBodyJsonUnCompressedTemplate = `
+const requestBodyJSONUnCompressedTemplate = `
 {
 	"model": "meta-llama/Llama-3.1-8B-Instruct",
 	"messages": [{
@@ -144,11 +144,9 @@ const requestBodyJsonUnCompressedTemplate = `
 }
 `
 
-const requestBodyJsonCompressedTemplate = `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`
+const requestBodyJSONCompressedTemplate = `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`
 
-// testInferenceGatewayConnectivity tests that the Gateway is accessible and returns a 200 status code
-// for a valid request to the InferencePool backend.
-func testInferenceGatewayJsonFormat(t *testing.T, body, egSelector string) {
+func testInferenceGatewayJSONFormat(t *testing.T, body, egSelector string) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
