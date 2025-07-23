@@ -45,6 +45,16 @@ func TestInferencePoolIntegration(t *testing.T) {
 		testInferenceGatewayConnectivity(t, egSelector, "some-cool-self-hosted-model")
 	})
 
+	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
+	t.Run("endpointpicker_with_compressed_json_body", func(t *testing.T) {
+		testInferenceGatewayJsonFormat(t, requestBodyJsonCompressedTemplate, egSelector)
+	})
+
+	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
+	t.Run("endpointpicker_with_uncompressed_json_body", func(t *testing.T) {
+		testInferenceGatewayJsonFormat(t, requestBodyJsonUnCompressedTemplate, egSelector)
+	})
+
 	t.Cleanup(func() {
 		_ = kubectlDeleteManifest(context.Background(), aiGWRouteManifest)
 	})
@@ -75,6 +85,76 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, model string) {
 
 		// Create a request to the InferencePool backend with the correct model header.
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model)
+		t.Logf("Request body: %s", requestBody)
+		req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		if err != nil {
+			t.Logf("failed to create request: %v", err)
+			return false
+		}
+
+		// Set required headers for InferencePool routing.
+		req.Header.Set("Content-Type", "application/json")
+
+		// Set timeout context.
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		req = req.WithContext(ctx)
+
+		// Make the request.
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Logf("request failed: %v", err)
+			return false
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		// Read response body for debugging.
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Logf("failed to read response body: %v", err)
+			return false
+		}
+
+		t.Logf("Response status: %d, body: %s", resp.StatusCode, string(body))
+
+		// Check for successful response (200 OK).
+		if resp.StatusCode != http.StatusOK {
+			t.Logf("unexpected status code: %d (expected 200), body: %s", resp.StatusCode, string(body))
+			return false
+		}
+
+		// Verify we got a valid response body (should contain some content).
+		if len(body) == 0 {
+			t.Logf("empty response body")
+			return false
+		}
+
+		t.Logf("Gateway connectivity test passed: status=%d", resp.StatusCode)
+		return true
+	}, 2*time.Minute, 5*time.Second, "Gateway should be accessible and return 200 status code")
+}
+
+const requestBodyJsonUnCompressedTemplate = `
+{
+	"model": "meta-llama/Llama-3.1-8B-Instruct",
+	"messages": [{
+		"role": "user",
+		"content": "Say this is a test"
+	}]
+}
+`
+
+const requestBodyJsonCompressedTemplate = `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`
+
+// testInferenceGatewayConnectivity tests that the Gateway is accessible and returns a 200 status code
+// for a valid request to the InferencePool backend.
+func testInferenceGatewayJsonFormat(t *testing.T, body, egSelector string) {
+	require.Eventually(t, func() bool {
+		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
+		defer fwd.kill()
+
+		// Create a request to the InferencePool backend with the correct model header.
+		requestBody := body
 		t.Logf("Request body: %s", requestBody)
 		req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		if err != nil {
