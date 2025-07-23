@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # InferencePool Support
 
-InferencePool is a powerful feature that enables intelligent routing and load balancing for AI inference workloads. It integrates with the [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) to provide dynamic endpoint selection based on real-time metrics and availability.
+InferencePool is a powerful feature that enables intelligent routing and load balancing for AI inference workloads. It integrates with the [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) to provide dynamic endpoint selection based on real-time metrics and availability. Real-time metrics refer to data points such as response time, queue depth, and error rates, which are continuously monitored to make informed routing decisions.
 
 ![](/img/request-flow.png)
 
