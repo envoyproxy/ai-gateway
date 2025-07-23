@@ -111,7 +111,11 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, 
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
 	})
 	e.originalRequestBody = body
-	e.originalRequestBodyRaw = rawBody.Body
+	originalBodyRawData, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	e.originalRequestBodyRaw = originalBodyRawData
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{

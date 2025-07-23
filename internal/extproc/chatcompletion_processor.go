@@ -115,7 +115,11 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
 	c.originalRequestBody = body
-	c.originalRequestBodyRaw = rawBody.Body
+	originalBodyRawData, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	c.originalRequestBodyRaw = originalBodyRawData
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
