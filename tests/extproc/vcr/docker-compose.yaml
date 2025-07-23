@@ -1,0 +1,81 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+volumes:
+  extproc-target:
+  # This named volume will store the ExtProc build output and be shared between build and extproc
+
+services:
+  extproc-build:
+    image: golang:1.24.5
+    container_name: extproc-build
+    working_dir: /workspace
+    volumes:
+      - ../../..:/workspace
+      - extproc-target:/workspace/out
+    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc"]
+
+  extproc:
+    image: debian:bookworm-slim
+    container_name: extproc
+    depends_on:
+      extproc-build:
+        condition: service_completed_successfully
+    volumes:
+      - extproc-target:/app
+      - ./extproc.yaml:/etc/extproc/config.yaml:ro
+    # ExtProc ports (internal to Docker network, consumed by Envoy):
+    # - 1063: gRPC service
+    # - 1064: metrics
+    # - 1065: health check
+    working_dir: /app
+    command: ["./extproc", "-configPath", "/etc/extproc/config.yaml"]
+
+  ollama-pull:
+    image: alpine/ollama
+    container_name: ollama-pull
+    environment:
+      OLLAMA_HOST: localhost:11434  # instead of IP 127.0.0.1
+    env_file:
+      - ../../../.env.ollama
+    entrypoint: sh
+    command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
+    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+      - "localhost:host-gateway"
+
+  envoy:
+    image: envoyproxy/envoy:v1.34.3
+    container_name: envoy
+    depends_on:
+      extproc:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "1062:1062"  # HTTP ingress
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Needed to access Ollama running on the host
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
+
+  openai-client:
+    image: golang:1.24.5
+    container_name: openai-client
+    profiles: ["test"]
+    env_file:
+      - ../../../.env.ollama
+    depends_on:
+      envoy:
+        condition: service_started
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://envoy:1062/v1/chat/completions \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]}"

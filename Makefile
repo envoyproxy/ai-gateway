@@ -151,12 +151,13 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # It is useful for the fast iteration of the extproc code.
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
+# The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
