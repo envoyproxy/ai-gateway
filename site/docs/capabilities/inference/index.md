@@ -5,7 +5,7 @@ title: Inference Optimization
 
 # Inference Optimization
 
-Envoy AI Gateway provides advanced inference optimization capabilities to enhance the performance, reliability, and efficiency of your AI/LLM workloads. This section covers the intelligent routing and load balancing features that help optimize inference requests across multiple backend endpoints.
+Envoy AI Gateway offers smart ways to improve the speed and reliability of your AI/LLM tasks. This section explains how it uses intelligent routing and load balancing to manage inference requests across different backend endpoints efficiently.
 
 ![](/img/resource-model.png)
 
