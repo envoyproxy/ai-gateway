@@ -216,7 +216,6 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
 	//	the token usage is calculated correctly without being bypassed.
 	forceBodyMutation := c.onRetry || c.forcedStreamOptionIncludeUsage
-	c.logger.Error("forcing body mutation", slog.Bool("onRetry", c.onRetry), slog.Bool("forcedStreamOptionIncludeUsage", c.forcedStreamOptionIncludeUsage))
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
