@@ -343,24 +343,48 @@ Test vLLM Llama model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Say this is a test"}],"model":"meta-llama/Llama-3.1-8B-Instruct"}' \
-  http://${GATEWAY_IP}/v1/chat/completions
+    -d '{
+        "model": "meta-llama/Llama-3.1-8B-Instruct",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hi. Say this is a test"
+            }
+        ]
+    }' \
+    http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test Mistral model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Say this is a test"}],"model":"mistral:latest"}' \
-  http://${GATEWAY_IP}/v1/chat/completions
+    -d '{
+        "model": "mistral:latest",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hi. Say this is a test"
+            }
+        ]
+    }' \
+    http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test AIService backend (non-InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-self-hosted-model"}' \
-  http://${GATEWAY_IP}/v1/chat/completions
+    -d '{
+        "model": "some-cool-self-hosted-model",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hi. Say this is a test"
+            }
+        ]
+    }' \
+    http://$GATEWAY_IP/v1/chat/completions
 ```
 
 ## Advanced Features

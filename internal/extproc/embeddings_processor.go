@@ -7,7 +7,6 @@ package extproc
 
 import (
 	"bytes"
-	"cmp"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -17,6 +16,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
@@ -194,11 +194,10 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 		}
 	}
 
-	dm := buildContentLengthDynamicMetadataOnRequest(e.config,
-		// Even when the body mutation is nil, we still need to set the content length as some endpoint pickers
-		// might have already removed the content length header.
-		cmp.Or(len(bodyMutation.GetBody()), len(e.originalRequestBodyRaw)),
-	)
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(e.config, len(bm))
+	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{

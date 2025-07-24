@@ -7,7 +7,6 @@ package extproc
 
 import (
 	"bytes"
-	"cmp"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -208,11 +207,10 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		}
 	}
 
-	dm := buildContentLengthDynamicMetadataOnRequest(c.config,
-		// Even when the body mutation is nil, we still need to set the content length as some endpoint pickers
-		// might have already removed the content length header.
-		cmp.Or(len(bodyMutation.GetBody()), len(c.originalRequestBodyRaw)),
-	)
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
