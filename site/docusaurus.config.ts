@@ -50,8 +50,8 @@ const config: Config = {
           versions: {
             current: {
               label: 'latest',
-              path: 'latest',
-              banner: 'unreleased'
+              path: '/',
+              banner: 'none'
             },
             '0.2': {
               label: '0.2',
