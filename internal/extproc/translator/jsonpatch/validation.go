@@ -27,7 +27,7 @@ func ValidatePatches(patches map[string][]openai.JSONPatch) error {
 		}
 
 		// Validate schema name.
-		if ok := filterapi.APISchemaName(schemaName).IsValid(); !ok {
+		if ok := filterapi.APISchemaName(schemaName).IsValid(); !(ok || schemaName == SchemaKeyAny) {
 			return fmt.Errorf("invalid schema name: %s", schemaName)
 		}
 
