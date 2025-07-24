@@ -107,10 +107,10 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
-	if body.Stream && body.StreamOptions != nil && !body.StreamOptions.IncludeUsage && len(c.config.requestCosts) > 0 {
+	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
 		// to avoid the bypassing of the token usage calculation.
-		body.StreamOptions.IncludeUsage = true
+		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
 		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
 		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})

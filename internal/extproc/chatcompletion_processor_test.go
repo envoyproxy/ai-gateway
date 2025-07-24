@@ -84,7 +84,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, false)})
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
@@ -99,24 +99,29 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
 	})
 
-	t.Run("ok_stream_with_include_usage_false", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo"}
-		const modelKey = "x-ai-gateway-model-key"
-		p := &chatCompletionProcessorRouterFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: modelKey,
-				// Ensure that the stream_options.include_usage be forced to true.
-				requestCosts: []processorConfigRequestCost{{}},
-			},
-			requestHeaders: headers,
-			logger:         slog.Default(),
+	t.Run("ok_stream_without_include_usage", func(t *testing.T) {
+		for _, opt := range []*openai.StreamOptions{
+			nil, {IncludeUsage: false},
+		} {
+			headers := map[string]string{":path": "/foo"}
+			const modelKey = "x-ai-gateway-model-key"
+			p := &chatCompletionProcessorRouterFilter{
+				config: &processorConfig{
+					modelNameHeaderKey: modelKey,
+					// Ensure that the stream_options.include_usage be forced to true.
+					requestCosts: []processorConfigRequestCost{{}},
+				},
+				requestHeaders: headers,
+				logger:         slog.Default(),
+			}
+			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.NotNil(t, p.originalRequestBody.StreamOptions)
+			require.True(t, p.forcedStreamOptionIncludeUsage)
+			require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
+			require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
 		}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, false)})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.True(t, p.forcedStreamOptionIncludeUsage)
-		require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
-		require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
 	})
 }
 
@@ -256,11 +261,11 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 	})
 }
 
-func bodyFromModel(t *testing.T, model string, stream, streamOptionIncludeUsage bool) []byte {
+func bodyFromModel(t *testing.T, model string, stream bool, streamOptions *openai.StreamOptions) []byte {
 	openAIReq := &openai.ChatCompletionRequest{}
 	openAIReq.Model = model
 	openAIReq.Stream = stream
-	openAIReq.StreamOptions = &openai.StreamOptions{IncludeUsage: streamOptionIncludeUsage}
+	openAIReq.StreamOptions = streamOptions
 	bytes, err := json.Marshal(openAIReq)
 	require.NoError(t, err)
 	return bytes
@@ -304,7 +309,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("translator error", func(t *testing.T) {
 				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
-				someBody := bodyFromModel(t, "some-model", tc.stream, false)
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
 				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
@@ -328,7 +333,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				mm.RequireSelectedModel(t, "some-model")
 			})
 			t.Run("ok", func(t *testing.T) {
-				someBody := bodyFromModel(t, "some-model", tc.stream, false)
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
 				headerMut := &extprocv3.HeaderMutation{
 					SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
