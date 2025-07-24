@@ -10,7 +10,7 @@ After setting up the basic AI Gateway with the mock backend, you can configure i
 
 ## Example Providers
 
-In this getting started guide you'll find quickstart setups to connec to the following providers:
+In this getting started guide you'll find quickstart setups to connect to the following providers:
 
 - [OpenAI](./openai.md) - Connect to OpenAI's GPT models
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
