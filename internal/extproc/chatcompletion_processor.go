@@ -72,9 +72,8 @@ type chatCompletionProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.ChatCompletionRequest
 	originalRequestBodyRaw []byte
-	// forcedStreamOptionIncludeUsage is set to true if the request is a streaming request and the
-	// IncludeUsage option in the StreamOptions is set to false. In that case, we force the IncludeUsage option
-	// to be set to true to ensure that the token usage is calculated correctly.
+	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
+	// stream_option.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
