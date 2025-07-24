@@ -277,7 +277,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		},
 	}
 	extProcConfig.AllowModeOverride = true
-	extProcConfig.RequestAttributes = []string{"xds.upstream_host_metadata", "xds.cluster_metadata"}
+	extProcConfig.RequestAttributes = []string{internalapi.XDSUpstreamHostMetadataKey, internalapi.XDSClusterMetadataKey}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
 		// At the upstream filter, it can access the original body in its memory, so it can perform the translation
