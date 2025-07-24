@@ -20,7 +20,7 @@ Before starting, ensure you have:
 Install the Gateway API Inference Extension CRDs and controller:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.4.0/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml
 ```
 
 ## Step 2: Deploy Inference Backends
@@ -29,13 +29,13 @@ Deploy sample inference backends and related resources:
 
 ```bash
 # Deploy vLLM simulation backend
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/vllm/sim-deployment.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
 
 # Deploy InferenceModel
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencemodel.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
 
 # Deploy InferencePool resources
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencepool-resources.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml
 ```
 
 > **Note**: These deployments create the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the AIGatewayRoute configuration below.
@@ -149,7 +149,7 @@ spec:
       terminationGracePeriodSeconds: 130
       containers:
         - name: epp
-          image: registry.k8s.io/gateway-api-inference-extension/epp:v0.4.0
+          image: registry.k8s.io/gateway-api-inference-extension/epp:v0.5.1
           imagePullPolicy: IfNotPresent
           args:
             - -poolName
