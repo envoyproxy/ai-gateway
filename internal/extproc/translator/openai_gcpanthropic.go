@@ -9,7 +9,6 @@ import (
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -33,8 +32,6 @@ const (
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
-var errStreamingNotSupported = errors.New("streaming is not yet supported for GCP Anthropic translation")
-
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
 func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
@@ -47,6 +44,7 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride string
+	streamParser      *AnthropicStreamParser
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -547,14 +545,10 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	// TODO: add stream support.
-
 	// GCP VERTEX PATH.
 	specifier := "rawPredict"
 	if openAIReq.Stream {
-		// TODO: specifier = "streamRawPredict" - use this when implementing streaming.
-		err = errStreamingNotSupported
-		return
+		specifier = "streamRawPredict"
 	}
 
 	modelName := openAIReq.Model
