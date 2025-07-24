@@ -100,9 +100,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 
 	t.Run("ok_stream_without_include_usage", func(t *testing.T) {
-		for _, opt := range []*openai.StreamOptions{
-			nil, {IncludeUsage: false},
-		} {
+		for _, opt := range []*openai.StreamOptions{nil, {IncludeUsage: false}} {
 			headers := map[string]string{":path": "/foo"}
 			const modelKey = "x-ai-gateway-model-key"
 			p := &chatCompletionProcessorRouterFilter{
