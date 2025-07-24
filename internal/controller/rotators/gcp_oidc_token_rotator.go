@@ -51,6 +51,7 @@ type serviceAccountTokenGenerator func(
 	ctx context.Context,
 	stsToken string,
 	saConfig aigv1a1.GCPServiceAccountImpersonationConfig,
+	projectName string,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
 
@@ -59,7 +60,7 @@ type serviceAccountTokenGenerator func(
 type stsTokenGenerator func(
 	ctx context.Context,
 	jwtToken string,
-	wifConfig aigv1a1.GCPWorkLoadIdentityFederationConfig,
+	wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
 
@@ -163,19 +164,19 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	// This is the initial token from the configured OIDC provider (e.g., Kubernetes service account token).
 	oidcTokenExpiry, err := r.oidcProvider.GetToken(ctx)
 	if err != nil {
-		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.gcpCredentials.WorkLoadIdentityFederationConfig.WorkloadIdentityProvider.Name)
+		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.gcpCredentials.WorkloadIdentityFederationConfig.WorkloadIdentityProviderName)
 		return time.Time{}, fmt.Errorf("failed to obtain OIDC token: %w", err)
 	}
 
 	// 2. Exchange the JWT for an STS token.
 	// The OIDC JWT token is exchanged for a Google Cloud STS token.
-	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, r.gcpCredentials.WorkLoadIdentityFederationConfig)
+	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, r.gcpCredentials.WorkloadIdentityFederationConfig)
 	if err != nil {
-		wifConfig := r.gcpCredentials.WorkLoadIdentityFederationConfig
+		wifConfig := r.gcpCredentials.WorkloadIdentityFederationConfig
 		r.logger.Error(err, "failed to exchange JWT for STS token",
 			"projectID", wifConfig.ProjectID,
 			"workloadIdentityPool", wifConfig.WorkloadIdentityPoolName,
-			"workloadIdentityProvider", wifConfig.WorkloadIdentityProvider.Name)
+			"workloadIdentityProvider", wifConfig.WorkloadIdentityProviderName)
 		return time.Time{}, fmt.Errorf("failed to exchange JWT for STS token (project: %s, pool: %s): %w",
 			wifConfig.ProjectID, wifConfig.WorkloadIdentityPoolName, err)
 	}
@@ -183,16 +184,15 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	// 3. Exchange the STS token for a GCP service account access token.
 	// The STS token is used to impersonate a GCP service account.
 	var gcpAccessToken *tokenprovider.TokenExpiry
-	if r.gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation != nil {
-		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation)
+	if r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation != nil {
+		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation, r.gcpCredentials.ProjectName)
 		if err != nil {
-			saImpersonation := r.gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation
 			saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com",
-				saImpersonation.ServiceAccountName,
-				saImpersonation.ServiceAccountProjectName)
+				r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation.ServiceAccountName,
+				r.gcpCredentials.ProjectName)
 			r.logger.Error(err, "failed to impersonate GCP service account",
 				"serviceAccount", saEmail,
-				"serviceAccountProject", saImpersonation.ServiceAccountProjectName)
+				"serviceAccountProject", r.gcpCredentials.ProjectName)
 			return time.Time{}, fmt.Errorf("failed to impersonate service account %s: %w", saEmail, err)
 		}
 	} else {
@@ -246,7 +246,7 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
-func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkLoadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	proxyOpt, err := getGCPProxyClientOption()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GCP proxy client option: %w", err)
@@ -267,7 +267,7 @@ func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv
 	stsAudience := fmt.Sprintf("//iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s",
 		wifConfig.ProjectID,
 		wifConfig.WorkloadIdentityPoolName,
-		wifConfig.WorkloadIdentityProvider.Name)
+		wifConfig.WorkloadIdentityProviderName)
 
 	// Create the token exchange request with the appropriate parameters.
 	req := &sts.GoogleIdentityStsV1ExchangeTokenRequest{
@@ -301,9 +301,9 @@ var _ serviceAccountTokenGenerator = impersonateServiceAccount
 // in the format: <serviceAccountName>@<serviceAccountProjectName>.iam.gserviceaccount.com
 //
 // The resulting token will have the cloud-platform scope.
-func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig aigv1a1.GCPServiceAccountImpersonationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig aigv1a1.GCPServiceAccountImpersonationConfig, projectName string, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	// Construct the service account email from the configured parameters.
-	saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saConfig.ServiceAccountName, saConfig.ServiceAccountProjectName)
+	saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saConfig.ServiceAccountName, projectName)
 
 	// Configure the impersonation parameters.
 	// Define which service account to impersonate and what scopes the token should have.

@@ -97,7 +97,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to get sts token",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			stsTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPWorkLoadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			stsTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
 			expectErrorMsg: "failed to exchange JWT for STS token (project: test-project-id, pool: test-pool-name): fake network failure",
@@ -110,10 +110,10 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to impersonate service account",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			saTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			saTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
-			expectErrorMsg: "failed to impersonate service account test-service-account@test-service-account-project-name.iam.gserviceaccount.com: fake network failure",
+			expectErrorMsg: "failed to impersonate service account test-service-account@dummy-project-name.iam.gserviceaccount.com: fake network failure",
 		},
 		{
 			name:            "secret with old does not exist",
@@ -194,28 +194,26 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 
 			// If no saTokenFunc or stsTokenFunc is provided, use the default mock functions.
 			if tt.saTokenFunc == nil {
-				tt.saTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.saTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: newGCPAccessToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
 			if tt.stsTokenFunc == nil {
-				tt.stsTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPWorkLoadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.stsTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: dummySTSToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
 			gcpCredentials := aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: dummyProjectName,
 				Region:      dummyProjectRegion,
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                "test-project-id",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{},
 					WorkloadIdentityPoolName: "test-pool-name",
 				},
 			}
 			if !tt.skipServiceAccountImpersonation {
-				gcpCredentials.WorkLoadIdentityFederationConfig.ServiceAccountImpersonation = &aigv1a1.GCPServiceAccountImpersonationConfig{
-					ServiceAccountName:        "test-service-account",
-					ServiceAccountProjectName: "test-service-account-project-name",
+				gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation = &aigv1a1.GCPServiceAccountImpersonationConfig{
+					ServiceAccountName: "test-service-account",
 				}
 			}
 
@@ -403,7 +401,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 	tests := []struct {
 		name            string
 		jwtToken        string
-		wifConfig       aigv1a1.GCPWorkLoadIdentityFederationConfig
+		wifConfig       aigv1a1.GCPWorkloadIdentityFederationConfig
 		mockServer      func() *httptest.Server
 		expectedError   bool
 		expectedToken   string
@@ -412,12 +410,10 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "successful token exchange",
 			jwtToken: "test-jwt-token",
-			wifConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-				ProjectID:                "test-project",
-				WorkloadIdentityPoolName: "test-pool",
-				WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
-					Name: "test-provider",
-				},
+			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				ProjectID:                    "test-project",
+				WorkloadIdentityPoolName:     "test-pool",
+				WorkloadIdentityProviderName: "test-provider",
 			},
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -447,12 +443,10 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "token exchange error",
 			jwtToken: "invalid-jwt-token",
-			wifConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-				ProjectID:                "test-project",
-				WorkloadIdentityPoolName: "test-pool",
-				WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
-					Name: "test-provider",
-				},
+			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				ProjectID:                    "test-project",
+				WorkloadIdentityPoolName:     "test-pool",
+				WorkloadIdentityProviderName: "test-provider",
 			},
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -523,12 +517,10 @@ func TestExchangeJWTForSTSToken_WithoutAuthOption(t *testing.T) {
 	defer server.Close()
 
 	jwtToken := "test-jwt-token" // #nosec G101
-	wifConfig := aigv1a1.GCPWorkLoadIdentityFederationConfig{
-		ProjectID:                "test-project",
-		WorkloadIdentityPoolName: "test-pool",
-		WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
-			Name: "test-provider",
-		},
+	wifConfig := aigv1a1.GCPWorkloadIdentityFederationConfig{
+		ProjectID:                    "test-project",
+		WorkloadIdentityPoolName:     "test-pool",
+		WorkloadIdentityProviderName: "test-provider",
 	}
 
 	// Call the function with the server URL as the endpoint.
@@ -556,9 +548,11 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 // TestImpersonateServiceAccount tests the impersonateServiceAccount function.
 func TestImpersonateServiceAccount(t *testing.T) {
 	tests := []struct {
-		name     string
-		stsToken string
-		saConfig aigv1a1.GCPServiceAccountImpersonationConfig
+		name        string
+		stsToken    string
+		saName      string
+		projectName string
+		saConfig    aigv1a1.GCPServiceAccountImpersonationConfig
 		// impersonateServiceAccount is hardcoded to call google api endpoint and ignore mockEndpoints set via opts.
 		// thus we mock the underlying HTTPRoundTripper to simulate mock responses.
 		mockResponse  func(req *http.Request) (*http.Response, error)
@@ -566,12 +560,10 @@ func TestImpersonateServiceAccount(t *testing.T) {
 		expectedToken string
 	}{
 		{
-			name:     "successful service account impersonation",
-			stsToken: "test-sts-token",
-			saConfig: aigv1a1.GCPServiceAccountImpersonationConfig{
-				ServiceAccountName:        "test-service-account",
-				ServiceAccountProjectName: "test-project",
-			},
+			name:        "successful service account impersonation",
+			stsToken:    "test-sts-token",
+			saName:      "test-service-account",
+			projectName: "test-project",
 			mockResponse: func(req *http.Request) (*http.Response, error) {
 				if req.Method != http.MethodPost {
 					return &http.Response{
@@ -606,12 +598,10 @@ func TestImpersonateServiceAccount(t *testing.T) {
 			expectedToken: "impersonated-sa-token",
 		},
 		{
-			name:     "impersonation error",
-			stsToken: "invalid-sts-token",
-			saConfig: aigv1a1.GCPServiceAccountImpersonationConfig{
-				ServiceAccountName:        "test-service-account",
-				ServiceAccountProjectName: "test-project",
-			},
+			name:        "impersonation error",
+			stsToken:    "invalid-sts-token",
+			saName:      "test-service-account",
+			projectName: "test-project",
 			mockResponse: func(_ *http.Request) (*http.Response, error) {
 				respBody := `{
 					"error": {
@@ -633,8 +623,7 @@ func TestImpersonateServiceAccount(t *testing.T) {
 			name:     "credentials creation error",
 			stsToken: "test-sts-token",
 			saConfig: aigv1a1.GCPServiceAccountImpersonationConfig{
-				ServiceAccountName:        "test-service-account",
-				ServiceAccountProjectName: "test-project",
+				ServiceAccountName: "test-service-account",
 			},
 			mockResponse: func(_ *http.Request) (*http.Response, error) {
 				// Simulate network error during credential creation.
@@ -653,7 +642,7 @@ func TestImpersonateServiceAccount(t *testing.T) {
 			mockHTTPClient := &http.Client{Transport: mockTransport}
 
 			// Call the function being tested with our mock HTTP client.
-			tokenExpiry, err := impersonateServiceAccount(ctx, tc.stsToken, tc.saConfig, option.WithHTTPClient(mockHTTPClient))
+			tokenExpiry, err := impersonateServiceAccount(ctx, tc.stsToken, tc.saConfig, tc.projectName, option.WithHTTPClient(mockHTTPClient))
 
 			if tc.expectedError {
 				require.Error(t, err)
@@ -718,16 +707,15 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 						ProjectName: "test-project",
 						Region:      "us-central1",
-						WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-							ProjectID:                "test-project-id",
-							WorkloadIdentityPoolName: "test-pool-name",
-							WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
-								Name:         "test-provider",
-								OIDCProvider: validOIDCConfig,
-							},
+						WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+							ProjectID:                    "test-project-id",
+							WorkloadIdentityPoolName:     "test-pool-name",
+							WorkloadIdentityProviderName: "test-provider",
 							ServiceAccountImpersonation: &aigv1a1.GCPServiceAccountImpersonationConfig{
-								ServiceAccountName:        "test-service-account",
-								ServiceAccountProjectName: "test-project",
+								ServiceAccountName: "test-service-account",
+							},
+							OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
+								BackendSecurityPolicyOIDC: validOIDCConfig,
 							},
 						},
 					},
