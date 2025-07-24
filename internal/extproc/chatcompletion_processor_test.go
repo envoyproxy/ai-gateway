@@ -68,6 +68,16 @@ func Test_chatCompletionProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, c.translator)
 	})
+	t.Run("supported gcp-vertexai", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
+	t.Run("supported gcp-anthropic", func(t *testing.T) {
+		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic})
+		require.NoError(t, err)
+		require.NotNil(t, c.translator)
+	})
 }
 
 func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
@@ -345,15 +355,17 @@ func TestChatCompletion_ParseBody(t *testing.T) {
 		bytes, err := json.Marshal(original)
 		require.NoError(t, err)
 
-		modelName, rb, err := parseOpenAIChatCompletionBody(&extprocv3.HttpBody{Body: bytes})
+		modelName, rb, patches, err := parseOpenAIChatCompletionBody(&extprocv3.HttpBody{Body: bytes})
 		require.NoError(t, err)
 		require.Equal(t, "llama3.3", modelName)
+		require.Nil(t, patches)
 		require.NotNil(t, rb)
 	})
 	t.Run("error", func(t *testing.T) {
-		modelName, rb, err := parseOpenAIChatCompletionBody(&extprocv3.HttpBody{})
+		modelName, rb, patches, err := parseOpenAIChatCompletionBody(&extprocv3.HttpBody{})
 		require.Error(t, err)
 		require.Empty(t, modelName)
+		require.Nil(t, patches)
 		require.Nil(t, rb)
 	})
 }

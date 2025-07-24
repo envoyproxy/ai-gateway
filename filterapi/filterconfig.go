@@ -116,6 +116,16 @@ const (
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
 )
 
+func (n APISchemaName) IsValid() bool {
+	// Check if the schema name is one of the known API schema names.
+	switch n {
+	case APISchemaOpenAI, APISchemaAWSBedrock, APISchemaAzureOpenAI, APISchemaGCPVertexAI, APISchemaGCPAnthropic:
+		return true
+	default:
+		return false
+	}
+}
+
 // RouteRuleName is the name of the route rule.
 type RouteRuleName string
 
