@@ -1,3 +1,8 @@
+---
+title: Support Integration with Endpoint Picker
+sidebar_position: 3
+---
+
 # Support Integration with Endpoint Picker (GIE)
 
 + author: [Xunzhuo](https://github.com/xunzhuo)
@@ -27,8 +32,6 @@ This propopal aims to land integration with other endpoint picker in Envoy AI Ga
 
 This is a core functionality in EAGW`s vision, make the routing more intelligent.
 
-![](http://liuxunzhuo.oss-cn-chengdu.aliyuncs.com/2025-06-25-090714.png)
-
 ## Goals
 + Integrate with EPP to expand the Envoy AI Gateway abilities
 + Integrate with the existing CRD and features well
@@ -42,8 +45,6 @@ Before starting the design of EAGW + GIE integration, let us figure out how GIE 
 ### How EPP works?
 
 Take the [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) as an example:
-
-![](http://liuxunzhuo.oss-cn-chengdu.aliyuncs.com/2025-06-25-090551.png)
 
 When request goes to envoyproxy, it goes to the http filter chain, the ext-proc filter calls an ext-proc upstream cluster, which connects to an external gRPC service, we call that endpoint picker(EPP).
 

@@ -1,3 +1,8 @@
+---
+title: Support Inference Gateway API Extension
+sidebar_position: 2
+---
+
 # Inference Gateway API Extension Support
 
 ## Propsal Summary

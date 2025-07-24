@@ -1,3 +1,8 @@
+---
+title: Envoy AI Gateway Design
+sidebar_position: 1
+---
+
 # Envoy AI Gateway
 
 ## Table of Contents
