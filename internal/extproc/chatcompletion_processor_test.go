@@ -8,7 +8,6 @@ package extproc
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -85,7 +84,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
-		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false)})
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, false)})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
@@ -98,6 +97,25 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
 		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
+	})
+
+	t.Run("ok_stream_with_include_usage_false", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		const modelKey = "x-ai-gateway-model-key"
+		p := &chatCompletionProcessorRouterFilter{
+			config: &processorConfig{
+				modelNameHeaderKey: modelKey,
+				// Ensure that the stream_option.include_usage be forced to true.
+				requestCosts: []processorConfigRequestCost{{}},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, false)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, p.forcedStreamOptionIncludeUsage)
+		require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
 	})
 }
 
@@ -237,10 +255,11 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 	})
 }
 
-func bodyFromModel(t *testing.T, model string, stream bool) []byte {
-	var openAIReq openai.ChatCompletionRequest
+func bodyFromModel(t *testing.T, model string, stream, streamOptionIncludeUsage bool) []byte {
+	openAIReq := &openai.ChatCompletionRequest{}
 	openAIReq.Model = model
 	openAIReq.Stream = stream
+	openAIReq.StreamOptions = &openai.StreamOptions{IncludeUsage: streamOptionIncludeUsage}
 	bytes, err := json.Marshal(openAIReq)
 	require.NoError(t, err)
 	return bytes
@@ -273,11 +292,18 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	const modelKey = "x-ai-gateway-model-key"
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprintf("stream%v", stream), func(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		stream, forcedIncludeUsage bool
+	}{
+		{name: "non-streaming", stream: false, forcedIncludeUsage: false},
+		{name: "streaming", stream: true, forcedIncludeUsage: false},
+		{name: "streaming with forced include usage", stream: true, forcedIncludeUsage: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Run("translator error", func(t *testing.T) {
 				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
-				someBody := bodyFromModel(t, "some-model", stream)
+				someBody := bodyFromModel(t, "some-model", tc.stream, false)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
 				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
@@ -292,7 +318,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					translator:             tr,
 					originalRequestBodyRaw: someBody,
 					originalRequestBody:    &body,
-					stream:                 stream,
+					stream:                 tc.stream,
 				}
 				_, err := p.ProcessRequestHeaders(t.Context(), nil)
 				require.ErrorContains(t, err, "failed to transform request: test error")
@@ -301,7 +327,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				mm.RequireSelectedModel(t, "some-model")
 			})
 			t.Run("ok", func(t *testing.T) {
-				someBody := bodyFromModel(t, "some-model", stream)
+				someBody := bodyFromModel(t, "some-model", tc.stream, false)
 				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
 				headerMut := &extprocv3.HeaderMutation{
 					SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
@@ -310,18 +336,22 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 
 				var expBody openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &expBody))
-				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+				if tc.stream && tc.forcedIncludeUsage {
+					expBody.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+				}
+				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config:                 &processorConfig{modelNameHeaderKey: modelKey},
-					requestHeaders:         headers,
-					logger:                 slog.Default(),
-					metrics:                mm,
-					translator:             mt,
-					originalRequestBodyRaw: someBody,
-					originalRequestBody:    &expBody,
-					stream:                 stream,
-					handler:                &mockBackendAuthHandler{},
+					config:                         &processorConfig{modelNameHeaderKey: modelKey},
+					requestHeaders:                 headers,
+					logger:                         slog.Default(),
+					metrics:                        mm,
+					translator:                     mt,
+					originalRequestBodyRaw:         someBody,
+					originalRequestBody:            &expBody,
+					stream:                         tc.stream,
+					forcedStreamOptionIncludeUsage: tc.forcedIncludeUsage,
+					handler:                        &mockBackendAuthHandler{},
 				}
 				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
 				require.NoError(t, err)
@@ -333,7 +363,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 
 				mm.RequireRequestNotCompleted(t)
 				mm.RequireSelectedModel(t, "some-model")
-				require.Equal(t, stream, p.stream)
+				require.Equal(t, tc.stream, p.stream)
 			})
 		})
 	}

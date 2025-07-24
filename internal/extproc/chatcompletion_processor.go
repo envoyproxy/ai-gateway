@@ -205,7 +205,12 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	c.metrics.StartRequest(c.requestHeaders)
 	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
 
-	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry || c.forcedStreamOptionIncludeUsage)
+	// We force the body mutation in the following cases:
+	// * The request is a retry request because the body mutation might have happened the previous iteration.
+	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
+	//	the token usage is calculated correctly without being bypassed.
+	forceBodyMutation := c.onRetry || c.forcedStreamOptionIncludeUsage
+	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
