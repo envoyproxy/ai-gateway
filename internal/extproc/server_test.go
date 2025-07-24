@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -312,21 +313,31 @@ func TestServer_setBackend(t *testing.T) {
 			errStr: "no router processor found, request_id=aaaaaaaaaaaa, backend=openai",
 		},
 	} {
-		t.Run("errors/"+tc.errStr, func(t *testing.T) {
-			str, err := prototext.Marshal(tc.md)
-			require.NoError(t, err)
-			s, _ := requireNewServerWithMockProcessor(t)
-			s.config.backends = map[string]*processorConfigBackend{"openai": {}}
-			err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
-				Attributes: map[string]*structpb.Struct{
-					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
-						"xds.upstream_host_metadata": {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
-					}},
-				},
-				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+		for _, isEndpointPicker := range []bool{false, true} {
+			t.Run(fmt.Sprintf("errors/%s/isEndpointPicker=%t", tc.errStr, isEndpointPicker), func(t *testing.T) {
+				str, err := prototext.Marshal(tc.md)
+				require.NoError(t, err)
+				s, _ := requireNewServerWithMockProcessor(t)
+				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai"}}}
+				mockProc := &mockProcessor{}
+
+				// Use the correct metadata field key based on isEndpointPicker.
+				metadataFieldKey := "xds.upstream_host_metadata"
+				if isEndpointPicker {
+					metadataFieldKey = "xds.cluster_metadata"
+				}
+
+				err = s.setBackend(t.Context(), mockProc, "aaaaaaaaaaaa", isEndpointPicker, &extprocv3.ProcessingRequest{
+					Attributes: map[string]*structpb.Struct{
+						"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+							metadataFieldKey: {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
+						}},
+					},
+					Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+				})
+				require.ErrorContains(t, err, tc.errStr)
 			})
-			require.ErrorContains(t, err, tc.errStr)
-		})
+		}
 	}
 }
 
