@@ -22,7 +22,7 @@ Before starting, ensure you have:
 Install the Gateway API Inference Extension CRDs and controller:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.4.0/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml
 ```
 
 ## Step 2: Deploy Inference Backend
@@ -30,7 +30,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 Deploy a sample inference backend that will serve as your inference endpoints:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/vllm/sim-deployment.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
 ```
 
 This creates a simulated vLLM deployment with multiple replicas that can handle inference requests.
@@ -42,7 +42,7 @@ This creates a simulated vLLM deployment with multiple replicas that can handle 
 Create an InferenceModel resource to define the model configuration:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencemodel.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
 ```
 
 ## Step 4: Create InferencePool Resources
@@ -50,7 +50,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 Deploy the InferencePool and related resources:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencepool-resources.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml
 ```
 
 This creates:
