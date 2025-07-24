@@ -14,6 +14,8 @@ As generative AI (GenAI) becomes foundational to modern software products, devel
 
 **Your architecture doesn’t have to be this complex.**
 
+<!-- truncate -->
+
 Platform engineering teams need a secure, scalable way to serve both internal and external LLMs to their users. That’s where Envoy AI Gateway comes in.
 
 This reference architecture outlines how to build a flexible GenAI platform using the open source solutions Envoy AI Gateway, KServe, and complementary tools. Whether you're self-hosting models or integrating with model-serving services on cloud providers, such as OpenAI and Anthropic, this architecture enables a unified, governable interface for LLM traffic.
