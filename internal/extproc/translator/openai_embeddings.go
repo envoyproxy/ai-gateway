@@ -59,7 +59,6 @@ func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.
 	}
 
 	if onRetry {
-		// On retry, the body might have changed to a different provider's format.
 		newBody = raw
 	}
 

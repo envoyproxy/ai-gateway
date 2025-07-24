@@ -66,7 +66,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	}
 
 	if forceBodyMutation {
-		// On retry, the body might have changed to a different provider's format.
 		newBody = raw
 	}
 
