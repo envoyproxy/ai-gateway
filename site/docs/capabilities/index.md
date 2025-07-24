@@ -12,6 +12,7 @@ Welcome to the Envoy AI Gateway capabilities documentation! This section provide
 
 Support for various Large Language Model providers:
 
+- **[Connecting to AI Providers](./llm-integrations/connect-providers.md)**: Learn how to establish connectivity with any supported AI provider
 - **[Supported Providers](./llm-integrations/supported-providers.md)**: Compatible AI/LLM service providers
 - **[Supported Endpoints](./llm-integrations/supported-endpoints.md)**: Available API endpoints and operations
 

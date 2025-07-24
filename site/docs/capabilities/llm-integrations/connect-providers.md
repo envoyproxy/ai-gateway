@@ -16,7 +16,7 @@ Establishing connectivity with an AI provider involves configuring three key Kub
 2. **BackendSecurityPolicy** - Configures authentication credentials
 3. **AIGatewayRoute** - Routes client requests to the appropriate backends
 
-These resources provide a consistent configuration model regardless of which AI provider you're connecting to, whether it's OpenAI, AWS Bedrock, Azure OpenAI, or any other [supported provider](./supported-providers.md).
+These resources provide a consistent configuration model regardless of which AI provider you're connecting to, whether it's OpenAI, AWS Bedrock, Azure OpenAI, or any other [supported provider](./supported-providers).
 
 ## Core Resources for Provider Connectivity
 
@@ -492,11 +492,11 @@ All resources provide status conditions to monitor their health:
 
 Now that you understand the connectivity fundamentals:
 
-- **[Supported Providers](./supported-providers.md)** - View the complete list of supported providers and their configurations
-- **[Supported Endpoints](./supported-endpoints.md)** - Learn about available API endpoints and their capabilities
-- **[Getting Started Guide](../../getting-started/connect-providers/)** - Follow hands-on tutorials for specific providers
-- **[Traffic Management](../traffic/)** - Configure advanced routing, rate limiting, and fallback strategies
-- **[Security](../security/)** - Implement comprehensive security policies for your AI traffic
+- **[Supported Providers](/docs/capabilities/llm-integrations/supported-providers)** - View the complete list of supported providers and their configurations
+- **[Supported Endpoints](/docs/capabilities/llm-integrations/supported-endpoints)** - Learn about available API endpoints and their capabilities
+- **[Getting Started Guide](/docs/getting-started/connect-providers)** - Follow hands-on tutorials for specific providers
+- **[Traffic Management](/docs/capabilities/traffic)** - Configure advanced routing, rate limiting, and fallback strategies
+- **[Security](/docs/capabilities/security)** - Implement comprehensive security policies for your AI traffic
 
 ## API Reference
 
