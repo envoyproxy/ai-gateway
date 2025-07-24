@@ -70,10 +70,6 @@ The implementation extends the OpenAI ChatCompletionRequest schema with an `extr
 ```go
 type ChatCompletionRequest struct {
     // ...existing fields...
-    ExtraBody *ExtraBody `json:"extra_body,omitempty"`
-}
-
-type ExtraBody struct {
     AIGateway *AIGatewayExtensions `json:"aigateway.envoy.io,omitempty"`
 }
 
@@ -115,22 +111,20 @@ The JSON patch processing follows this pipeline:
 {
   "model": "gemini-2.5-flash-001",
   "messages": [{"role": "user", "content": "Hello"}],
-  "extra_body": {
-    "aigateway.envoy.io": {
-      "json_patches": {
-        "GCPVertexAI": [
-          {
-            "op": "add",
-            "path": "/safety_settings/category",
-            "value": "HARM_CATEGORY_DANGEROUS_CONTENT"
-          },
-          {
-            "op": "add",
-            "path": "/safety_settings/threshold",
-            "value": "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      }
+  "aigateway.envoy.io": {
+    "json_patches": {
+      "GCPVertexAI": [
+        {
+          "op": "add",
+          "path": "/safety_settings/category",
+          "value": "HARM_CATEGORY_DANGEROUS_CONTENT"
+        },
+        {
+          "op": "add",
+          "path": "/safety_settings/threshold",
+          "value": "BLOCK_MEDIUM_AND_ABOVE"
+        }
+      ]
     }
   }
 }
@@ -142,20 +136,18 @@ The JSON patch processing follows this pipeline:
 {
   "model": "gemini-2.5-flash-001",
   "messages": [{"role": "user", "content": "Hello"}],
-  "extra_body": {
-    "aigateway.envoy.io": {
-      "json_patches": {
-        "ANY": [
-          {
-            "op": "add",
-            "path": "/metadata",
-            "value": {
-              "requestId": "custom-12345",
-              "source": "ai-gateway"
-            }
+  "aigateway.envoy.io": {
+    "json_patches": {
+      "ANY": [
+        {
+          "op": "add",
+          "path": "/metadata",
+          "value": {
+            "requestId": "custom-12345",
+            "source": "ai-gateway"
           }
-        ]
-      }
+        }
+      ]
     }
   }
 }
