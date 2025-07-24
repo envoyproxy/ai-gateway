@@ -418,7 +418,7 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 	if err = json.Unmarshal(body.Body, &openAIReq); err != nil {
 		return "", nil, nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	patches, err = jsonpatch.ExtractPatches(openAIReq.ExtraBody)
+	patches, err = jsonpatch.ExtractPatches(openAIReq.AIGateway)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("failed to extract JSON patches: %w", err)
 	}

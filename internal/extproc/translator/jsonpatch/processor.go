@@ -105,17 +105,17 @@ func (p *Processor) applyPatchList(body []byte, patches []openai.JSONPatch, sche
 	return result, nil
 }
 
-// ExtractPatches extracts JSON patches from the extra_body field.
-func ExtractPatches(extraBody *openai.ExtraBody) (map[string][]openai.JSONPatch, error) {
-	if extraBody == nil || extraBody.AIGateway == nil || extraBody.AIGateway.JSONPatches == nil {
+// ExtractPatches extracts JSON patches from the AIGateway field.
+func ExtractPatches(aiGateway *openai.AIGatewayExtensions) (map[string][]openai.JSONPatch, error) {
+	if aiGateway == nil || aiGateway.JSONPatches == nil {
 		return nil, nil
 	}
 
-	patches := extraBody.AIGateway.JSONPatches
+	patches := aiGateway.JSONPatches
 
 	// Validate patches before returning.
 	if err := ValidatePatches(patches); err != nil {
-		return nil, fmt.Errorf("invalid patches in extra_body: %w", err)
+		return nil, fmt.Errorf("invalid patches in aigateway.envoy.io field: %w", err)
 	}
 
 	return patches, nil

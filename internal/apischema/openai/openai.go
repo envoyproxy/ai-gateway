@@ -585,8 +585,8 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
 	User string `json:"user,omitempty"`
 
-	// ExtraBody: Additional request body parameters for extensions like AI Gateway JSON patches
-	ExtraBody *ExtraBody `json:"extra_body,omitempty"` //nolint:tagliatelle //follow openai api
+	// AIGateway: AI Gateway specific extensions for JSON patches and other features.
+	AIGateway *AIGatewayExtensions `json:"aigateway.envoy.io,omitempty"`
 }
 
 type StreamOptions struct {
@@ -934,11 +934,6 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	}
 	*(*time.Time)(t) = time.Unix(q, 0).UTC()
 	return nil
-}
-
-// ExtraBody contains additional request body parameters for AI Gateway extensions
-type ExtraBody struct {
-	AIGateway *AIGatewayExtensions `json:"aigateway.envoy.io,omitempty"`
 }
 
 // AIGatewayExtensions contains AI Gateway specific extensions

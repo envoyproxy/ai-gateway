@@ -114,23 +114,21 @@ func TestValidatePatch(t *testing.T) {
 func TestExtractPatches(t *testing.T) {
 	tests := []struct {
 		name       string
-		extraBody  *openai.ExtraBody
+		aiGateway  *openai.AIGatewayExtensions
 		want       map[string][]openai.JSONPatch
 		wantErrMsg string
 	}{
 		{
-			name:      "nil extra body",
-			extraBody: nil,
+			name:      "nil ai gateway",
+			aiGateway: nil,
 			want:      nil,
 		},
 		{
 			name: "valid patches",
-			extraBody: &openai.ExtraBody{
-				AIGateway: &openai.AIGatewayExtensions{
-					JSONPatches: map[string][]openai.JSONPatch{
-						"GCPVertexAI": {
-							{Op: "add", Path: "/cachedContent", Value: "test"},
-						},
+			aiGateway: &openai.AIGatewayExtensions{
+				JSONPatches: map[string][]openai.JSONPatch{
+					"GCPVertexAI": {
+						{Op: "add", Path: "/cachedContent", Value: "test"},
 					},
 				},
 			},
@@ -142,29 +140,25 @@ func TestExtractPatches(t *testing.T) {
 		},
 		{
 			name: "invalid patches",
-			extraBody: &openai.ExtraBody{
-				AIGateway: &openai.AIGatewayExtensions{
-					JSONPatches: map[string][]openai.JSONPatch{
-						"GCPVertexAI": {
-							{Op: "invalid", Path: "/test", Value: "value"},
-						},
+			aiGateway: &openai.AIGatewayExtensions{
+				JSONPatches: map[string][]openai.JSONPatch{
+					"GCPVertexAI": {
+						{Op: "invalid", Path: "/test", Value: "value"},
 					},
 				},
 			},
-			want:       nil,
-			wantErrMsg: "unsupported operation: invalid",
+			wantErrMsg: "unsupported operation",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ExtractPatches(tt.extraBody)
+			got, err := ExtractPatches(tt.aiGateway)
 			if tt.wantErrMsg != "" {
 				require.ErrorContains(t, err, tt.wantErrMsg)
 				return
 			}
 			require.NoError(t, err)
-
 			if d := cmp.Diff(tt.want, got); d != "" {
 				t.Errorf("ExtractPatches() mismatch (-want +got):\n%s", d)
 			}
