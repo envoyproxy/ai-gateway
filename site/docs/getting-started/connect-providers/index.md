@@ -17,7 +17,7 @@ In this getting started guide you'll find quickstart setups to connect to the fo
 - [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
 
 :::tip
-To learn how to connect to providers see [Connecting to AI Providers](docs/capabilities/llm-integrations/connect-providers) and you can view all [Supported Providers](docs/capabilities/llm-integrations/supported-providers).
+To learn how to connect to providers see [Connecting to AI Providers](/docs/capabilities/llm-integrations/connect-providers) and you can view all [Supported Providers](/docs/capabilities/llm-integrations/supported-providers).
 :::
 
 ## Before You Begin
