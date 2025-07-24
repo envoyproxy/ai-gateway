@@ -17,6 +17,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/tidwall/sjson"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -73,7 +74,7 @@ type chatCompletionProcessorRouterFilter struct {
 	originalRequestBody    *openai.ChatCompletionRequest
 	originalRequestBodyRaw []byte
 	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
-	// stream_option.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
+	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
@@ -110,6 +111,12 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
 		// to avoid the bypassing of the token usage calculation.
 		body.StreamOptions.IncludeUsage = true
+		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
+		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to set stream_options: %w", err)
+		}
 		c.forcedStreamOptionIncludeUsage = true
 		// TODO: alternatively, we could just return 403 or 400 error here. That makes sense since configuring the
 		// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
@@ -209,6 +216,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
 	//	the token usage is calculated correctly without being bypassed.
 	forceBodyMutation := c.onRetry || c.forcedStreamOptionIncludeUsage
+	c.logger.Error("forcing body mutation", slog.Bool("onRetry", c.onRetry), slog.Bool("forcedStreamOptionIncludeUsage", c.forcedStreamOptionIncludeUsage))
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)

@@ -105,7 +105,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
 			config: &processorConfig{
 				modelNameHeaderKey: modelKey,
-				// Ensure that the stream_option.include_usage be forced to true.
+				// Ensure that the stream_options.include_usage be forced to true.
 				requestCosts: []processorConfigRequestCost{{}},
 			},
 			requestHeaders: headers,
@@ -116,6 +116,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, resp)
 		require.True(t, p.forcedStreamOptionIncludeUsage)
 		require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
+		require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
 	})
 }
 
