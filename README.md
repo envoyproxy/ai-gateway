@@ -3,11 +3,14 @@ Envoy AI Gateway is an open source project for using [Envoy Gateway](https://git
 
 ## Usage
 
-When using Envoy AI Gateway, we refer to a two-tier gateway pattern. **The Tier One Gateway** functions as a centralized entry point, and the **Tier Two Gateway** handles ingress traffic to a self-hosted model serving cluster. The **The Tier One Gateway** handles authentication, top-level routing, and global rate limiting, while the **Tier Two Gateway** provides fine-grained control over internal model access.
+When using Envoy AI Gateway, we refer to a two-tier gateway pattern. **The Tier One Gateway** functions as a centralized entry point, and the **Tier Two Gateway** handles ingress traffic to a self-hosted model serving cluster.
+
++ The **The Tier One Gateway** handles authentication, top-level routing, and global rate limiting
++ The **Tier Two Gateway** provides fine-grained control over self-hosted model access, with endpoint picker support for LLM inference optimization.
 
 ![](site/blog/images/aigw-ref.drawio.png)
 
-## 🤖 Supported AI Providers
+## Supported AI Providers
 
 Envoy AI Gateway supports a wide range of AI providers, making it easy to integrate with your preferred LLM services:
 
