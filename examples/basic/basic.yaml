@@ -176,22 +176,20 @@ spec:
   gcpCredentials:
     projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
     region: GCP_REGION  # Replace with your GCP region
-    workLoadIdentityFederationConfig:
+    workloadIdentityFederationConfig:
       projectID: GCP_PROJECT_ID  # Replace with your GCP project ID
       workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL  # Replace with your workload identity pool name
-      workloadIdentityProvider:
-        name: GCP_IDENTITY_PROVIDER_NAME  # Replace with the identity provider configured with GCP
-        OIDCProvider:
-          oidc:
-            provider:
-              issuer: GCP_OIDC_PROVIDER_ISSUER  # Replace with your OIDC provider issuer
-            clientID: GCP_OIDC_CLIENT_ID  # Replace with your OIDC client ID
-            clientSecret:
-              name: envoy-ai-gateway-basic-gcp-client-secret
-              namespace: default
+      workloadIdentityProviderName: GCP_IDENTITY_PROVIDER_NAME  # Replace with the identity provider configured with GCP
       serviceAccountImpersonation:
         serviceAccountName: SERVICE_ACCOUNT_NAME  # Replace with the service account name to impersonate
-        serviceAccountProjectName: GCP_SERVICE_ACCOUNT_PROJECT_NAME  # Replace with the project name of the service account
+      oidcExchangeToken:
+        oidc:
+          provider:
+            issuer: GCP_OIDC_PROVIDER_ISSUER  # Replace with your OIDC provider issuer
+          clientID: GCP_OIDC_CLIENT_ID  # Replace with your OIDC client ID
+          clientSecret:
+            name: envoy-ai-gateway-basic-gcp-client-secret
+            namespace: default
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend

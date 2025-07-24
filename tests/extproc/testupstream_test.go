@@ -415,6 +415,25 @@ data: [DONE]
 			expStatus:           http.StatusOK,
 			expResponseBodyFunc: checkModels(expectedModels),
 		},
+		{
+			name:    "openai - /v1/chat/completions - assistant text content",
+			backend: "openai",
+			path:    "/v1/chat/completions",
+			method:  http.MethodPost,
+			requestBody: `
+{
+       "model": "whatever",
+       "messages": [
+               {"role": "user", "content": [{"type": "text", "text": "hi sir"}]},
+               {"role": "assistant","content": [{"type": "text", "text": "Hello! How can I assist you today?"}]},
+               {"role": "user", "content": [{"type": "text", "text": "what are you?"}]}
+       ]
+}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {

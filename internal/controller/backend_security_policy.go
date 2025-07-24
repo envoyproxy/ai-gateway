@@ -258,7 +258,7 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 		return nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
 		if spec.GCPCredentials != nil {
-			return &spec.GCPCredentials.WorkLoadIdentityFederationConfig.WorkloadIdentityProvider.OIDCProvider.OIDC
+			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
 		}
 	}
 	return nil
@@ -303,14 +303,14 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 		return fmt.Errorf("invalid GCP credentials configuration: region cannot be empty")
 	}
 
-	wifConfig := gcpCreds.WorkLoadIdentityFederationConfig
+	wifConfig := gcpCreds.WorkloadIdentityFederationConfig
 	if wifConfig.ProjectID == "" {
 		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
 	}
 	if wifConfig.WorkloadIdentityPoolName == "" {
 		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
 	}
-	if wifConfig.WorkloadIdentityProvider.Name == "" {
+	if wifConfig.WorkloadIdentityProviderName == "" {
 		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
 	}
 

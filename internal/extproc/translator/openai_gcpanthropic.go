@@ -110,12 +110,12 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 		case "none":
 			toolChoice = anthropic.ToolChoiceUnionParam{OfNone: &anthropic.ToolChoiceNoneParam{}}
 		case string(openAIconstant.ValueOf[openAIconstant.Function]()):
-			// this is how anthropic forces tool use
+			// This is how anthropic forces tool use.
 			// TODO: should we check if strict true in openAI request, and if so, use this?
 			toolChoice = anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: choice}}
 			toolChoice.OfTool.DisableParallelToolUse = disableParallelToolUse
 		default:
-			return toolChoice, fmt.Errorf("invalid tool choice type '%s'", choice)
+			return toolChoice, fmt.Errorf("unsupported tool_choice value: %s", choice)
 		}
 	case openai.ToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
@@ -127,6 +127,8 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 				},
 			}
 		}
+	default:
+		return toolChoice, fmt.Errorf("unsupported tool_choice type: %T", openAIToolChoice)
 	}
 	return toolChoice, nil
 }
@@ -148,14 +150,40 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
-			toolParam.InputSchema = anthropic.ToolInputSchemaParam{
-				Properties: openAITool.Function.Parameters,
-				// TODO: support extra fields.
-				ExtraFields: nil,
+			if openAITool.Function.Parameters != nil {
+				paramsMap, ok := openAITool.Function.Parameters.(map[string]interface{})
+				if !ok {
+					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
+					return
+				}
+
+				inputSchema := anthropic.ToolInputSchemaParam{}
+
+				var typeVal string
+				if typeVal, ok = paramsMap["type"].(string); ok {
+					inputSchema.Type = constant.Object(typeVal)
+				}
+
+				var propsVal map[string]interface{}
+				if propsVal, ok = paramsMap["properties"].(map[string]interface{}); ok {
+					inputSchema.Properties = propsVal
+				}
+
+				var requiredVal []interface{}
+				if requiredVal, ok = paramsMap["required"].([]interface{}); ok {
+					requiredSlice := make([]string, len(requiredVal))
+					for i, v := range requiredVal {
+						if s, ok := v.(string); ok {
+							requiredSlice[i] = s
+						}
+					}
+					inputSchema.Required = requiredSlice
+				}
+
+				toolParam.InputSchema = inputSchema
 			}
 
 			anthropicTools = append(anthropicTools, anthropic.ToolUnionParam{OfTool: &toolParam})
-
 			if len(anthropicTools) > 0 {
 				tools = anthropicTools
 			}
@@ -175,6 +203,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 		if err != nil {
 			return
 		}
+
 	}
 	return
 }
@@ -351,7 +380,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 
 // openAIToAnthropicMessages converts OpenAI messages to Anthropic message params type, handling all roles and system/developer logic.
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
-	for i := range openAIMsgs {
+	for i := 0; i < len(openAIMsgs); {
 		msg := &openAIMsgs[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleSystem:
@@ -359,10 +388,12 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				devParam := systemMsgToDeveloperMsg(param)
 				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
 			}
+			i++
 		case openai.ChatMessageRoleDeveloper:
 			if param, ok := msg.Value.(openai.ChatCompletionDeveloperMessageParam); ok {
 				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(param)})
 			}
+			i++
 		case openai.ChatMessageRoleUser:
 			message := msg.Value.(openai.ChatCompletionUserMessageParam)
 			var content []anthropic.ContentBlockParamUnion
@@ -375,6 +406,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				Content: content,
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
+			i++
 		case openai.ChatMessageRoleAssistant:
 			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
 			var messages anthropic.MessageParam
@@ -383,35 +415,53 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				return
 			}
 			anthropicMessages = append(anthropicMessages, messages)
+			i++
 		case openai.ChatMessageRoleTool:
-			toolMsg := msg.Value.(openai.ChatCompletionToolMessageParam)
-			var content []anthropic.ContentBlockParamUnion
-			content, err = openAIToAnthropicContent(toolMsg.Content)
-			if err != nil {
-				return
-			}
-			var toolContent []anthropic.ToolResultBlockParamContentUnion
-			var trb anthropic.ToolResultBlockParamContentUnion
-			for _, c := range content {
-				if c.OfText != nil {
-					trb.OfText = c.OfText
-				} else if c.OfImage != nil {
-					trb.OfImage = c.OfImage
+			// Aggregate all consecutive tool messages into a single user message
+			// to support parallel tool use.
+			var toolResultBlocks []anthropic.ContentBlockParamUnion
+			for i < len(openAIMsgs) && openAIMsgs[i].Type == openai.ChatMessageRoleTool {
+				currentMsg := &openAIMsgs[i]
+				toolMsg := currentMsg.Value.(openai.ChatCompletionToolMessageParam)
+				var contentBlocks []anthropic.ContentBlockParamUnion
+				contentBlocks, err = openAIToAnthropicContent(toolMsg.Content)
+				if err != nil {
+					return
 				}
-				toolContent = append(toolContent, trb)
-			}
+				var toolContent []anthropic.ToolResultBlockParamContentUnion
+				for _, c := range contentBlocks {
+					var trb anthropic.ToolResultBlockParamContentUnion
+					if c.OfText != nil {
+						trb.OfText = c.OfText
+					} else if c.OfImage != nil {
+						trb.OfImage = c.OfImage
+					}
+					toolContent = append(toolContent, trb)
+				}
 
-			toolResultBlock := anthropic.ToolResultBlockParam{
-				ToolUseID: toolMsg.ToolCallID,
-				Type:      "tool_result",
-				Content:   toolContent,
-				// IsError:  anthropic.Bool(false), TODO: Should we support isError from openAI.
+				isError := false
+				if contentStr, ok := toolMsg.Content.Value.(string); ok {
+					var contentMap map[string]interface{}
+					if json.Unmarshal([]byte(contentStr), &contentMap) == nil {
+						if _, ok = contentMap["error"]; ok {
+							isError = true
+						}
+					}
+				}
+
+				toolResultBlock := anthropic.ToolResultBlockParam{
+					ToolUseID: toolMsg.ToolCallID,
+					Type:      "tool_result",
+					Content:   toolContent,
+					IsError:   anthropic.Bool(isError),
+				}
+				toolResultBlocks = append(toolResultBlocks, anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock})
+				i++
 			}
+			// Append all aggregated tool results.
 			anthropicMsg := anthropic.MessageParam{
-				Role: anthropic.MessageParamRoleUser,
-				Content: []anthropic.ContentBlockParamUnion{
-					{OfToolResult: &toolResultBlock},
-				},
+				Role:    anthropic.MessageParamRoleUser,
+				Content: toolResultBlocks,
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 		default:

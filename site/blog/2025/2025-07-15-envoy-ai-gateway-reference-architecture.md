@@ -38,8 +38,6 @@ Deployed as part of a self-hosted model serving cluster
 
 **Why It Matters:** This empowers platform teams. They can manage model versions, conduct releases, and apply specific security rules for self-hosted models without needing to make changes to the primary, customer-facing gateway. This separation ensures that internal operational changes don't impact external clients.
 
-_Follow the work to support the Gateway API Inference Extension in Envoy AI Gateway in issue [#423](https://github.com/envoyproxy/ai-gateway/issues/423)_
-
 ### Design Benefits
 This design cleanly separates external access from internal implementation, giving teams the autonomy they need to move fast without breaking things, and provides:
 

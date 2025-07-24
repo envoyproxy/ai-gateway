@@ -328,7 +328,7 @@ func cleanupKindCluster(testsFailed bool) {
 }
 
 func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.4.0/manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml"
 	return kubectlApplyManifest(ctx, infExtURL)
 }
 
@@ -338,12 +338,12 @@ func installVLLMDeployment(ctx context.Context) (err error) {
 }
 
 func installInferenceModel(ctx context.Context) (err error) {
-	const inferenceModelURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencemodel.yaml"
+	const inferenceModelURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml"
 	return kubectlApplyManifest(ctx, inferenceModelURL)
 }
 
 func installInferencePoolResources(ctx context.Context) (err error) {
-	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.4.0/config/manifests/inferencepool-resources.yaml"
+	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml"
 	return kubectlApplyManifest(ctx, inferencePoolURL)
 }
 

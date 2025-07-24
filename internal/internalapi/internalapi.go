@@ -23,6 +23,13 @@ const (
 	EndpointPickerHeaderKey = "x-gateway-destination-endpoint"
 )
 
+const (
+	// XDSClusterMetadataKey is the key used to access cluster metadata in xDS attributes
+	XDSClusterMetadataKey = "xds.cluster_metadata"
+	// XDSUpstreamHostMetadataKey is the key used to access upstream host metadata in xDS attributes
+	XDSUpstreamHostMetadataKey = "xds.upstream_host_metadata"
+)
+
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
 // i.e., the unique identifier for a backend that is associated with a specific
 // route rule in a specific AIGatewayRoute.

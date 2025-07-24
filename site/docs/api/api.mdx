@@ -316,8 +316,9 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#backendsecuritypolicytype)
+- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
-- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
@@ -879,10 +880,10 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
   required="true"
   description="Region is the GCP region associated with the policy."
 /><ApiField
-  name="workLoadIdentityFederationConfig"
-  type="[GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
+  name="workloadIdentityFederationConfig"
+  type="[GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
   required="true"
-  description="WorkLoadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation."
+  description="WorkloadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation."
 />
 
 
@@ -893,6 +894,7 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 **Appears in:**
 - [AWSOIDCExchangeToken](#awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#azureoidcexchangetoken)
+- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
@@ -1018,12 +1020,43 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
+#### GCPOIDCExchangeToken
+
+
+
+**Appears in:**
+- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="oidc"
+  type="[OIDC](https://gateway.envoyproxy.io/docs/api/extension_types/#oidc)"
+  required="true"
+  description="OIDC is used to obtain oidc tokens via an SSO server which will be used to exchange for provider credentials."
+/><ApiField
+  name="grantType"
+  type="string"
+  required="false"
+  description="GrantType is the method application gets access token."
+/><ApiField
+  name="aud"
+  type="string"
+  required="false"
+  description="Aud defines the audience that this ID Token is intended for."
+/>
+
+
 #### GCPServiceAccountImpersonationConfig
 
 
 
 **Appears in:**
-- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 
 
 
@@ -1036,15 +1069,10 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   type="string"
   required="true"
   description="ServiceAccountName is the name of the service account to impersonate."
-/><ApiField
-  name="serviceAccountProjectName"
-  type="string"
-  required="true"
-  description="ServiceAccountProjectName is the project name in which the service account is registered."
 />
 
 
-#### GCPWorkLoadIdentityFederationConfig
+#### GCPWorkloadIdentityFederationConfig
 
 
 
@@ -1063,10 +1091,15 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="true"
   description="ProjectID is the GCP project ID."
 /><ApiField
-  name="workloadIdentityProvider"
-  type="[GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)"
+  name="workloadIdentityProviderName"
+  type="string"
   required="true"
-  description="WorkloadIdentityProvider is the external auth provider to be used to authenticate against GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en<br />Currently only OIDC is supported."
+  description="WorkloadIdentityProviderName is the name of the external identity provider as registered on Google Cloud Platform."
+/><ApiField
+  name="oidcExchangeToken"
+  type="[GCPOIDCExchangeToken](#gcpoidcexchangetoken)"
+  required="true"
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access GCP."
 /><ApiField
   name="workloadIdentityPoolName"
   type="string"
@@ -1079,34 +1112,6 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
-
-#### GCPWorkloadIdentityProvider
-
-
-
-**Appears in:**
-- [GCPWorkLoadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
-
-GCPWorkloadIdentityProvider specifies the external identity provider to be used to authenticate against GCP.
-The external identity provider can be AWS, Microsoft, etc but must be pre-registered in the GCP project
-
-https://cloud.google.com/iam/docs/workload-identity-federation
-
-##### Fields
-
-
-
-<ApiField
-  name="name"
-  type="string"
-  required="true"
-  description="Name of the external identity provider as registered on Google Cloud Platform."
-/><ApiField
-  name="OIDCProvider"
-  type="[BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)"
-  required="true"
-  description="OIDCProvider is the generic OIDCProvider fields."
-/>
 
 
 #### LLMRequestCost

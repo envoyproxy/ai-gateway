@@ -279,9 +279,9 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, isEn
 	}
 	var metadataFieldKey string
 	if isEndpointPicker {
-		metadataFieldKey = "xds.cluster_metadata"
+		metadataFieldKey = internalapi.XDSClusterMetadataKey
 	} else {
-		metadataFieldKey = "xds.upstream_host_metadata"
+		metadataFieldKey = internalapi.XDSUpstreamHostMetadataKey
 	}
 	// This should contain the endpoint metadata.
 	hostMetadata, ok := attributes.Fields[metadataFieldKey]
