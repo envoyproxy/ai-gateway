@@ -380,8 +380,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 
 // openAIToAnthropicMessages converts OpenAI messages to Anthropic message params type, handling all roles and system/developer logic.
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
-	i := 0
-	for i < len(openAIMsgs) {
+	for i := 0; i < len(openAIMsgs); {
 		msg := &openAIMsgs[i]
 		switch msg.Type {
 		case openai.ChatMessageRoleSystem:
