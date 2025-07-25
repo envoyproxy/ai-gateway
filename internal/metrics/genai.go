@@ -22,13 +22,14 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" // #nosec G101: Potential hardcoded credentials
 	genaiAttributeErrorType     = "error.type"
 
-	genaiOperationChat     = "chat"
-	genaiSystemOpenAI      = "openai"
-	genAISystemAWSBedrock  = "aws.bedrock"
-	genaiTokenTypeInput    = "input"
-	genaiTokenTypeOutput   = "output"
-	genaiTokenTypeTotal    = "total"
-	genaiErrorTypeFallback = "_OTHER"
+	genaiOperationChat      = "chat"
+	genaiOperationEmbedding = "embedding"
+	genaiSystemOpenAI       = "openai"
+	genAISystemAWSBedrock   = "aws.bedrock"
+	genaiTokenTypeInput     = "input"
+	genaiTokenTypeOutput    = "output"
+	genaiTokenTypeTotal     = "total"
+	genaiErrorTypeFallback  = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.
@@ -56,7 +57,7 @@ func newGenAI(meter metric.Meter) *genAI {
 		tokenUsage: mustRegisterHistogram(meter,
 			genaiMetricClientTokenUsage,
 			metric.WithDescription("Number of tokens processed."),
-			metric.WithUnit("{token}"),
+			metric.WithUnit("token"),
 			metric.WithExplicitBucketBoundaries(1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864),
 		),
 		requestLatency: mustRegisterHistogram(meter,

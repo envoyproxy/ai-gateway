@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -147,10 +148,26 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  aigv1a1.AIModelHeaderKey,
+										Value: "mymodel",
+									},
+								},
+							},
+						},
+					},
 				},
-				APISchema:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}},
+				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
+					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
+				},
 			},
 		},
 		{
@@ -162,7 +179,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
 				LLMRequestCosts: []aigv1a1.LLMRequestCost{
 					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
-					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+					{MetadataKey: "cat", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
 		},
@@ -199,13 +216,14 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-		require.Len(t, fc.LLMRequestCosts, 2)
+		require.Len(t, fc.LLMRequestCosts, 4)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[1].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[1].CEL)
-		require.Len(t, fc.Rules, 2)
-		require.Equal(t, "route1-rule-0", string(fc.Rules[0].Name))
-		require.Equal(t, "route2-rule-0", string(fc.Rules[1].Name))
+		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[3].Type)
+		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
+		require.Len(t, fc.Models, 1)
+		require.Equal(t, "mymodel", fc.Models[0].Name)
 	}
 }
 
@@ -255,6 +273,13 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp))
 	}
@@ -274,6 +299,10 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("azure-oidc"), Namespace: namespace},
 			StringData: map[string]string{rotators.AzureAccessTokenKey: "thisisazurecredentials"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp"), Namespace: namespace},
+			StringData: map[string]string{rotators.GCPAccessTokenKey: "thisisgcpcredentials"},
 		},
 	} {
 		_, err := kube.CoreV1().Secrets(namespace).Create(t.Context(), s, metav1.CreateOptions{})
@@ -308,6 +337,12 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				AzureAuth: &filterapi.AzureAuth{AccessToken: "thisisazurecredentials"},
 			},
 		},
+		{
+			bspName: "gcp",
+			exp: &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
+			},
+		},
 	} {
 		t.Run(tc.bspName, func(t *testing.T) {
 			auth, err := c.bspToFilterAPIBackendAuth(t.Context(), namespace, tc.bspName)
@@ -315,6 +350,98 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			require.Equal(t, tc.exp, auth)
 		})
 	}
+}
+
+func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	tests := []struct {
+		name          string
+		bspName       string
+		setupBSP      *aigv1a1.BackendSecurityPolicy
+		setupSecret   *corev1.Secret
+		expectedError string
+	}{
+		{
+			name:          "missing backend security policy",
+			bspName:       "missing-bsp",
+			expectedError: "failed to get BackendSecurityPolicy missing-bsp",
+		},
+		{
+			name:    "api key type with missing secret",
+			bspName: "api-key-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "api-key-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+					APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{
+							Name: "missing-secret",
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-secret",
+		},
+		{
+			name:    "aws credentials with credentials file missing secret",
+			bspName: "aws-creds-file-bsp",
+			setupBSP: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-file-bsp", Namespace: namespace},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						Region: "us-west-2",
+						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+							SecretRef: &gwapiv1.SecretObjectReference{
+								Name: "missing-aws-secret",
+							},
+						},
+					},
+				},
+			},
+			expectedError: "failed to get secret missing-aws-secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupBSP != nil {
+				err := fakeClient.Create(ctx, tt.setupBSP)
+				require.NoError(t, err)
+			}
+
+			if tt.setupSecret != nil {
+				err := fakeClient.Create(ctx, tt.setupSecret)
+				require.NoError(t, err)
+			}
+
+			result, err := c.bspToFilterAPIBackendAuth(ctx, namespace, tt.bspName)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedError)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", "/foo/bar/uds.sock", "docker.io/envoyproxy/ai-gateway-extproc:latest")
+
+	ctx := context.Background()
+	namespace := "test-namespace"
+
+	// Test missing secret.
+	result, err := c.getSecretData(ctx, namespace, "missing-secret", "test-key")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")
+	require.Empty(t, result)
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
@@ -440,6 +567,107 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 }
 
+func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
+	egNamespace := "envoy-gateway-system"
+	gwName, gwNamepsace := "gw", "ns"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: gwNamepsace,
+	}
+
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	const v2Container = "ai-gateway-extproc:v2"
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		egNamespace, "/foo/bar/uds.sock", v2Container)
+
+	t.Run("pod without extproc", func(t *testing.T) {
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod2",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "foo"}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// We also need to create a parent deployment for the pod.
+		_, err = kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment1",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = c.annotateGatewayPods(t.Context(), &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamepsace},
+		}, "some-uuid")
+		require.NoError(t, err)
+
+		// Check the deployment's pod template has the annotation.
+		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("pod with extproc but old version", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod3",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				// The old v1 container image is used here to simulate the pod without extproc.
+				{Name: extProcContainerName, Image: "ai-gateway-extproc:v1"},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// We also need to create a parent DaemonSet for the pod.
+		_, err = kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment2",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = c.annotateGatewayPods(t.Context(), &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamepsace},
+		}, "some-uuid")
+		require.NoError(t, err)
+
+		// Check the deployment's pod template has the annotation.
+		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+
+		// Simulate the pod's container image is updated to the new version.
+		pod.Spec.Containers[0].Image = v2Container
+		_, err = kube.CoreV1().Pods(egNamespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+		require.NoError(t, err)
+
+		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
+		err = c.annotateGatewayPods(t.Context(), &gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamepsace},
+		}, "another-uuid")
+		require.NoError(t, err)
+
+		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+}
+
 func Test_schemaToFilterAPI(t *testing.T) {
 	for i, tc := range []struct {
 		in       aigv1a1.VersionedAPISchema
@@ -451,6 +679,10 @@ func Test_schemaToFilterAPI(t *testing.T) {
 		},
 		{
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		},
+		{
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("")},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
 		},
 		{

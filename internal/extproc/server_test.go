@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -23,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -48,40 +51,23 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
 				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
-			Schema:                 filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
-			SelectedRouteHeaderKey: "x-ai-eg-selected-route",
-			ModelNameHeaderKey:     "x-model-name",
-			Rules: []filterapi.RouteRule{
+			Schema:             filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			ModelNameHeaderKey: "x-model-name",
+			Backends: []filterapi.Backend{
+				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
+				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+			},
+			Models: []filterapi.Model{
 				{
-					Headers: []filterapi.HeaderMatch{
-						{
-							Name:  "x-model-name",
-							Value: "llama3.3333",
-						},
-					},
-					Backends: []filterapi.Backend{
-						{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-						{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-					},
-					ModelsOwnedBy:   "meta",
-					ModelsCreatedAt: now,
+					Name:      "llama3.3333",
+					OwnedBy:   "meta",
+					CreatedAt: now,
 				},
 				{
-					Headers: []filterapi.HeaderMatch{
-						{
-							Name:  "x-model-name",
-							Value: "gpt4.4444",
-						},
-						{
-							Name:  "some-random-header",
-							Value: "some-random-value",
-						},
-					},
-					Backends: []filterapi.Backend{
-						{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-					},
-					ModelsOwnedBy:   "openai",
-					ModelsCreatedAt: now,
+					Name:      "gpt4.4444",
+					OwnedBy:   "openai",
+					CreatedAt: now,
 				},
 			},
 		}
@@ -91,9 +77,7 @@ func TestServer_LoadConfig(t *testing.T) {
 
 		require.NotNil(t, s.config)
 		require.Equal(t, "ns", s.config.metadataNamespace)
-		require.NotNil(t, s.config.router)
 		require.Equal(t, s.config.schema, config.Schema)
-		require.Equal(t, "x-ai-eg-selected-route", s.config.selectedRouteHeaderKey)
 		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
@@ -106,18 +90,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
-		require.Equal(t, []model{
-			{
-				name:      "llama3.3333",
-				ownedBy:   "meta",
-				createdAt: now,
-			},
-			{
-				name:      "gpt4.4444",
-				ownedBy:   "openai",
-				createdAt: now,
-			},
-		}, s.config.declaredModels)
+		require.Equal(t, config.Models, s.config.declaredModels)
 	})
 }
 
@@ -320,41 +293,51 @@ func TestServer_setBackend(t *testing.T) {
 	}{
 		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
 		{
-			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {}}},
-			errStr: "missing backend_name in endpoint metadata",
+			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {}}},
+			errStr: "missing per_route_rule_backend_name in endpoint metadata",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {
 				Fields: map[string]*structpb.Value{
-					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
+					internalapi.InternalMetadataBackendNameKey: {Kind: &structpb.Value_StringValue{StringValue: "kserve"}},
 				},
 			}}},
 			errStr: "unknown backend: kserve",
 		},
 		{
-			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{"aigateway.envoy.io": {
+			md: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {
 				Fields: map[string]*structpb.Value{
-					"backend_name": {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
+					internalapi.InternalMetadataBackendNameKey: {Kind: &structpb.Value_StringValue{StringValue: "openai"}},
 				},
 			}}},
 			errStr: "no router processor found, request_id=aaaaaaaaaaaa, backend=openai",
 		},
 	} {
-		t.Run("errors/"+tc.errStr, func(t *testing.T) {
-			str, err := prototext.Marshal(tc.md)
-			require.NoError(t, err)
-			s, _ := requireNewServerWithMockProcessor(t)
-			s.config.backends = map[string]*processorConfigBackend{"openai": {}}
-			err = s.setBackend(t.Context(), nil, "aaaaaaaaaaaa", &extprocv3.ProcessingRequest{
-				Attributes: map[string]*structpb.Struct{
-					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
-						"xds.upstream_host_metadata": {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
-					}},
-				},
-				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+		for _, isEndpointPicker := range []bool{false, true} {
+			t.Run(fmt.Sprintf("errors/%s/isEndpointPicker=%t", tc.errStr, isEndpointPicker), func(t *testing.T) {
+				str, err := prototext.Marshal(tc.md)
+				require.NoError(t, err)
+				s, _ := requireNewServerWithMockProcessor(t)
+				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai"}}}
+				mockProc := &mockProcessor{}
+
+				// Use the correct metadata field key based on isEndpointPicker.
+				metadataFieldKey := "xds.upstream_host_metadata"
+				if isEndpointPicker {
+					metadataFieldKey = "xds.cluster_metadata"
+				}
+
+				err = s.setBackend(t.Context(), mockProc, "aaaaaaaaaaaa", isEndpointPicker, &extprocv3.ProcessingRequest{
+					Attributes: map[string]*structpb.Struct{
+						"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+							metadataFieldKey: {Kind: &structpb.Value_StringValue{StringValue: string(str)}},
+						}},
+					},
+					Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+				})
+				require.ErrorContains(t, err, tc.errStr)
 			})
-			require.ErrorContains(t, err, tc.errStr)
-		})
+		}
 	}
 }
 
@@ -365,7 +348,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 
 	s.config = &processorConfig{}
 	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
-		// Returning nil guarantees that the test will fail if this processor is selected
+		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
 	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
@@ -387,12 +370,18 @@ func TestServer_ProcessorSelection(t *testing.T) {
 				},
 			},
 		}
-		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
+				Body:       []byte("unsupported path: /unknown"),
+				GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
+			},
+		}}
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
 		require.Equal(t, codes.NotFound, status.Convert(err).Code())
-		require.ErrorContains(t, err, "no processor defined for path: /unknown")
+		require.ErrorContains(t, err, "unsupported path: /unknown")
 	})
 
 	t.Run("known path", func(t *testing.T) {

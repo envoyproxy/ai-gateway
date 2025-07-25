@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"golang.org/x/exp/rand"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -154,11 +155,32 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if expectedRawQuery := r.Header.Get(testupstreamlib.ExpectedRawQueryHeaderKey); expectedRawQuery != "" {
+		if r.URL.RawQuery != expectedRawQuery {
+			logger.Printf("unexpected raw query: got %q, expected %q\n", r.URL.RawQuery, expectedRawQuery)
+			http.Error(w, "unexpected raw query: got "+r.URL.RawQuery+", expected "+expectedRawQuery, http.StatusBadRequest)
+			return
+		}
+	}
+
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		logger.Println("failed to read the request body")
 		http.Error(w, "failed to read the request body", http.StatusInternalServerError)
 		return
+	}
+
+	// At least for the endpoints we want to support, all requests should have a Content-Length header
+	// and should not use chunked transfer encoding.
+	if r.Header.Get("Content-Length") == "" {
+		// Endpoint pickers mutate the request body by sending them back to the client (due to the use of DUPLEX mode),
+		// and it will clear the Content-Length header. It should be fine to assume that these locally hosted endpoints
+		// are capable of reading the chunked transfer encoding unlike the GCP Anthropic.
+		if r.Header.Get(internalapi.EndpointPickerHeaderKey) == "" {
+			logger.Println("no Content-Length header, using request body length:", len(requestBody))
+			http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
+			return
+		}
 	}
 
 	if expectedReqBody := r.Header.Get(testupstreamlib.ExpectedRequestBodyHeaderKey); expectedReqBody != "" {

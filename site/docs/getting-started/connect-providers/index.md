@@ -8,13 +8,17 @@ sidebar_position: 5
 
 After setting up the basic AI Gateway with the mock backend, you can configure it to work with real AI model providers. This section will guide you through connecting different AI providers to your gateway.
 
-## Available Providers
+## Example Providers
 
-Currently, Envoy AI Gateway supports the following providers:
+In this getting started guide you'll find quickstart setups to connect to the following providers:
 
 - [OpenAI](./openai.md) - Connect to OpenAI's GPT models
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
 - [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
+
+:::tip
+To learn how to connect to providers see [Connecting to AI Providers](/docs/capabilities/llm-integrations/connect-providers) and you can view all [Supported Providers](/docs/capabilities/llm-integrations/supported-providers).
+:::
 
 ## Before You Begin
 

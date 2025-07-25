@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -42,7 +43,7 @@ func init() {
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
-	utilruntime.Must(gwaiev1a2.AddToScheme(Scheme))
+	utilruntime.Must(gwaiev1a2.Install(Scheme))
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
@@ -129,6 +130,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			backendSecurityPolicyEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
+		Owns(&corev1.Secret{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
@@ -195,22 +197,22 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Backends: %w", err)
+		return fmt.Errorf("failed to create index from Backends to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Gateway: %w", err)
+		return fmt.Errorf("failed to create index from Gateway to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to create index from BackendSecurityPolicy to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)
+		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
@@ -223,7 +225,10 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
 	var ret []string
-	for _, ref := range aiGatewayRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
+	for _, ref := range aiGatewayRoute.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+	}
+	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
 	}
 	return ret
@@ -303,4 +308,49 @@ func newConditions(conditionType, message string) []metav1.Condition {
 		condition.Reason = "ReconciliationFailed"
 	}
 	return []metav1.Condition{condition}
+}
+
+// aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
+const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
+
+// handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
+// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
+// so that the finalizer is persisted.
+//
+// onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
+// be a recoverable error. For example, onDeletionFn only propagates the deletion of the object to other resources.
+// See the call sites of this function for examples.
+func handleFinalizer[objType client.Object](
+	ctx context.Context, client client.Client,
+	logger logr.Logger,
+	o objType,
+	onDeletionFn func(ctx context.Context, o objType) error,
+) (onDelete bool) {
+	if o.GetDeletionTimestamp().IsZero() {
+		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
+			if err := client.Update(ctx, o); err != nil {
+				// This shouldn't happen in normal operation, but if it does, we log the error.
+				logger.Error(err, "Failed to add finalizer to object",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		return false
+	}
+	if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+		ctrlutil.RemoveFinalizer(o, aiGatewayControllerFinalizer)
+		if onDeletionFn != nil {
+			if err := onDeletionFn(ctx, o); err != nil {
+				// onDeletionFn can return an error, but it should not be a recoverable error.
+				logger.Error(err, "Failed to handle finalizer deletion",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		if err := client.Update(ctx, o); err != nil {
+			// This shouldn't happen in normal operation, but if it does, we log the error.
+			logger.Error(err, "Failed to remove finalizer from object",
+				"namespace", o.GetNamespace(), "name", o.GetName())
+		}
+	}
+	return true
 }

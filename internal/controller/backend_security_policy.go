@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -81,6 +82,9 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
 func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
+		return res, nil
+	}
 	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
@@ -154,12 +158,57 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
+			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
+		}
+
+		// For GCP, OIDC is currently the only supported authentication method.
+		// If additional methods are added, validate that OIDC is used before calling getBackendSecurityPolicyAuthOIDC.
+		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+
+		// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
+		var oidcProvider tokenprovider.TokenProvider
+		oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+		}
+		rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 	default:
 		err = fmt.Errorf("backend security type %s does not support OIDC token exchange", bsp.Spec.Type)
 		c.logger.Error(err, "unsupported backend security type", "namespace", bsp.Namespace, "name", bsp.Name)
 		return ctrl.Result{}, err
 	}
-	return c.executeRotation(ctx, rotator, bsp)
+	res, err = c.executeRotation(ctx, rotator, bsp)
+	if err != nil {
+		c.logger.Error(err, "failed to execute rotation", "namespace", bsp.Namespace, "name", bsp.Name)
+		return res, fmt.Errorf("failed to execute rotation for backend security policy %s/%s: %w", bsp.Namespace, bsp.Name, err)
+	}
+
+	if secretName := getBSPGeneratedSecretName(bsp); secretName != "" {
+		var secret *corev1.Secret
+		secret, err = rotators.LookupSecret(ctx, c.client, bsp.Namespace, secretName)
+		if err != nil {
+			return res, fmt.Errorf("failed to lookup backend security policy secret %s/%s: %w",
+				bsp.Namespace, secretName, err)
+		}
+		ok, _ := ctrlutil.HasOwnerReference(secret.OwnerReferences, bsp, c.client.Scheme())
+		if !ok {
+			updated := secret.DeepCopy()
+			if err = ctrlutil.SetControllerReference(bsp, updated, c.client.Scheme()); err != nil {
+				panic(fmt.Errorf("BUG: failed to set controller reference for secret %s/%s: %w", bsp.Namespace, bsp.Name, err))
+			}
+			if err = c.client.Update(ctx, updated); err != nil {
+				return res, fmt.Errorf("failed to update secret %s/%s with owner reference: %w",
+					updated.Namespace, updated.Name, err)
+			}
+		}
+	}
+	return res, nil
 }
 
 func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
@@ -182,8 +231,8 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 						fmt.Sprintf("successfully rotated credential for %s in namespace %s of auth type %s, renewing in %f minutes",
 							bsp.Name, bsp.Namespace, bsp.Spec.Type, requeue.Minutes()))
 				} else {
-					c.logger.Error(fmt.Errorf("newly rotated credential is already expired %s",
-						rotationTime), "namespace", bsp.Namespace, "name", bsp.Name)
+					err = fmt.Errorf("newly rotated credential is already expired %s", rotationTime)
+					c.logger.Error(err, err.Error(), "namespace", bsp.Namespace, "name", bsp.Name)
 				}
 			}
 		} else {
@@ -207,6 +256,10 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 			return &spec.AzureCredentials.OIDCExchangeToken.OIDC
 		}
 		return nil
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if spec.GCPCredentials != nil {
+			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
+		}
 	}
 	return nil
 }
@@ -267,4 +320,50 @@ func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx 
 	if err := c.client.Status().Update(ctx, route); err != nil {
 		c.logger.Error(err, "failed to update BackendSecurityPolicy status")
 	}
+}
+
+func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCredentials) error {
+	if gcpCreds == nil {
+		return fmt.Errorf("invalid backend security policy, gcp credentials cannot be nil")
+	}
+	if gcpCreds.ProjectName == "" {
+		return fmt.Errorf("invalid GCP credentials configuration: projectName cannot be empty")
+	}
+	if gcpCreds.Region == "" {
+		return fmt.Errorf("invalid GCP credentials configuration: region cannot be empty")
+	}
+
+	wifConfig := gcpCreds.WorkloadIdentityFederationConfig
+	if wifConfig.ProjectID == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+	}
+	if wifConfig.WorkloadIdentityPoolName == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
+	}
+	if wifConfig.WorkloadIdentityProviderName == "" {
+		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
+	}
+
+	return nil
+}
+
+// getBSPGeneratedSecretName returns a secret's name generated by the input bsp
+// if there's any. This returns an empty string if there's no generated secret.
+func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
+	switch bsp.Spec.Type {
+	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
+			return ""
+		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		if bsp.Spec.AzureCredentials.OIDCExchangeToken == nil {
+			return ""
+		}
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+		return "" // APIKey does not require rotation.
+	default:
+		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))
+	}
+	return rotators.GetBSPSecretName(bsp.Name)
 }

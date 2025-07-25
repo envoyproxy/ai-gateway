@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_extproc
-
 package extproc
 
 import (
@@ -14,6 +12,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,53 +44,21 @@ func TestWithTestUpstream(t *testing.T) {
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
-			{
-				Name:    "testupstream-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "openai"}},
-				Backends: []filterapi.Backend{
-					testUpstreamOpenAIBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-aws-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "aws-bedrock"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAAWSBackend,
-				},
-			},
-			{
-				Name:    "testupstream-azure-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "azure-openai"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					testUpstreamAzureBackend,
-				},
-			},
-			{
-				Name:    "testupstream-modelname-override-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-test-backend", Value: "modelname-override"}},
-				Backends: []filterapi.Backend{
-					testUpstreamModelNameOverride,
-				},
-			},
-			{
-				Name: "not-used-for-completion",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "some-model1"},
-					{Name: "x-model-name", Value: "some-model2"},
-					{Name: "x-model-name", Value: "some-model3"},
-				},
-				Backends:        []filterapi.Backend{alwaysFailingBackend},
-				ModelsOwnedBy:   "Envoy AI Gateway",
-				ModelsCreatedAt: now,
-			},
+		Schema:             openAISchema,
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			testUpstreamOpenAIBackend,
+			testUpstreamModelNameOverride,
+			testUpstreamAAWSBackend,
+			testUpstreamAzureBackend,
+			testUpstreamGCPVertexAIBackend,
+			testUpstreamGCPAnthropicAIBackend,
+		},
+		Models: []filterapi.Model{
+			{Name: "some-model1", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model2", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
+			{Name: "some-model3", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 		},
 	})
 
@@ -120,14 +88,22 @@ func TestWithTestUpstream(t *testing.T) {
 		responseBody,
 		// responseType is either empty, "sse" or "aws-event-stream" as implemented by the test upstream.
 		responseType,
-		// responseStatus is the HTTP status code of the response.
+		// responseStatus is the HTTP status code of the response returned by the test upstream.
 		responseStatus,
 		// responseHeaders are the headers sent in the HTTP response
 		// The value is a base64 encoded string of comma separated key-value pairs.
 		// E.g. "key1:value1,key2:value2".
 		responseHeaders,
+		// expRawQuery is the expected raw query to be sent to the test upstream.
+		expRawQuery string
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
+		// expHost is the expected host to be sent to the test upstream.
+		expHost string
+		// expHeaders are the expected headers to be sent to the test upstream.
+		// The value is a base64 encoded string of comma separated key-value pairs.
+		// E.g. "key1:value1,key2:value2".
+		expHeaders map[string]string
 		// expRequestBody is the expected body to be sent to the test upstream.
 		// This can be used to test the request body translation.
 		expRequestBody string
@@ -139,15 +115,11 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
-			name:           "unknown path",
-			backend:        "openai",
-			path:           "/unknown",
-			method:         http.MethodPost,
-			requestBody:    `{"prompt": "hello"}`,
-			responseBody:   `{"error": "unknown path"}`,
-			expPath:        "/unknown",
-			responseStatus: "500",
-			expStatus:      http.StatusInternalServerError,
+			name:            "unknown path",
+			path:            "/unknown",
+			requestBody:     `{"prompt": "hello"}`,
+			expStatus:       http.StatusNotFound,
+			expResponseBody: `unsupported path: /unknown`,
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",
@@ -193,6 +165,51 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "gcp-vertexai - /v1/chat/completions",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expRequestBody:  `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:         "gcp-region-aiplatform.googleapis.com",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
+		},
+		{
+			name:            "gcp-vertexai - /v1/chat/completions - tool use",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"user","content":"tell me the delivery date for order 123"}],"tools":[{"type":"function","function":{"name":"get_delivery_date","description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","parameters":{"type":"object","properties":{"order_id":{"type":"string","description":"The customer's order ID."}},"required":["order_id"]}}}]}`,
+			expRequestBody:  `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parametersJsonSchema":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
+			expHost:         "gcp-region-aiplatform.googleapis.com",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
+		},
+		{
+			name:            "gcp-anthropicai - /v1/chat/completions",
+			backend:         "gcp-anthropicai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"system","content":"You are an Anthropic assistant."},{"role":"user","content":"Hello!"}]}`,
+			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","type":"text"}],"role":"user"}],"system":[{"text":"You are an Anthropic assistant.","type":"text"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expHost:         "gcp-region-aiplatform.googleapis.com",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"logprobs":{},"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -264,6 +281,90 @@ data: [DONE]
 `,
 		},
 		{
+			name:           "openai - /v1/chat/completions - streaming - forced to include usage",
+			backend:        "openai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "openai - /v1/chat/completions - streaming - forced to include usage without steam_options",
+			backend:        "openai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "gcp-vertexai - /v1/chat/completions - streaming",
+			backend:        "gcp-vertexai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}], "stream": true}`,
+			expRequestBody: `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:        "gcp-region-aiplatform.googleapis.com",
+			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:streamGenerateContent",
+			expRawQuery:    "alt=sse",
+			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":"! How"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" can I"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" help"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" you"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":" today"}],"role":"model"}}]}
+{"candidates":[{"content":{"parts":[{"text":"?"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":7,"totalTokenCount":17}}`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"! How","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" can I","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" help","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" you","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" today","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"completion_tokens":7,"prompt_tokens":10,"total_tokens":17}}
+
+data: [DONE]
+`,
+		},
+		{
 			name:            "openai - /v1/chat/completions - error response",
 			backend:         "openai",
 			path:            "/v1/chat/completions",
@@ -291,12 +392,93 @@ data: [DONE]
 			expResponseBody: `{"type":"error","error":{"type":"ThrottledException","code":"429","message":"aws bedrock rate limit exceeded"}}`,
 		},
 		{
+			name:            "gcp-vertexai - /v1/chat/completions - error response",
+			backend:         "gcp-vertexai",
+			path:            "/v1/chat/completions",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			responseBody:    `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+			expResponseBody: `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+		},
+		{
+			name:            "gcp-anthropicai - /v1/chat/completions - error response",
+			backend:         "gcp-anthropicai",
+			path:            "/v1/chat/completions",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-3-sonnet", "max_completion_tokens":1024, "messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			responseBody:    `{"error":{"type":"invalid_request_error","code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"Invalid request: missing required field"}}`,
+		},
+		{
+			name:            "openai - /v1/embeddings",
+			backend:         "openai",
+			path:            "/v1/embeddings",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"text-embedding-ada-002","input":"The food was delicious and the waiter..."}`,
+			expPath:         "/v1/embeddings",
+			responseBody:    `{"object":"list","data":[{"object":"embedding","embedding":[0.0023064255,-0.009327292,-0.0028842222],"index":0}],"model":"text-embedding-ada-002","usage":{"prompt_tokens":8,"total_tokens":8}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"object":"list","data":[{"object":"embedding","embedding":[0.0023064255,-0.009327292,-0.0028842222],"index":0}],"model":"text-embedding-ada-002","usage":{"prompt_tokens":8,"total_tokens":8}}`,
+		},
+		{
+			name:            "openai - /v1/embeddings - gzip",
+			backend:         "openai",
+			responseType:    "gzip",
+			path:            "/v1/embeddings",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"text-embedding-ada-002","input":"The food was delicious and the waiter..."}`,
+			expPath:         "/v1/embeddings",
+			responseBody:    `{"object":"list","data":[{"object":"embedding","embedding":[0.0023064255,-0.009327292,-0.0028842222],"index":0}],"model":"text-embedding-ada-002","usage":{"prompt_tokens":8,"total_tokens":8}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"object":"list","data":[{"object":"embedding","embedding":[0.0023064255,-0.009327292,-0.0028842222],"index":0}],"model":"text-embedding-ada-002","usage":{"prompt_tokens":8,"total_tokens":8}}`,
+		},
+		{
+			name:            "openai - /v1/embeddings - error response",
+			backend:         "openai",
+			path:            "/v1/embeddings",
+			responseType:    "",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"text-embedding-ada-002","input":""}`,
+			expPath:         "/v1/embeddings",
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			responseBody:    `{"error": {"message": "input cannot be empty", "type": "BadRequestError", "code": "400"}}`,
+			expResponseBody: `{"error": {"message": "input cannot be empty", "type": "BadRequestError", "code": "400"}}`,
+		},
+		{
 			name:                "openai - /v1/models",
 			backend:             "openai",
 			path:                "/v1/models",
 			method:              http.MethodGet,
 			expStatus:           http.StatusOK,
 			expResponseBodyFunc: checkModels(expectedModels),
+		},
+		{
+			name:    "openai - /v1/chat/completions - assistant text content",
+			backend: "openai",
+			path:    "/v1/chat/completions",
+			method:  http.MethodPost,
+			requestBody: `
+{
+       "model": "whatever",
+       "messages": [
+               {"role": "user", "content": [{"type": "text", "text": "hi sir"}]},
+               {"role": "assistant","content": [{"type": "text", "text": "Hello! How can I assist you today?"}]},
+               {"role": "user", "content": [{"type": "text", "text": "what are you?"}]}
+       ]
+}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -307,6 +489,25 @@ data: [DONE]
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 				req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
+
+				var expHeaders []string
+				for k, v := range tc.expHeaders {
+					expHeaders = append(expHeaders, fmt.Sprintf("%s:%s", k, v))
+				}
+				if len(expHeaders) > 0 {
+					req.Header.Set(
+						testupstreamlib.ExpectedHeadersKey,
+						base64.StdEncoding.EncodeToString(
+							[]byte(strings.Join(expHeaders, ","))),
+					)
+				}
+
+				if tc.expRawQuery != "" {
+					req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
+				}
+				if tc.expHost != "" {
+					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
+				}
 				if tc.responseType != "" {
 					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
 				}
@@ -329,10 +530,15 @@ data: [DONE]
 				}
 
 				if tc.expResponseBody != "" {
-					body, err := io.ReadAll(resp.Body)
+					bodyBytes, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
-					if string(body) != tc.expResponseBody {
-						fmt.Printf("unexpected response:\n%s", cmp.Diff(string(body), tc.expResponseBody))
+					// Substitute any dynamically generated UUIDs in the response body with a placeholder
+					// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
+					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
+					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
+					if body != expectedResponseBody {
+						t.Logf("unexpected response (-want +got):\n%s", cmp.Diff(tc.expResponseBody, body))
 						return false
 					}
 				} else if tc.expResponseBodyFunc != nil {
@@ -418,7 +624,10 @@ data: [DONE]
 		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Contains(t, string(body), `gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway",otel_scope_version="",le="0.01"} 1`)
+		require.Containsf(t, string(body),
+			`gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_request_model="something",gen_ai_system_name="aws.bedrock",otel_scope_name="envoyproxy/ai-gateway"`,
+			"expected metrics in response body:\n%s", string(body),
+		)
 	})
 }
 

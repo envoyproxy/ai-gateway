@@ -27,6 +27,11 @@ const (
 	ChatMessageRoleTool      = "tool"
 )
 
+// Model names for testing.
+const (
+	ModelGPT41Nano = "gpt-4.1-nano"
+)
+
 // ChatCompletionContentPartRefusalType The type of the content part.
 type ChatCompletionContentPartRefusalType string
 
@@ -150,6 +155,19 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 	return nil
 }
 
+func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
+	if c.TextContent != nil {
+		return json.Marshal(c.TextContent)
+	}
+	if c.InputAudioContent != nil {
+		return json.Marshal(c.InputAudioContent)
+	}
+	if c.ImageContent != nil {
+		return json.Marshal(c.ImageContent)
+	}
+	return nil, errors.New("no content to marshal")
+}
+
 type StringOrAssistantRoleContentUnion struct {
 	Value interface{}
 }
@@ -162,7 +180,7 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var content ChatCompletionAssistantMessageParamContent
+	var content []ChatCompletionAssistantMessageParamContent
 	err = json.Unmarshal(data, &content)
 	if err == nil {
 		s.Value = content
@@ -170,6 +188,10 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return errors.New("cannot unmarshal JSON data as string or assistant content parts")
+}
+
+func (s StringOrAssistantRoleContentUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
 }
 
 type StringOrArray struct {
@@ -184,6 +206,15 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	// Try to unmarshal as array of strings (for embeddings).
+	var strArr []string
+	err = json.Unmarshal(data, &strArr)
+	if err == nil {
+		s.Value = strArr
+		return nil
+	}
+
+	// Try to unmarshal as array of ChatCompletionContentPartTextParam (for chat completion).
 	var arr []ChatCompletionContentPartTextParam
 	err = json.Unmarshal(data, &arr)
 	if err == nil {
@@ -192,6 +223,10 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 	}
 
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of string")
+}
+
+func (s StringOrArray) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
 }
 
 type StringOrUserRoleContentUnion struct {
@@ -214,6 +249,10 @@ func (s *StringOrUserRoleContentUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return fmt.Errorf("cannot unmarshal JSON data as string or array of content parts")
+}
+
+func (s StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Value)
 }
 
 type ChatCompletionMessageParamUnion struct {
@@ -274,6 +313,10 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("unknown ChatCompletionMessageParam type: %v", role)
 	}
 	return nil
+}
+
+func (c ChatCompletionMessageParamUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Value)
 }
 
 // ChatCompletionUserMessageParam Messages sent by an end user, containing prompts or additional context
@@ -355,7 +398,7 @@ type ChatCompletionAssistantMessageParam struct {
 	Role string `json:"role"`
 	// Data about a previous audio response from the model.
 	// [Learn more](https://platform.openai.com/docs/guides/audio).
-	Audio ChatCompletionAssistantMessageParamAudio `json:"audio,omitempty"`
+	Audio ChatCompletionAssistantMessageParamAudio `json:"audio,omitzero"`
 	// The contents of the assistant message. Required unless `tool_calls` or
 	// `function_call` is specified.
 	Content StringOrAssistantRoleContentUnion `json:"content"`
@@ -415,6 +458,22 @@ type ChatCompletionResponseFormatJSONSchema struct {
 	Strict      bool   `json:"strict"`
 }
 
+// Reasoning represents the reasoning options for o-series models.
+// Docs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
+type Reasoning struct {
+	// Effort constrains effort on reasoning for reasoning models.
+	// Supported values: "low", "medium", "high". Defaults to "medium".
+	Effort *string `json:"effort,omitempty"`
+
+	// GenerateSummary is deprecated. Use Summary instead.
+	// Supported values: "auto", "concise", "detailed".
+	GenerateSummary *string `json:"generate_summary,omitempty"`
+
+	// Summary of the reasoning performed by the model.
+	// Supported values: "auto", "concise", "detailed".
+	Summary *string `json:"summary,omitempty"`
+}
+
 // ChatCompletionRequest represents a request structure for chat completion API.
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
@@ -454,6 +513,11 @@ type ChatCompletionRequest struct {
 	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 	MaxTokens *int64 `json:"max_tokens,omitempty"` //nolint:tagliatelle //follow openai api
 
+	// MaxCompletionTokens is an Optional integer
+	// An upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens.
+	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_completion_tokens
+	MaxCompletionTokens *int64 `json:"max_completion_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
 	// N: LLM Gateway does not support multiple completions.
 	// The only accepted value is 1.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-n
@@ -463,6 +527,11 @@ type ChatCompletionRequest struct {
 	// increasing the model's likelihood to talk about new topics.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-presence_penalty
 	PresencePenalty *float32 `json:"presence_penalty,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Reasoning
+	// o-series models only
+	// refs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
+	Reasoning *Reasoning `json:"reasoning,omitempty"`
 
 	// ResponseFormat is only for GPT models.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-response_format
@@ -479,7 +548,7 @@ type ChatCompletionRequest struct {
 	// Stop string / array / null Defaults to null
 	// Up to 4 sequences where the API will stop generating further tokens.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stop
-	Stop []*string `json:"stop,omitempty"`
+	Stop interface{} `json:"stop,omitempty"`
 
 	// Stream: If set, partial message deltas will be sent, like in ChatGPT.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stream
@@ -510,7 +579,7 @@ type ChatCompletionRequest struct {
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
-	ParallelToolCalls bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
@@ -570,7 +639,7 @@ type TopLogProbs struct {
 type LogProb struct {
 	Token   string  `json:"token"`
 	LogProb float64 `json:"logprob"`
-	Bytes   []byte  `json:"bytes,omitempty"` // Omitting the field if it is null
+	Bytes   []byte  `json:"bytes,omitempty"` // Omitting the field if it is null.
 	// TopLogProbs is a list of the most likely tokens and their log probability, at this token position.
 	// In rare cases, there may be fewer than the number of requested top_logprobs returned.
 	TopLogProbs []TopLogProbs `json:"top_logprobs"` //nolint:tagliatelle //follow openai api
@@ -774,6 +843,76 @@ type Model struct {
 	Object string `json:"object"`
 	// OwnedBy is the organization that owns the model.
 	OwnedBy string `json:"owned_by"`
+}
+
+// EmbeddingRequest represents a request structure for embeddings API.
+type EmbeddingRequest struct {
+	// Input: Input text to embed, encoded as a string or array of tokens.
+	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
+	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
+	// cannot be an empty string, and any array must be 2048 dimensions or less.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-input
+	Input StringOrArray `json:"input"`
+
+	// Model: ID of the model to use.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
+	Model string `json:"model"`
+
+	// EncodingFormat: The format to return the embeddings in. Can be either float or base64.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-encoding_format
+	EncodingFormat *string `json:"encoding_format,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Dimensions: The number of dimensions the resulting output embeddings should have.
+	// Only supported in text-embedding-3 and later models.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-dimensions
+	Dimensions *int `json:"dimensions,omitempty"`
+
+	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
+	User *string `json:"user,omitempty"`
+}
+
+// EmbeddingResponse represents a response from /v1/embeddings.
+// https://platform.openai.com/docs/api-reference/embeddings/object
+type EmbeddingResponse struct {
+	// Object: The object type, which is always "list".
+	// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-object
+	Object string `json:"object"`
+
+	// Data: The list of embeddings generated by the model.
+	// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-data
+	Data []Embedding `json:"data"`
+
+	// Model: The name of the model used to generate the embedding.
+	// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-model
+	Model string `json:"model"`
+
+	// Usage: The usage information for the request.
+	// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-usage
+	Usage EmbeddingUsage `json:"usage"`
+}
+
+// Embedding represents a single embedding vector.
+// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-data
+type Embedding struct {
+	// Object: The object type, which is always "embedding".
+	Object string `json:"object"`
+
+	// Embedding: The embedding vector, which is a list of floats. The length of vector depends on the model as listed in the embedding guide.
+	Embedding []float64 `json:"embedding"`
+
+	// Index: The index of the embedding in the list of embeddings.
+	Index int `json:"index"`
+}
+
+// EmbeddingUsage represents the usage information for an embeddings request.
+// https://platform.openai.com/docs/api-reference/embeddings/object#embeddings/object-usage
+type EmbeddingUsage struct {
+	// PromptTokens: The number of tokens used by the prompt.
+	PromptTokens int `json:"prompt_tokens"` //nolint:tagliatelle //follow openai api
+
+	// TotalTokens: The total number of tokens used by the request.
+	TotalTokens int `json:"total_tokens"` //nolint:tagliatelle //follow openai api
 }
 
 // JSONUNIXTime is a helper type to marshal/unmarshal time.Time UNIX timestamps.

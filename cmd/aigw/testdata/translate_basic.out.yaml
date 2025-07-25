@@ -88,12 +88,15 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
-            - name: x-ai-eg-selected-route
-              value: envoy-ai-gateway-basic-rule-0
+            - name: x-ai-eg-model
+              type: Exact
+              value: gpt-4o-mini
+      timeouts:
+        request: 60s
     - backendRefs:
         - group: gateway.envoyproxy.io
           kind: Backend
@@ -102,12 +105,15 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
-            - name: x-ai-eg-selected-route
-              value: envoy-ai-gateway-basic-rule-1
+            - name: x-ai-eg-model
+              type: Exact
+              value: llama3-2-1b-instruct-v1
+      timeouts:
+        request: 60s
     - backendRefs:
         - kind: Service
           name: envoy-ai-gateway-basic-testupstream
@@ -116,16 +122,25 @@ spec:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
-            name: ai-eg-host-rewrite
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
           type: ExtensionRef
       matches:
         - headers:
-            - name: x-ai-eg-selected-route
-              value: envoy-ai-gateway-basic-rule-2
+            - name: x-ai-eg-model
+              type: Exact
+              value: some-cool-self-hosted-model
+      timeouts:
+        request: 60s
     - matches:
         - path:
             value: /
-      name: unreachable
+      name: route-not-found
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
+          type: ExtensionRef
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -161,12 +176,39 @@ status:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
 metadata:
-  name: ai-eg-host-rewrite
+  name: ai-eg-host-rewrite-envoy-ai-gateway-basic
   namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+      controller: true
+      blockOwnerDeletion: true
 spec:
   urlRewrite:
     hostname:
       type: Backend
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
+  namespace: default
+  ownerReferences:
+    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIGatewayRoute
+      name: envoy-ai-gateway-basic
+      uid: ""
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  directResponse:
+    body:
+      inline: No matching route found. It is likely that the model specified your
+        request is not configured in the Gateway.
+      type: null
+    statusCode: 404
 ---
 apiVersion: v1
 kind: Secret
@@ -175,58 +217,46 @@ metadata:
   namespace: envoy-gateway-system
 stringData:
   filter-config.yaml: |
+    backends:
+    - auth:
+        apiKey:
+          key: apiKey
+      modelNameOverride: ""
+      name: default/envoy-ai-gateway-basic-openai/route/envoy-ai-gateway-basic/rule/0/ref/0
+      schema:
+        name: OpenAI
+        version: v1
+    - auth:
+        aws:
+          credentialFileLiteral: |
+            [default]
+            aws_access_key_id = AWS_ACCESS_KEY_ID
+            aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+          region: us-east-1
+      modelNameOverride: us.meta.llama3-2-1b-instruct-v1:0
+      name: default/envoy-ai-gateway-basic-aws/route/envoy-ai-gateway-basic/rule/1/ref/0
+      schema:
+        name: AWSBedrock
+    - modelNameOverride: ""
+      name: default/envoy-ai-gateway-basic-testupstream/route/envoy-ai-gateway-basic/rule/2/ref/0
+      schema:
+        name: OpenAI
+        version: v1
     metadataNamespace: io.envoy.ai_gateway
     modelNameHeaderKey: x-ai-eg-model
-    rules:
-    - backends:
-      - auth:
-          apiKey:
-            key: apiKey
-        modelNameOverride: ""
-        name: envoy-ai-gateway-basic-openai.default
-        schema:
-          name: OpenAI
-          version: v1
-      headers:
-      - name: x-ai-eg-model
-        value: gpt-4o-mini
-      modelsCreatedAt: "2025-05-23T00:00:00Z"
-      modelsOwnedBy: openai
-      name: envoy-ai-gateway-basic-rule-0
-    - backends:
-      - auth:
-          aws:
-            credentialFileLiteral: |
-              [default]
-              aws_access_key_id = AWS_ACCESS_KEY_ID
-              aws_secret_access_key = AWS_SECRET_ACCESS_KEY
-            region: us-east-1
-        modelNameOverride: us.meta.llama3-2-1b-instruct-v1:0
-        name: envoy-ai-gateway-basic-aws.default
-        schema:
-          name: AWSBedrock
-      headers:
-      - name: x-ai-eg-model
-        value: llama3-2-1b-instruct-v1
-      modelsCreatedAt: "2025-05-23T00:00:00Z"
-      modelsOwnedBy: aws
-      name: envoy-ai-gateway-basic-rule-1
-    - backends:
-      - modelNameOverride: ""
-        name: envoy-ai-gateway-basic-testupstream.default
-        schema:
-          name: OpenAI
-          version: v1
-      headers:
-      - name: x-ai-eg-model
-        value: some-cool-self-hosted-model
-      modelsCreatedAt: "2025-05-23T00:00:00Z"
-      modelsOwnedBy: Envoy AI Gateway
-      name: envoy-ai-gateway-basic-rule-2
+    models:
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: gpt-4o-mini
+      OwnedBy: openai
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: llama3-2-1b-instruct-v1
+      OwnedBy: aws
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: some-cool-self-hosted-model
+      OwnedBy: Envoy AI Gateway
     schema:
       name: OpenAI
       version: v1
-    selectedRouteHeaderKey: x-ai-eg-selected-route
     uuid: envoy-ai-gateway-basic
 ---
 apiVersion: v1

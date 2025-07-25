@@ -40,6 +40,16 @@ aws_secret_access_key = test
 				AzureAuth: &filterapi.AzureAuth{AccessToken: "some-access-token"},
 			},
 		},
+		{
+			name: "GCPAuth",
+			config: &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					AccessToken: "some-access-token",
+					Region:      "some-region",
+					ProjectName: "some-project",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewHandler(t.Context(), tt.config)

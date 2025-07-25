@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_extproc
-
 package extproc
 
 import (
@@ -30,6 +28,7 @@ const (
 	listenerAddress    = "http://localhost:1062"
 	eventuallyTimeout  = 60 * time.Second
 	eventuallyInterval = 4 * time.Second
+	fakeGCPAuthToken   = "fake-gcp-auth-token" //nolint:gosec
 )
 
 func TestMain(m *testing.M) {
@@ -64,21 +63,35 @@ func TestMain(m *testing.M) {
 var envoyYamlBase string
 
 var (
-	openAISchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
-	awsBedrockSchema  = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
-	azureOpenAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
-	geminiSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "/v1beta/openai"}
+	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
+	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
+	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic}
+	geminiSchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
+	groqSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
+	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	sambaNovaSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+	deepInfraSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1/openai"}
 
-	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
-	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
-	testUpstreamAAWSBackend       = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
-	testUpstreamAzureBackend      = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
+	testUpstreamOpenAIBackend      = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	testUpstreamModelNameOverride  = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
+	testUpstreamAAWSBackend        = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
+	testUpstreamAzureBackend       = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
+	testUpstreamGCPVertexAIBackend = filterapi.Backend{Name: "testupstream-gcp-vertexai", Schema: gcpVertexAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{
+		AccessToken: fakeGCPAuthToken,
+		Region:      "gcp-region",
+		ProjectName: "gcp-project-name",
+	}}}
+	testUpstreamGCPAnthropicAIBackend = filterapi.Backend{Name: "testupstream-gcp-anthropicai", Schema: gcpAnthropicAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{
+		AccessToken: fakeGCPAuthToken,
+		Region:      "gcp-region",
+		ProjectName: "gcp-project-name",
+	}}}
 	// This always failing backend is configured to have AWS Bedrock schema so that
 	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
 	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
 )
-
-const routeSelectorHeader = "x-selected-route-name"
 
 // requireExtProc starts the external processor with the provided executable and configPath
 // with additional environment variables.
@@ -88,7 +101,7 @@ func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath strin
 	cmd := exec.CommandContext(t.Context(), executable)
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath)
+	cmd.Args = append(cmd.Args, "-configPath", configPath, "-logLevel", "warn")
 	cmd.Env = append(os.Environ(), envs...)
 	require.NoError(t, cmd.Start())
 }
@@ -116,6 +129,8 @@ func requireRunEnvoy(t *testing.T, accessLogPath string) {
 		"-c", envoyYamlPath,
 		"--log-level", "warn",
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
+		// This allows multiple Envoy instances to run in parallel.
+		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

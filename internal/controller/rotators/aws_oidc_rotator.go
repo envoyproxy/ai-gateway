@@ -44,8 +44,7 @@ type AWSOIDCRotator struct {
 	backendSecurityPolicyNamespace string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
-	// OIDC config
-	oidc egv1a1.OIDC
+	oidc              egv1a1.OIDC
 	// roleArn is the role ARN used to obtain credentials.
 	roleArn string
 	// region is the AWS region for the credentials.

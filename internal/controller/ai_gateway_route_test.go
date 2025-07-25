@@ -20,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -43,7 +44,9 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	// Do it for the second time with a slightly different configuration.
 	var current aigv1a1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &current)
+	// Make sure the finalizer is added.
 	require.NoError(t, err)
+	require.Contains(t, current.ObjectMeta.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 	current.Spec.APISchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")}
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
@@ -132,17 +135,28 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].BackendRef.Name))
-		require.Equal(t, "myroute-rule-0", updatedHTTPRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 		// Defaulting to the empty path, which shouldn't reach in practice.
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
-	})
 
-	// Check the namespace has the default host rewrite filter.
-	var f egv1a1.HTTPRouteFilter
-	err := s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteHTTPFilterName, Namespace: "ns1"}, &f)
-	require.NoError(t, err)
-	require.Equal(t, hostRewriteHTTPFilterName, f.Name)
+		// Check per AIGatewayRoute has the default host rewrite filter.
+		var f egv1a1.HTTPRouteFilter
+		hostRewriteName := fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: hostRewriteName, Namespace: "ns1"}, &f)
+		require.NoError(t, err)
+		require.Equal(t, hostRewriteName, f.Name)
+		ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
+
+		// Also check per AIGatewayRoute has default route not found response filter.
+		var notFoundFilter egv1a1.HTTPRouteFilter
+		notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, route.Name)
+		err = s.client.Get(t.Context(), client.ObjectKey{Name: notFoundName, Namespace: "ns1"}, &notFoundFilter)
+		require.NoError(t, err)
+		require.Equal(t, notFoundName, notFoundFilter.Name)
+		ok, _ = ctrlutil.HasOwnerReference(notFoundFilter.OwnerReferences, route, fakeClient.Scheme())
+		require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
+	})
 }
 
 func Test_newHTTPRoute(t *testing.T) {
@@ -154,8 +168,9 @@ func Test_newHTTPRoute(t *testing.T) {
 			}
 
 			var (
-				timeout1 gwapiv1.Duration = "30s"
-				timeout2 gwapiv1.Duration = "60s"
+				timeout1       gwapiv1.Duration = "30s"
+				timeout2       gwapiv1.Duration = "60s"
+				defaultTimeout gwapiv1.Duration = "60s"
 			)
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
@@ -177,6 +192,11 @@ func Test_newHTTPRoute(t *testing.T) {
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-0"},
+								}},
+							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -184,10 +204,20 @@ func Test_newHTTPRoute(t *testing.T) {
 								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
 								{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
 							},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-1"},
+								}},
+							},
 						},
 						{
 							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 							Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+								{Headers: []gwapiv1.HTTPHeaderMatch{
+									{Name: "x-test", Value: "rule-2"},
+								}},
+							},
 						},
 					},
 				},
@@ -230,31 +260,33 @@ func Test_newHTTPRoute(t *testing.T) {
 				ExtensionRef: &gwapiv1.LocalObjectReference{
 					Group: "gateway.envoyproxy.io",
 					Kind:  "HTTPRouteFilter",
-					Name:  hostRewriteHTTPFilterName,
+					Name:  gwapiv1.ObjectName(getHostRewriteFilterName("myroute")),
 				},
 			}}
 			expRules := []gwapiv1.HTTPRouteRule{
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-0"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-0"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
 					Filters:     rewriteFilters,
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-1"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-1"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}, Weight: ptr.To[int32](100)}},
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](100)}},
 						{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}, Weight: ptr.To[int32](100)}},
 					},
-					Filters: rewriteFilters,
+					Timeouts: &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:  rewriteFilters,
 				},
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
-						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: selectedRouteHeaderKey, Value: "myroute-rule-2"}}},
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-2"}}},
 					},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
@@ -262,8 +294,18 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 				{
 					// The default rule.
-					Name:    ptr.To[gwapiv1.SectionName]("unreachable"),
+					Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
 					Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
+					Filters: []gwapiv1.HTTPRouteFilter{
+						{
+							Type: gwapiv1.HTTPRouteFilterExtensionRef,
+							ExtensionRef: &gwapiv1.LocalObjectReference{
+								Group: "gateway.envoyproxy.io",
+								Kind:  "HTTPRouteFilter",
+								Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName("myroute")),
+							},
+						},
+					},
 				},
 			}
 			require.Equal(t, expRules, httpRoute.Spec.Rules)
@@ -315,4 +357,61 @@ func Test_buildPriorityAnnotation(t *testing.T) {
 	}
 	annotation := buildPriorityAnnotation(rules)
 	require.Equal(t, "0:orange:0,0:apple:1,0:pineapple:2", annotation)
+}
+
+func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This is mostly for coverage.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch)
+	s.syncGateway(t.Context(), "ns", "non-exist")
+}
+
+func Test_newHTTPRoute_InferencePool(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Create an AIGatewayRoute with InferencePool backend.
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "inference-route",
+			Namespace: "test-ns",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:   "test-inference-pool",
+							Group:  ptr.To("inference.networking.x-k8s.io"),
+							Kind:   ptr.To("InferencePool"),
+							Weight: ptr.To(int32(100)),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c}
+	httpRoute := &gwapiv1.HTTPRoute{}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	// Verify HTTPRoute has correct backend reference for InferencePool.
+	// Note: newHTTPRoute always adds a default "unreachable" rule, so we expect 2 rules total.
+	require.Len(t, httpRoute.Spec.Rules, 2)
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+
+	// Check the first rule (our InferencePool rule).
+	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+	require.Equal(t, "inference.networking.x-k8s.io", string(*backendRef.Group))
+	require.Equal(t, "InferencePool", string(*backendRef.Kind))
+	require.Equal(t, "test-inference-pool", string(backendRef.Name))
+	require.Equal(t, "test-ns", string(*backendRef.Namespace))
+	require.Equal(t, int32(100), *backendRef.Weight)
+
+	// Check the second rule is the default "route-not-found" rule.
+	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
+	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }

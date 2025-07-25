@@ -24,7 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-const defaultK8sVersion = "1.31.0"
+const defaultK8sVersion = "1.33.0"
 
 // NewEnvTest creates a new environment for testing the controller package.
 func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.Interface) {

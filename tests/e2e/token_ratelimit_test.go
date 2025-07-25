@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_e2e
-
 package e2e
 
 import (
@@ -53,6 +51,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 
 		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		if resp.StatusCode == http.StatusOK {
 			var oaiBody openai.ChatCompletion
 			require.NoError(t, json.Unmarshal(body, &oaiBody))
@@ -103,7 +102,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.kill()
-		const query = `sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -113,6 +112,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		}
 		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
 		if resp.StatusCode != http.StatusOK {
 			t.Logf("Failed to query Prometheus: status=%s", resp.Status)

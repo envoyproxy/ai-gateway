@@ -22,6 +22,9 @@ const (
 	// ExpectedPathHeaderKey is the key for the expected path in the request.
 	// The value is a base64 encoded.
 	ExpectedPathHeaderKey = "x-expected-path"
+	// ExpectedRawQueryHeaderKey is the key for the expected raw query in the request.
+	// E.g. "key1=value1&key2=value2".
+	ExpectedRawQueryHeaderKey = "x-expected-raw-query"
 	// ExpectedRequestBodyHeaderKey is the key for the expected request body in the request.
 	// The value is a base64 encoded.
 	ExpectedRequestBodyHeaderKey = "x-expected-request-body"
