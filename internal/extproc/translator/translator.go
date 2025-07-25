@@ -40,9 +40,9 @@ type OpenAIChatCompletionTranslator interface {
 	// RequestBody translates the request body.
 	// 	- `raw` is the raw request body.
 	// 	- `body` is the request body parsed into the [openai.ChatCompletionRequest].
-	//	- `onRetry` is true if this is a retry request.
+	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openai.ChatCompletionRequest, onRetry bool) (
+	RequestBody(raw []byte, body *openai.ChatCompletionRequest, forceBodyMutation bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		err error,

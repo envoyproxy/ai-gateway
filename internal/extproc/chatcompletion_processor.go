@@ -17,6 +17,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/tidwall/sjson"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
@@ -72,6 +73,9 @@ type chatCompletionProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.ChatCompletionRequest
 	originalRequestBodyRaw []byte
+	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
+	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
+	forcedStreamOptionIncludeUsage bool
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -102,6 +106,21 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
+		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
+		// to avoid the bypassing of the token usage calculation.
+		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
+		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to set stream_options: %w", err)
+		}
+		c.forcedStreamOptionIncludeUsage = true
+		// TODO: alternatively, we could just return 403 or 400 error here. That makes sense since configuring the
+		// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
+		// setting this option to false means that clients are trying to escape that rule.
 	}
 
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
@@ -152,6 +171,8 @@ type chatCompletionProcessorUpstreamFilter struct {
 	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
+	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
+	forcedStreamOptionIncludeUsage bool
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -190,7 +211,12 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	c.metrics.StartRequest(c.requestHeaders)
 	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
 
-	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
+	// We force the body mutation in the following cases:
+	// * The request is a retry request because the body mutation might have happened the previous iteration.
+	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
+	//	the token usage is calculated correctly without being bypassed.
+	forceBodyMutation := c.onRetry || c.forcedStreamOptionIncludeUsage
+	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -314,6 +340,10 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
+
+		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
+		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
+		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
@@ -359,6 +389,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		}
 	}
 	rp.upstreamFilter = c
+	c.forcedStreamOptionIncludeUsage = rp.forcedStreamOptionIncludeUsage
 	return
 }
 
