@@ -111,9 +111,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	aiServiceBackendEventChan := make(chan event.GenericEvent, 100)
-	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("ai-service-backend"), aiGatewayRouteEventChan, backendSecurityPolicyEventChan)
+		WithName("ai-service-backend"), aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).
 		WatchesRawSource(source.Channel(
 			aiServiceBackendEventChan,
@@ -123,6 +122,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
 
+	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), aiServiceBackendEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
@@ -187,9 +187,6 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
-	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
-	// to the BackendSecurityPolicy that targets it via targetRefs.
-	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -213,11 +210,6 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
-	}
-	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
-		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
-	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
 	return nil
 }
@@ -271,15 +263,6 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		}
 	}
 	return []string{key}
-}
-
-func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
-	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
-	var ret []string
-	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
-		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
-	}
-	return ret
 }
 
 func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespace string) string {

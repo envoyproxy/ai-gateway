@@ -190,7 +190,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 		{name: "gcp_oidc.yaml"},
-		// New targetRefs pattern tests
+		// New targetRefs pattern tests.
 		{name: "targetrefs_basic.yaml"},
 		{name: "targetrefs_multiple.yaml"},
 		{

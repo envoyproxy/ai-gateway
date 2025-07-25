@@ -270,10 +270,10 @@ func backendSecurityPolicyKey(namespace, name string) string {
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
-	// Handle both old and new patterns
+	// Handle both old and new patterns.
 	var allAIServiceBackends []aigv1a1.AIServiceBackend
 
-	// Old pattern: AIServiceBackend references BackendSecurityPolicy
+	// Old pattern: AIServiceBackend references BackendSecurityPolicy.
 	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
 	var referencingBackends aigv1a1.AIServiceBackendList
 	err := c.client.List(ctx, &referencingBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
@@ -282,34 +282,27 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 	}
 	allAIServiceBackends = append(allAIServiceBackends, referencingBackends.Items...)
 
-	// New pattern: BackendSecurityPolicy targets AIServiceBackend via targetRefs
+	// New pattern: BackendSecurityPolicy targets AIServiceBackend via targetRefs.
 	for _, targetRef := range bsp.Spec.TargetRefs {
 		var aiBackend aigv1a1.AIServiceBackend
 		err := c.client.Get(ctx, client.ObjectKey{
 			Name:      string(targetRef.Name),
-			Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace
+			Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
 		}, &aiBackend)
 		if err != nil {
 			if client.IgnoreNotFound(err) != nil {
 				return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
 			}
-			// Target not found, log and continue
 			c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
 			continue
 		}
 		allAIServiceBackends = append(allAIServiceBackends, aiBackend)
 	}
 
-	// Deduplicate and sync all affected backends
-	seen := make(map[string]bool)
 	for i := range allAIServiceBackends {
 		aiBackend := &allAIServiceBackends[i]
-		backendKey := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
-		if !seen[backendKey] {
-			seen[backendKey] = true
-			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-			c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
-		}
+		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
+		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
 	}
 	return nil
 }

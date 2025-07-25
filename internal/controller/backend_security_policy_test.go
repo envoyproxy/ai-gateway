@@ -674,7 +674,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 	require.Less(t, res.RequeueAfter, time.Hour)
 }
 
-// TestBackendSecurityController_ReconcileWithTargetRefs tests the new targetRefs pattern
+// TestBackendSecurityController_ReconcileWithTargetRefs tests the new targetRefs pattern.
 func TestBackendSecurityController_ReconcileWithTargetRefs(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
@@ -682,7 +682,7 @@ func TestBackendSecurityController_ReconcileWithTargetRefs(t *testing.T) {
 	backendSecurityPolicyName := "my-targetrefs-policy"
 	namespace := "default"
 
-	// Create two AIServiceBackends that will be targeted by the BackendSecurityPolicy
+	// Create two AIServiceBackends that will be targeted by the BackendSecurityPolicy.
 	backend1 := &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "backend1", Namespace: namespace},
 		Spec: aigv1a1.AIServiceBackendSpec{
@@ -705,7 +705,7 @@ func TestBackendSecurityController_ReconcileWithTargetRefs(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), backend2))
 
-	// Create BackendSecurityPolicy using new targetRefs pattern
+	// Create BackendSecurityPolicy using new targetRefs pattern.
 	targetRefs := []gwapiv1a2.LocalPolicyTargetReference{
 		{
 			Group: "aigateway.envoyproxy.io",
@@ -731,24 +731,24 @@ func TestBackendSecurityController_ReconcileWithTargetRefs(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bsp))
 
-	// Reconcile the BackendSecurityPolicy
+	// Reconcile the BackendSecurityPolicy.
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
 
-	// Should receive events for both targeted backends
+	// Should receive events for both targeted backends.
 	items := eventCh.RequireItemsEventually(t, 2)
 	require.Len(t, items, 2)
 
-	// Verify both backends are in the events (order may vary)
-	backendNames := make(map[string]bool)
+	// Verify both backends are in the events (order may vary).
+	backendNames := make(map[string]struct{})
 	for _, item := range items {
-		backendNames[item.Name] = true
+		backendNames[item.Name] = struct{}{}
 	}
-	require.True(t, backendNames["backend1"])
-	require.True(t, backendNames["backend2"])
+	require.Contains(t, backendNames, "backend1")
+	require.Contains(t, backendNames, "backend2")
 
-	// Check that the status was updated
+	// Check that the status was updated.
 	var updatedBsp aigv1a1.BackendSecurityPolicy
 	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}, &updatedBsp))
 	require.Len(t, updatedBsp.Status.Conditions, 1)
@@ -756,14 +756,14 @@ func TestBackendSecurityController_ReconcileWithTargetRefs(t *testing.T) {
 	require.Equal(t, "BackendSecurityPolicy reconciled successfully", updatedBsp.Status.Conditions[0].Message)
 }
 
-// TestBackendSecurityController_ReconcileMixedPatterns tests both old and new patterns working together
+// TestBackendSecurityController_ReconcileMixedPatterns tests both old and new patterns working together.
 func TestBackendSecurityController_ReconcileMixedPatterns(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	namespace := "default"
 
-	// Create AIServiceBackend using old pattern (references policy)
+	// Create AIServiceBackend using old pattern (references policy).
 	oldPatternBackend := &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "old-pattern-backend", Namespace: namespace},
 		Spec: aigv1a1.AIServiceBackendSpec{
@@ -778,7 +778,7 @@ func TestBackendSecurityController_ReconcileMixedPatterns(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), oldPatternBackend))
 
-	// Create AIServiceBackend for new pattern (will be targeted by policy)
+	// Create AIServiceBackend for new pattern (will be targeted by policy).
 	newPatternBackend := &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "new-pattern-backend", Namespace: namespace},
 		Spec: aigv1a1.AIServiceBackendSpec{
@@ -790,7 +790,7 @@ func TestBackendSecurityController_ReconcileMixedPatterns(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), newPatternBackend))
 
-	// Create BackendSecurityPolicy that uses both patterns
+	// Create BackendSecurityPolicy that uses both patterns.
 	targetRefs := []gwapiv1a2.LocalPolicyTargetReference{
 		{
 			Group: "aigateway.envoyproxy.io",
@@ -811,16 +811,16 @@ func TestBackendSecurityController_ReconcileMixedPatterns(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bsp))
 
-	// Reconcile the BackendSecurityPolicy
+	// Reconcile the BackendSecurityPolicy.
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "mixed-policy"}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
 
-	// Should receive events for both backends (old pattern + new pattern)
+	// Should receive events for both backends (old pattern + new pattern).
 	items := eventCh.RequireItemsEventually(t, 2)
 	require.Len(t, items, 2)
 
-	// Verify both backends are in the events
+	// Verify both backends are in the events.
 	backendNames := make(map[string]bool)
 	for _, item := range items {
 		backendNames[item.Name] = true
@@ -829,14 +829,14 @@ func TestBackendSecurityController_ReconcileMixedPatterns(t *testing.T) {
 	require.True(t, backendNames["new-pattern-backend"])
 }
 
-// TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend tests targetRefs with non-existent backend
+// TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend tests targetRefs with non-existent backend.
 func TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	namespace := "default"
 
-	// Create one existing backend
+	// Create one existing backend.
 	existingBackend := &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "existing-backend", Namespace: namespace},
 		Spec: aigv1a1.AIServiceBackendSpec{
@@ -848,7 +848,7 @@ func TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend(t *test
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), existingBackend))
 
-	// Create BackendSecurityPolicy targeting both existing and non-existent backends
+	// Create BackendSecurityPolicy targeting both existing and non-existent backends.
 	targetRefs := []gwapiv1a2.LocalPolicyTargetReference{
 		{
 			Group: "aigateway.envoyproxy.io",
@@ -858,7 +858,7 @@ func TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend(t *test
 		{
 			Group: "aigateway.envoyproxy.io",
 			Kind:  "AIServiceBackend",
-			Name:  "non-existent-backend", // This backend doesn't exist
+			Name:  "non-existent-backend",
 		},
 	}
 
@@ -874,31 +874,31 @@ func TestBackendSecurityController_ReconcileTargetRefsNonExistentBackend(t *test
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bsp))
 
-	// Reconcile should succeed even with non-existent backend
+	// Reconcile should succeed even with non-existent backend.
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "test-policy"}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
 
-	// Should only receive event for the existing backend
+	// Should only receive event for the existing backend.
 	items := eventCh.RequireItemsEventually(t, 1)
 	require.Len(t, items, 1)
 	require.Equal(t, "existing-backend", items[0].Name)
 
-	// Policy status should still be accepted
+	// Policy status should still be accepted.
 	var updatedBsp aigv1a1.BackendSecurityPolicy
 	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: "test-policy"}, &updatedBsp))
 	require.Len(t, updatedBsp.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedBsp.Status.Conditions[0].Type)
 }
 
-// TestBackendSecurityController_ReconcileEmptyTargetRefs tests policy with empty targetRefs
+// TestBackendSecurityController_ReconcileEmptyTargetRefs tests policy with empty targetRefs.
 func TestBackendSecurityController_ReconcileEmptyTargetRefs(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 	namespace := "default"
 
-	// Create BackendSecurityPolicy with empty targetRefs
+	// Create BackendSecurityPolicy with empty targetRefs.
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "empty-targetrefs-policy", Namespace: namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
@@ -906,22 +906,21 @@ func TestBackendSecurityController_ReconcileEmptyTargetRefs(t *testing.T) {
 			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"},
 			},
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{}, // Empty list
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{},
 		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bsp))
 
-	// Reconcile should succeed
+	// Reconcile should succeed.
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "empty-targetrefs-policy"}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
 
-	// Should not receive any events since no backends are targeted
-	// Wait a bit to ensure no events are sent
+	// Should not receive any events since no backends are targeted.
 	time.Sleep(100 * time.Millisecond)
 	require.Empty(t, eventCh.Ch)
 
-	// Policy status should still be accepted
+	// Policy status should still be accepted.
 	var updatedBsp aigv1a1.BackendSecurityPolicy
 	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: "empty-targetrefs-policy"}, &updatedBsp))
 	require.Len(t, updatedBsp.Status.Conditions, 1)

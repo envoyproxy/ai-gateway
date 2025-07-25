@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -555,7 +554,7 @@ func TestAIServiceBackendController(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch, make(chan event.GenericEvent))
+	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
 	require.NoError(t, err)
 

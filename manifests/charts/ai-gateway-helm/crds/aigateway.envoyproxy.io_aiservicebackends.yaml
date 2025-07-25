@@ -136,6 +136,9 @@ spec:
                 description: |-
                   BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
                   is being attached to.
+
+                  Deprecated: BackendSecurityPolicy should use targetRefs to target AIServiceBackend instead.
+                  This field will be dropped after Envoy AI Gateway v0.3 release.
                 properties:
                   group:
                     description: |-
