@@ -76,7 +76,7 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 	if len(backendSecurityPolicyList.Items) > 1 {
 		var names []string
 		for _, bsp := range backendSecurityPolicyList.Items {
-			names = append(names, fmt.Sprintf("%s", bsp.Name))
+			names = append(names, bsp.Name)
 		}
 		return fmt.Errorf("multiple BackendSecurityPolicies found for AIServiceBackend %s: %v",
 			aiBackend.Name, names)
