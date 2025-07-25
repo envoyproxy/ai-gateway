@@ -187,6 +187,9 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
+	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
+	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -210,6 +213,11 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
+		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
 	return nil
 }
@@ -263,6 +271,15 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		}
 	}
 	return []string{key}
+}
+
+func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
+	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
+	var ret []string
+	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
+	}
+	return ret
 }
 
 func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespace string) string {

@@ -48,7 +48,8 @@ type BackendSecurityPolicy struct {
 // +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 type BackendSecurityPolicySpec struct {
 	// TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
-	// This follows the Gateway API policy attachment pattern where policies target their resources directly.
+	// Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error
+	// during the reconciliation of AIServiceBackend.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
