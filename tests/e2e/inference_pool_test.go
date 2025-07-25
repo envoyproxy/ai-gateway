@@ -85,7 +85,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with valid metrics.
 	t.Run("endpointpicker_with_httproute_valid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{}, http.StatusOK)
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", nil, http.StatusOK)
 	})
 
 	t.Cleanup(func() {
