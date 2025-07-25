@@ -19,9 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	oidcv3 "github.com/coreos/go-oidc/v3/oidc"
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -36,6 +33,10 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
