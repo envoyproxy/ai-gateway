@@ -40,6 +40,16 @@ spec:
             - type: Exact
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
+            - type: Exact
+              name: Authorization
+              value: sk-abcdefghijklmnopqrstuvwxyz
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: meta-llama/Llama-3.1-8B-Instruct
+            - type: Exact
+              name: Authorization
+              value: sk-zyxwvutsrqponmlkjihgfedcba
       backendRefs:
         - group: inference.networking.x-k8s.io
           kind: InferencePool

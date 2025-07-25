@@ -470,11 +470,6 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 		}
 		inferencePool := getInferencePoolByMetadata(route.Metadata)
 		if inferencePool == nil {
-			if dr := route.GetDirectResponse(); dr != nil {
-				if strings.Contains(dr.Body.GetInlineString(), "No matching route found") {
-					continue
-				}
-			}
 			for key, pool := range inferenceMatrix {
 				s.log.Info("disabling inference pool filter", "route", route.Name, "filter", key, "pool", pool.Name)
 				if route.TypedPerFilterConfig == nil {

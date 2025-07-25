@@ -30,24 +30,34 @@ func TestInferencePoolIntegration(t *testing.T) {
 	egSelector := "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-aigwroute"
 	requireWaitForGatewayPodReady(t, egSelector)
 
-	// Test connectivity to inferencePool + inference pods with valid metrics.
-	t.Run("endpointpicker_with_aigwroute_valid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
+	// Test connectivity to inferencePool + header match + inference pods with valid metrics, should return 200.
+	t.Run("endpointpicker_with_aigwroute_matched_header", func(t *testing.T) {
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{"Authorization": "sk-abcdefghijklmnopqrstuvwxyz"}, http.StatusOK)
 	})
 
-	// Test connectivity to inferencePool + inference pods with invalid metrics.
+	// Test connectivity to inferencePool + header match + inference pods with valid metrics, should return 200.
+	t.Run("endpointpicker_with_aigwroute_matched_header", func(t *testing.T) {
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{"Authorization": "sk-zyxwvutsrqponmlkjihgfedcba"}, http.StatusOK)
+	})
+
+	// Test connectivity to inferencePool + unmatched route + inference pods with valid metrics, should return 404 directly.
+	t.Run("endpointpicker_with_aigwroute_unmatched", func(t *testing.T) {
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{}, http.StatusNotFound)
+	})
+
+	// Test connectivity to inferencePool + inference pods with invalid metrics, should fallback to a random pick.
 	t.Run("endpointpicker_with_aigwroute_invalid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "mistral:latest")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "mistral:latest", map[string]string{}, http.StatusOK)
 	})
 
 	// Test connectivity to aiservicebackend within the same aigatewayroute with inferencePool.
 	t.Run("endpointpicker_with_aigwroute_aiservicebackend", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "some-cool-self-hosted-model")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "some-cool-self-hosted-model", map[string]string{}, http.StatusOK)
 	})
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
 	t.Run("endpointpicker_with_compressed_json_body", func(t *testing.T) {
-		testInferenceGatewayConnectivity(t, egSelector, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`)
+		testInferenceGatewayConnectivity(t, egSelector, `{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"Say this is a test"}]}`, map[string]string{"Authorization": "sk-abcdefghijklmnopqrstuvwxyz"}, http.StatusOK)
 	})
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body which will be compressed by the EPP.
@@ -59,7 +69,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 		"role": "user",
 		"content": "Say this is a test"
 	}]
-}`)
+}`, map[string]string{"Authorization": "sk-abcdefghijklmnopqrstuvwxyz"}, http.StatusOK)
 	})
 
 	t.Cleanup(func() {
@@ -75,7 +85,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + inference pods with valid metrics.
 	t.Run("endpointpicker_with_httproute_valid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct")
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{}, http.StatusOK)
 	})
 
 	t.Cleanup(func() {
@@ -83,14 +93,15 @@ func TestInferencePoolIntegration(t *testing.T) {
 	})
 }
 
-// testInferenceGatewayConnectivityByModel tests that the Gateway is accessible and returns a 200 status code
+// testInferenceGatewayConnectivityByModel tests that the Gateway is accessible and returns a 200 status code.
 // for a valid request to the InferencePool backend for a specific model.
-func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model string) {
+func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model string, additionalHeaders map[string]string, expectedStatusCode int) {
 	testInferenceGatewayConnectivity(t, egSelector,
-		fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model))
+		fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, model), additionalHeaders, expectedStatusCode)
 }
 
-func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
+// testInferenceGatewayConnectivity tests that the InferenceGateway is working as expected and returns a expected status code.
+func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, additionalHeaders map[string]string, expectedStatusCode int) {
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
@@ -105,6 +116,9 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
 		require.NoError(t, err)
 		// Set required headers for InferencePool routing.
 		req.Header.Set("Content-Type", "application/json")
+		for key, value := range additionalHeaders {
+			req.Header.Set(key, value)
+		}
 
 		// Make the request.
 		resp, err := http.DefaultClient.Do(req)
@@ -120,8 +134,8 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
 		t.Logf("Response status: %d, body: %s", resp.StatusCode, string(body))
 
 		// Check for successful response (200 OK).
-		if resp.StatusCode != http.StatusOK {
-			t.Logf("unexpected status code: %d (expected 200), body: %s", resp.StatusCode, string(body))
+		if resp.StatusCode != expectedStatusCode {
+			t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, expectedStatusCode, string(body))
 			return false
 		}
 
@@ -129,5 +143,5 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string) {
 		require.NotEmpty(t, body, "response body should not be empty")
 		t.Logf("Gateway connectivity test passed: status=%d", resp.StatusCode)
 		return true
-	}, 2*time.Minute, 5*time.Second, "Gateway should be accessible and return 200 status code")
+	}, 2*time.Minute, 5*time.Second, "Gateway should return expected status code", expectedStatusCode)
 }

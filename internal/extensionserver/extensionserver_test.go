@@ -966,8 +966,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 
 		s.patchVirtualHostWithInferencePool(vh, pools)
 
-		// Verify the direct response route was skipped (no TypedPerFilterConfig added).
-		require.Nil(t, directResponseRoute.TypedPerFilterConfig)
+		// Verify the direct response route was not skipped (And TypedPerFilterConfig added).
+		require.NotNil(t, directResponseRoute.TypedPerFilterConfig)
 	})
 
 	t.Run("route with direct response not containing 'No matching route found'", func(t *testing.T) {
