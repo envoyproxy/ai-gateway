@@ -42,17 +42,17 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	// Test connectivity to inferencePool + unmatched route + inference pods with valid metrics, should return 404 directly.
 	t.Run("endpointpicker_with_aigwroute_unmatched", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", map[string]string{}, http.StatusNotFound)
+		testInferenceGatewayConnectivityByModel(t, egSelector, "meta-llama/Llama-3.1-8B-Instruct", nil, http.StatusNotFound)
 	})
 
 	// Test connectivity to inferencePool + inference pods with invalid metrics, should fallback to a random pick.
 	t.Run("endpointpicker_with_aigwroute_invalid_pod_metrics", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "mistral:latest", map[string]string{}, http.StatusOK)
+		testInferenceGatewayConnectivityByModel(t, egSelector, "mistral:latest", nil, http.StatusOK)
 	})
 
 	// Test connectivity to aiservicebackend within the same aigatewayroute with inferencePool.
 	t.Run("endpointpicker_with_aigwroute_aiservicebackend", func(t *testing.T) {
-		testInferenceGatewayConnectivityByModel(t, egSelector, "some-cool-self-hosted-model", map[string]string{}, http.StatusOK)
+		testInferenceGatewayConnectivityByModel(t, egSelector, "some-cool-self-hosted-model", nil, http.StatusOK)
 	})
 
 	// Test connectivity to inferencePool + inference pods with compressed and uncompressed JSON body.
