@@ -345,7 +345,13 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 	} {
 		t.Run(tc.bspName, func(t *testing.T) {
-			auth, err := c.bspToFilterAPIBackendAuth(t.Context(), namespace, tc.bspName)
+			bsp := &aigv1a1.BackendSecurityPolicy{}
+			err := fakeClient.Get(t.Context(), client.ObjectKey{
+				Name:      tc.bspName,
+				Namespace: namespace,
+			}, bsp)
+			require.NoError(t, err)
+			auth, err := c.bspToFilterAPIBackendAuth(t.Context(), bsp)
 			require.NoError(t, err)
 			require.Equal(t, tc.exp, auth)
 		})
@@ -363,19 +369,13 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name          string
 		bspName       string
-		setupBSP      *aigv1a1.BackendSecurityPolicy
-		setupSecret   *corev1.Secret
+		bsp           *aigv1a1.BackendSecurityPolicy
 		expectedError string
 	}{
 		{
-			name:          "missing backend security policy",
-			bspName:       "missing-bsp",
-			expectedError: "failed to get BackendSecurityPolicy missing-bsp",
-		},
-		{
 			name:    "api key type with missing secret",
 			bspName: "api-key-bsp",
-			setupBSP: &aigv1a1.BackendSecurityPolicy{
+			bsp: &aigv1a1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "api-key-bsp", Namespace: namespace},
 				Spec: aigv1a1.BackendSecurityPolicySpec{
 					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
@@ -391,7 +391,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 		{
 			name:    "aws credentials with credentials file missing secret",
 			bspName: "aws-creds-file-bsp",
-			setupBSP: &aigv1a1.BackendSecurityPolicy{
+			bsp: &aigv1a1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-file-bsp", Namespace: namespace},
 				Spec: aigv1a1.BackendSecurityPolicySpec{
 					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
@@ -411,17 +411,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.setupBSP != nil {
-				err := fakeClient.Create(ctx, tt.setupBSP)
-				require.NoError(t, err)
-			}
-
-			if tt.setupSecret != nil {
-				err := fakeClient.Create(ctx, tt.setupSecret)
-				require.NoError(t, err)
-			}
-
-			result, err := c.bspToFilterAPIBackendAuth(ctx, namespace, tt.bspName)
+			result, err := c.bspToFilterAPIBackendAuth(ctx, tt.bsp)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.expectedError)
 			require.Nil(t, result)
@@ -694,4 +684,87 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
 		})
 	}
+}
+
+func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	const v2Container = "ai-gateway-extproc:v2"
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "foo", "/foo/bar/uds.sock", v2Container)
+
+	_, _, err := c.backendWithMaybeBSP(t.Context(), "foo", "bar")
+	require.ErrorContains(t, err, `aiservicebackends.aigateway.envoyproxy.io "bar" not found`)
+
+	// Create AIServiceBackend without BSP.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "foo"},
+		Spec:       aigv1a1.AIServiceBackendSpec{},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), backend))
+
+	backend, bsp, err := c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.NoError(t, err, "should not error when backend exists without BSP")
+	require.NotNil(t, backend)
+	require.Nil(t, bsp, "should not return BSP when backend exists without BSP")
+
+	// Create a new BSP for the existing backend.
+	const bspName = "bsp-bar"
+	bspObj := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
+		Spec:       aigv1a1.BackendSecurityPolicySpec{},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bspObj))
+	// Update the backend to reference the BSP.
+	backend.Spec.BackendSecurityPolicyRef = &gwapiv1.LocalObjectReference{Name: bspName}
+	require.NoError(t, fakeClient.Update(t.Context(), backend))
+
+	// Check that we can retrieve the backend and BSP.
+	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.NoError(t, err, "should not error when backend exists with BSP")
+	require.NotNil(t, backend, "should return backend when it exists")
+	require.NotNil(t, bsp, "should return BSP when backend exists with BSP")
+	require.Equal(t, bspName, bsp.Name, "should return the correct BSP name")
+
+	// Create a new BSP that has targetRefs (new pattern) to the backend.
+	bspWithTargetRefs := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
+
+	// Update the backend to drop the old style BSP reference.
+	backend.Spec.BackendSecurityPolicyRef = nil
+	require.NoError(t, fakeClient.Update(t.Context(), backend))
+
+	// Check that we can retrieve the backend and the new BSP with targetRefs.
+	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
+		backend.Name)
+	require.NoError(t, err, "should not error when backend exists with BSP using targetRefs")
+	require.NotNil(t, backend, "should return backend when it exists")
+	require.NotNil(t, bsp, "should return BSP when backend exists with BSP using targetRefs")
+	require.Equal(t, bspWithTargetRefs.Name, bsp.Name, "should return the correct BSP name when using targetRefs")
+
+	// Create yet another BSP that has targetRefs (new pattern) to the backend, which should be the error case.
+	bspWithTargetRefs2 := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs2", Namespace: backend.Namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs2))
+	// Update the backend to drop the old style BSP reference.
+	backend.Spec.BackendSecurityPolicyRef = nil
+	require.NoError(t, fakeClient.Update(t.Context(), backend))
+
+	// Check that we can retrieve the backend and the new BSP with targetRefs, but it should error out
+	// because there are multiple BSPs with targetRefs pointing to the same backend.
+	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
+		backend.Name)
+	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend",
+		"should indicate that multiple BSPs with targetRefs exist for the same backend")
+	require.Nil(t, backend, "should not return backend when multiple BSPs with targetRefs exist")
+	require.Nil(t, bsp, "should not return BSP when multiple BSPs with targetRefs exist for the same backend")
 }
