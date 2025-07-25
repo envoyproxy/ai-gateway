@@ -413,7 +413,7 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return
 	}
 
-	// Old Pattern using BackendSecurityPolicyRef.
+	// Old Pattern using BackendSecurityPolicyRef. Prioritize this field over the new pattern as per the documentation.
 	if bspRef := backend.Spec.BackendSecurityPolicyRef; bspRef != nil {
 		bsp, err = c.backendSecurityPolicy(ctx, namespace, string(bspRef.Name))
 		if err != nil {
@@ -434,10 +434,13 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 	case 1:
 		bsp = &backendSecurityPolicyList.Items[0]
 	default:
-		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
-			"count", len(backendSecurityPolicyList.Items))
 		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
 		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
+		//
+		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
+		// is created after the AIServiceBackend's reconciliation.
+		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
+			"count", len(backendSecurityPolicyList.Items))
 		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return

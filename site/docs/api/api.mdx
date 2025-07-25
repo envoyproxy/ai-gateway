@@ -603,7 +603,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
-  description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to.<br />Deprecated: BackendSecurityPolicy should use targetRefs to target AIServiceBackend instead.<br />This field will be dropped after Envoy AI Gateway v0.3 release."
+  description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to.<br />Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.<br />When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,<br />set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,<br />and then remove this field from the AIServiceBackend."
 />
 
 
