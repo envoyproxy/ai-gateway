@@ -29,6 +29,14 @@ kubectl wait pods --timeout=2m \
     --for=condition=Ready
 ```
 
+:::tip
+
+In the `basic.yaml` file, you will find "ClientTrafficPolicy" resource that configures the buffer limit on the client to the gateway connection.
+By default, Envoy Gateway configures 32KB as the buffer limit, which is not enough for most AI model responses, hence it's configured to 50MB in the example.
+Envoy Gateway provides more advanced policies, not limited to the buffer limit. Please refer to the [Client Traffic Policies](https://gateway.envoyproxy.io/latest/tasks/traffic/client-traffic-policy/) documentation for more details.
+
+:::
+
 ## Configure `$GATEWAY_URL`
 
 First, check if your Gateway has an external IP address assigned:

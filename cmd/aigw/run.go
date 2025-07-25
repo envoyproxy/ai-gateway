@@ -171,14 +171,18 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
 
 	server := root.GetRootCommand()
-	egOut := &bytes.Buffer{}
-	server.SetOut(egOut)
-	server.SetErr(egOut)
+	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
+	if c.Debug {
+		server.SetOut(stdout)
+		server.SetErr(stderr)
+	} else {
+		server.SetOut(io.Discard)
+		server.SetErr(io.Discard)
+	}
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
-	stderrLogger.Info("Envoy Gateway output", "output", egOut.String())
 	return nil
 }
 
