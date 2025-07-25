@@ -173,8 +173,8 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	server := root.GetRootCommand()
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
 	if c.Debug {
-		server.SetOut(os.Stdout)
-		server.SetErr(os.Stderr)
+		server.SetOut(stdout)
+		server.SetErr(stderr)
 	} else {
 		server.SetOut(io.Discard)
 		server.SetErr(io.Discard)
