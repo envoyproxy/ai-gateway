@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -17,11 +18,13 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics      *genAI
-	operation    string
-	requestStart time.Time
-	model        string
-	backend      string
+	metrics            *genAI
+	operation          string
+	requestStart       time.Time
+	model              string
+	backend            string
+	metricsHeaderNames []string          // Header names to include in metrics as labels.
+	requestHeaders     map[string]string // Request headers for the current request.
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
@@ -34,9 +37,21 @@ func newBaseMetrics(meter metric.Meter, operation string) baseMetrics {
 	}
 }
 
+// newBaseMetricsWithHeaderNames creates a new baseMetrics instance with the specified operation and header names.
+func newBaseMetricsWithHeaderNames(meter metric.Meter, operation string, headerNames []string) baseMetrics {
+	return baseMetrics{
+		metrics:            newGenAI(meter),
+		operation:          operation,
+		model:              "unknown",
+		backend:            "unknown",
+		metricsHeaderNames: headerNames,
+	}
+}
+
 // StartRequest initializes timing for a new request.
-func (b *baseMetrics) StartRequest(_ map[string]string) {
+func (b *baseMetrics) StartRequest(headers map[string]string) {
 	b.requestStart = time.Now()
+	b.requestHeaders = headers
 }
 
 // SetModel sets the model for the request.
@@ -59,12 +74,49 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 
 // buildBaseAttributes creates the base attributes for metrics recording.
 func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
-	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
+	// Start with base attributes + potential header attributes + extra attributes.
+	attrs := make([]attribute.KeyValue, 0, 3+len(b.metricsHeaderNames)+len(extraAttrs))
 	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(b.operation),
 		attribute.Key(genaiAttributeSystemName).String(b.backend),
 		attribute.Key(genaiAttributeRequestModel).String(b.model),
 	)
+
+	// Add header values as attributes if configured.
+	if b.metricsHeaderNames != nil && b.requestHeaders != nil {
+		for _, sanitizedHeaderName := range b.metricsHeaderNames {
+			// Convert the sanitized header name back to the original format for lookup.
+			// The sanitized name has underscores, but the actual header name might have dashes.
+			originalHeaderName := strings.ReplaceAll(sanitizedHeaderName, "_", "-")
+
+			// Look for the header value in the request headers.
+			// Try both the sanitized name (with underscores) and the original format (with dashes).
+			headerValue := ""
+			if value, exists := b.requestHeaders[sanitizedHeaderName]; exists {
+				headerValue = value
+			} else if value, exists := b.requestHeaders[originalHeaderName]; exists {
+				headerValue = value
+			} else {
+				// Try to find the header with case-insensitive matching.
+				for reqHeaderName, reqHeaderValue := range b.requestHeaders {
+					if strings.EqualFold(reqHeaderName, sanitizedHeaderName) || strings.EqualFold(reqHeaderName, originalHeaderName) {
+						headerValue = reqHeaderValue
+						break
+					}
+				}
+			}
+
+			// If header value is empty, use "unknown" to maintain consistent cardinality.
+			if headerValue == "" {
+				headerValue = "unknown"
+			}
+
+			// Create an attribute key with "header_" prefix to avoid conflicts.
+			attrKey := "header_" + sanitizedHeaderName
+			attrs = append(attrs, attribute.Key(attrKey).String(headerValue))
+		}
+	}
+
 	attrs = append(attrs, extraAttrs...)
 	return attrs
 }

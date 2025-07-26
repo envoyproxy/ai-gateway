@@ -26,6 +26,13 @@ func NewEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
 	}
 }
 
+// NewEmbeddingsWithHeaderNames creates a new Embeddings instance with header names for metrics labels.
+func NewEmbeddingsWithHeaderNames(meter metric.Meter, headerNames []string) x.EmbeddingsMetrics {
+	return &embeddings{
+		baseMetrics: newBaseMetricsWithHeaderNames(meter, genaiOperationEmbedding, headerNames),
+	}
+}
+
 // RecordTokenUsage implements [EmbeddingsMetrics.RecordTokenUsage].
 func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
 	attrs := e.buildBaseAttributes(extraAttrs...)

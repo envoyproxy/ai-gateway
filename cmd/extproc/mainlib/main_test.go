@@ -259,3 +259,59 @@ backends:
 	err := <-errCh
 	require.NoError(t, err)
 }
+
+func Test_parseMetricsHeaderNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:     "single header",
+			input:    "x-user-id",
+			expected: []string{"x_user_id"},
+		},
+		{
+			name:     "multiple headers",
+			input:    "x-user-id,x-team-id,authorization",
+			expected: []string{"x_user_id", "x_team_id", "authorization"},
+		},
+		{
+			name:     "headers with spaces",
+			input:    " x-user-id , x-team-id , authorization ",
+			expected: []string{"x_user_id", "x_team_id", "authorization"},
+		},
+		{
+			name:     "mixed case headers",
+			input:    "X-User-ID,X-TEAM-ID,Authorization",
+			expected: []string{"x_user_id", "x_team_id", "authorization"},
+		},
+		{
+			name:     "headers with special characters",
+			input:    "x-user@id,x.team.id,x:special:header",
+			expected: []string{"x_user_id", "x_team_id", "x_special_header"},
+		},
+		{
+			name:     "header starting with number",
+			input:    "123-header,x-valid-header",
+			expected: []string{"header_123_header", "x_valid_header"},
+		},
+		{
+			name:     "empty elements",
+			input:    "x-user-id,,x-team-id,",
+			expected: []string{"x_user_id", "x_team_id"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseMetricsHeaderNames(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

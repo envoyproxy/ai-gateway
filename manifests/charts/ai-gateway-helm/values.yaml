@@ -13,6 +13,9 @@ extProc:
   imagePullPolicy: IfNotPresent
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+  # Comma-separated list of header names to add to metrics as labels.
+  # For example: "x-user-id,x-team-id". Leave empty to disable header metrics.
+  metricsHeaderNames: ""
 
 controller:
   logLevel: info
