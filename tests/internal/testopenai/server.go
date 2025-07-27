@@ -11,7 +11,9 @@ package testopenai
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -23,24 +25,27 @@ import (
 
 // Server represents a test OpenAI API server that replays cassette recordings.
 type Server struct {
+	logger   *log.Logger
 	server   *http.Server
 	listener net.Listener
 	handler  *cassetteHandler
 }
 
-// NewServer creates a new test OpenAI server on a random port.
-func NewServer() (*Server, error) {
-	return newServer(embeddedCassettes, cassettesDir)
+// NewServer creates a new test OpenAI server (use port 0 for random).
+func NewServer(out io.Writer, port int) (*Server, error) {
+	return newServer(out, port, embeddedCassettes, cassettesDir)
 }
 
 // newServer creates a new test OpenAI server on a random port.
 //
+// out is where to write logs
+// port can be zero for a random port. The real value is available via Server.Port
 // cassettesFS is the filesystem containing pre-recorded cassettes.
 // cassettesDir is the directory name of a recording, only used when writing a new cassette.
-func newServer(cassettesFS fs.FS, cassettesDir string) (*Server, error) {
-	// Create a listener on a random port on all interfaces.
-	// Using ":0" instead of "127.0.0.1:0" allows Docker containers to access this server.
-	listener, err := net.Listen("tcp", ":0") // #nosec G102 - need to bind to all interfaces for Docker
+func newServer(out io.Writer, port int, cassettesFS fs.FS, cassettesDir string) (*Server, error) {
+	logger := log.New(out, "[testopenai] ", 0)
+	// ":{port}" not "127.0.0.1:{port}" so Docker containers to access this server.
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port)) // #nosec G102 - need to bind to all interfaces for Docker
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
@@ -64,6 +69,7 @@ func newServer(cassettesFS fs.FS, cassettesDir string) (*Server, error) {
 	}
 
 	handler := &cassetteHandler{
+		logger:                 logger,
 		apiBase:                baseURL,
 		cassettes:              cassettes,
 		cassettesDir:           cassettesDir,
@@ -75,6 +81,7 @@ func newServer(cassettesFS fs.FS, cassettesDir string) (*Server, error) {
 	}
 
 	s := &Server{
+		logger:   logger,
 		listener: listener,
 		handler:  handler,
 	}
@@ -105,6 +112,6 @@ func (s *Server) Port() int {
 }
 
 // Close shuts down the server.
-func (s *Server) Close() error {
-	return s.server.Close()
+func (s *Server) Close() {
+	_ = s.server.Close()
 }

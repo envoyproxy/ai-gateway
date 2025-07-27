@@ -6,59 +6,32 @@
 package extproc
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-	"sigs.k8s.io/yaml"
-
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
 const (
-	listenerAddress  = "http://localhost:1062"
-	fakeGCPAuthToken = "fake-gcp-auth-token" //nolint:gosec
+	// errorServerDefaultPort is a port we need to replace in envoyConfig.
+	errorServerDefaultPort = 1066
+	// errorServerTLSDefaultPort is a port we need to replace in envoyConfig.
+	errorServerTLSDefaultPort = 1067
+	eventuallyTimeout         = 60 * time.Second
+	eventuallyInterval        = 4 * time.Second
+	fakeGCPAuthToken          = "fake-gcp-auth-token" //nolint:gosec
 )
-
-func TestMain(m *testing.M) {
-	const fakeServerPort = 1066
-	// This is a fake server that returns a 500 error for all requests.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("Internal Server Error"))
-	})
-
-	httpServer := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", fakeServerPort), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	httpsServer := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", fakeServerPort+1), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && !strings.Contains(err.Error(), "Server closed") {
-			panic(fmt.Sprintf("error starting HTTP server: %v", err))
-		}
-	}()
-	go func() {
-		if err := httpsServer.ListenAndServeTLS("testdata/server.crt", "testdata/server.key"); err != nil &&
-			!strings.Contains(err.Error(), "Server closed") {
-			panic(fmt.Sprintf("error starting HTTPS server: %v", err))
-		}
-	}()
-	res := m.Run()
-	_ = httpServer.Close()
-	_ = httpsServer.Close()
-	os.Exit(res)
-}
-
-//go:embed envoy.yaml
-var envoyYamlBase string
 
 var (
 	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
@@ -89,73 +62,101 @@ var (
 	// This always failing backend is configured to have AWS Bedrock schema so that
 	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
 	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
+
+	// envoyConfig is the embedded Envoy configuration template.
+	//
+	//go:embed envoy.yaml
+	envoyConfig string
+
+	// extprocBin holds the path to the compiled extproc binary.
+	extprocBin string
+
+	// testupstreamBin holds the path to the compiled testupstream binary.
+	testupstreamBin string
 )
 
-// requireExtProc starts the external processor with the provided executable and configPath
-// with additional environment variables.
-//
-// The config must be in YAML format specified in [filterapi.Config] type.
-func requireExtProc(t *testing.T, stdout io.Writer, executable, configPath string, envs ...string) {
-	cmd := exec.CommandContext(t.Context(), executable)
-	cmd.Stdout = stdout
-	cmd.Stderr = os.Stderr
-	cmd.Args = append(cmd.Args, "-configPath", configPath, "-logLevel", "warn")
-	cmd.Env = append(os.Environ(), envs...)
-	require.NoError(t, cmd.Start())
-}
+// TestMain sets up the test environment once for all tests.
+func TestMain(m *testing.M) {
+	var err error
+	// Build extproc binary once for all tests.
+	if extprocBin, err = BuildExtProcOnDemand(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start tests due to extproc build error: %v\n", err)
+		os.Exit(1)
+	}
 
-func requireTestUpstream(t *testing.T) {
-	// Starts the Envoy proxy.
-	cmd := exec.CommandContext(t.Context(), testUpstreamExecutablePath()) // #nosec G204
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"TESTUPSTREAM_ID=extproc_test"}
-	require.NoError(t, cmd.Start())
-}
+	// Build testupstream binary once for all tests.
+	if testupstreamBin, err = buildTestUpstreamOnDemand(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start tests due to testupstream build error: %v\n", err)
+		os.Exit(1)
+	}
 
-// requireRunEnvoy starts the Envoy proxy with the provided configuration.
-func requireRunEnvoy(t *testing.T, accessLogPath string) {
-	tmpDir := t.TempDir()
-	envoyYaml := strings.Replace(envoyYamlBase, "ACCESS_LOG_PATH", accessLogPath, 1)
+	// This is a fake server that returns a 500 error for all requests.
+	errorServerMux := http.NewServeMux()
+	errorServerMux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Internal Server Error"))
+	})
 
-	// Write the envoy.yaml file.
-	envoyYamlPath := tmpDir + "/envoy.yaml"
-	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(envoyYaml), 0o600))
+	ctx := context.Background()
+	errorServerLis, errorServerPort := listen(ctx, "error server")
+	errorServerTLSLis, errorServerTLSPort := listen(ctx, "error TLS server")
 
-	// Starts the Envoy proxy.
-	cmd := exec.CommandContext(t.Context(), "envoy",
-		"-c", envoyYamlPath,
-		"--log-level", "warn",
-		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
-		// This allows multiple Envoy instances to run in parallel.
-		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
+	envoyConfig = strings.ReplaceAll(
+		envoyConfig,
+		"port_value: "+strconv.Itoa(errorServerDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerPort),
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	require.NoError(t, cmd.Start())
+
+	envoyConfig = strings.ReplaceAll(
+		envoyConfig,
+		"port_value: "+strconv.Itoa(errorServerTLSDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerTLSPort),
+	)
+
+	errorServer := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
+	errorServerTLS := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := errorServer.Serve(errorServerLis); err != nil && !strings.Contains(err.Error(), "Server closed") {
+			panic(fmt.Sprintf("error starting HTTP server: %v", err))
+		}
+	}()
+	go func() {
+		if err := errorServerTLS.ServeTLS(errorServerTLSLis, "testdata/server.crt", "testdata/server.key"); err != nil &&
+			!strings.Contains(err.Error(), "Server closed") {
+			panic(fmt.Sprintf("error starting HTTPS server: %v", err))
+		}
+	}()
+
+	// Run tests.
+	res := m.Run()
+	_ = errorServer.Close()
+	_ = errorServerTLS.Close()
+	os.Exit(res)
 }
 
-// requireBinaries requires Envoy to be present in the PATH as well as the Extproc and testuptream binaries in the out directory.
-func requireBinaries(t *testing.T) {
-	_, err := exec.LookPath("envoy")
-	require.NoError(t, err, "envoy binary not found in PATH")
-	_, err = os.Stat(extProcExecutablePath())
-	require.NoErrorf(t, err, "extproc binary not found in the root of the repository")
-	_, err = os.Stat(testUpstreamExecutablePath())
-	require.NoErrorf(t, err, "testupstream binary not found in the root of the repository")
+func startTestEnvironment(t *testing.T, extprocConfig string) *testenvironment.TestEnvironment {
+	return testenvironment.StartTestEnvironment(t,
+		requireUpstream, 8080,
+		extprocBin, extprocConfig, envoyConfig,
+	)
 }
 
-// requireWriteFilterConfig writes the provided [filterapi.Config] to the configPath in YAML format.
-func requireWriteFilterConfig(t *testing.T, configPath string, config *filterapi.Config) {
-	configBytes, err := yaml.Marshal(config)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(configPath, configBytes, 0o600))
+// requireUpstream starts the external processor with the given configuration.
+func requireUpstream(t *testing.T, out io.Writer, port int) {
+	cmd := exec.CommandContext(t.Context(), testupstreamBin)
+	cmd.Env = append(os.Environ(),
+		"TESTUPSTREAM_ID=extproc_test",
+		fmt.Sprintf("TESTUPSTREAM_PORT=%d", port))
+
+	// wait for the ready message or exit.
+	testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")
 }
 
-func extProcExecutablePath() string {
-	return fmt.Sprintf("../../out/extproc-%s-%s", runtime.GOOS, runtime.GOARCH)
-}
-
-func testUpstreamExecutablePath() string {
-	return fmt.Sprintf("../../out/testupstream-%s-%s", runtime.GOOS, runtime.GOARCH)
+func listen(ctx context.Context, name string) (net.Listener, int) {
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, "tcp", "127.0.0.0:0")
+	if err != nil {
+		panic(fmt.Errorf("failed to listen for %s: %w", name, err))
+	}
+	return lis, lis.Addr().(*net.TCPAddr).Port
 }

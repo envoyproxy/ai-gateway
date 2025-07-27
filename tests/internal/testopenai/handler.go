@@ -10,10 +10,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
@@ -24,6 +26,7 @@ import (
 const CassetteNameHeader = "X-Cassette-Name"
 
 type cassetteHandler struct {
+	logger       *log.Logger
 	apiBase      string
 	cassettes    map[string]*cassette.Cassette
 	cassettesDir string
@@ -34,10 +37,13 @@ type cassetteHandler struct {
 
 // ServeHTTP implements http.Handler by matching requests against recorded cassettes.
 func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for k, v := range r.Header {
+		h.logger.Printf("header %q: %s\n", k, v)
+	}
 	// Read the request body.
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.errorResponse(w, http.StatusInternalServerError, "Failed to read request body: %v", err)
+		h.logAndSendError(w, http.StatusInternalServerError, "Failed to read request body: %v", err)
 		return
 	}
 	// Restore the body for potential future use.
@@ -48,7 +54,7 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pathForAPI := strings.TrimPrefix(r.URL.Path, "/v1")
 	u, err := url.Parse(h.apiBase + pathForAPI)
 	if err != nil {
-		h.errorResponse(w, http.StatusInternalServerError, "Failed to parse URL: %v", err)
+		h.logAndSendError(w, http.StatusInternalServerError, "Failed to parse URL: %v", err)
 		return
 	}
 	u.RawQuery = r.URL.RawQuery
@@ -62,12 +68,13 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			for _, interaction := range c.Interactions {
 				if h.matchRequest(r, interaction.Request, body) {
 					writeResponse(w, interaction)
+					h.logger.Println("response sent")
 					return
 				}
 			}
 			// We found the cassette but no matching interaction.
 			cassetteFile := cassetteName + ".yaml"
-			h.errorResponse(w, http.StatusConflict,
+			h.logAndSendError(w, http.StatusConflict,
 				"Interaction out of date for %s %s. To re-record, delete %s/%s and re-run with OPENAI_API_KEY set.",
 				r.Method, originalPath, h.cassettesDir, cassetteFile)
 			return
@@ -76,17 +83,17 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// No matching cassette found.
 		if h.apiKey == "" {
 			// No API key - can't record.
-			h.errorResponse(w, http.StatusInternalServerError,
+			h.logAndSendError(w, http.StatusInternalServerError,
 				"No cassette found for %s %s. To record new cassettes, set OPENAI_API_KEY environment variable and provide %s header.",
 				r.Method, originalPath, CassetteNameHeader)
+
 			return
 		}
 
 		// We have an API key and cassette name - record the interaction.
 		err = h.recordNewInteraction(r, body, w, cassetteName)
 		if err != nil {
-			h.errorResponse(w, http.StatusInternalServerError,
-				"Failed to record interaction: %v", err)
+			h.logAndSendError(w, http.StatusInternalServerError, "Failed to record interaction: %v", err)
 		}
 		return
 	}
@@ -102,61 +109,58 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.errorResponseWithRequestDetails(w, r, body, http.StatusBadRequest,
-		"No cassette found for %s %s. To record a new cassette, include the %s header with the cassette name.",
-		r.Method, originalPath, CassetteNameHeader)
+	h.logAndSendError(w, http.StatusInternalServerError,
+		"No cassette found for %s %s. To record a new cassette, include the %s header with the cassette name.\n%s",
+		r.Method, originalPath, CassetteNameHeader, h.formatRequestDetails(r, body))
 }
 
-// errorResponse sends a clearly marked error response.
-func (h *cassetteHandler) errorResponse(w http.ResponseWriter, code int, format string, args ...interface{}) {
+func (h *cassetteHandler) logAndSendError(w http.ResponseWriter, code int, format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	log.Println(msg)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-TestOpenAI-Error", "true")
 	w.WriteHeader(code)
-	fmt.Fprintf(w, "TestOpenAI Error: "+format+"\n", args...)
+	fmt.Fprintf(w, "TestOpenAI Error: "+format+"\n", a...)
 }
 
-// errorResponseWithRequestDetails sends an error response with detailed request information,
-// formatted similar to testify assertions for easy debugging.
-func (h *cassetteHandler) errorResponseWithRequestDetails(w http.ResponseWriter, r *http.Request, body []byte, code int, format string, args ...interface{}) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-TestOpenAI-Error", "true")
-	w.WriteHeader(code)
+// formatRequestDetails formats the incoming request to make it easier to see what was wrong.
+func (h *cassetteHandler) formatRequestDetails(r *http.Request, body []byte) string {
+	var b strings.Builder
 
-	// Main error message.
-	fmt.Fprintf(w, "TestOpenAI Error: "+format+"\n", args...)
+	b.WriteString("\n--- Actual Request Details ---\n")
+	b.WriteString("Method:      " + r.Method + "\n")
+	b.WriteString("Path:        " + r.URL.Path + "\n")
+	b.WriteString("Query:       " + r.URL.RawQuery + "\n")
 
-	// Request details formatted like testify.
-	fmt.Fprintln(w, "\n--- Actual Request Details ---")
-	fmt.Fprintf(w, "Method:      %s\n", r.Method)
-	fmt.Fprintf(w, "Path:        %s\n", r.URL.Path)
-	fmt.Fprintf(w, "Query:       %s\n", r.URL.RawQuery)
-
-	fmt.Fprintln(w, "\nHeaders:")
-	// Scrub sensitive headers.
+	b.WriteString("\nHeaders:\n")
 	for key, values := range r.Header {
 		if _, ok := h.requestHeadersToRedact[strings.ToLower(key)]; ok {
-			fmt.Fprintf(w, "  %s: [REDACTED]\n", key)
+			b.WriteString("  " + key + ": [REDACTED]\n")
 		} else {
 			for _, value := range values {
-				fmt.Fprintf(w, "  %s: %s\n", key, value)
+				b.WriteString("  " + key + ": " + value + "\n")
 			}
 		}
 	}
 
-	// Body.
-	fmt.Fprintln(w, "\nBody:")
+	b.WriteString("\nBody:\n")
 	if len(body) == 0 {
-		fmt.Fprintln(w, "  <empty>")
+		b.WriteString("  <empty>\n")
 	} else {
 		// Pretty print if it looks like JSON.
 		bodyStr := string(body)
-		if strings.TrimSpace(bodyStr) != "" && (strings.HasPrefix(strings.TrimSpace(bodyStr), "{") || strings.HasPrefix(strings.TrimSpace(bodyStr), "[")) {
-			fmt.Fprintf(w, "  %s\n", bodyStr)
+		if strings.TrimSpace(bodyStr) != "" &&
+			(strings.HasPrefix(strings.TrimSpace(bodyStr), "{") ||
+				strings.HasPrefix(strings.TrimSpace(bodyStr), "[")) {
+			b.WriteString("  " + bodyStr + "\n")
 		} else {
-			fmt.Fprintf(w, "  %q\n", bodyStr)
+			b.WriteString("  " + strconv.Quote(bodyStr) + "\n")
 		}
 	}
-	fmt.Fprintln(w, "\n--- End Request Details ---")
+
+	b.WriteString("\n--- End Request Details ---\n")
+
+	return b.String()
 }
 
 // recordNewInteraction attempts to make a real API call and record the response.
@@ -237,7 +241,7 @@ func writeResponse(w http.ResponseWriter, interaction *cassette.Interaction) {
 	// Write status code.
 	w.WriteHeader(interaction.Response.Code)
 
-	// Write response body.
+	// TODO: flush between SSE events.
 	_, _ = w.Write([]byte(interaction.Response.Body))
 }
 

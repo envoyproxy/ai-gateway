@@ -108,12 +108,16 @@ func TestListenAddress(t *testing.T) {
 	// Create a stale file to ensure that removing the file works correctly.
 	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0o600))
 
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
 	tests := []struct {
 		addr        string
 		wantNetwork string
 		wantAddress string
 	}{
-		{":8080", "tcp", ":8080"},
+		{lis.Addr().String(), "tcp", lis.Addr().String()},
 		{"unix://" + unixPath, "unix", unixPath},
 	}
 
@@ -124,12 +128,16 @@ func TestListenAddress(t *testing.T) {
 			assert.Equal(t, tt.wantAddress, address)
 		})
 	}
-	_, err := os.Stat(unixPath)
+	_, err = os.Stat(unixPath)
 	require.ErrorIs(t, err, os.ErrNotExist, "expected the stale socket file to be removed")
 }
 
 func TestStartMetricsServer(t *testing.T) {
-	s, m := startMetricsServer("127.0.0.1:", slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
+	s, m := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
 	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
 
 	require.NotNil(t, s)
@@ -163,6 +171,10 @@ func TestStartMetricsServer(t *testing.T) {
 }
 
 func TestStartHealthCheckServer(t *testing.T) {
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
 	for _, tc := range []string{"unix", "tcp"} {
 		t.Run(tc, func(t *testing.T) {
 			var grpcLis net.Listener
@@ -186,13 +198,13 @@ func TestStartHealthCheckServer(t *testing.T) {
 			time.Sleep(time.Millisecond * 100)
 
 			httpSrv := startHealthCheckServer(
-				"", // addr unused when invoking Handler directly.
+				lis,
 				slog.Default(),
 				grpcLis,
 			)
 
 			req := httptest.NewRequest("GET", "/", nil)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			req = req.WithContext(ctx)
 

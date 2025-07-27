@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	openaigo "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -32,18 +32,9 @@ import (
 //
 // This does not require any environment variables to be set as it relies on the test upstream.
 func TestWithTestUpstream(t *testing.T) {
-	const (
-		eventuallyTimeout  = 30 * time.Second
-		eventuallyInterval = 1 * time.Millisecond
-	)
-	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
-	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireTestUpstream(t)
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
-	requireWriteFilterConfig(t, configPath, &filterapi.Config{
+	config := &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -64,7 +55,14 @@ func TestWithTestUpstream(t *testing.T) {
 			{Name: "some-model2", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 			{Name: "some-model3", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 		},
-	})
+	}
+
+	configBytes, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	env := startTestEnvironment(t, string(configBytes))
+
+	listenerPort := env.EnvoyListenerPort()
+	metricsPort := env.ExtProcMetricsPort()
 
 	expectedModels := openai.ModelList{
 		Object: "list",
@@ -74,8 +72,6 @@ func TestWithTestUpstream(t *testing.T) {
 			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway", Created: openai.JSONUNIXTime(now)},
 		},
 	}
-
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	for _, tc := range []struct {
 		// name is the name of the test case.
@@ -487,6 +483,7 @@ data: [DONE]
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {
+				listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 				req, err := http.NewRequest(tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 				require.NoError(t, err)
 				req.Header.Set("x-test-backend", tc.backend)
@@ -559,6 +556,7 @@ data: [DONE]
 	t.Run("stream non blocking", func(t *testing.T) {
 		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
 		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
+		listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 		client := openaigo.NewClient(
 			option.WithBaseURL(listenerAddress+"/v1/"),
 			option.WithHeader("x-test-backend", "openai"),
@@ -620,7 +618,7 @@ data: [DONE]
 		require.NoError(t, stream.Err())
 	})
 	t.Run("metrics", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)

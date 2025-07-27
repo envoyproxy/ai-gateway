@@ -7,10 +7,9 @@ package extproc
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"os"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -34,14 +34,9 @@ const (
 
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
-	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
-	configPath := t.TempDir() + "/extproc-config.yaml"
-
 	cc := internaltesting.RequireNewCredentialsContext()
 
-	requireWriteFilterConfig(t, configPath, &filterapi.Config{
+	config := &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -84,9 +79,13 @@ func TestWithRealProviders(t *testing.T) {
 				CreatedAt: time.Now(),
 			},
 		},
-	})
+	}
+	configBytes, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	env := startTestEnvironment(t, string(configBytes))
 
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
+	listenerPort := env.EnvoyListenerPort()
+	listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 
 	t.Run("health-checking", func(t *testing.T) {
 		t.Run("chat/completions", func(t *testing.T) {
@@ -102,7 +101,7 @@ func TestWithRealProviders(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
-					requireEventuallyChatCompletionNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
+					requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress, tc.modelName, "Say this is a test")
 				})
 			}
 		})
@@ -115,7 +114,7 @@ func TestWithRealProviders(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
-					requireEventuallyEmbeddingsRequestOK(t, tc.modelName)
+					requireEventuallyEmbeddingsRequestOK(t, listenerAddress, tc.modelName)
 				})
 			}
 		})
@@ -128,14 +127,13 @@ func TestWithRealProviders(t *testing.T) {
 		cc.MaybeSkip(t, internaltesting.RequiredCredentialOpenAI|internaltesting.RequiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
 		require.Eventually(t, func() bool {
-			accessLog, err := os.ReadFile(accessLogPath)
-			require.NoError(t, err)
+			accessLog := env.EnvoyStdout()
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
 				UsedToken float64 `json:"used_token,omitempty"`
 				SomeCel   float64 `json:"some_cel,omitempty"`
 			}
-			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
+			scanner := bufio.NewScanner(strings.NewReader(accessLog))
 			for scanner.Scan() {
 				line := scanner.Bytes()
 				var l lineFormat
@@ -325,7 +323,7 @@ func TestWithRealProviders(t *testing.T) {
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {
 		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
-		requireEventuallyChatCompletionNonStreamingRequestOK(t,
+		requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress,
 			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
 	})
 }
@@ -338,7 +336,7 @@ type realProvidersTestCase struct {
 	required  internaltesting.RequiredCredential
 }
 
-func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, modelName, msg string) {
+func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listenerAddress, modelName, msg string) {
 	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 	require.Eventually(t, func() bool {
 		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
@@ -362,7 +360,7 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, modelNam
 	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }
 
-func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
+func requireEventuallyEmbeddingsRequestOK(t *testing.T, listenerAddress, modelName string) {
 	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 	require.Eventually(t, func() bool {
 		embedding, err := client.Embeddings.New(t.Context(), openai.EmbeddingNewParams{

@@ -3,6 +3,8 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Same as extproc.yaml, except including llmRequestCosts for dynamic metadata
+
 metadataNamespace: ai_gateway_llm_ns
 schema:
   name: OpenAI
@@ -13,3 +15,7 @@ backends:
     schema:
       name: OpenAI
       version: v1
+# Required for dynamic metadata to be built
+llmRequestCosts:
+  - metadataKey: "test_cost"
+    type: "InputToken"

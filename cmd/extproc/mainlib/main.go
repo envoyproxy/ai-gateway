@@ -115,9 +115,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	)
 
 	network, address := listenAddress(flags.extProcAddr)
-	lis, err := net.Listen(network, address)
+	extProcLis, err := listen(ctx, "external processor", network, address)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		return err
 	}
 	if network == "unix" {
 		// Change the permission of the UDS to 0775 so that the envoy process (the same group) can access it.
@@ -127,7 +127,17 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 	}
 
-	metricsServer, meter := startMetricsServer(fmt.Sprintf(":%d", flags.metricsPort), l)
+	metricsLis, err := listen(ctx, "metrics", "tcp", fmt.Sprintf(":%d", flags.metricsPort))
+	if err != nil {
+		return err
+	}
+
+	healthLis, err := listen(ctx, "health checks", "tcp", fmt.Sprintf(":%d", flags.healthPort))
+	if err != nil {
+		return err
+	}
+
+	metricsServer, meter := startMetricsServer(metricsLis, l)
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
 	embeddingsMetrics := metrics.NewEmbeddings(meter)
 
@@ -147,7 +157,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
 
-	hs := startHealthCheckServer(fmt.Sprintf(":%d", flags.healthPort), l, lis)
+	healthServer := startHealthCheckServer(healthLis, l, extProcLis)
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
@@ -157,14 +167,23 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown metrics server gracefully", "error", err)
 		}
-		if err := hs.Shutdown(shutdownCtx); err != nil {
+		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
 		}
 	}()
 
 	// Emit startup message to stderr when all listeners are ready.
 	l.Info("AI Gateway External Processor is ready")
-	return s.Serve(lis)
+	return s.Serve(extProcLis)
+}
+
+func listen(ctx context.Context, name, network, address string) (net.Listener, error) {
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, network, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen for %s: %w", name, err)
+	}
+	return lis, nil
 }
 
 // listenAddress returns the network and address for the given address flag.
@@ -178,7 +197,7 @@ func listenAddress(addrFlag string) (string, string) {
 }
 
 // startMetricsServer starts the HTTP server for Prometheus metrics.
-func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.Meter) {
+func startMetricsServer(lis net.Listener, logger *slog.Logger) (*http.Server, metric.Meter) {
 	registry := prometheus.NewRegistry()
 	exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
 	if err != nil {
@@ -193,9 +212,7 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 	// Register the metrics handler.
 	mux.Handle("/metrics", promhttp.HandlerFor(
 		registry,
-		promhttp.HandlerOpts{
-			EnableOpenMetrics: true,
-		},
+		promhttp.HandlerOpts{EnableOpenMetrics: true},
 	))
 
 	// Add a simple health check endpoint.
@@ -204,15 +221,11 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
 	go func() {
-		logger.Info("starting metrics server", "address", server.Addr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Info("starting metrics server", "address", lis.Addr())
+		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Metrics server failed", "error", err)
 		}
 	}()
@@ -224,7 +237,7 @@ func startMetricsServer(addr string, logger *slog.Logger) (*http.Server, metric.
 // This is necessary because the gRPC health check at k8s level does not
 // support unix domain sockets. To make the health check work regardless of
 // the network type, we serve a simple HTTP server that checks the gRPC health.
-func startHealthCheckServer(addr string, l *slog.Logger, grpcLis net.Listener) *http.Server {
+func startHealthCheckServer(lis net.Listener, l *slog.Logger, grpcLis net.Listener) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -248,7 +261,7 @@ func startHealthCheckServer(addr string, l *slog.Logger, grpcLis net.Listener) *
 		defer conn.Close()
 
 		client := grpc_health_v1.NewHealthClient(conn)
-		resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{Service: ""})
+		resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 		if err != nil {
 			http.Error(w, fmt.Sprintf("health check RPC failed: %v", err), http.StatusInternalServerError)
 			return
@@ -260,10 +273,10 @@ func startHealthCheckServer(addr string, l *slog.Logger, grpcLis net.Listener) *
 		w.WriteHeader(http.StatusOK)
 	})
 
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		l.Info("Starting health check HTTP server", "addr", addr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		l.Info("Starting health check HTTP server", "addr", lis.Addr())
+		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error("Health check server failed", "error", err)
 		}
 	}()
