@@ -1134,3 +1134,8 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	*(*time.Time)(t) = time.Unix(q, 0).UTC()
 	return nil
 }
+
+// Equal compares two JSONUNIXTime values for equality. This is only for testing purposes.
+func (t JSONUNIXTime) Equal(other JSONUNIXTime) bool {
+	return time.Time(t).Unix() == time.Time(other).Unix()
+}
