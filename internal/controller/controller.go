@@ -59,6 +59,8 @@ type Options struct {
 	ExtProcImage string
 	// ExtProcImagePullPolicy is the image pull policy for the external processor set on Deployment.
 	ExtProcImagePullPolicy corev1.PullPolicy
+	// ExtProcMetricsHeaderNames is a comma-separated list of header names to include as labels in metrics.
+	ExtProcMetricsHeaderNames string
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
@@ -150,6 +152,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
+			options.ExtProcMetricsHeaderNames,
 			options.EnvoyGatewayNamespace,
 			options.UDSPath,
 		))
