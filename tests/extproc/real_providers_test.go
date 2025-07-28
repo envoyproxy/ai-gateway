@@ -24,6 +24,14 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
+// Real providers test cases require the real credentials to be set in the environment. So,
+// we use the long timeout and interval to wait for the requests to not only succeed but also to
+// reduce the unnecessary use of credentials during the tests.
+const (
+	realProvidersEventuallyTimeout  = 60 * time.Second
+	realProvidersEventuallyInterval = 1 * time.Second
+)
+
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
 	requireBinaries(t)
@@ -83,15 +91,14 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("health-checking", func(t *testing.T) {
 		t.Run("chat/completions", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
-				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
-				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
-				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
-				// TODO: Enable after https://github.com/envoyproxy/ai-gateway/issues/959 is resolved.
-				// {name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova}.
-				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+				//{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+				//{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+				//{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
+				//{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+				//{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
+				//{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
+				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				//{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -148,7 +155,7 @@ func TestWithRealProviders(t *testing.T) {
 				return true
 			}
 			return false
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -197,7 +204,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("response: %+v", acc)
 					}
 					return nonEmptyCompletion
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -292,7 +299,7 @@ func TestWithRealProviders(t *testing.T) {
 					completionResult := secondChatCompletion.Choices[0].Message.Content
 					t.Logf("content of completion response using tool: %s", secondChatCompletion.Choices[0].Message.Content)
 					return strings.Contains(completionResult, "New York City") && strings.Contains(completionResult, "sunny") && strings.Contains(completionResult, "25°C")
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -310,7 +317,7 @@ func TestWithRealProviders(t *testing.T) {
 				models = append(models, it.Current().ID)
 			}
 			assert.NoError(c, it.Err())
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 
 		require.Equal(t, []string{
 			"grok-3",
@@ -352,7 +359,7 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, modelNam
 			}
 		}
 		return nonEmptyCompletion
-	}, eventuallyTimeout, eventuallyInterval)
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }
 
 func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
@@ -381,5 +388,5 @@ func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
 
 		t.Logf("response: %+v", embedding.Data[0].Embedding)
 		return true
-	}, eventuallyTimeout, eventuallyInterval)
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }

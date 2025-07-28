@@ -9,6 +9,7 @@
 package openai
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -798,7 +799,7 @@ type ChatCompletionResponse struct {
 	Choices []ChatCompletionResponseChoice `json:"choices,omitempty"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created int64 `json:"created,omitzero"`
+	Created JSONUNIXTime `json:"created,omitzero"`
 
 	// Model is the model used for the chat completion.
 	Model string `json:"model,omitempty"`
@@ -950,7 +951,7 @@ type ChatCompletionResponseChunk struct {
 	Choices []ChatCompletionResponseChunkChoice `json:"choices,omitempty"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created int64 `json:"created,omitzero"`
+	Created JSONUNIXTime `json:"created,omitzero"`
 
 	// Model is the model used for the chat completion.
 	Model string `json:"model,omitempty"`
@@ -1117,6 +1118,12 @@ func (t JSONUNIXTime) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements [json.Unmarshaler].
 func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
+	// Find "." decimal point and remove it the decimal part if it exists.
+	// Usually the timestamp is in seconds meaning it is an integer, but some providers
+	// return the created timestamp with milliseconds, which is a float json Number.
+	if index := bytes.IndexByte(s, '.'); index != -1 {
+		s = s[:index]
+	}
 	q, err := strconv.ParseInt(string(s), 10, 64)
 	if err != nil {
 		return err
