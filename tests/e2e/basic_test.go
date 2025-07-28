@@ -53,8 +53,8 @@ func Test_Examples_Basic(t *testing.T) {
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
 		for _, tc := range []examplesBasicTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", credentialsValid: cc.OpenAIValid},
-			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", credentialsValid: cc.AWSValid},
+			{name: "openai", modelName: "gpt-4o-mini", skip: !cc.OpenAIValid},
+			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: !cc.AWSValid},
 		} {
 			tc.run(t, egNamespace, egSelector)
 		}
@@ -62,14 +62,14 @@ func Test_Examples_Basic(t *testing.T) {
 }
 
 type examplesBasicTestCase struct {
-	name             string
-	modelName        string
-	credentialsValid bool
+	name      string
+	modelName string
+	skip      bool
 }
 
 func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string) {
 	t.Run(tc.name, func(t *testing.T) {
-		if !tc.credentialsValid {
+		if tc.skip {
 			t.Skip("skipped due to missing credentials")
 		}
 		require.Eventually(t, func() bool {
