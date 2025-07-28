@@ -738,10 +738,9 @@ func TestChatCompletionResponseUsageDetails(t *testing.T) {
 
 func TestChatCompletionResponseWithNewFields(t *testing.T) {
 	// Test the new fields added to ChatCompletionResponse.
-	now := time.Now()
 	resp := ChatCompletionResponse{
 		ID:                "chatcmpl-test123",
-		Created:           JSONUNIXTime(now),
+		Created:           JSONUNIXTime(time.Now()),
 		Model:             "gpt-4.1-nano",
 		ServiceTier:       "default",
 		SystemFingerprint: "",
