@@ -1120,7 +1120,7 @@ func (t JSONUNIXTime) MarshalJSON() ([]byte, error) {
 func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	// Find "." decimal point and remove it the decimal part if it exists.
 	// Usually the timestamp is in seconds meaning it is an integer, but some providers
-	// return the created timestamp with milliseconds, which is a float json Number.
+	// return the created timestamp with nanoseconds, which is a float json Number.
 	//
 	// Since this is only called on the response path in reality where we do not use this
 	// type for translation, we can safely ignore the decimal part. Even if it is necessary
