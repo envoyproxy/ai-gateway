@@ -90,7 +90,7 @@ func TestWithRealProviders(t *testing.T) {
 				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
 				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
 				// TODO: Enable after https://github.com/envoyproxy/ai-gateway/issues/959 is resolved.
-				// {name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				// {name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova}.
 				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
