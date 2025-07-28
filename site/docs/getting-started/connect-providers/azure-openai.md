@@ -33,9 +33,9 @@ Before you begin, you'll need:
 
 ### 1. Download configuration template
 
-   ```shell
-   curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/azure_openai.yaml
-   ```
+```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/azure_openai.yaml
+```
 
 ### 2. Configure Azure Credentials
 

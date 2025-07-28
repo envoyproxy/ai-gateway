@@ -39,9 +39,9 @@ Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 
 ### 1. Download configuration template
 
-   ```shell
-   curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws.yaml
-   ```
+```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws.yaml
+```
 
 ### 2. Configure AWS Credentials
 
