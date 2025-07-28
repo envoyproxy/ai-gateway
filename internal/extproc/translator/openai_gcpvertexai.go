@@ -271,7 +271,32 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 		SystemInstruction: systemInstruction,
 	}
 
+	// Apply vendor-specific fields after standard OpenAI-to-Gemini translation.
+	// Vendor fields take precedence over translated fields when conflicts occur.
+	o.applyVendorSpecificFields(openAIReq, &gcr)
+
 	return gcr, nil
+}
+
+// applyVendorSpecificFields applies GCP Vertex AI vendor-specific fields to the Gemini request.
+// These fields allow users to access advanced GCP-specific features not available in the OpenAI API.
+// Vendor fields override any conflicting fields that were set during the standard translation process.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificFields(openAIReq *openai.ChatCompletionRequest, gcr *gcp.GenerateContentRequest) {
+	// Early return if no vendor fields are specified.
+	if openAIReq.VendorSpecificFields == nil || openAIReq.VendorSpecificFields.GCPVertexAI == nil {
+		return
+	}
+
+	gcpVendorFields := openAIReq.VendorSpecificFields.GCPVertexAI
+	// Apply vendor-specific generation config if present.
+	if vendorGenConfig := gcpVendorFields.GenerationConfig; vendorGenConfig != nil {
+		if gcr.GenerationConfig == nil {
+			gcr.GenerationConfig = &genai.GenerationConfig{}
+		}
+		if vendorGenConfig.ThinkingConfig != nil {
+			gcr.GenerationConfig.ThinkingConfig = gcpVendorFields.GenerationConfig.ThinkingConfig
+		}
+	}
 }
 
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (openai.ChatCompletionResponse, error) {

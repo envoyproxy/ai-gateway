@@ -529,6 +529,14 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 		params.StopSequences = stops
 	}
 
+	// 5. Handle Vendor specific fields.
+	if openAIReq.VendorSpecificFields != nil && openAIReq.VendorSpecificFields.GCPAnthropic != nil {
+		anthVendorFields := openAIReq.VendorSpecificFields.GCPAnthropic
+		if anthVendorFields.Thinking != nil {
+			params.Thinking = *anthVendorFields.Thinking
+		}
+	}
+
 	return params, nil
 }
 
