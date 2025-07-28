@@ -26,6 +26,7 @@ import (
 
 const (
 	listenerAddress    = "http://localhost:1062"
+	metricsAddress     = "http://localhost:1064"
 	eventuallyTimeout  = 60 * time.Second
 	eventuallyInterval = 4 * time.Second
 	fakeGCPAuthToken   = "fake-gcp-auth-token" //nolint:gosec
