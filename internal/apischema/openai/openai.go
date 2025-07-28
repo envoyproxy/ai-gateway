@@ -1122,8 +1122,10 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	// Usually the timestamp is in seconds meaning it is an integer, but some providers
 	// return the created timestamp with milliseconds, which is a float json Number.
 	//
-	// Since this is called on the response path in reality, we should stick to what OpenAI does
-	// i.e., return an integer value for the created timestamp without the floating point.
+	// Since this is only called on the response path in reality where we do not use this
+	// type for translation, we can safely ignore the decimal part. Even if it is necessary
+	// for the translation later, it should be safe to ignore it, because at the end of the day
+	// the OpenAI client assumes that the time is in seconds.
 	if index := bytes.IndexByte(s, '.'); index != -1 {
 		s = s[:index]
 	}
