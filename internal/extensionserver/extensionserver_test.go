@@ -1259,7 +1259,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 
 	t.Run("httpFilterNameForInferencePool", func(t *testing.T) {
 		filterName := httpFilterNameForInferencePool(pool)
-		require.Equal(t, "envoy.filters.http.endpointpicker_test-pool_test-ns_ext_proc", filterName)
+		require.Equal(t, "envoy.filters.http.ext_proc/endpointpicker/test-pool_test-ns_ext_proc", filterName)
 	})
 
 	t.Run("portForInferencePool default", func(t *testing.T) {
