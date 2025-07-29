@@ -79,10 +79,10 @@ func StartTestEnvironment(t *testing.T,
 		envoyConfig:         envoyConfig,
 		envoyListenerPort:   ports[4],
 		envoyAdminPort:      ports[5],
-		upstreamOut:         mewSyncBuffer(),
-		extprocOut:          mewSyncBuffer(),
-		envoyStdout:         mewSyncBuffer(),
-		envoyStderr:         mewSyncBuffer(),
+		upstreamOut:         newSyncBuffer(),
+		extprocOut:          newSyncBuffer(),
+		envoyStdout:         newSyncBuffer(),
+		envoyStderr:         newSyncBuffer(),
 	}
 
 	// The startup order is required: upstream, extProc, then envoy.
@@ -272,7 +272,7 @@ func (s *syncBuffer) Reset() {
 	s.b.Truncate(0)
 }
 
-// mewSyncBuffer creates a new thread-safe buffer.
-func mewSyncBuffer() *syncBuffer {
+// newSyncBuffer creates a new thread-safe buffer.
+func newSyncBuffer() *syncBuffer {
 	return &syncBuffer{b: bytes.NewBuffer(nil)}
 }
