@@ -60,20 +60,16 @@ func parseMetricsRequestHeaderNames(headerNamesString string) []metrics.HeaderMe
 			continue // Skip empty elements.
 		}
 
-		// Convert to lowercase for consistent handling.
+		// Convert to lowercase and sanitize for Prometheus compatibility.
+		// Replace any non-alphanumeric character (except underscore) with underscore.
 		originalName := strings.ToLower(headerName)
-
-		// Sanitize the header name for Prometheus compatibility.
-		sanitized := strings.Map(func(r rune) rune {
+		sanitized := ""
+		for _, r := range originalName {
 			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
-				return r
+				sanitized += string(r)
+			} else {
+				sanitized += "_"
 			}
-			return '_'
-		}, originalName)
-
-		// Ensure it doesn't start with a number (Prometheus requirement).
-		if len(sanitized) > 0 && sanitized[0] >= '0' && sanitized[0] <= '9' {
-			sanitized = "header_" + sanitized
 		}
 
 		attributeKey := "request_header_" + sanitized

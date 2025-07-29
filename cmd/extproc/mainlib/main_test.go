@@ -307,18 +307,18 @@ func Test_parseMetricsRequestHeaderNames(t *testing.T) {
 		},
 		{
 			name:  "headers with special characters",
-			input: "x-user@id,x.team.id,x:special:header",
+			input: "x-user.id,x.team.id,x-special-header",
 			expected: []metrics.HeaderMetadata{
-				{OriginalName: "x-user@id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x-user.id", AttributeKey: "request_header_x_user_id"},
 				{OriginalName: "x.team.id", AttributeKey: "request_header_x_team_id"},
-				{OriginalName: "x:special:header", AttributeKey: "request_header_x_special_header"},
+				{OriginalName: "x-special-header", AttributeKey: "request_header_x_special_header"},
 			},
 		},
 		{
 			name:  "header starting with number",
 			input: "123-header,x-valid-header",
 			expected: []metrics.HeaderMetadata{
-				{OriginalName: "123-header", AttributeKey: "request_header_header_123_header"},
+				{OriginalName: "123-header", AttributeKey: "request_header_123_header"},
 				{OriginalName: "x-valid-header", AttributeKey: "request_header_x_valid_header"},
 			},
 		},
