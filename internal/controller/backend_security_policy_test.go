@@ -117,20 +117,20 @@ func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 
-	// Create a BackendSecurityPolicy with invalid spec to trigger sync error
+	// Create a BackendSecurityPolicy with invalid spec to trigger sync error.
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "invalid-bsp",
 			Namespace: "default",
 		},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
-			Type: "InvalidType", // Invalid type to cause sync error
+			Type: "InvalidType", // Invalid type to cause sync error.
 		},
 	}
 	err := fakeClient.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// Reconcile should fail during sync
+	// Reconcile should fail during sync.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: types.NamespacedName{
 			Namespace: "default",
@@ -139,7 +139,7 @@ func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	// Check that status was updated to NotAccepted
+	// Check that status was updated to NotAccepted.
 	var updatedBSP aigv1a1.BackendSecurityPolicy
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "invalid-bsp"}, &updatedBSP)
 	require.NoError(t, err)

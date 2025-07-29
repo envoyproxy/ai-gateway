@@ -74,12 +74,12 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 }
 
 func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
-	// Test error path where syncAIGatewayRoute fails
+	// Test error path where syncAIGatewayRoute fails.
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 
-	// Create a route without creating the filter to cause sync error
+	// Create a route without creating the filter to cause sync error.
 	route := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "errorroute", Namespace: "default"},
 		Spec: aigv1a1.AIGatewayRouteSpec{
@@ -96,11 +96,11 @@ func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	err := fakeClient.Create(t.Context(), route)
 	require.NoError(t, err)
 
-	// This should fail during sync because backend doesn't exist
+	// This should fail during sync because backend doesn't exist.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "errorroute"}})
 	require.Error(t, err)
 
-	// Check that status was updated to NotAccepted
+	// Check that status was updated to NotAccepted.
 	var updatedRoute aigv1a1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &updatedRoute)
 	require.NoError(t, err)
@@ -400,7 +400,7 @@ func TestAIGatewayRouteController_backend(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch)
 
-	// Test successful backend retrieval
+	// Test successful backend retrieval.
 	backend := &aigv1a1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "default"},
 		Spec: aigv1a1.AIServiceBackendSpec{
@@ -414,7 +414,7 @@ func TestAIGatewayRouteController_backend(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "test-backend", result.Name)
 
-	// Test backend not found error
+	// Test backend not found error.
 	_, err = c.backend(t.Context(), "default", "nonexistent")
 	require.Error(t, err)
 }

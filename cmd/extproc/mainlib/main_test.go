@@ -222,21 +222,23 @@ func TestStartHealthCheckServer(t *testing.T) {
 }
 
 func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
-	// Test health check RPC error
+	// Test health check RPC error.
 	t.Run("health check RPC error", func(t *testing.T) {
-		lis, err := net.Listen("tcp", ":0")
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		defer lis.Close()
 
-		grpcLis, err := net.Listen("tcp", ":0")
+		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		defer grpcLis.Close()
 
-		// Start a gRPC server that returns error
+		// Start a gRPC server that returns error.
 		grpcServer := grpc.NewServer()
 		healthServer := &mockHealthServerError{}
 		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-		go grpcServer.Serve(grpcLis)
+		go func() {
+			_ = grpcServer.Serve(grpcLis)
+		}()
 		defer grpcServer.Stop()
 
 		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
@@ -253,21 +255,23 @@ func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
 		require.Contains(t, string(body), "health check RPC failed")
 	})
 
-	// Test unhealthy status
+	// Test unhealthy status.
 	t.Run("unhealthy status", func(t *testing.T) {
-		lis, err := net.Listen("tcp", ":0")
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		defer lis.Close()
 
-		grpcLis, err := net.Listen("tcp", ":0")
+		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		defer grpcLis.Close()
 
-		// Start a gRPC server that returns unhealthy status
+		// Start a gRPC server that returns unhealthy status.
 		grpcServer := grpc.NewServer()
 		healthServer := &mockHealthServer{status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
 		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-		go grpcServer.Serve(grpcLis)
+		go func() {
+			_ = grpcServer.Serve(grpcLis)
+		}()
 		defer grpcServer.Stop()
 
 		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
@@ -283,35 +287,6 @@ func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
 		body, _ := io.ReadAll(res.Body)
 		require.Contains(t, string(body), "unhealthy status")
 	})
-}
-
-type mockListener struct {
-	addr net.Addr
-}
-
-func (m *mockListener) Accept() (net.Conn, error) {
-	return nil, nil
-}
-
-func (m *mockListener) Close() error {
-	return nil
-}
-
-func (m *mockListener) Addr() net.Addr {
-	return m.addr
-}
-
-type mockAddr struct {
-	network string
-	str     string
-}
-
-func (m *mockAddr) Network() string {
-	return m.network
-}
-
-func (m *mockAddr) String() string {
-	return m.str
 }
 
 type mockHealthServer struct {
