@@ -18,10 +18,9 @@ import (
 )
 
 func TestOpenAIChatCompletions(t *testing.T) {
-	env := setupTestEnvironment(t)
-	defer env.Close()
+	env := startTestEnvironment(t, extprocBin, extprocConfig, envoyConfig)
 
-	listenerPort := env.listenerPort
+	listenerPort := env.EnvoyListenerPort()
 
 	// Define test cases for different request types.
 	// These expectations match the actual responses from the test OpenAI server cassettes.
@@ -354,17 +353,9 @@ data: [DONE]
 			expectStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: testopenai.CassetteChatUnknownModel,
-			expectResponseBody: `{
-    "error": {
-        "message": "The model ` + "`gpt-4.1-nano-wrong`" + ` does not exist or you do not have access to it.",
-        "type": "invalid_request_error",
-        "param": null,
-        "code": "model_not_found"
-    }
-}
-`,
-			expectStatusCode: http.StatusNotFound,
+			name:               testopenai.CassetteChatUnknownModel,
+			expectResponseBody: `{"type":"error","error":{"type":"OpenAIBackendError","code":"404","message":"{\"type\":\"error\",\"error\":{\"type\":\"OpenAIBackendError\",\"code\":\"404\",\"message\":\"{\\n    \\\"error\\\": {\\n        \\\"message\\\": \\\"The model ` + "`gpt-4.1-nano-wrong`" + ` does not exist or you do not have access to it.\\\",\\n        \\\"type\\\": \\\"invalid_request_error\\\",\\n        \\\"param\\\": null,\\n        \\\"code\\\": \\\"model_not_found\\\"\\n    }\\n}\\n\"}}"}}`,
+			expectStatusCode:   http.StatusNotFound,
 		},
 		{
 			name: testopenai.CassetteChatReasoning,
@@ -539,7 +530,8 @@ data: [DONE]
 		},
 		{
 			name: testopenai.CassetteChatTextToAudio,
-			// TODO: This test returns a very large audio response that we cannot fully match.
+			// TODO: This is a super hack.
+			// test returns a very large audio response that we cannot fully match.
 			// For now, we'll skip the body check and just verify status code.
 			expectResponseBody: `SKIP_BODY_CHECK`,
 			expectStatusCode:   http.StatusOK,
@@ -606,11 +598,10 @@ data: [DONE]
 	wasBadGateway := false
 	for _, tc := range tests {
 		if wasBadGateway {
-			env.logEnvoyAndExtProc(t)
 			return // rather than also failing subsequent tests, which confuses root cause.
 		}
 		t.Run(tc.name.String(), func(t *testing.T) {
-			req, err := testopenai.NewRequest(fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.name)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.name)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)

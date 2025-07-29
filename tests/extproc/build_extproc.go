@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package vcr
+package extproc
 
 import (
 	"fmt"
@@ -15,9 +15,9 @@ import (
 	"strings"
 )
 
-// buildExtProcOnDemand builds the extproc binary unless EXTPROC_BIN is set.
+// BuildExtProcOnDemand builds the extproc binary unless EXTPROC_BIN is set.
 // If EXTPROC_BIN environment variable is set, it will use that path instead.
-func buildExtProcOnDemand() (string, error) {
+func BuildExtProcOnDemand() (string, error) {
 	if envPath := os.Getenv("EXTPROC_BIN"); envPath != "" {
 		if !filepath.IsAbs(envPath) {
 			envPath = filepath.Join(findProjectRoot(), envPath)
@@ -35,6 +35,16 @@ func buildExtProcOnDemand() (string, error) {
 
 // buildExtProc builds the extproc binary using the same logic as the Makefile.
 func buildExtProc() (string, error) {
+	return buildGoBinary("extproc", "./cmd/extproc")
+}
+
+// BuildExtProcCustom builds a custom extproc binary from the given package path.
+func BuildExtProcCustom(binaryNamePrefix, packagePath string) (string, error) {
+	return buildGoBinary(binaryNamePrefix, packagePath)
+}
+
+// buildGoBinary builds a Go binary with the given name and package path.
+func buildGoBinary(binaryNamePrefix, packagePath string) (string, error) {
 	projectRoot := findProjectRoot()
 	outputDir := filepath.Join(projectRoot, "out")
 
@@ -44,10 +54,10 @@ func buildExtProc() (string, error) {
 	}
 
 	// Build binary.
-	binaryName := fmt.Sprintf("extproc-%s-%s", runtime.GOOS, runtime.GOARCH)
+	binaryName := fmt.Sprintf("%s-%s-%s", binaryNamePrefix, runtime.GOOS, runtime.GOARCH)
 	binaryPath := filepath.Join(outputDir, binaryName)
 
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/extproc")
+	cmd := exec.Command("go", "build", "-o", binaryPath, packagePath)
 	cmd.Dir = projectRoot
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	var stderr strings.Builder
@@ -55,7 +65,7 @@ func buildExtProc() (string, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to build extproc: %w\nstderr: %s", err, stderr.String())
+		return "", fmt.Errorf("failed to build %s: %w\nstderr: %s", binaryNamePrefix, err, stderr.String())
 	}
 
 	// Make executable.

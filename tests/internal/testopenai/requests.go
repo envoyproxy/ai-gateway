@@ -7,6 +7,7 @@ package testopenai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -111,7 +112,7 @@ func ChatCassettes() []Cassette {
 //
 // The returned request is an http.MethodPost with the body and
 // CassetteNameHeader according to the pre-recorded cassette.
-func NewRequest(baseURL string, cassetteName Cassette) (*http.Request, error) {
+func NewRequest(ctx context.Context, baseURL string, cassetteName Cassette) (*http.Request, error) {
 	// Get the request body for this cassette.
 	requestBody, ok := requestBodies[cassetteName]
 	if !ok {
@@ -125,7 +126,7 @@ func NewRequest(baseURL string, cassetteName Cassette) (*http.Request, error) {
 	}
 
 	// Create the request.
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err
 	}

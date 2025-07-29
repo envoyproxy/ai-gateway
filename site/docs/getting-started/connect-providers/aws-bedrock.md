@@ -25,7 +25,7 @@ Ensure you have:
 3. Your AWS access key ID and secret access key
 4. Enabled model access to "Llama 3.2 1B Instruct" in the `us-east-1` region
    - If you want to use a different AWS region, you must update all instances of the string
-     `us-east-1` with the desired region in `basic.yaml`.
+     `us-east-1` with the desired region in `aws.yaml` downloaded below.
 
 :::tip AWS Best Practices
 Consider using AWS IAM roles and limited-scope credentials for production environments.
@@ -37,9 +37,15 @@ Consider using AWS IAM roles and limited-scope credentials for production enviro
 Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 :::
 
-### 1. Configure AWS Credentials
+### 1. Download configuration template
 
-Edit the `basic.yaml` file to replace these placeholder values:
+```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws.yaml
+```
+
+### 2. Configure AWS Credentials
+
+Edit the `aws.yaml` file to replace these placeholder values:
 - `AWS_ACCESS_KEY_ID`: Your AWS access key ID
 - `AWS_SECRET_ACCESS_KEY`: Your AWS secret access key
 
@@ -48,13 +54,13 @@ Make sure to keep your AWS credentials secure and never commit them to version c
 The credentials will be stored in Kubernetes secrets.
 :::
 
-### 2. Apply Configuration
+### 3. Apply Configuration
 
 Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
 then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
-kubectl apply -f basic.yaml
+kubectl apply -f aws.yaml
 
 kubectl wait pods --timeout=2m \
   -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
@@ -62,7 +68,7 @@ kubectl wait pods --timeout=2m \
   --for=condition=Ready
 ```
 
-### 3. Test the Configuration
+### 4. Test the Configuration
 
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
@@ -101,13 +107,13 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
+To use more models, add more [AIGatewayRouteRule]s to the `aws.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: envoy-ai-gateway-basic
+  name: envoy-ai-gateway-basic-aws
   namespace: default
 spec:
   schema:

@@ -81,12 +81,12 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	if err := initEnvoyGateway(ctx); err != nil {
+	if err := installInferencePoolEnvironment(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
 
-	if err := setupInferencePoolEnvironment(ctx); err != nil {
+	if err := initEnvoyGateway(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -347,7 +347,7 @@ func installInferencePoolResources(ctx context.Context) (err error) {
 	return kubectlApplyManifest(ctx, inferencePoolURL)
 }
 
-func setupInferencePoolEnvironment(ctx context.Context) (err error) {
+func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	// Install all InferencePool related resources in sequence.
 	if err = installInferenceExtensionCRD(ctx); err != nil {
 		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
@@ -389,6 +389,10 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 
 	initLog("\tApplying Patch for Envoy Gateway")
 	if err = kubectlApplyManifest(ctx, "../../manifests/envoy-gateway-config/"); err != nil {
+		return
+	}
+	initLog("\tApplying InferencePool Patch for Envoy Gateway")
+	if err = kubectlApplyManifest(ctx, "../../examples/inference-pool/config.yaml"); err != nil {
 		return
 	}
 	initLog("\tRestart Envoy Gateway deployment")

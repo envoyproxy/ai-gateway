@@ -32,6 +32,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 	golang.org/x/oauth2 v0.30.0
+	golang.org/x/sync v0.16.0
 	google.golang.org/api v0.223.0
 	google.golang.org/genai v1.15.0
 	google.golang.org/grpc v1.73.0
@@ -146,7 +147,7 @@ require (
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
 	github.com/docker/cli v28.3.2+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v28.2.2+incompatible // indirect
+	github.com/docker/docker v28.3.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/dominikbraun/graph v0.23.0 // indirect
 	github.com/editorconfig-checker/editorconfig-checker/v3 v3.2.0 // indirect
@@ -423,7 +424,6 @@ require (
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0 // indirect

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 )
+
+var noopLogger = log.New(io.Discard, "[testopenai] ", 0)
 
 // TestRecordNewInteraction tests the recording functionality with a mock server.
 func TestRecordNewInteraction(t *testing.T) {
@@ -50,6 +53,7 @@ func TestRecordNewInteraction(t *testing.T) {
 
 	tempDir := t.TempDir()
 	handler := &cassetteHandler{
+		logger:       noopLogger,
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "fake-api-key",
@@ -90,6 +94,7 @@ func TestRecordNewInteraction(t *testing.T) {
 func TestRecordNewInteraction_Errors(t *testing.T) {
 	// Test directory creation error - use a read-only path.
 	handler := &cassetteHandler{
+		logger:       noopLogger,
 		apiBase:      "https://api.openai.com/v1",
 		cassettesDir: "/dev/null/cannot-create-dir",
 		apiKey:       "test-key",
@@ -116,6 +121,7 @@ func TestRecordNewInteraction_ServerError(t *testing.T) {
 
 	tempDir := t.TempDir()
 	handler := &cassetteHandler{
+		logger:       noopLogger,
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "test-key",
@@ -165,6 +171,7 @@ func TestRecordNewInteraction_WithHeaders(t *testing.T) {
 
 	tempDir := t.TempDir()
 	handler := &cassetteHandler{
+		logger:       noopLogger,
 		apiBase:      mockServer.URL + "/v1",
 		cassettesDir: tempDir,
 		apiKey:       "test-key",
@@ -198,6 +205,7 @@ func TestRecordNewInteraction_WithHeaders(t *testing.T) {
 // TestRecordNewInteraction_NoAPIKey tests error when trying to record without API key.
 func TestRecordNewInteraction_NoAPIKey(t *testing.T) {
 	handler := &cassetteHandler{
+		logger:       noopLogger,
 		apiBase:      "https://api.openai.com/v1",
 		cassettesDir: t.TempDir(),
 		apiKey:       "", // No API key.
@@ -268,6 +276,7 @@ func TestMatchRequest_EdgeCases(t *testing.T) {
 	// Test body read error simulation is tricky with standard http.Request.
 	// Instead test other edge cases.
 	h := &cassetteHandler{
+		logger:  noopLogger,
 		apiBase: "https://api.openai.com/v1",
 	}
 
@@ -347,6 +356,7 @@ func (*errorReader) Read([]byte) (n int, err error) {
 func TestServeHTTP_ComplexScenarios(t *testing.T) {
 	// Create a handler with some test cassettes.
 	handler := &cassetteHandler{
+		logger:  noopLogger,
 		apiBase: "https://api.openai.com/v1",
 		cassettes: map[string]*cassette.Cassette{
 			"test-cassette": {
@@ -403,7 +413,7 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 			name:           "no cassette header - no match",
 			method:         "GET",
 			path:           "/v1/unknown",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "No cassette found",
 		},
 		{
@@ -460,6 +470,7 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 // TestServeHTTP_BodyReadError tests handling of body read errors.
 func TestServeHTTP_BodyReadError(t *testing.T) {
 	handler := &cassetteHandler{
+		logger:    noopLogger,
 		apiBase:   "https://api.openai.com/v1",
 		cassettes: map[string]*cassette.Cassette{},
 	}

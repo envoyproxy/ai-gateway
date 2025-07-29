@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -38,12 +39,13 @@ func Test_main(t *testing.T) {
 	l, err := net.Listen("tcp", ":0") // nolint: gosec
 	require.NoError(t, err)
 	go func() {
+		defer l.Close()
 		doMain(l)
 	}()
 
 	t.Run("sse", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
@@ -75,7 +77,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("health", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/health", nil)
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/health", nil)
 		require.NoError(t, err)
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -87,7 +89,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("not expected path", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/thisisrealpath", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -112,7 +114,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("not expected body", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("not expected request body")))
 		require.NoError(t, err)
 
@@ -135,7 +137,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("not expected header", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -155,7 +157,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected body", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/foobar", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -195,7 +197,7 @@ func Test_main(t *testing.T) {
 		for _, eventType := range []string{"sse", "aws-event-stream"} {
 			t.Run(eventType, func(t *testing.T) {
 				t.Parallel()
-				request, err := http.NewRequest("GET",
+				request, err := http.NewRequestWithContext(t.Context(), "GET",
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
 				request.Header.Set(testupstreamlib.ResponseTypeKey, eventType)
@@ -220,7 +222,7 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		for _, isGzip := range []bool{false, true} {
 			t.Run(fmt.Sprintf("gzip=%t", isGzip), func(t *testing.T) {
-				request, err := http.NewRequest("GET",
+				request, err := http.NewRequestWithContext(t.Context(), "GET",
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
 
@@ -251,9 +253,49 @@ func Test_main(t *testing.T) {
 		}
 	})
 
+	t.Run("fake response for embeddings", func(t *testing.T) {
+		t.Parallel()
+		request, err := http.NewRequest("POST",
+			"http://"+l.Addr().String()+"/v1/embeddings", bytes.NewBuffer([]byte("expected request body")))
+		require.NoError(t, err)
+
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("/v1/embeddings")))
+		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("expected request body")))
+
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		require.Equal(t, http.StatusOK, response.StatusCode)
+
+		responseBody, err := io.ReadAll(response.Body)
+		require.NoError(t, err)
+
+		// Verify it's valid JSON with expected structure.
+		var embeddingResponse openai.CreateEmbeddingResponse
+		require.NoError(t, json.Unmarshal(responseBody, &embeddingResponse))
+
+		// Verify structure and values.
+		require.Equal(t, "list", string(embeddingResponse.Object))
+		require.Equal(t, "some-cool-self-hosted-model", embeddingResponse.Model)
+
+		require.Len(t, embeddingResponse.Data, 1)
+
+		require.Equal(t, "embedding", string(embeddingResponse.Data[0].Object))
+		require.Equal(t, int64(0), embeddingResponse.Data[0].Index)
+
+		require.Equal(t, []float64{0.1, 0.2, 0.3, 0.4, 0.5}, embeddingResponse.Data[0].Embedding)
+		require.Equal(t, int64(3), embeddingResponse.Usage.PromptTokens)
+		require.Equal(t, int64(3), embeddingResponse.Usage.TotalTokens)
+	})
+
 	t.Run("fake response for unknown path", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/foo", nil)
 		require.NoError(t, err)
 
@@ -271,7 +313,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("aws-event-stream", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
@@ -311,7 +353,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected host not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -332,7 +374,7 @@ func Test_main(t *testing.T) {
 	})
 	t.Run("expected raw query not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -356,7 +398,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected host match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -375,7 +417,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -395,7 +437,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers invalid pairs", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -416,7 +458,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -439,7 +481,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("non expected headers invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -459,7 +501,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected test upstream id", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -477,7 +519,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected test upstream id not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -495,7 +537,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected path invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -511,7 +553,7 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected request body invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("GET",
+		request, err := http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 

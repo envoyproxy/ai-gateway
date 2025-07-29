@@ -7,6 +7,7 @@ package testopenai
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -23,7 +24,7 @@ func TestServer_ExistingCassette(t *testing.T) {
 	defer server.Close()
 
 	// Make the same request as in chat-basic cassette.
-	req, err := NewRequest(server.URL(), CassetteChatBasic)
+	req, err := NewRequest(context.Background(), server.URL(), CassetteChatBasic)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -62,8 +63,8 @@ func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	// Should get 400 with clear error message.
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// Should get 500 with clear error message.
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
@@ -92,8 +93,8 @@ func TestServer_MissingCassette_WithAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	// Should get 400 with clear error message about missing header.
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// Should get 500 with clear error message about missing header.
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 
 	body, err := io.ReadAll(resp.Body)
@@ -113,7 +114,7 @@ func TestServer_Recording(t *testing.T) {
 
 	// Use temp directory for recording.
 	tempDir := t.TempDir()
-	server, err := newServer(embeddedCassettes, tempDir)
+	server, err := newServer(io.Discard, 0, embeddedCassettes, tempDir)
 	require.NoError(t, err)
 	defer server.Close()
 
@@ -177,7 +178,7 @@ func TestServer_DifferentEndpoints(t *testing.T) {
 		resp.Body.Close()
 
 		// Should get error response since we don't have cassettes for these.
-		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		require.Equal(t, "true", resp.Header.Get("X-TestOpenAI-Error"))
 	}
 }
@@ -204,7 +205,7 @@ func TestServer_JSONMatching(t *testing.T) {
 }
 
 func newTestServer(t *testing.T) *Server {
-	server, err := newServer(embeddedCassettes, t.TempDir())
+	server, err := newServer(io.Discard, 0, embeddedCassettes, t.TempDir())
 	require.NoError(t, err)
 	return server
 }
