@@ -37,11 +37,19 @@ var logger = log.New(os.Stdout, "[testupstream] ", 0)
 // This is useful to test the external processor request to the Envoy Gateway LLM Controller.
 func main() {
 	logger.Println("Version: ", version.Version)
-	l, err := net.Listen("tcp", ":8080") // nolint: gosec
+	// Note: Do not use "TESTUPSTREAM_PORT" as it will conflict with an automatic environment variable
+	// set by K8s, which results in a very hard-to-debug issue during e2e.
+	port := os.Getenv("LISTENER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	l, err := net.Listen("tcp", ":"+port) // nolint: gosec
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	defer l.Close()
+	// Emit startup message when the listener is ready.
+	log.Println("Test upstream is ready")
 	doMain(l)
 }
 
@@ -53,7 +61,6 @@ func doMain(l net.Listener) {
 			streamingInterval = d
 		}
 	}
-	defer l.Close()
 	http.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusOK) })
 	http.HandleFunc("/", handler)
 	if err := http.Serve(l, nil); err != nil { // nolint: gosec
@@ -395,6 +402,9 @@ func getFakeResponse(path string) ([]byte, error) {
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
 				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
+	case "/v1/embeddings":
+		const embeddingTemplate = `{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3,0.4,0.5],"index":0}],"model":"some-cool-self-hosted-model","usage":{"prompt_tokens":3,"total_tokens":3}}`
+		return []byte(embeddingTemplate), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}

@@ -45,7 +45,9 @@ type CredentialsContext struct {
 	// OpenAIAPIKey is the OpenAI API key. This defaults to "dummy-openai-api-key" if not set.
 	OpenAIAPIKey string
 	// AWSFileLiteral contains the AWS credentials in the format of a file literal.
-	AWSFileLiteral string
+	AWSFileLiteral     string
+	AWSAccessKeyID     string
+	AWSSecretAccessKey string
 	// AzureAccessToken is the Azure access token. This defaults to "dummy-azure-access-token" if not set.
 	AzureAccessToken string
 	// GeminiAPIKey is the API key for Gemini API. https://ai.google.dev/gemini-api/docs/openai
@@ -130,13 +132,17 @@ func RequireNewCredentialsContext() (ctx CredentialsContext) {
 	awsAccessKeyID := os.Getenv("TEST_AWS_ACCESS_KEY_ID")
 	awsSecretAccessKey := os.Getenv("TEST_AWS_SECRET_ACCESS_KEY")
 	awsSessionToken := os.Getenv("TEST_AWS_SESSION_TOKEN")
-	ctx.AWSValid = awsAccessKeyID != "" && awsSecretAccessKey != "" && awsSessionToken != ""
+	ctx.AWSValid = awsAccessKeyID != "" && awsSecretAccessKey != ""
+	ctx.AWSAccessKeyID = cmp.Or(awsAccessKeyID, "dummy_access_key_id")
+	ctx.AWSSecretAccessKey = cmp.Or(awsSecretAccessKey, "dummy_secret_access_key")
 	if awsSessionToken != "" {
 		ctx.AWSFileLiteral = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_SESSION_TOKEN=%s\n",
-			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"), awsSessionToken)
+			ctx.AWSAccessKeyID, ctx.AWSSecretAccessKey, awsSessionToken,
+		)
 	} else {
 		ctx.AWSFileLiteral = fmt.Sprintf("[default]\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n",
-			cmp.Or(awsAccessKeyID, "dummy_access_key_id"), cmp.Or(awsSecretAccessKey, "dummy_secret_access_key"))
+			ctx.AWSAccessKeyID, ctx.AWSSecretAccessKey,
+		)
 	}
 	return
 }

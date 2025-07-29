@@ -249,13 +249,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaName(schema.Name), Version: ptr.Deref(schema.Version, "v1")}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
-					backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+					var bsp *aigv1a1.BackendSecurityPolicy
+					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 					if err != nil {
 						return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
 					}
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
-					if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+					if bsp != nil {
+						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 						if err != nil {
 							return fmt.Errorf("failed to create backend auth: %w", err)
 						}
@@ -331,11 +332,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	return nil
 }
 
-func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, namespace, bspName string) (*filterapi.BackendAuth, error) {
-	backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, namespace, bspName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspName, err)
-	}
+func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
+	namespace := backendSecurityPolicy.Namespace
 	switch backendSecurityPolicy.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
@@ -408,9 +406,44 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 	return "", fmt.Errorf("secret %s does not contain key %s", name, dataKey)
 }
 
-func (c *GatewayController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
-	backend := &aigv1a1.AIServiceBackend{}
-	return backend, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend)
+// backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
+func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1a1.AIServiceBackend, bsp *aigv1a1.BackendSecurityPolicy, err error) {
+	backend = &aigv1a1.AIServiceBackend{}
+	if err = c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
+		return
+	}
+
+	// Old Pattern using BackendSecurityPolicyRef. Prioritize this field over the new pattern as per the documentation.
+	if bspRef := backend.Spec.BackendSecurityPolicyRef; bspRef != nil {
+		bsp, err = c.backendSecurityPolicy(ctx, namespace, string(bspRef.Name))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
+		}
+		return
+	}
+
+	// New Pattern using BackendSecurityPolicy.
+	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
+	key := fmt.Sprintf("%s.%s", name, namespace)
+	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
+		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
+		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
+	}
+	switch len(backendSecurityPolicyList.Items) {
+	case 0:
+	case 1:
+		bsp = &backendSecurityPolicyList.Items[0]
+	default:
+		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
+		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
+		//
+		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
+		// is created after the AIServiceBackend's reconciliation.
+		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
+			"count", len(backendSecurityPolicyList.Items))
+		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
+	}
+	return
 }
 
 func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {

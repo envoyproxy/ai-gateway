@@ -603,7 +603,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendSecurityPolicyRef"
   type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
-  description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to."
+  description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to.<br />Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.<br />When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,<br />set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,<br />and then remove this field from the AIServiceBackend."
 />
 
 
@@ -938,6 +938,11 @@ Only one type of BackendSecurityPolicy can be defined.
 
 
 <ApiField
+  name="targetRefs"
+  type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
+  required="false"
+  description="TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.<br />Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error<br />during the reconciliation of AIServiceBackend."
+/><ApiField
   name="type"
   type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
   required="true"

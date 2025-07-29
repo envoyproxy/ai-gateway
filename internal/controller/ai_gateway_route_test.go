@@ -73,6 +73,41 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
+	// Test error path where syncAIGatewayRoute fails.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Create a route without creating the filter to cause sync error.
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "errorroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "nonexistent", Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// This should fail during sync because backend doesn't exist.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "errorroute"}})
+	require.Error(t, err)
+
+	// Check that status was updated to NotAccepted.
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
@@ -357,6 +392,31 @@ func Test_buildPriorityAnnotation(t *testing.T) {
 	}
 	annotation := buildPriorityAnnotation(rules)
 	require.Equal(t, "0:orange:0,0:apple:1,0:pineapple:2", annotation)
+}
+
+func TestAIGatewayRouteController_backend(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch)
+
+	// Test successful backend retrieval.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "backend1"},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	result, err := c.backend(t.Context(), "default", "test-backend")
+	require.NoError(t, err)
+	require.Equal(t, "test-backend", result.Name)
+
+	// Test backend not found error.
+	_, err = c.backend(t.Context(), "default", "nonexistent")
+	require.Error(t, err)
 }
 
 func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This is mostly for coverage.

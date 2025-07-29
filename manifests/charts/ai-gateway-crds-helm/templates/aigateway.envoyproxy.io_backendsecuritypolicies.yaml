@@ -9,6 +9,8 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.3
+  labels:
+    gateway.networking.k8s.io/policy: direct
   name: backendsecuritypolicies.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
@@ -53,7 +55,7 @@ spec:
               Only one mechanism to access a backend(s) can be specified.
 
               Only one type of BackendSecurityPolicy can be defined.
-            maxProperties: 2
+            maxProperties: 3
             properties:
               apiKey:
                 description: APIKey is a mechanism to access a backend(s). The API
@@ -4152,6 +4154,46 @@ spec:
                 - region
                 - workloadIdentityFederationConfig
                 type: object
+              targetRefs:
+                description: |-
+                  TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
+                  Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error
+                  during the reconciliation of AIServiceBackend.
+                items:
+                  description: |-
+                    LocalPolicyTargetReference identifies an API object to apply a direct or
+                    inherited policy to. This should be used as part of Policy resources
+                    that can target Gateway API resources. For more information on how this
+                    policy attachment model works, and a sample Policy resource, refer to
+                    the policy attachment documentation for Gateway API.
+                  properties:
+                    group:
+                      description: Group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    kind:
+                      description: Kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                      type: string
+                    name:
+                      description: Name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                  required:
+                  - group
+                  - kind
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-validations:
+                - message: targetRefs must reference AIServiceBackend resources
+                  rule: self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind
+                    == 'AIServiceBackend')
               type:
                 description: Type specifies the type of the backend security policy.
                 enum:

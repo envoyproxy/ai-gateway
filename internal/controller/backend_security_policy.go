@@ -270,14 +270,37 @@ func backendSecurityPolicyKey(namespace, name string) string {
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
+	// Handle both old and new patterns.
+	var allAIServiceBackends []aigv1a1.AIServiceBackend
+
+	// Old pattern: AIServiceBackend references BackendSecurityPolicy.
 	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
-	var aiServiceBackends aigv1a1.AIServiceBackendList
-	err := c.client.List(ctx, &aiServiceBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
+	var referencingBackends aigv1a1.AIServiceBackendList
+	err := c.client.List(ctx, &referencingBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
 	if err != nil {
-		return fmt.Errorf("failed to list AIServiceBackendList: %w", err)
+		return fmt.Errorf("failed to list AIServiceBackendList (old pattern): %w", err)
 	}
-	for i := range aiServiceBackends.Items {
-		aiBackend := &aiServiceBackends.Items[i]
+	allAIServiceBackends = append(allAIServiceBackends, referencingBackends.Items...)
+
+	// New pattern: BackendSecurityPolicy targets AIServiceBackend via targetRefs.
+	for _, targetRef := range bsp.Spec.TargetRefs {
+		var aiBackend aigv1a1.AIServiceBackend
+		err := c.client.Get(ctx, client.ObjectKey{
+			Name:      string(targetRef.Name),
+			Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
+		}, &aiBackend)
+		if err != nil {
+			if client.IgnoreNotFound(err) != nil {
+				return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
+			}
+			c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+			continue
+		}
+		allAIServiceBackends = append(allAIServiceBackends, aiBackend)
+	}
+
+	for i := range allAIServiceBackends {
+		aiBackend := &allAIServiceBackends[i]
 		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
 		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
 	}

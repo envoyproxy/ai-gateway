@@ -9,7 +9,7 @@ schema:
   version: v1
 modelNameHeaderKey: x-model-name
 backends:
-- name: openai
-  schema:
-    name: OpenAI
-    version: v1
+  - name: openai
+    schema:
+      name: OpenAI
+      version: v1

@@ -20,6 +20,7 @@ exclude:
     - zz_generated.deepcopy.go
     # They are test-only libraries.
     - tests/internal/envtest.go
+    - tests/internal/testenvironment/
     - internal/testing/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go
