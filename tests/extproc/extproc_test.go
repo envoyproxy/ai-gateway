@@ -29,7 +29,7 @@ const (
 	// errorServerTLSDefaultPort is a port we need to replace in envoyConfig.
 	errorServerTLSDefaultPort = 1067
 	eventuallyTimeout         = 60 * time.Second
-	eventuallyInterval        = 4 * time.Second
+	eventuallyInterval        = 100 * time.Millisecond
 	fakeGCPAuthToken          = "fake-gcp-auth-token" //nolint:gosec
 )
 
@@ -154,7 +154,7 @@ func requireUpstream(t *testing.T, out io.Writer, port int) {
 
 func listen(ctx context.Context, name string) (net.Listener, int) {
 	var lc net.ListenConfig
-	lis, err := lc.Listen(ctx, "tcp", "127.0.0.0:0")
+	lis, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(fmt.Errorf("failed to listen for %s: %w", name, err))
 	}
