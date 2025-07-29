@@ -39,7 +39,7 @@ func main() {
 	logger.Println("Version: ", version.Version)
 	port := os.Getenv("TESTUPSTREAM_PORT")
 	if port == "" {
-		port = "1063"
+		port = "8080"
 	}
 	l, err := net.Listen("tcp", ":"+port) // nolint: gosec
 	if err != nil {
