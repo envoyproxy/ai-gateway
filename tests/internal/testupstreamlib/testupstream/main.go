@@ -37,7 +37,9 @@ var logger = log.New(os.Stdout, "[testupstream] ", 0)
 // This is useful to test the external processor request to the Envoy Gateway LLM Controller.
 func main() {
 	logger.Println("Version: ", version.Version)
-	port := os.Getenv("TESTUPSTREAM_PORT")
+	// Note: Do not use "TESTUPSTREAM_PORT" as it will conflict with an automatic environment variable
+	// set by K8s, which results in a very hard-to-debug issue during e2e.
+	port := os.Getenv("LISTENER_PORT")
 	if port == "" {
 		port = "8080"
 	}

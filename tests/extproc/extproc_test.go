@@ -146,7 +146,7 @@ func requireUpstream(t *testing.T, out io.Writer, port int) {
 	cmd := exec.CommandContext(t.Context(), testupstreamBin)
 	cmd.Env = append(os.Environ(),
 		"TESTUPSTREAM_ID=extproc_test",
-		fmt.Sprintf("TESTUPSTREAM_PORT=%d", port))
+		fmt.Sprintf("LISTENER_PORT=%d", port))
 
 	// wait for the ready message or exit.
 	testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")
