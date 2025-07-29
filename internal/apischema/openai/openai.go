@@ -9,6 +9,7 @@
 package openai
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -798,7 +799,7 @@ type ChatCompletionResponse struct {
 	Choices []ChatCompletionResponseChoice `json:"choices,omitempty"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created int64 `json:"created,omitzero"`
+	Created JSONUNIXTime `json:"created,omitzero"`
 
 	// Model is the model used for the chat completion.
 	Model string `json:"model,omitempty"`
@@ -950,7 +951,7 @@ type ChatCompletionResponseChunk struct {
 	Choices []ChatCompletionResponseChunkChoice `json:"choices,omitempty"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created int64 `json:"created,omitzero"`
+	Created JSONUNIXTime `json:"created,omitzero"`
 
 	// Model is the model used for the chat completion.
 	Model string `json:"model,omitempty"`
@@ -1117,10 +1118,26 @@ func (t JSONUNIXTime) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements [json.Unmarshaler].
 func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
+	// Find "." decimal point and remove it the decimal part if it exists.
+	// Usually the timestamp is in seconds meaning it is an integer, but some providers
+	// return the created timestamp with nanoseconds, which is a float json Number.
+	//
+	// Since this is only called on the response path in reality where we do not use this
+	// type for translation, we can safely ignore the decimal part. Even if it is necessary
+	// for the translation later, it should be safe to ignore it, because at the end of the day
+	// the OpenAI client assumes that the time is in seconds.
+	if index := bytes.IndexByte(s, '.'); index != -1 {
+		s = s[:index]
+	}
 	q, err := strconv.ParseInt(string(s), 10, 64)
 	if err != nil {
 		return err
 	}
 	*(*time.Time)(t) = time.Unix(q, 0).UTC()
 	return nil
+}
+
+// Equal compares two JSONUNIXTime values for equality. This is only for testing purposes.
+func (t JSONUNIXTime) Equal(other JSONUNIXTime) bool {
+	return time.Time(t).Unix() == time.Time(other).Unix()
 }

@@ -1,0 +1,80 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# GCP Example
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  schema:
+    name: GCPVertexAI
+  backendRef:
+    name: envoy-ai-gateway-basic-gcp
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-credentials
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-gcp
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
+    region: GCP_REGION  # Replace with your GCP region
+    workloadIdentityFederationConfig:
+      projectID: GCP_PROJECT_ID  # Replace with your GCP project ID
+      workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL  # Replace with your workload identity pool name
+      workloadIdentityProviderName: GCP_IDENTITY_PROVIDER_NAME  # Replace with the identity provider configured with GCP
+      serviceAccountImpersonation:
+        serviceAccountName: SERVICE_ACCOUNT_NAME  # Replace with the service account name to impersonate
+      oidcExchangeToken:
+        oidc:
+          provider:
+            issuer: GCP_OIDC_PROVIDER_ISSUER  # Replace with your OIDC provider issuer
+          clientID: GCP_OIDC_CLIENT_ID  # Replace with your OIDC client ID
+          clientSecret:
+            name: envoy-ai-gateway-basic-gcp-client-secret
+            namespace: default
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-central1-aiplatform.googleapis.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: envoy-ai-gateway-basic-gcp
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: us-central1-aiplatform.googleapis.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-gcp-client-secret
+  namespace: default
+stringData:
+  client-secret: "GCP_OIDC_CLIENT_SECRET"  # Replace with your OIDC client secret

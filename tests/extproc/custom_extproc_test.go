@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -22,6 +23,11 @@ import (
 
 // TestExtProcCustomMetrics tests examples/extproc_custom_metrics.
 func TestExtProcCustomMetrics(t *testing.T) {
+	const (
+		eventuallyTimeout  = 30 * time.Second
+		eventuallyInterval = 1 * time.Millisecond
+	)
+
 	requireBinaries(t)
 	requireRunEnvoy(t, "/dev/null")
 	requireTestUpstream(t)

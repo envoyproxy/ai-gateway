@@ -32,6 +32,10 @@ import (
 //
 // This does not require any environment variables to be set as it relies on the test upstream.
 func TestWithTestUpstream(t *testing.T) {
+	const (
+		eventuallyTimeout  = 30 * time.Second
+		eventuallyInterval = 1 * time.Millisecond
+	)
 	requireBinaries(t)
 	accessLogPath := t.TempDir() + "/access.log"
 	requireRunEnvoy(t, accessLogPath)
