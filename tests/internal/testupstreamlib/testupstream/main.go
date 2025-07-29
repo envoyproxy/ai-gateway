@@ -395,6 +395,9 @@ func getFakeResponse(path string) ([]byte, error) {
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
 				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
+	case "/v1/embeddings":
+		const embeddingTemplate = `{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3,0.4,0.5],"index":0}],"model":"some-cool-self-hosted-model","usage":{"prompt_tokens":3,"total_tokens":3}}`
+		return []byte(embeddingTemplate), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}
