@@ -8,9 +8,15 @@ package extensionserver
 import (
 	"testing"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestInsertAIGatewayExtProcFilter(t *testing.T) {
@@ -177,5 +183,149 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestServer_isRouteGeneratedByAIGateway(t *testing.T) {
+	emptyStruct, err := structpb.NewStruct(map[string]interface{}{})
+	require.NoError(t, err)
+
+	structWithEmptyResources, err := structpb.NewStruct(map[string]interface{}{
+		"resources": nil,
+	})
+	require.NoError(t, err)
+
+	withAnnotationsListStruct, err := structpb.NewStruct(map[string]interface{}{
+		"resources": []interface{}{
+			map[string]interface{}{
+				"annotations": map[string]interface{}{},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	withOKAnnotationsListStruct, err := structpb.NewStruct(map[string]interface{}{
+		"resources": []interface{}{
+			map[string]interface{}{
+				"annotations": map[string]interface{}{
+					internalapi.AIGatewayGeneratedHTTPRouteAnnotation: "true",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name     string
+		route    *routev3.Route
+		expected bool
+	}{
+		{
+			name:     "no metadata",
+			route:    &routev3.Route{},
+			expected: false,
+		},
+		{
+			name: "no metadata.Fields",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{},
+			},
+			expected: false,
+		},
+		{
+			name: "no metadata.Fields 'envoy-ai_gateway'",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{}},
+			},
+			expected: false,
+		},
+		{
+			name: "no resources in metadata.Fields 'envoy-gateway'",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": emptyStruct,
+				}},
+			},
+			expected: false,
+		},
+		{
+			name: "resources do not have annotations",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": structWithEmptyResources,
+				}},
+			},
+			expected: false,
+		},
+		{
+			name: "annotations are empty",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": withAnnotationsListStruct,
+				}},
+			},
+			expected: false,
+		},
+		{
+			name: "annotations are empty",
+			route: &routev3.Route{
+				Metadata: &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": withOKAnnotationsListStruct,
+				}},
+			},
+			expected: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{log: zap.New()}
+			result := s.isRouteGeneratedByAIGateway(tt.route)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_shouldAIGatewayExtProcBeInserted(t *testing.T) {
+	tests := []struct {
+		name     string
+		filters  []*httpconnectionmanagerv3.HttpFilter
+		expected bool
+	}{
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{}},
+			expected: true,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: aiGatewayExtProcName}},
+			expected: false,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: aiGatewayExtProcName}, {}},
+			expected: false,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {}},
+			expected: true,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: "ai-eg-eep-test-gw"}},
+			expected: false,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: "ai-eg-eep-test-gw"}, {}},
+			expected: false,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: "ai-eg-eep-test-gw"}},
+			expected: false,
+		},
+		{
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: aiGatewayExtProcName}, {Name: "ai-eg-eep-test-gw"}, {}},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		result := shouldAIGatewayExtProcBeInserted(tt.filters)
+		require.Equal(t, tt.expected, result)
 	}
 }
