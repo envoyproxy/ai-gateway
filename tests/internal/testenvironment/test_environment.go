@@ -122,9 +122,16 @@ func StartTestEnvironment(t *testing.T,
 		}
 	})
 
-	// Sanity check all connections to ensure everything is up.
-	err := env.checkAllConnections(t)
-	require.NoError(t, err, "failed to connect to all services in the test environment")
+	// Sanity-check all connections to ensure everything is up.
+	require.Eventually(t, func() bool {
+		err := env.checkAllConnections(t)
+		if err != nil {
+			t.Logf("Error checking connections: %v", err)
+			return false
+		}
+		t.Log("All services are up and running")
+		return true
+	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
 	return env
 }
 
