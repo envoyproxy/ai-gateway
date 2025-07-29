@@ -28,8 +28,8 @@ const (
 	errorServerDefaultPort = 1066
 	// errorServerTLSDefaultPort is a port we need to replace in envoyConfig.
 	errorServerTLSDefaultPort = 1067
-	eventuallyTimeout         = 60 * time.Second
-	eventuallyInterval        = 100 * time.Millisecond
+	eventuallyTimeout         = 20 * time.Second
+	eventuallyInterval        = 10 * time.Millisecond
 	fakeGCPAuthToken          = "fake-gcp-auth-token" //nolint:gosec
 )
 

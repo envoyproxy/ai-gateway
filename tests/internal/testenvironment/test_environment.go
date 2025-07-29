@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestEnvironment holds all the services needed for tests.
@@ -65,8 +66,7 @@ func StartTestEnvironment(t *testing.T,
 	extprocBin, extprocConfig, envoyConfig string, okToDumpLogOnFailure bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
-	ports, err := getRandomPorts(t.Context(), 6)
-	require.NoError(t, err)
+	ports := requireRandomPorts(t, 6)
 
 	env := &TestEnvironment{
 		upstreamPortDefault: upstreamPortDefault,
@@ -84,6 +84,9 @@ func StartTestEnvironment(t *testing.T,
 		envoyStdout:         newSyncBuffer(),
 		envoyStderr:         newSyncBuffer(),
 	}
+
+	t.Logf("Starting test environment with ports: upstream=%d, extproc=%d, envoyListener=%d, envoyAdmin=%d",
+		env.upstreamPort, env.extProcPort, env.envoyListenerPort, env.envoyAdminPort)
 
 	// The startup order is required: upstream, extProc, then envoy.
 
@@ -119,38 +122,83 @@ func StartTestEnvironment(t *testing.T,
 		}
 	})
 
+	// Sanity check all connections to ensure everything is up.
+	err := env.checkAllConnections(t)
+	require.NoError(t, err, "failed to connect to all services in the test environment")
 	return env
 }
 
-// getRandomPorts returns random available ports.
-func getRandomPorts(ctx context.Context, count int) ([]int, error) {
+func (e *TestEnvironment) checkAllConnections(t *testing.T) error {
+	errGroup := &errgroup.Group{}
+	errGroup.Go(func() error {
+		return e.checkConnection(t, e.extProcPort, "extProc")
+	})
+	errGroup.Go(func() error {
+		return e.checkConnection(t, e.extProcMetricsPort, "extProcMetrics")
+	})
+	errGroup.Go(func() error {
+		return e.checkConnection(t, e.envoyListenerPort, "envoyListener")
+	})
+	errGroup.Go(func() error {
+		return e.checkConnection(t, e.envoyAdminPort, "envoyAdmin")
+	})
+	errGroup.Go(func() error {
+		return e.checkConnection(t, e.upstreamPort, "upstream")
+	})
+	return errGroup.Wait()
+}
+
+func (e *TestEnvironment) checkConnection(t *testing.T, port int, name string) error {
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Logf("Failed to connect to %s on port %d: %v", name, port, err)
+		return fmt.Errorf("failed to connect to %s on port %d: %w", name, port, err)
+	}
+	err = conn.Close()
+	if err != nil {
+		t.Logf("Failed to close connection to %s on port %d: %v", name, port, err)
+		return fmt.Errorf("failed to close connection to %s on port %d: %w", name, port, err)
+	}
+	t.Logf("Successfully connected to %s on port %d", name, port)
+	return nil
+}
+
+// requireRandomPorts returns random available ports.
+func requireRandomPorts(t *testing.T, count int) []int {
 	ports := make([]int, count)
 
+	var listeners []net.Listener
 	for i := 0; i < count; i++ {
 		lc := net.ListenConfig{}
-		lis, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
-		if err != nil {
-			return nil, err
-		}
-		// defer intentionally to function exit to avoid race on next port.
-		defer lis.Close()
-
+		lis, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+		require.NoError(t, err, "failed to listen on random port %d", i)
+		listeners = append(listeners, lis)
 		addr := lis.Addr().(*net.TCPAddr)
 		ports[i] = addr.Port
 	}
-
-	return ports, nil
+	for _, lis := range listeners {
+		require.NoError(t, lis.Close())
+	}
+	return ports
 }
 
-func waitForReadyMessage(outReader io.Reader, readyMessage string) {
+func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage string) {
 	scanner := bufio.NewScanner(outReader)
 	done := make(chan bool)
 
 	go func() {
+		doneSent := false
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.Contains(line, readyMessage) {
+			if strings.Contains(line, readyMessage) && !doneSent {
 				done <- true
+				doneSent = true
+				// ********NOTE********: DO NOT RETURN. Pipe's buffer is limited, so without continuing to read,
+				// the process will block on writing to stdout/stderr. That would result in a serious hard-to-debug
+				// deadlock in tests.
+			}
+			// CHeck if the context is done to stop reading.
+			if ctx.Err() != nil {
 				return
 			}
 		}
@@ -225,8 +273,8 @@ func StartAndAwaitReady(t *testing.T, cmd *exec.Cmd, stdout, stderr io.Writer, r
 
 	require.NoError(t, cmd.Start())
 
-	// wait for the ready message or exit.
-	waitForReadyMessage(stderrReader, readyMessage)
+	// Wait for the ready message or exit.
+	waitForReadyMessage(t.Context(), stderrReader, readyMessage)
 }
 
 // replaceTokens replaces all occurrences of tokens in content with their corresponding values.
