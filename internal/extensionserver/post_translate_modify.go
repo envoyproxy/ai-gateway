@@ -521,7 +521,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 				continue
 			}
 
-			eg, ok := route.Metadata.FilterMetadata["envoy-gateawy"]
+			eg, ok := route.Metadata.FilterMetadata["envoy-gateway"]
 			if !ok {
 				s.log.Info("no envoy-gateway metadata found in the route, skipping", "route", route.Name)
 				continue
