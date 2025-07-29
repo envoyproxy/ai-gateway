@@ -24,6 +24,14 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
+// Real providers test cases require the real credentials to be set in the environment. So,
+// we use the long timeout and interval to wait for the requests to not only succeed but also to
+// reduce the unnecessary use of credentials during the tests.
+const (
+	realProvidersEventuallyTimeout  = 60 * time.Second
+	realProvidersEventuallyInterval = 1 * time.Second
+)
+
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
 	requireBinaries(t)
@@ -147,7 +155,7 @@ func TestWithRealProviders(t *testing.T) {
 				return true
 			}
 			return false
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -196,7 +204,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("response: %+v", acc)
 					}
 					return nonEmptyCompletion
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -291,7 +299,7 @@ func TestWithRealProviders(t *testing.T) {
 					completionResult := secondChatCompletion.Choices[0].Message.Content
 					t.Logf("content of completion response using tool: %s", secondChatCompletion.Choices[0].Message.Content)
 					return strings.Contains(completionResult, "New York City") && strings.Contains(completionResult, "sunny") && strings.Contains(completionResult, "25°C")
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -309,7 +317,7 @@ func TestWithRealProviders(t *testing.T) {
 				models = append(models, it.Current().ID)
 			}
 			assert.NoError(c, it.Err())
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 
 		require.Equal(t, []string{
 			"grok-3",
@@ -351,7 +359,7 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, modelNam
 			}
 		}
 		return nonEmptyCompletion
-	}, eventuallyTimeout, eventuallyInterval)
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }
 
 func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
@@ -380,5 +388,5 @@ func requireEventuallyEmbeddingsRequestOK(t *testing.T, modelName string) {
 
 		t.Logf("response: %+v", embedding.Data[0].Embedding)
 		return true
-	}, eventuallyTimeout, eventuallyInterval)
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }

@@ -740,7 +740,7 @@ func TestChatCompletionResponseWithNewFields(t *testing.T) {
 	// Test the new fields added to ChatCompletionResponse.
 	resp := ChatCompletionResponse{
 		ID:                "chatcmpl-test123",
-		Created:           1753162006,
+		Created:           JSONUNIXTime(time.Now()),
 		Model:             "gpt-4.1-nano",
 		ServiceTier:       "default",
 		SystemFingerprint: "",
@@ -773,7 +773,7 @@ func TestChatCompletionResponseWithNewFields(t *testing.T) {
 
 	// Verify all fields.
 	require.Equal(t, resp.ID, decoded.ID)
-	require.Equal(t, resp.Created, decoded.Created)
+	require.Equal(t, time.Time(resp.Created).Unix(), time.Time(decoded.Created).Unix())
 	require.Equal(t, resp.Model, decoded.Model)
 	require.Equal(t, resp.ServiceTier, decoded.ServiceTier)
 	require.Equal(t, resp.SystemFingerprint, decoded.SystemFingerprint)
@@ -892,4 +892,19 @@ func TestPredictionContent(t *testing.T) {
 		// Verify the constant value matches OpenAPI spec.
 		require.Equal(t, PredictionContentTypeContent, PredictionContentType("content"))
 	})
+}
+
+func TestUnmarshalJSON_Unmarshal(t *testing.T) {
+	jsonStr := `{"value": 3.14}`
+	var data struct {
+		Time JSONUNIXTime `json:"value"`
+	}
+	err := json.Unmarshal([]byte(jsonStr), &data)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), time.Time(data.Time).Unix())
+
+	jsonStr = `{"value": 2}`
+	err = json.Unmarshal([]byte(jsonStr), &data)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), time.Time(data.Time).Unix())
 }

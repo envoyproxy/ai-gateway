@@ -25,10 +25,8 @@ import (
 )
 
 const (
-	listenerAddress    = "http://localhost:1062"
-	eventuallyTimeout  = 60 * time.Second
-	eventuallyInterval = 4 * time.Second
-	fakeGCPAuthToken   = "fake-gcp-auth-token" //nolint:gosec
+	listenerAddress  = "http://localhost:1062"
+	fakeGCPAuthToken = "fake-gcp-auth-token" //nolint:gosec
 )
 
 func TestMain(m *testing.M) {

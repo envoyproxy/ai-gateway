@@ -51,6 +51,12 @@ static_resources:
                               - name: x-model-name
                                 string_match:
                                   exact: us.meta.llama3-2-1b-instruct-v1:0
+                          route:
+                            auto_host_rewrite: true
+                            cluster: aws_bedrock
+                        - match:
+                            prefix: "/"
+                            headers:
                               - name: x-model-name
                                 string_match:
                                   exact: us.anthropic.claude-3-5-sonnet-20240620-v1:0
