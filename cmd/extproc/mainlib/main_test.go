@@ -221,6 +221,116 @@ func TestStartHealthCheckServer(t *testing.T) {
 	}
 }
 
+func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
+	// Test health check RPC error
+	t.Run("health check RPC error", func(t *testing.T) {
+		lis, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		defer lis.Close()
+
+		grpcLis, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		defer grpcLis.Close()
+
+		// Start a gRPC server that returns error
+		grpcServer := grpc.NewServer()
+		healthServer := &mockHealthServerError{}
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		go grpcServer.Serve(grpcLis)
+		defer grpcServer.Stop()
+
+		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
+		defer httpSrv.Close()
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(rr, req)
+		res := rr.Result()
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		body, _ := io.ReadAll(res.Body)
+		require.Contains(t, string(body), "health check RPC failed")
+	})
+
+	// Test unhealthy status
+	t.Run("unhealthy status", func(t *testing.T) {
+		lis, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		defer lis.Close()
+
+		grpcLis, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		defer grpcLis.Close()
+
+		// Start a gRPC server that returns unhealthy status
+		grpcServer := grpc.NewServer()
+		healthServer := &mockHealthServer{status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		go grpcServer.Serve(grpcLis)
+		defer grpcServer.Stop()
+
+		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
+		defer httpSrv.Close()
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(rr, req)
+		res := rr.Result()
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		body, _ := io.ReadAll(res.Body)
+		require.Contains(t, string(body), "unhealthy status")
+	})
+}
+
+type mockListener struct {
+	addr net.Addr
+}
+
+func (m *mockListener) Accept() (net.Conn, error) {
+	return nil, nil
+}
+
+func (m *mockListener) Close() error {
+	return nil
+}
+
+func (m *mockListener) Addr() net.Addr {
+	return m.addr
+}
+
+type mockAddr struct {
+	network string
+	str     string
+}
+
+func (m *mockAddr) Network() string {
+	return m.network
+}
+
+func (m *mockAddr) String() string {
+	return m.str
+}
+
+type mockHealthServer struct {
+	grpc_health_v1.UnimplementedHealthServer
+	status grpc_health_v1.HealthCheckResponse_ServingStatus
+}
+
+func (m *mockHealthServer) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: m.status}, nil
+}
+
+type mockHealthServerError struct {
+	grpc_health_v1.UnimplementedHealthServer
+}
+
+func (m *mockHealthServerError) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return nil, fmt.Errorf("health check failed")
+}
+
 // TestExtProcStartupMessage ensures other programs can rely on the startup message to STDERR.
 func TestExtProcStartupMessage(t *testing.T) {
 	// Create a temporary config file.
