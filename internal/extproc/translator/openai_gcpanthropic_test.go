@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -1278,4 +1279,41 @@ func TestSystemPromptExtractionCoverage(t *testing.T) {
 			require.Equal(t, tt.expectedPrompt, prompt)
 		})
 	}
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t *testing.T) {
+	// Canned SSE response from Anthropic
+	sseStream := `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 10}}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 2}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`
+	// Simulate a streaming request being made.
+	openAIReq := &openai.ChatCompletionRequest{
+		Stream:    true,
+		Model:     "test-model",
+		MaxTokens: new(int64),
+	}
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+	_, _, err := translator.RequestBody(nil, openAIReq, false)
+	require.NoError(t, err)
+
+	_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+	require.NoError(t, err)
+	require.NotNil(t, bm)
+
+	bodyStr := string(bm.GetBody())
+	require.Contains(t, bodyStr, `"content":"Hello"`)
+	require.Contains(t, bodyStr, `"finish_reason":"stop"`)
+	require.Contains(t, bodyStr, `"prompt_tokens":10`)
+	require.Contains(t, bodyStr, `"completion_tokens":2`)
+	require.Contains(t, bodyStr, sseDoneMessage)
 }

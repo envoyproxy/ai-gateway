@@ -44,6 +44,7 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride string
+	isStreamRequest   bool
 	streamParser      *AnthropicStreamParser
 }
 
@@ -545,17 +546,19 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	// GCP VERTEX PATH.
-	specifier := "rawPredict"
-	if openAIReq.Stream {
-		specifier = "streamRawPredict"
-	}
-
 	modelName := openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
 		modelName = o.modelNameOverride
 	}
+
+	// GCP VERTEX PATH.
+	specifier := "rawPredict"
+	if openAIReq.Stream {
+		specifier = "streamRawPredict"
+		o.streamParser = NewAnthropicStreamParser(modelName)
+	}
+
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
@@ -658,7 +661,11 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(headers
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	_ = endOfStream
+	// If a stream parser was initialized, this is a streaming request.
+	if o.streamParser != nil {
+		return o.streamParser.Process(body, endOfStream)
+	}
+
 	if statusStr, ok := respHeaders[statusHeaderName]; ok {
 		var status int
 		// Use the outer 'err' to catch parsing errors.
