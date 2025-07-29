@@ -62,7 +62,7 @@ func (e *TestEnvironment) ExtProcMetricsPort() int {
 // StartTestEnvironment starts all required services and returns ports and a closer.
 func StartTestEnvironment(t *testing.T,
 	requireNewUpstream func(t *testing.T, out io.Writer, port int), upstreamPortDefault int,
-	extprocBin, extprocConfig, envoyConfig string,
+	extprocBin, extprocConfig, envoyConfig string, okToDumpLogOnFailure bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
 	ports, err := getRandomPorts(t.Context(), 6)
@@ -114,7 +114,7 @@ func StartTestEnvironment(t *testing.T,
 
 	// Log outputs on test failure.
 	t.Cleanup(func() {
-		if t.Failed() {
+		if t.Failed() && okToDumpLogOnFailure {
 			env.LogOutput(t)
 		}
 	})

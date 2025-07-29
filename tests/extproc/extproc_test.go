@@ -134,10 +134,10 @@ func TestMain(m *testing.M) {
 	os.Exit(res)
 }
 
-func startTestEnvironment(t *testing.T, extprocConfig string) *testenvironment.TestEnvironment {
+func startTestEnvironment(t *testing.T, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, 8080,
-		extprocBin, extprocConfig, envoyConfig,
+		extprocBin, extprocConfig, envoyConfig, okToDumpLogOnFailure,
 	)
 }
 

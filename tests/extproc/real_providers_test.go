@@ -82,7 +82,11 @@ func TestWithRealProviders(t *testing.T) {
 	}
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
-	env := startTestEnvironment(t, string(configBytes))
+	env := startTestEnvironment(t, string(configBytes),
+		// Do not dump the log by default since it "might" contain sensitive information.
+		// On CI, they should be redacted by GHA automatically, but it would be better to not log them at all just in case.
+		// Note: This test won't run on CI for fork PRs.
+		false)
 
 	listenerPort := env.EnvoyListenerPort()
 	listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)

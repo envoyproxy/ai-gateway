@@ -59,7 +59,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
-	env := startTestEnvironment(t, string(configBytes))
+	env := startTestEnvironment(t, string(configBytes), true)
 
 	listenerPort := env.EnvoyListenerPort()
 	metricsPort := env.ExtProcMetricsPort()
@@ -484,7 +484,7 @@ data: [DONE]
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {
 				listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
-				req, err := http.NewRequest(tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
+				req, err := http.NewRequestWithContext(t.Context(), tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 				require.NoError(t, err)
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
@@ -532,7 +532,11 @@ data: [DONE]
 
 				if tc.expResponseBody != "" {
 					bodyBytes, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
+					if err != nil {
+						t.Logf("error reading response body: %v", err)
+						return false
+					}
+
 					// Substitute any dynamically generated UUIDs in the response body with a placeholder
 					// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
 					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -544,10 +548,12 @@ data: [DONE]
 					}
 				} else if tc.expResponseBodyFunc != nil {
 					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
+					if err != nil {
+						t.Logf("error reading response body: %v", err)
+						return false
+					}
 					tc.expResponseBodyFunc(t, body)
 				}
-
 				return true
 			}, eventuallyTimeout, eventuallyInterval)
 		})
@@ -618,7 +624,7 @@ data: [DONE]
 		require.NoError(t, stream.Err())
 	})
 	t.Run("metrics", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)

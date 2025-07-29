@@ -40,7 +40,7 @@ var extprocCustomConfig string
 func startTestEnvironment(t *testing.T, extprocBin, extprocConfig, envoyConfig string) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, 11434,
-		extprocBin, extprocConfig, envoyConfig,
+		extprocBin, extprocConfig, envoyConfig, true,
 	)
 }
 
