@@ -183,7 +183,7 @@ func requireEnvoy(t *testing.T,
 
 	cmd := exec.CommandContext(t.Context(), "envoy",
 		"-c", envoyYamlPath,
-		"--concurrency", strconv.Itoa(maxInt(runtime.NumCPU(), 2)),
+		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 		// Add debug logging for extproc.
@@ -227,14 +227,6 @@ func StartAndAwaitReady(t *testing.T, cmd *exec.Cmd, stdout, stderr io.Writer, r
 
 	// wait for the ready message or exit.
 	waitForReadyMessage(stderrReader, readyMessage)
-}
-
-// maxInt returns the maximum of two integers.
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // replaceTokens replaces all occurrences of tokens in content with their corresponding values.
