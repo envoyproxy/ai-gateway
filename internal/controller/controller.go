@@ -100,8 +100,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		gatewayEventChan,
 	)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
-		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&egv1a1.HTTPRouteFilter{}).
 		WatchesRawSource(source.Channel(
 			aiGatewayRouteEventChan,
 			&handler.EnqueueRequestForObject{},
