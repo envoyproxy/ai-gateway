@@ -260,11 +260,11 @@ backends:
 	require.NoError(t, err)
 }
 
-func Test_parseMetricsHeaderNames(t *testing.T) {
+func Test_parseMetricsRequestHeaderNames(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []string
+		expected []metrics.HeaderMetadata
 	}{
 		{
 			name:     "empty string",
@@ -272,45 +272,69 @@ func Test_parseMetricsHeaderNames(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:     "single header",
-			input:    "x-user-id",
-			expected: []string{"x_user_id"},
+			name:  "single header",
+			input: "x-user-id",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user-id", AttributeKey: "request_header_x_user_id"},
+			},
 		},
 		{
-			name:     "multiple headers",
-			input:    "x-user-id,x-team-id,authorization",
-			expected: []string{"x_user_id", "x_team_id", "authorization"},
+			name:  "multiple headers",
+			input: "x-user-id,x-team-id,authorization",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user-id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x-team-id", AttributeKey: "request_header_x_team_id"},
+				{OriginalName: "authorization", AttributeKey: "request_header_authorization"},
+			},
 		},
 		{
-			name:     "headers with spaces",
-			input:    " x-user-id , x-team-id , authorization ",
-			expected: []string{"x_user_id", "x_team_id", "authorization"},
+			name:  "headers with spaces",
+			input: " x-user-id , x-team-id , authorization ",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user-id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x-team-id", AttributeKey: "request_header_x_team_id"},
+				{OriginalName: "authorization", AttributeKey: "request_header_authorization"},
+			},
 		},
 		{
-			name:     "mixed case headers",
-			input:    "X-User-ID,X-TEAM-ID,Authorization",
-			expected: []string{"x_user_id", "x_team_id", "authorization"},
+			name:  "mixed case headers",
+			input: "X-User-ID,X-TEAM-ID,Authorization",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user-id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x-team-id", AttributeKey: "request_header_x_team_id"},
+				{OriginalName: "authorization", AttributeKey: "request_header_authorization"},
+			},
 		},
 		{
-			name:     "headers with special characters",
-			input:    "x-user@id,x.team.id,x:special:header",
-			expected: []string{"x_user_id", "x_team_id", "x_special_header"},
+			name:  "headers with special characters",
+			input: "x-user@id,x.team.id,x:special:header",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user@id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x.team.id", AttributeKey: "request_header_x_team_id"},
+				{OriginalName: "x:special:header", AttributeKey: "request_header_x_special_header"},
+			},
 		},
 		{
-			name:     "header starting with number",
-			input:    "123-header,x-valid-header",
-			expected: []string{"header_123_header", "x_valid_header"},
+			name:  "header starting with number",
+			input: "123-header,x-valid-header",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "123-header", AttributeKey: "request_header_header_123_header"},
+				{OriginalName: "x-valid-header", AttributeKey: "request_header_x_valid_header"},
+			},
 		},
 		{
-			name:     "empty elements",
-			input:    "x-user-id,,x-team-id,",
-			expected: []string{"x_user_id", "x_team_id"},
+			name:  "empty elements",
+			input: "x-user-id,,x-team-id,",
+			expected: []metrics.HeaderMetadata{
+				{OriginalName: "x-user-id", AttributeKey: "request_header_x_user_id"},
+				{OriginalName: "x-team-id", AttributeKey: "request_header_x_team_id"},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseMetricsHeaderNames(tt.input)
+			result := parseMetricsRequestHeaderNames(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

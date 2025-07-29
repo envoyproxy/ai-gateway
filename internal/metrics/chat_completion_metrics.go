@@ -32,12 +32,12 @@ func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletion
 	return DefaultChatCompletion(meter)
 }
 
-// NewChatCompletionWithHeaderNames creates a new x.ChatCompletionMetrics instance with header names for metrics labels.
-func NewChatCompletionWithHeaderNames(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn, headerNames []string) x.ChatCompletionMetrics {
+// NewChatCompletionWithHeaderNames creates a new x.ChatCompletionMetrics instance with header metadata for metrics labels.
+func NewChatCompletionWithHeaderNames(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn, headerMetadata []HeaderMetadata) x.ChatCompletionMetrics {
 	if newCustomFn != nil {
 		return newCustomFn(meter)
 	}
-	return DefaultChatCompletionWithHeaderNames(meter, headerNames)
+	return DefaultChatCompletionWithHeaderNames(meter, headerMetadata)
 }
 
 // DefaultChatCompletion creates a new default x.ChatCompletionMetrics instance.
@@ -47,10 +47,10 @@ func DefaultChatCompletion(meter metric.Meter) x.ChatCompletionMetrics {
 	}
 }
 
-// DefaultChatCompletionWithHeaderNames creates a new default x.ChatCompletionMetrics instance with header names.
-func DefaultChatCompletionWithHeaderNames(meter metric.Meter, headerNames []string) x.ChatCompletionMetrics {
+// DefaultChatCompletionWithHeaderNames creates a new default x.ChatCompletionMetrics instance with header metadata.
+func DefaultChatCompletionWithHeaderNames(meter metric.Meter, headerMetadata []HeaderMetadata) x.ChatCompletionMetrics {
 	return &chatCompletion{
-		baseMetrics: newBaseMetricsWithHeaderNames(meter, genaiOperationChat, headerNames),
+		baseMetrics: newBaseMetricsWithHeaderNames(meter, genaiOperationChat, headerMetadata),
 	}
 }
 

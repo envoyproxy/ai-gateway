@@ -37,12 +37,52 @@ import (
 
 // extProcFlags is the struct that holds the flags passed to the external processor.
 type extProcFlags struct {
-	configPath         string     // path to the configuration file.
-	extProcAddr        string     // gRPC address for the external processor.
-	logLevel           slog.Level // log level for the external processor.
-	metricsPort        int        // HTTP port for the metrics server.
-	healthPort         int        // HTTP port for the health check server.
-	metricsHeaderNames string     // comma-separated list of header names to add to metrics as labels.
+	configPath                string     // path to the configuration file.
+	extProcAddr               string     // gRPC address for the external processor.
+	logLevel                  slog.Level // log level for the external processor.
+	metricsPort               int        // HTTP port for the metrics server.
+	healthPort                int        // HTTP port for the health check server.
+	metricsRequestHeaderNames string     // comma-separated list of request header names to add to metrics as labels.
+}
+
+// parseMetricsRequestHeaderNames parses the comma-separated list of header names
+// and returns a slice of HeaderMetadata with pre-computed attribute keys.
+func parseMetricsRequestHeaderNames(headerNamesString string) []metrics.HeaderMetadata {
+	if headerNamesString == "" {
+		return nil
+	}
+
+	headerNames := strings.Split(headerNamesString, ",")
+	var headerMetadata []metrics.HeaderMetadata
+	for _, headerName := range headerNames {
+		headerName = strings.TrimSpace(headerName)
+		if headerName == "" {
+			continue // Skip empty elements.
+		}
+
+		// Convert to lowercase for consistent handling.
+		originalName := strings.ToLower(headerName)
+
+		// Sanitize the header name for Prometheus compatibility.
+		sanitized := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+				return r
+			}
+			return '_'
+		}, originalName)
+
+		// Ensure it doesn't start with a number (Prometheus requirement).
+		if len(sanitized) > 0 && sanitized[0] >= '0' && sanitized[0] <= '9' {
+			sanitized = "header_" + sanitized
+		}
+
+		attributeKey := "request_header_" + sanitized
+		headerMetadata = append(headerMetadata, metrics.HeaderMetadata{
+			OriginalName: originalName,
+			AttributeKey: attributeKey,
+		})
+	}
+	return headerMetadata
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -71,8 +111,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "port for the metrics server.")
 	fs.IntVar(&flags.healthPort, "healthPort", 1065, "port for the health check HTTP server.")
-	fs.StringVar(&flags.metricsHeaderNames,
-		"metricsHeaderNames",
+	fs.StringVar(&flags.metricsRequestHeaderNames,
+		"metricsRequestHeaderNames",
 		"",
 		"comma-separated list of header names to add to metrics as labels. For example: 'x-user-id,x-team-id'.",
 	)
@@ -89,42 +129,6 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	}
 
 	return flags, errors.Join(errs...)
-}
-
-// parseMetricsHeaderNames parses a comma-separated string of header names
-// and returns a slice of sanitized header names for use as metric labels.
-func parseMetricsHeaderNames(headerNamesStr string) []string {
-	if headerNamesStr == "" {
-		return nil
-	}
-
-	headers := strings.Split(headerNamesStr, ",")
-	var result []string
-
-	for _, header := range headers {
-		header = strings.TrimSpace(header)
-		if header != "" {
-			// Convert to lowercase for consistent handling.
-			header = strings.ToLower(header)
-			// Sanitize header name for Prometheus label compatibility.
-			// Replace any non-alphanumeric characters (except underscores) with underscores.
-			sanitized := strings.Map(func(r rune) rune {
-				if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
-					return r
-				}
-				return '_'
-			}, header)
-
-			// Ensure it doesn't start with a number (Prometheus requirement).
-			if len(sanitized) > 0 && sanitized[0] >= '0' && sanitized[0] <= '9' {
-				sanitized = "header_" + sanitized
-			}
-
-			result = append(result, sanitized)
-		}
-	}
-
-	return result
 }
 
 // Main is a main function for the external processor exposed
@@ -171,12 +175,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	metricsServer, meter := startMetricsServer(fmt.Sprintf(":%d", flags.metricsPort), l)
 
-	// Parse the metrics header names from the command line flag.
-	metricsHeaderNames := parseMetricsHeaderNames(flags.metricsHeaderNames)
-	l.Info("parsed metrics header names", "headers", metricsHeaderNames)
+	// Parse the metrics request header names from the command line flag.
+	// This preprocessing happens at startup to avoid per-request overhead.
+	metricsHeaderMetadata := parseMetricsRequestHeaderNames(flags.metricsRequestHeaderNames)
+	l.Info("parsed metrics request header metadata", "headers", metricsHeaderMetadata)
 
-	chatCompletionMetrics := metrics.NewChatCompletionWithHeaderNames(meter, x.NewCustomChatCompletionMetrics, metricsHeaderNames)
-	embeddingsMetrics := metrics.NewEmbeddingsWithHeaderNames(meter, metricsHeaderNames)
+	chatCompletionMetrics := metrics.NewChatCompletionWithHeaderNames(meter, x.NewCustomChatCompletionMetrics, metricsHeaderMetadata)
+	embeddingsMetrics := metrics.NewEmbeddingsWithHeaderNames(meter, metricsHeaderMetadata)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {

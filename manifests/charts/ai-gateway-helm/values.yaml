@@ -15,7 +15,7 @@ extProc:
   logLevel: info
   # Comma-separated list of header names to add to metrics as labels.
   # For example: "x-user-id,x-team-id". Leave empty to disable header metrics.
-  metricsHeaderNames: ""
+  metricsRequestHeaderNames: ""
 
 controller:
   logLevel: info

@@ -16,15 +16,21 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
+// HeaderMetadata holds pre-processed header information for metrics.
+type HeaderMetadata struct {
+	OriginalName string // e.g., "x-user-id".
+	AttributeKey string // e.g., "request_header_x_user_id".
+}
+
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics            *genAI
-	operation          string
-	requestStart       time.Time
-	model              string
-	backend            string
-	metricsHeaderNames []string          // Header names to include in metrics as labels.
-	requestHeaders     map[string]string // Request headers for the current request.
+	metrics               *genAI
+	operation             string
+	requestStart          time.Time
+	model                 string
+	backend               string
+	metricsHeaderMetadata []HeaderMetadata  // Header metadata with pre-computed attribute keys.
+	requestHeaders        map[string]string // Request headers for the current request.
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
@@ -37,14 +43,14 @@ func newBaseMetrics(meter metric.Meter, operation string) baseMetrics {
 	}
 }
 
-// newBaseMetricsWithHeaderNames creates a new baseMetrics instance with the specified operation and header names.
-func newBaseMetricsWithHeaderNames(meter metric.Meter, operation string, headerNames []string) baseMetrics {
+// newBaseMetricsWithHeaderNames creates a new baseMetrics instance with the specified operation and header metadata.
+func newBaseMetricsWithHeaderNames(meter metric.Meter, operation string, headerMetadata []HeaderMetadata) baseMetrics {
 	return baseMetrics{
-		metrics:            newGenAI(meter),
-		operation:          operation,
-		model:              "unknown",
-		backend:            "unknown",
-		metricsHeaderNames: headerNames,
+		metrics:               newGenAI(meter),
+		operation:             operation,
+		model:                 "unknown",
+		backend:               "unknown",
+		metricsHeaderMetadata: headerMetadata,
 	}
 }
 
@@ -75,7 +81,7 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 // buildBaseAttributes creates the base attributes for metrics recording.
 func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
 	// Start with base attributes + potential header attributes + extra attributes.
-	attrs := make([]attribute.KeyValue, 0, 3+len(b.metricsHeaderNames)+len(extraAttrs))
+	attrs := make([]attribute.KeyValue, 0, 3+len(b.metricsHeaderMetadata)+len(extraAttrs))
 	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(b.operation),
 		attribute.Key(genaiAttributeSystemName).String(b.backend),
@@ -83,23 +89,16 @@ func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []at
 	)
 
 	// Add header values as attributes if configured.
-	if b.metricsHeaderNames != nil && b.requestHeaders != nil {
-		for _, sanitizedHeaderName := range b.metricsHeaderNames {
-			// Convert the sanitized header name back to the original format for lookup.
-			// The sanitized name has underscores, but the actual header name might have dashes.
-			originalHeaderName := strings.ReplaceAll(sanitizedHeaderName, "_", "-")
-
-			// Look for the header value in the request headers.
-			// Try both the sanitized name (with underscores) and the original format (with dashes).
+	if b.metricsHeaderMetadata != nil && b.requestHeaders != nil {
+		for _, headerMetadata := range b.metricsHeaderMetadata {
+			// Look for the header value in the request headers using the original header name.
 			headerValue := ""
-			if value, exists := b.requestHeaders[sanitizedHeaderName]; exists {
-				headerValue = value
-			} else if value, exists := b.requestHeaders[originalHeaderName]; exists {
+			if value, exists := b.requestHeaders[headerMetadata.OriginalName]; exists {
 				headerValue = value
 			} else {
 				// Try to find the header with case-insensitive matching.
 				for reqHeaderName, reqHeaderValue := range b.requestHeaders {
-					if strings.EqualFold(reqHeaderName, sanitizedHeaderName) || strings.EqualFold(reqHeaderName, originalHeaderName) {
+					if strings.EqualFold(reqHeaderName, headerMetadata.OriginalName) {
 						headerValue = reqHeaderValue
 						break
 					}
@@ -111,9 +110,8 @@ func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []at
 				headerValue = "unknown"
 			}
 
-			// Create an attribute key with "header_" prefix to avoid conflicts.
-			attrKey := "header_" + sanitizedHeaderName
-			attrs = append(attrs, attribute.Key(attrKey).String(headerValue))
+			// Use the pre-computed attribute key.
+			attrs = append(attrs, attribute.Key(headerMetadata.AttributeKey).String(headerValue))
 		}
 	}
 

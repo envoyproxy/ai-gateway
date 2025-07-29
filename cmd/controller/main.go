@@ -31,18 +31,18 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel           string
-	extProcMetricsHeaderNames string
-	extProcImage              string
-	extProcImagePullPolicy    corev1.PullPolicy
-	enableLeaderElection      bool
-	logLevel                  zapcore.Level
-	extensionServerPort       string
-	tlsCertDir                string
-	tlsCertName               string
-	tlsKeyName                string
-	caBundleName              string
-	envoyGatewayNamespace     string
+	extProcLogLevel                  string
+	extProcMetricsRequestHeaderNames string
+	extProcImage                     string
+	extProcImagePullPolicy           corev1.PullPolicy
+	enableLeaderElection             bool
+	logLevel                         zapcore.Level
+	extensionServerPort              string
+	tlsCertDir                       string
+	tlsCertName                      string
+	tlsKeyName                       string
+	caBundleName                     string
+	envoyGatewayNamespace            string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -65,10 +65,10 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"info",
 		"The log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	extProcMetricsHeaderNamesPtr := fs.String(
-		"extProcMetricsHeaderNames",
+	extProcMetricsRequestHeaderNamesPtr := fs.String(
+		"extProcMetricsRequestHeaderNames",
 		"",
-		"Comma-separated list of header names to add to metrics as labels. For example: 'x-user-id,x-team-id'.",
+		"Comma-separated list of request header names to add to metrics as labels. For example: 'x-user-id,x-team-id'.",
 	)
 	extProcImagePtr := fs.String(
 		"extProcImage",
@@ -144,18 +144,18 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	}
 
 	return flags{
-		extProcLogLevel:           *extProcLogLevelPtr,
-		extProcMetricsHeaderNames: *extProcMetricsHeaderNamesPtr,
-		extProcImage:              *extProcImagePtr,
-		extProcImagePullPolicy:    extProcPullPolicy,
-		enableLeaderElection:      *enableLeaderElectionPtr,
-		logLevel:                  zapLogLevel,
-		extensionServerPort:       *extensionServerPortPtr,
-		tlsCertDir:                *tlsCertDir,
-		tlsCertName:               *tlsCertName,
-		tlsKeyName:                *tlsKeyName,
-		caBundleName:              *caBundleName,
-		envoyGatewayNamespace:     *envoyGatewayNamespace,
+		extProcLogLevel:                  *extProcLogLevelPtr,
+		extProcMetricsRequestHeaderNames: *extProcMetricsRequestHeaderNamesPtr,
+		extProcImage:                     *extProcImagePtr,
+		extProcImagePullPolicy:           extProcPullPolicy,
+		enableLeaderElection:             *enableLeaderElectionPtr,
+		logLevel:                         zapLogLevel,
+		extensionServerPort:              *extensionServerPortPtr,
+		tlsCertDir:                       *tlsCertDir,
+		tlsCertName:                      *tlsCertName,
+		tlsKeyName:                       *tlsKeyName,
+		caBundleName:                     *caBundleName,
+		envoyGatewayNamespace:            *envoyGatewayNamespace,
 	}, nil
 }
 
@@ -223,13 +223,13 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:              flags.extProcImage,
-		ExtProcImagePullPolicy:    flags.extProcImagePullPolicy,
-		ExtProcLogLevel:           flags.extProcLogLevel,
-		ExtProcMetricsHeaderNames: flags.extProcMetricsHeaderNames,
-		EnableLeaderElection:      flags.enableLeaderElection,
-		EnvoyGatewayNamespace:     flags.envoyGatewayNamespace,
-		UDSPath:                   extProcUDSPath,
+		ExtProcImage:                     flags.extProcImage,
+		ExtProcImagePullPolicy:           flags.extProcImagePullPolicy,
+		ExtProcLogLevel:                  flags.extProcLogLevel,
+		ExtProcMetricsRequestHeaderNames: flags.extProcMetricsRequestHeaderNames,
+		EnableLeaderElection:             flags.enableLeaderElection,
+		EnvoyGatewayNamespace:            flags.envoyGatewayNamespace,
+		UDSPath:                          extProcUDSPath,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

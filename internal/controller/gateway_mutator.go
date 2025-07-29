@@ -29,28 +29,28 @@ type gatewayMutator struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	extProcImage              string
-	extProcImagePullPolicy    corev1.PullPolicy
-	extProcLogLevel           string
-	extProcMetricsHeaderNames string
-	envoyGatewayNamespace     string
-	udsPath                   string
+	extProcImage                     string
+	extProcImagePullPolicy           corev1.PullPolicy
+	extProcLogLevel                  string
+	extProcMetricsRequestHeaderNames string
+	envoyGatewayNamespace            string
+	udsPath                          string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, extProcMetricsHeaderNames string, envoyGatewayNamespace string,
+	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, extProcMetricsRequestHeaderNames string, envoyGatewayNamespace string,
 	udsPath string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		kube:                      kube,
-		extProcImage:              extProcImage,
-		extProcImagePullPolicy:    extProcImagePullPolicy,
-		extProcLogLevel:           extProcLogLevel,
-		extProcMetricsHeaderNames: extProcMetricsHeaderNames,
-		logger:                    logger,
-		envoyGatewayNamespace:     envoyGatewayNamespace,
-		udsPath:                   udsPath,
+		kube:                             kube,
+		extProcImage:                     extProcImage,
+		extProcImagePullPolicy:           extProcImagePullPolicy,
+		extProcLogLevel:                  extProcLogLevel,
+		extProcMetricsRequestHeaderNames: extProcMetricsRequestHeaderNames,
+		logger:                           logger,
+		envoyGatewayNamespace:            envoyGatewayNamespace,
+		udsPath:                          udsPath,
 	}
 }
 
@@ -141,7 +141,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			"-extProcAddr", "unix://" + g.udsPath,
 			"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 			"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
-			"-metricsHeaderNames", g.extProcMetricsHeaderNames,
+			"-metricsRequestHeaderNames", g.extProcMetricsRequestHeaderNames,
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{

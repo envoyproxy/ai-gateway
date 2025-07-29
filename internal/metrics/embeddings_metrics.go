@@ -26,10 +26,10 @@ func NewEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
 	}
 }
 
-// NewEmbeddingsWithHeaderNames creates a new Embeddings instance with header names for metrics labels.
-func NewEmbeddingsWithHeaderNames(meter metric.Meter, headerNames []string) x.EmbeddingsMetrics {
+// NewEmbeddingsWithHeaderNames creates a new Embeddings instance with header metadata for metrics labels.
+func NewEmbeddingsWithHeaderNames(meter metric.Meter, headerMetadata []HeaderMetadata) x.EmbeddingsMetrics {
 	return &embeddings{
-		baseMetrics: newBaseMetricsWithHeaderNames(meter, genaiOperationEmbedding, headerNames),
+		baseMetrics: newBaseMetricsWithHeaderNames(meter, genaiOperationEmbedding, headerMetadata),
 	}
 }
 

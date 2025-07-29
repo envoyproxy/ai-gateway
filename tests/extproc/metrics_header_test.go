@@ -21,8 +21,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
-// TestMetricsHeaderNames tests that request headers can be included as labels in metrics.
-func TestMetricsHeaderNames(t *testing.T) {
+// TestMetricsRequestHeaderNames tests that request headers can be included as labels in metrics.
+func TestMetricsRequestHeaderNames(t *testing.T) {
 	requireBinaries(t)
 	accessLogPath := t.TempDir() + "/access.log"
 	requireRunEnvoy(t, accessLogPath)
@@ -112,7 +112,7 @@ func requireExtProcWithHeaderNames(t *testing.T, stdout io.Writer, executable, c
 	cmd.Args = append(cmd.Args,
 		"-configPath", configPath,
 		"-logLevel", "warn",
-		"-metricsHeaderNames", headerNames,
+		"-metricsRequestHeaderNames", headerNames,
 	)
 	cmd.Env = os.Environ()
 	require.NoError(t, cmd.Start())

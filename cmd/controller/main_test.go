@@ -43,7 +43,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				args := []string{
 					tc.dash + "extProcLogLevel=debug",
-					tc.dash + "extProcMetricsHeaderNames=x-user-id,x-team-id",
+					tc.dash + "extProcMetricsRequestHeaderNames=x-user-id,x-team-id",
 					tc.dash + "extProcImage=example.com/extproc:latest",
 					tc.dash + "extProcImagePullPolicy=Always",
 					tc.dash + "enableLeaderElection=false",
@@ -52,7 +52,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
-				require.Equal(t, "x-user-id,x-team-id", f.extProcMetricsHeaderNames)
+				require.Equal(t, "x-user-id,x-team-id", f.extProcMetricsRequestHeaderNames)
 				require.Equal(t, "example.com/extproc:latest", f.extProcImage)
 				require.Equal(t, corev1.PullAlways, f.extProcImagePullPolicy)
 				require.False(t, f.enableLeaderElection)
