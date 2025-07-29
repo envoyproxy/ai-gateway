@@ -22,25 +22,7 @@ To learn how to connect to providers see [Connecting to AI Providers](/docs/capa
 
 ## Before You Begin
 
-Before configuring any provider:
-
-1. Complete the [Basic Usage](../basic-usage.md) guide
-2. Remove the basic configuration with the mock backend
-
-   ```shell
-   kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-
-   kubectl wait pods --timeout=15s \
-     -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
-     -n envoy-gateway-system \
-     --for=delete
-   ```
-
-3. Download configuration template
-
-   ```shell
-   curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-   ```
+Before configuring any provider, complete the [Basic Usage](../basic-usage.md) guide.
 
 ## Security Best Practices
 
