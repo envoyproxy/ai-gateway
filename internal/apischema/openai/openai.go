@@ -687,8 +687,8 @@ type ChatCompletionRequest struct {
 	// PredictionContent provides configuration for a Predicted Output, which can greatly improve response times when large parts of the model response are known ahead of time.
 	PredictionContent *PredictionContent `json:"prediction,omitempty"`
 
-	// VendorSpecificFields contains backend-specific fields that will be applied during translation.
-	VendorSpecificFields *VendorSpecificFields `json:"aigateway.envoy.io,omitempty"`
+	GCPVertexAI  *GCPVertexAIVendorFields  `json:",inline,omitempty"`
+	GCPAnthropic *GCPAnthropicVendorFields `json:",inline,omitempty"`
 }
 
 type StreamOptions struct {
@@ -1131,21 +1131,15 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 	return nil
 }
 
-// VendorSpecificFields contains vendor-specific fields for all supported backends.
-type VendorSpecificFields struct {
-	GCPVertexAI  *GCPVertexAIVendorFields  `json:"GCPVertexAI,omitempty"`
-	GCPAnthropic *GCPAnthropicVendorFields `json:"GCPAnthropic,omitempty"`
-}
-
 // GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
 type GCPVertexAIVendorFields struct {
 	// GenerationConfig holds Gemini generation configuration options.
-	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitempty"`
+	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitzero"`
 }
 
 // GCPVertexAIGenerationConfig represents Gemini generation configuration options.
 type GCPVertexAIGenerationConfig struct {
-	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitempty"`
+	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
 }
 
 // GCPAnthropicVendorFields contains GCP Anthropic-specific fields.

@@ -391,13 +391,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						},
 					},
 				},
-				VendorSpecificFields: &openai.VendorSpecificFields{
-					GCPVertexAI: &openai.GCPVertexAIVendorFields{
-						GenerationConfig: &openai.GCPVertexAIGenerationConfig{
-							ThinkingConfig: &genai.GenerationConfigThinkingConfig{
-								IncludeThoughts: true,
-								ThinkingBudget:  ptr.To(int32(1000)),
-							},
+				GCPVertexAI: &openai.GCPVertexAIVendorFields{
+					GenerationConfig: &openai.GCPVertexAIGenerationConfig{
+						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingBudget:  ptr.To(int32(1000)),
 						},
 					},
 				},

@@ -13,7 +13,7 @@
 
 ## Summary
 
-This proposal introduces support for vendor-specific fields in the Envoy AI Gateway, enabling users to specify backend-specific parameters through an `aigateway.envoy.io` field in OpenAI requests. This feature allows users to leverage advanced capabilities specific to different AI service backends while maintaining the unified OpenAI API interface.
+This proposal introduces support for vendor-specific fields in the Envoy AI Gateway, enabling users to specify backend-specific parameters directly as inline fields in OpenAI requests. This feature allows users to leverage advanced capabilities specific to different AI service backends while maintaining the unified OpenAI API interface.
 
 The implementation extends the existing request translation pipeline to extract, validate, and apply vendor-specific fields to the translated request body based on the target backend's APISchemaName.
 
@@ -23,39 +23,38 @@ The Envoy AI Gateway currently provides a unified OpenAI API interface that tran
 
 For example:
 - GCP Vertex AI's `thinkingConfig` for advanced reasoning models.
-- AWS Bedrock's `guardrail` parameters for content filtering.
+- GCP Anthropic's `thinking` parameters for enhanced reasoning capabilities.
 
 ## Schema Extensions
-The `ChatCompletionRequest` struct is extended to include a new field for vendor-specific parameters
+The `ChatCompletionRequest` struct is extended to include inline vendor-specific fields for supported backends:
 
 ```go
 type ChatCompletionRequest struct {
     // ...existing fields...
-    VendorSpecificFields *VendorSpecificFields `json:"aigateway.envoy.io,omitempty"`
+
+    // Vendor-specific fields are added as inline fields
+    GCPVertexAI  *GCPVertexAIVendorFields  `json:",inline,omitempty"`
+    GCPAnthropic *GCPAnthropicVendorFields `json:",inline,omitempty"`
 }
 
-// VendorSpecificFields contains backend-specific fields for all supported backends.
-type VendorSpecificFields struct {
-    GCPVertexAI  *GCPVertexAIVendorFields  `json:"GCPVertexAI,omitempty"`
-    GCPAnthropic *GCPAnthropicVendorFields `json:"GCPAnthropic,omitempty"`
-}
-
-// GCP Vertex AI vendor-specific fields.
+// GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
 type GCPVertexAIVendorFields struct {
+    // GenerationConfig holds Gemini generation configuration options.
     GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitempty"`
 }
 
-// AWS Bedrock vendor-specific fields.
+// GCPVertexAIGenerationConfig represents Gemini generation configuration options.
+type GCPVertexAIGenerationConfig struct {
+    ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitempty"`
+}
+
+// GCPAnthropicVendorFields contains GCP Anthropic-specific fields.
 type GCPAnthropicVendorFields struct {
     Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
-
-// Additional vendor field structs for other backends...
 ```
 
 ## Examples
-
-### GCP Vertex AI with Thinking Config
 
 ```json
 {
@@ -68,20 +67,14 @@ type GCPAnthropicVendorFields struct {
   ],
   "temperature": 0.7,
   "max_tokens": 2000,
-  "aigateway.envoy.io": {
-    "GCPVertexAI": {
-      "generationConfig": {
-        "thinkingConfig": {
-          "includeThoughts": true,
-          "thinkingBudget": 1000
-        }
-      }
-    },
-    "GCPAnthropic": {
-      "thinking": {
-        "type": "enabled",
-        "budget_tokens": 1000
-      }
+  "thinking": {
+    "type": "enabled",
+    "budget_tokens": 1000
+  },
+  "generationConfig": {
+    "thinkingConfig": {
+      "includeThoughts": true,
+      "thinkingBudget": 1000
     }
   }
 }

@@ -34,13 +34,11 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Hello, world!"
 					}
 				],
-				"aigateway.envoy.io": {
-					"GCPVertexAI": {
-						"generationConfig": {
-							"thinkingConfig": {
-								"includeThoughts": true,
-								"thinkingBudget": 1000
-							}
+				"GCPVertexAI": {
+					"generationConfig": {
+						"thinkingConfig": {
+							"includeThoughts": true,
+							"thinkingBudget": 1000
 						}
 					}
 				}
@@ -56,13 +54,11 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				VendorSpecificFields: &VendorSpecificFields{
-					GCPVertexAI: &GCPVertexAIVendorFields{
-						GenerationConfig: &GCPVertexAIGenerationConfig{
-							ThinkingConfig: &genai.GenerationConfigThinkingConfig{
-								IncludeThoughts: true,
-								ThinkingBudget:  ptr.To(int32(1000)),
-							},
+				GCPVertexAI: &GCPVertexAIVendorFields{
+					GenerationConfig: &GCPVertexAIGenerationConfig{
+						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingBudget:  ptr.To(int32(1000)),
 						},
 					},
 				},
@@ -78,20 +74,18 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Multiple vendors test"
 					}
 				],
-				"aigateway.envoy.io": {
-					"GCPVertexAI": {
-						"generationConfig": {
-							"thinkingConfig": {
-								"includeThoughts": true,
-								"thinkingBudget": 1000
-							}
+				"GCPVertexAI": {
+					"generationConfig": {
+						"thinkingConfig": {
+							"includeThoughts": true,
+							"thinkingBudget": 1000
 						}
-					},
-					"GCPAnthropic": {
-						"thinking": {
-							"type": "enabled",
-							"budget_tokens": 1000
-						}
+					}
+				},
+				"GCPAnthropic": {
+					"thinking": {
+						"type": "enabled",
+						"budget_tokens": 1000
 					}
 				}
 			}`),
@@ -106,21 +100,19 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				VendorSpecificFields: &VendorSpecificFields{
-					GCPAnthropic: &GCPAnthropicVendorFields{
-						Thinking: &anthropic.ThinkingConfigParamUnion{
-							OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-								BudgetTokens: 1000,
-								Type:         "enabled",
-							},
+				GCPAnthropic: &GCPAnthropicVendorFields{
+					Thinking: &anthropic.ThinkingConfigParamUnion{
+						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
+							BudgetTokens: 1000,
+							Type:         "enabled",
 						},
 					},
-					GCPVertexAI: &GCPVertexAIVendorFields{
-						GenerationConfig: &GCPVertexAIGenerationConfig{
-							ThinkingConfig: &genai.GenerationConfigThinkingConfig{
-								IncludeThoughts: true,
-								ThinkingBudget:  ptr.To(int32(1000)),
-							},
+				},
+				GCPVertexAI: &GCPVertexAIVendorFields{
+					GenerationConfig: &GCPVertexAIGenerationConfig{
+						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingBudget:  ptr.To(int32(1000)),
 						},
 					},
 				},
@@ -159,8 +151,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"role": "user",
 						"content": "Empty vendor fields"
 					}
-				],
-				"aigateway.envoy.io": {}
+				]
 			}`),
 			expected: &ChatCompletionRequest{
 				Model: "gemini-pro",
@@ -173,7 +164,6 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				VendorSpecificFields: &VendorSpecificFields{},
 			},
 		},
 		{
@@ -185,8 +175,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"role": "user",
 						"content": "Null vendor fields"
 					}
-				],
-				"aigateway.envoy.io": null
+				]
 			}`),
 			expected: &ChatCompletionRequest{
 				Model: "gpt-3.5",
@@ -211,11 +200,9 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Test malformed vendor fields"
 					}
 				],
-				"aigateway.envoy.io": {
-					"GCPVertexAI": {
-						"generationConfig": {
-							"thinkingConfig":
-						}
+				"GCPVertexAI": {
+					"generationConfig": {
+						"thinkingConfig":
 					}
 				}
 			}`),
@@ -231,9 +218,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Test invalid vendor field type"
 					}
 				],
-				"aigateway.envoy.io": {
-					"GCPVertexAI": "invalid_string_type"
-				}
+				"GCPVertexAI": "invalid_string_type"
 			}`),
 			expectedErrMsg: "cannot unmarshal string into Go struct field",
 		},

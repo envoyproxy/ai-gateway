@@ -283,18 +283,18 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 // Vendor fields override any conflicting fields that were set during the standard translation process.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificFields(openAIReq *openai.ChatCompletionRequest, gcr *gcp.GenerateContentRequest) {
 	// Early return if no vendor fields are specified.
-	if openAIReq.VendorSpecificFields == nil || openAIReq.VendorSpecificFields.GCPVertexAI == nil {
+	if openAIReq.GCPVertexAI == nil {
 		return
 	}
 
-	gcpVendorFields := openAIReq.VendorSpecificFields.GCPVertexAI
+	gcpVendorFields := openAIReq.GCPVertexAI
 	// Apply vendor-specific generation config if present.
 	if vendorGenConfig := gcpVendorFields.GenerationConfig; vendorGenConfig != nil {
 		if gcr.GenerationConfig == nil {
 			gcr.GenerationConfig = &genai.GenerationConfig{}
 		}
 		if vendorGenConfig.ThinkingConfig != nil {
-			gcr.GenerationConfig.ThinkingConfig = gcpVendorFields.GenerationConfig.ThinkingConfig
+			gcr.GenerationConfig.ThinkingConfig = vendorGenConfig.ThinkingConfig
 		}
 	}
 }
