@@ -637,7 +637,7 @@ type ChatCompletionRequest struct {
 	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
 	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
 	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier. Contact sales to learn more about Priority processing.
-	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request. 
+	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
 	ServiceTier *string `json:"service_tier,omitempty"`
@@ -824,12 +824,6 @@ type ChatCompletionResponse struct {
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-object
 	Object string `json:"object,omitempty"`
 
-	// ServiceTier: When the service_tier parameter is set, the response body will include the service_tier
-	// value based on the processing mode actually used to serve the request. This response value may be different
-	// from the value set in the parameter.
-	// Docs: https://platform.openai.com/docs/api-reference/chat/object#chat/object-service_tier
-	ServiceTier *string `json:"service_tier,omitempty"`
-
 	// Usage is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
 	Usage ChatCompletionResponseUsage `json:"usage,omitempty"`
@@ -981,12 +975,6 @@ type ChatCompletionResponseChunk struct {
 	// Object is always "chat.completion.chunk" for completions.
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-object
 	Object string `json:"object,omitempty"`
-
-	// ServiceTier: When the service_tier parameter is set, the response body will include the service_tier
-	// value based on the processing mode actually used to serve the request. This response value may be different
-	// from the value set in the parameter.
-	// Docs: https://platform.openai.com/docs/api-reference/chat-streaming/streaming#chat-streaming/streaming-service_tier
-	ServiceTier *string `json:"service_tier,omitempty"`
 
 	// Usage is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage
