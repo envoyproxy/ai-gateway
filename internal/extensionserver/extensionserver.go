@@ -23,15 +23,16 @@ type Server struct {
 	k8sClient client.Client
 	// udsPath is the path to the UDS socket.
 	// This is used to communicate with the external processor.
-	udsPath string
+	udsPath          string
+	isStandAloneMode bool
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string) *Server {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool) *Server {
 	logger = logger.WithName(serverName)
-	return &Server{log: logger, k8sClient: k8sClient, udsPath: udsPath}
+	return &Server{log: logger, k8sClient: k8sClient, udsPath: udsPath, isStandAloneMode: isStandAloneMode}
 }
 
 // Check implements [grpc_health_v1.HealthServer].

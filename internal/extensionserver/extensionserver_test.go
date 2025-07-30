@@ -1391,7 +1391,7 @@ func TestPostTranslateModify(t *testing.T) {
 // TestList tests the List method (health check).
 func TestList(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath)
+	s := New(newFakeClient(), logger, udsPath, false)
 
 	t.Run("list health statuses", func(t *testing.T) {
 		resp, err := s.List(context.Background(), &grpc_health_v1.HealthListRequest{})
