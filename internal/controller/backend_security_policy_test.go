@@ -410,7 +410,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	})
 
 	require.NotNil(t, oidcAzure)
-	require.Equal(t, "some-client-id", oidcAzure.ClientID)
+	require.Equal(t, "some-client-id", *oidcAzure.ClientID)
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
@@ -434,7 +434,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		},
 	})
 	require.NotNil(t, oidcAWS)
-	require.Equal(t, "some-client-id", oidcAWS.ClientID)
+	require.Equal(t, "some-client-id", *oidcAWS.ClientID)
 
 	// GCP type with OIDC defined.
 	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
@@ -457,7 +457,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		},
 	})
 	require.NotNil(t, oidcGCP)
-	require.Equal(t, "some-client-id", oidcGCP.ClientID)
+	require.Equal(t, "some-client-id", *oidcGCP.ClientID)
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
