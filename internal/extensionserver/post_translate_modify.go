@@ -535,7 +535,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 			}
 			// Check if the extproc filter is already present.
 			if !shouldAIGatewayExtProcBeInserted(httpConManager.HttpFilters) {
-				return // The filter is already present, nothing to do.
+				continue // The filter is already present, nothing to do.
 			}
 
 			extProcFilter := &httpconnectionmanagerv3.HttpFilter{
