@@ -91,7 +91,7 @@ func (o *oidcTokenProvider) GetToken(ctx context.Context) (TokenExpiry, error) {
 	}
 	oauth2Config := clientcredentials.Config{
 		ClientSecret: clientSecret,
-		ClientID:     o.oidcConfig.ClientID,
+		ClientID:     *o.oidcConfig.ClientID,
 		Scopes:       o.oidcConfig.Scopes,
 	}
 

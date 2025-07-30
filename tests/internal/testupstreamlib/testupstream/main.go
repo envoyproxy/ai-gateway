@@ -264,7 +264,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			}
 			time.Sleep(streamingInterval)
 
-			if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
+			if _, err = fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
 				logger.Println("failed to write the response body")
 				return
 			}

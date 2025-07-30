@@ -222,7 +222,7 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
-		ClientID: "some-client-id",
+		ClientID: ptr.To("some-client-id"),
 		ClientSecret: gwapiv1.SecretObjectReference{
 			Name:      gwapiv1.ObjectName(oidcSecretName),
 			Namespace: (*gwapiv1.Namespace)(&bspNamespace),
@@ -317,7 +317,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
-		ClientID: "some-client-id",
+		ClientID: ptr.To("some-client-id"),
 		ClientSecret: gwapiv1.SecretObjectReference{
 			Name:      gwapiv1.ObjectName(oidcSecretName),
 			Namespace: (*gwapiv1.Namespace)(&bspNamespace),
@@ -402,7 +402,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 			OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{
 				BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 					OIDC: egv1a1.OIDC{
-						ClientID: "some-client-id",
+						ClientID: ptr.To("some-client-id"),
 					},
 				},
 			},
@@ -410,7 +410,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	})
 
 	require.NotNil(t, oidcAzure)
-	require.Equal(t, "some-client-id", oidcAzure.ClientID)
+	require.Equal(t, "some-client-id", *oidcAzure.ClientID)
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
 	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
@@ -427,14 +427,14 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
 				BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 					OIDC: egv1a1.OIDC{
-						ClientID: "some-client-id",
+						ClientID: ptr.To("some-client-id"),
 					},
 				},
 			},
 		},
 	})
 	require.NotNil(t, oidcAWS)
-	require.Equal(t, "some-client-id", oidcAWS.ClientID)
+	require.Equal(t, "some-client-id", *oidcAWS.ClientID)
 
 	// GCP type with OIDC defined.
 	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
@@ -448,7 +448,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 				OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
 					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 						OIDC: egv1a1.OIDC{
-							ClientID: "some-client-id",
+							ClientID: ptr.To("some-client-id"),
 						},
 					},
 				},
@@ -457,7 +457,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		},
 	})
 	require.NotNil(t, oidcGCP)
-	require.Equal(t, "some-client-id", oidcGCP.ClientID)
+	require.Equal(t, "some-client-id", *oidcGCP.ClientID)
 }
 
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
@@ -650,7 +650,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
-		ClientID: "some-client-id",
+		ClientID: ptr.To("some-client-id"),
 		ClientSecret: gwapiv1.SecretObjectReference{
 			Name:      gwapiv1.ObjectName(oidcSecretName),
 			Namespace: (*gwapiv1.Namespace)(&bspNamespace),
@@ -903,7 +903,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 						OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
 							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 								OIDC: egv1a1.OIDC{
-									ClientID: "some-client-id",
+									ClientID: ptr.To("some-client-id"),
 								},
 							},
 						},
@@ -940,7 +940,7 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 						OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{
 							BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 								OIDC: egv1a1.OIDC{
-									ClientID: "some-client-id",
+									ClientID: ptr.To("some-client-id"),
 								},
 							},
 						},

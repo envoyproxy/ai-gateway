@@ -162,7 +162,7 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1a2.Infere
 		clusterRefInferencePool(
 			inferencePool.Namespace,
 			inferencePool.Name,
-			string(inferencePool.Spec.EndpointPickerConfig.ExtensionRef.Name),
+			string(inferencePool.Spec.ExtensionRef.Name),
 			portForInferencePool(inferencePool),
 		),
 	)
@@ -187,7 +187,7 @@ func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1a2.Inference
 	if pool == nil {
 		panic("InferencePool cannot be nil")
 	}
-	if pool.Spec.EndpointPickerConfig.ExtensionRef == nil {
+	if pool.Spec.ExtensionRef == nil {
 		panic("InferencePool ExtensionRef cannot be nil")
 	}
 
@@ -293,23 +293,23 @@ func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.E
 // authorityForInferencePool formats the gRPC authority based on the given InferencePool.
 func authorityForInferencePool(pool *gwaiev1a2.InferencePool) string {
 	ns := pool.GetNamespace()
-	svc := pool.Spec.EndpointPickerConfig.ExtensionRef.Name
+	svc := pool.Spec.ExtensionRef.Name
 	return fmt.Sprintf("%s.%s.svc:%d", svc, ns, portForInferencePool(pool))
 }
 
 // dnsNameForInferencePool formats the DNS name based on the given InferencePool.
 func dnsNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
 	ns := pool.GetNamespace()
-	svc := pool.Spec.EndpointPickerConfig.ExtensionRef.Name
+	svc := pool.Spec.ExtensionRef.Name
 	return fmt.Sprintf("%s.%s.svc", svc, ns)
 }
 
 // portForInferencePool returns the port number for the given InferencePool.
 func portForInferencePool(pool *gwaiev1a2.InferencePool) uint32 {
-	if p := pool.Spec.ExtensionRef.ExtensionReference.PortNumber; p == nil {
+	if p := pool.Spec.ExtensionRef.PortNumber; p == nil {
 		return defaultEndpointPickerPort
 	}
-	portNumber := *pool.Spec.ExtensionRef.ExtensionReference.PortNumber
+	portNumber := *pool.Spec.ExtensionRef.PortNumber
 	if portNumber < 0 || portNumber > 65535 {
 		return defaultEndpointPickerPort // fallback to default port.
 	}

@@ -196,6 +196,8 @@ spec:
                             description: |-
                               The client ID to be used in the OIDC
                               [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
+
+                              Only one of clientID or clientIDRef must be set.
                             minLength: 1
                             type: string
                           clientIDRef:
@@ -204,6 +206,8 @@ spec:
                               [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
                               Exactly one of clientID or clientIDRef must be set.
                               This is an Opaque secret. The client ID should be stored in the key "client-id".
+
+                              Only one of clientID or clientIDRef must be set.
                             properties:
                               group:
                                 default: ""
@@ -820,6 +824,13 @@ spec:
                                             required:
                                             - path
                                             type: object
+                                          initialJitter:
+                                            description: |-
+                                              InitialJitter defines the maximum time Envoy will wait before the first health check.
+                                              Envoy will randomly select a value between 0 and the initial jitter value.
+                                            format: duration
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
                                           interval:
                                             default: 3s
                                             description: Interval defines the time
@@ -1133,6 +1144,36 @@ spec:
                                             the cookie field must be set.
                                           rule: 'self.type == ''Cookie'' ? has(self.cookie)
                                             : !has(self.cookie)'
+                                      endpointOverride:
+                                        description: |-
+                                          EndpointOverride defines the configuration for endpoint override.
+                                          When specified, the load balancer will attempt to route requests to endpoints
+                                          based on the override information extracted from request headers or metadata.
+                                           If the override endpoints are not available, the configured load balancer policy will be used as fallback.
+                                        properties:
+                                          extractFrom:
+                                            description: ExtractFrom defines the sources
+                                              to extract endpoint override information
+                                              from.
+                                            items:
+                                              description: EndpointOverrideExtractFrom
+                                                defines a source to extract endpoint
+                                                override information from.
+                                              properties:
+                                                header:
+                                                  description: |-
+                                                    Header defines the header to get the override endpoint addresses.
+                                                    The header value must specify at least one endpoint in `IP:Port` format or multiple endpoints in `IP:Port,IP:Port,...` format.
+                                                    For example `10.0.0.5:8080` or `[2600:4040:5204::1574:24ae]:80`.
+                                                    The IPv6 address is enclosed in square brackets.
+                                                  type: string
+                                              type: object
+                                            maxItems: 10
+                                            minItems: 1
+                                            type: array
+                                        required:
+                                        - extractFrom
+                                        type: object
                                       slowStart:
                                         description: |-
                                           SlowStart defines the configuration related to the slow start load balancer policy.
@@ -1303,6 +1344,7 @@ spec:
                                               - 5xx
                                               - gateway-error
                                               - reset
+                                              - reset-before-request
                                               - connect-failure
                                               - retriable-4xx
                                               - refused-stream
@@ -1446,10 +1488,13 @@ spec:
                               type: string
                             type: array
                         required:
-                        - clientID
                         - clientSecret
                         - provider
                         type: object
+                        x-kubernetes-validations:
+                        - message: only one of clientID or clientIDRef must be set
+                          rule: (has(self.clientID) && !has(self.clientIDRef)) ||
+                            (!has(self.clientID) && has(self.clientIDRef))
                     required:
                     - awsRoleArn
                     - oidc
@@ -1536,6 +1581,8 @@ spec:
                             description: |-
                               The client ID to be used in the OIDC
                               [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
+
+                              Only one of clientID or clientIDRef must be set.
                             minLength: 1
                             type: string
                           clientIDRef:
@@ -1544,6 +1591,8 @@ spec:
                               [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
                               Exactly one of clientID or clientIDRef must be set.
                               This is an Opaque secret. The client ID should be stored in the key "client-id".
+
+                              Only one of clientID or clientIDRef must be set.
                             properties:
                               group:
                                 default: ""
@@ -2160,6 +2209,13 @@ spec:
                                             required:
                                             - path
                                             type: object
+                                          initialJitter:
+                                            description: |-
+                                              InitialJitter defines the maximum time Envoy will wait before the first health check.
+                                              Envoy will randomly select a value between 0 and the initial jitter value.
+                                            format: duration
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
                                           interval:
                                             default: 3s
                                             description: Interval defines the time
@@ -2473,6 +2529,36 @@ spec:
                                             the cookie field must be set.
                                           rule: 'self.type == ''Cookie'' ? has(self.cookie)
                                             : !has(self.cookie)'
+                                      endpointOverride:
+                                        description: |-
+                                          EndpointOverride defines the configuration for endpoint override.
+                                          When specified, the load balancer will attempt to route requests to endpoints
+                                          based on the override information extracted from request headers or metadata.
+                                           If the override endpoints are not available, the configured load balancer policy will be used as fallback.
+                                        properties:
+                                          extractFrom:
+                                            description: ExtractFrom defines the sources
+                                              to extract endpoint override information
+                                              from.
+                                            items:
+                                              description: EndpointOverrideExtractFrom
+                                                defines a source to extract endpoint
+                                                override information from.
+                                              properties:
+                                                header:
+                                                  description: |-
+                                                    Header defines the header to get the override endpoint addresses.
+                                                    The header value must specify at least one endpoint in `IP:Port` format or multiple endpoints in `IP:Port,IP:Port,...` format.
+                                                    For example `10.0.0.5:8080` or `[2600:4040:5204::1574:24ae]:80`.
+                                                    The IPv6 address is enclosed in square brackets.
+                                                  type: string
+                                              type: object
+                                            maxItems: 10
+                                            minItems: 1
+                                            type: array
+                                        required:
+                                        - extractFrom
+                                        type: object
                                       slowStart:
                                         description: |-
                                           SlowStart defines the configuration related to the slow start load balancer policy.
@@ -2643,6 +2729,7 @@ spec:
                                               - 5xx
                                               - gateway-error
                                               - reset
+                                              - reset-before-request
                                               - connect-failure
                                               - retriable-4xx
                                               - refused-stream
@@ -2786,10 +2873,13 @@ spec:
                               type: string
                             type: array
                         required:
-                        - clientID
                         - clientSecret
                         - provider
                         type: object
+                        x-kubernetes-validations:
+                        - message: only one of clientID or clientIDRef must be set
+                          rule: (has(self.clientID) && !has(self.clientIDRef)) ||
+                            (!has(self.clientID) && has(self.clientIDRef))
                     required:
                     - oidc
                     type: object
@@ -2845,6 +2935,8 @@ spec:
                                 description: |-
                                   The client ID to be used in the OIDC
                                   [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
+
+                                  Only one of clientID or clientIDRef must be set.
                                 minLength: 1
                                 type: string
                               clientIDRef:
@@ -2853,6 +2945,8 @@ spec:
                                   [Authentication Request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest).
                                   Exactly one of clientID or clientIDRef must be set.
                                   This is an Opaque secret. The client ID should be stored in the key "client-id".
+
+                                  Only one of clientID or clientIDRef must be set.
                                 properties:
                                   group:
                                     default: ""
@@ -3474,6 +3568,13 @@ spec:
                                                 required:
                                                 - path
                                                 type: object
+                                              initialJitter:
+                                                description: |-
+                                                  InitialJitter defines the maximum time Envoy will wait before the first health check.
+                                                  Envoy will randomly select a value between 0 and the initial jitter value.
+                                                format: duration
+                                                pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                                type: string
                                               interval:
                                                 default: 3s
                                                 description: Interval defines the
@@ -3792,6 +3893,36 @@ spec:
                                                 cookie, the cookie field must be set.
                                               rule: 'self.type == ''Cookie'' ? has(self.cookie)
                                                 : !has(self.cookie)'
+                                          endpointOverride:
+                                            description: |-
+                                              EndpointOverride defines the configuration for endpoint override.
+                                              When specified, the load balancer will attempt to route requests to endpoints
+                                              based on the override information extracted from request headers or metadata.
+                                               If the override endpoints are not available, the configured load balancer policy will be used as fallback.
+                                            properties:
+                                              extractFrom:
+                                                description: ExtractFrom defines the
+                                                  sources to extract endpoint override
+                                                  information from.
+                                                items:
+                                                  description: EndpointOverrideExtractFrom
+                                                    defines a source to extract endpoint
+                                                    override information from.
+                                                  properties:
+                                                    header:
+                                                      description: |-
+                                                        Header defines the header to get the override endpoint addresses.
+                                                        The header value must specify at least one endpoint in `IP:Port` format or multiple endpoints in `IP:Port,IP:Port,...` format.
+                                                        For example `10.0.0.5:8080` or `[2600:4040:5204::1574:24ae]:80`.
+                                                        The IPv6 address is enclosed in square brackets.
+                                                      type: string
+                                                  type: object
+                                                maxItems: 10
+                                                minItems: 1
+                                                type: array
+                                            required:
+                                            - extractFrom
+                                            type: object
                                           slowStart:
                                             description: |-
                                               SlowStart defines the configuration related to the slow start load balancer policy.
@@ -3964,6 +4095,7 @@ spec:
                                                   - 5xx
                                                   - gateway-error
                                                   - reset
+                                                  - reset-before-request
                                                   - connect-failure
                                                   - retriable-4xx
                                                   - refused-stream
@@ -4107,10 +4239,14 @@ spec:
                                   type: string
                                 type: array
                             required:
-                            - clientID
                             - clientSecret
                             - provider
                             type: object
+                            x-kubernetes-validations:
+                            - message: only one of clientID or clientIDRef must be
+                                set
+                              rule: (has(self.clientID) && !has(self.clientIDRef))
+                                || (!has(self.clientID) && has(self.clientIDRef))
                         required:
                         - oidc
                         type: object
