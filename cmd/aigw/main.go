@@ -77,7 +77,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	parser.FatalIfErrorf(err)
 	switch parsed.Command() {
 	case "version":
-		_, _ = stdout.Write([]byte(fmt.Sprintf("Envoy AI Gateway CLI: %s\n", version.Version)))
+		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Version)
 	case "translate <path>":
 		err = tf(ctx, c.Translate, stdout, stderr)
 		if err != nil {

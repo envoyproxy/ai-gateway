@@ -53,10 +53,10 @@ func TestAzureTokenProvider_GetToken(t *testing.T) {
 		opts := GetClientAssertionCredentialOptions()
 
 		require.NotNil(t, opts)
-		require.NotNil(t, opts.ClientOptions.Transport)
+		require.NotNil(t, opts.Transport)
 
 		// Assert that the transport has a proxy set.
-		transport, ok := opts.ClientOptions.Transport.(*http.Client)
+		transport, ok := opts.Transport.(*http.Client)
 		require.True(t, ok)
 		require.NotNil(t, transport.Transport)
 

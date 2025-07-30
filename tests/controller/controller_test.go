@@ -356,8 +356,8 @@ func TestAIGatewayRouteController(t *testing.T) {
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
 			require.NoError(t, err)
 			// Check if the finalizer is set.
-			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
-				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+			if len(r.Finalizers) == 0 || r.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.Finalizers)
 				return false
 			}
 			if len(r.Status.Conditions) != 1 {
@@ -504,8 +504,8 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			err = c.Get(t.Context(), client.ObjectKey{Name: backendSecurityPolicyName, Namespace: backendSecurityPolicyNamespace}, &r)
 			require.NoError(t, err)
 			// Check if the finalizer is set.
-			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
-				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+			if len(r.Finalizers) == 0 || r.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.Finalizers)
 				return false
 			}
 			if len(r.Status.Conditions) != 1 {
@@ -658,8 +658,8 @@ func TestAIServiceBackendController(t *testing.T) {
 			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &r)
 			require.NoError(t, err)
 			// Check if the finalizer is set.
-			if len(r.ObjectMeta.Finalizers) == 0 || r.ObjectMeta.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
-				t.Logf("expected finalizer not found: %v", r.ObjectMeta.Finalizers)
+			if len(r.Finalizers) == 0 || r.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
+				t.Logf("expected finalizer not found: %v", r.Finalizers)
 				return false
 			}
 
