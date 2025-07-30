@@ -27,7 +27,7 @@ func TestGatewayMutator_Default(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "envoy-gateway-system", "/tmp/extproc.sock",
+		"info", "envoy-gateway-system", "/tmp/extproc.sock", "",
 	)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
@@ -50,7 +50,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "envoy-gateway-system", "/tmp/extproc.sock",
+		"info", "envoy-gateway-system", "/tmp/extproc.sock", "",
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"

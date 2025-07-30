@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"go.uber.org/zap/zapcore"
@@ -31,17 +32,18 @@ import (
 )
 
 type flags struct {
-	extProcLogLevel        string
-	extProcImage           string
-	extProcImagePullPolicy corev1.PullPolicy
-	enableLeaderElection   bool
-	logLevel               zapcore.Level
-	extensionServerPort    string
-	tlsCertDir             string
-	tlsCertName            string
-	tlsKeyName             string
-	caBundleName           string
-	envoyGatewayNamespace  string
+	extProcLogLevel                  string
+	extProcImage                     string
+	extProcImagePullPolicy           corev1.PullPolicy
+	enableLeaderElection             bool
+	logLevel                         zapcore.Level
+	extensionServerPort              string
+	tlsCertDir                       string
+	tlsCertName                      string
+	tlsKeyName                       string
+	caBundleName                     string
+	envoyGatewayNamespace            string
+	metricsRequestHeaderLabelMapping string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -52,6 +54,42 @@ func parsePullPolicy(s string) (corev1.PullPolicy, error) {
 	default:
 		return "", fmt.Errorf("invalid external processor pull policy: %q", s)
 	}
+}
+
+// parseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
+// The input format is "header1:label1,header2:label2" where header names are HTTP request
+// headers and label names are Prometheus metric labels.
+// Example: "x-team-id:team_id,x-user-id:user_id".
+func parseRequestHeaderLabelMapping(s string) (map[string]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	result := make(map[string]string)
+	pairs := strings.Split(s, ",")
+
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
+		}
+
+		header := strings.TrimSpace(parts[0])
+		label := strings.TrimSpace(parts[1])
+
+		if header == "" || label == "" {
+			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
+		}
+
+		result[header] = label
+	}
+
+	return result, nil
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -114,6 +152,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"envoy-gateway-system",
 		"The namespace where the Envoy Gateway system components are installed.",
 	)
+	extProcMetricsRequestHeaderLabelMapping := fs.String(
+		"extProcMetricsRequestHeaderLabelMapping",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -137,18 +180,27 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		return flags{}, err
 	}
 
+	// Validate metrics header labels if provided.
+	if *extProcMetricsRequestHeaderLabelMapping != "" {
+		_, err := parseRequestHeaderLabelMapping(*extProcMetricsRequestHeaderLabelMapping)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid metrics header labels: %w", err)
+		}
+	}
+
 	return flags{
-		extProcLogLevel:        *extProcLogLevelPtr,
-		extProcImage:           *extProcImagePtr,
-		extProcImagePullPolicy: extProcPullPolicy,
-		enableLeaderElection:   *enableLeaderElectionPtr,
-		logLevel:               zapLogLevel,
-		extensionServerPort:    *extensionServerPortPtr,
-		tlsCertDir:             *tlsCertDir,
-		tlsCertName:            *tlsCertName,
-		tlsKeyName:             *tlsKeyName,
-		caBundleName:           *caBundleName,
-		envoyGatewayNamespace:  *envoyGatewayNamespace,
+		extProcLogLevel:                  *extProcLogLevelPtr,
+		extProcImage:                     *extProcImagePtr,
+		extProcImagePullPolicy:           extProcPullPolicy,
+		enableLeaderElection:             *enableLeaderElectionPtr,
+		logLevel:                         zapLogLevel,
+		extensionServerPort:              *extensionServerPortPtr,
+		tlsCertDir:                       *tlsCertDir,
+		tlsCertName:                      *tlsCertName,
+		tlsKeyName:                       *tlsKeyName,
+		caBundleName:                     *caBundleName,
+		envoyGatewayNamespace:            *envoyGatewayNamespace,
+		metricsRequestHeaderLabelMapping: *extProcMetricsRequestHeaderLabelMapping,
 	}, nil
 }
 
@@ -216,12 +268,13 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:           flags.extProcImage,
-		ExtProcImagePullPolicy: flags.extProcImagePullPolicy,
-		ExtProcLogLevel:        flags.extProcLogLevel,
-		EnableLeaderElection:   flags.enableLeaderElection,
-		EnvoyGatewayNamespace:  flags.envoyGatewayNamespace,
-		UDSPath:                extProcUDSPath,
+		ExtProcImage:                     flags.extProcImage,
+		ExtProcImagePullPolicy:           flags.extProcImagePullPolicy,
+		ExtProcLogLevel:                  flags.extProcLogLevel,
+		EnableLeaderElection:             flags.enableLeaderElection,
+		EnvoyGatewayNamespace:            flags.envoyGatewayNamespace,
+		UDSPath:                          extProcUDSPath,
+		MetricsRequestHeaderLabelMapping: flags.metricsRequestHeaderLabelMapping,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

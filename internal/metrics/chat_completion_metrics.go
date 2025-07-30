@@ -32,10 +32,25 @@ func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletion
 	return DefaultChatCompletion(meter)
 }
 
+// NewChatCompletionWithHeaderMapping creates a new x.ChatCompletionMetrics instance with header mapping.
+func NewChatCompletionWithHeaderMapping(meter metric.Meter, headerMapping map[string]string, newCustomFn x.NewCustomChatCompletionMetricsFn) x.ChatCompletionMetrics {
+	if newCustomFn != nil {
+		return newCustomFn(meter)
+	}
+	return DefaultChatCompletionWithHeaderMapping(meter, headerMapping)
+}
+
 // DefaultChatCompletion creates a new default x.ChatCompletionMetrics instance.
 func DefaultChatCompletion(meter metric.Meter) x.ChatCompletionMetrics {
 	return &chatCompletion{
 		baseMetrics: newBaseMetrics(meter, genaiOperationChat),
+	}
+}
+
+// DefaultChatCompletionWithHeaderMapping creates a new default x.ChatCompletionMetrics instance with header mapping.
+func DefaultChatCompletionWithHeaderMapping(meter metric.Meter, headerMapping map[string]string) x.ChatCompletionMetrics {
+	return &chatCompletion{
+		baseMetrics: newBaseMetricsWithHeaderMapping(meter, genaiOperationChat, headerMapping),
 	}
 }
 
@@ -48,6 +63,24 @@ func (c *chatCompletion) StartRequest(headers map[string]string) {
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
 func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
 	attrs := c.buildBaseAttributes(extraAttrs...)
+
+	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
+	)
+	c.metrics.tokenUsage.Record(ctx, float64(outputTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
+	)
+	c.metrics.tokenUsage.Record(ctx, float64(totalTokens),
+		metric.WithAttributes(attrs...),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
+	)
+}
+
+// RecordTokenUsageWithHeaders records token usage with header values as attributes.
+func (c *chatCompletion) RecordTokenUsageWithHeaders(ctx context.Context, headers map[string]string, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
+	attrs := c.buildBaseAttributesWithHeaders(headers, extraAttrs...)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributes(attrs...),

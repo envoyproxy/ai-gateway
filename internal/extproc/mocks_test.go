@@ -188,6 +188,11 @@ func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ 
 	m.tokenUsageCount++
 }
 
+// RecordTokenUsageWithHeaders implements [x.ChatCompletionMetrics].
+func (m *mockChatCompletionMetrics) RecordTokenUsageWithHeaders(_ context.Context, _ map[string]string, _, _, _ uint32, _ ...attribute.KeyValue) {
+	m.tokenUsageCount++
+}
+
 // RecordTokenLatency implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ ...attribute.KeyValue) {
 	m.tokenLatencyCount++
@@ -305,6 +310,10 @@ func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backe
 
 // RecordTokenUsage implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ ...attribute.KeyValue) {
+	m.tokenUsageCount++
+}
+
+func (m *mockEmbeddingsMetrics) RecordTokenUsageWithHeaders(_ context.Context, _ map[string]string, _, _ uint32, _ ...attribute.KeyValue) {
 	m.tokenUsageCount++
 }
 

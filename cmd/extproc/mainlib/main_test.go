@@ -85,6 +85,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				addr:       "unix:///tmp/ext_proc.sock",
 				logLevel:   slog.LevelDebug,
 			},
+			{
+				name: "with header mapping",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-metricsRequestHeaderLabelMapping", "x-team-id:team_id,x-user-id:user_id",
+				},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				flags, err := parseAndValidateFlags(tc.args)
@@ -101,6 +111,76 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		assert.EqualError(t, err, `configPath must be provided
 failed to unmarshal log level: slog: level string "invalid": unknown name`)
 	})
+}
+
+func Test_parseRequestHeaderLabelMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]string
+		wantErr  bool
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+			wantErr:  false,
+		},
+		{
+			name:     "single valid pair",
+			input:    "x-team-id:team_id",
+			expected: map[string]string{"x-team-id": "team_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "multiple valid pairs",
+			input:    "x-team-id:team_id,x-user-id:user_id",
+			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "with whitespace",
+			input:    " x-team-id : team_id , x-user-id : user_id ",
+			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "invalid format - missing colon",
+			input:    "x-team-id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - empty header",
+			input:    ":team_id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - empty label",
+			input:    "x-team-id:",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "multiple colons - takes first colon",
+			input:    "x-team-id:team_id:extra",
+			expected: map[string]string{"x-team-id": "team_id:extra"},
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseRequestHeaderLabelMapping(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
 }
 
 func TestListenAddress(t *testing.T) {

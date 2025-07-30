@@ -69,6 +69,10 @@ func (m *myCustomChatCompletionMetrics) RecordTokenUsage(_ context.Context, inpu
 	m.logger.Info("RecordTokenUsage", "inputTokens", inputTokens, "outputTokens", outputTokens, "totalTokens", totalTokens)
 }
 
+func (m *myCustomChatCompletionMetrics) RecordTokenUsageWithHeaders(_ context.Context, headers map[string]string, inputTokens, outputTokens, totalTokens uint32, _ ...attribute.KeyValue) {
+	m.logger.Info("RecordTokenUsageWithHeaders", "headers", headers, "inputTokens", inputTokens, "outputTokens", outputTokens, "totalTokens", totalTokens)
+}
+
 func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
 	m.logger.Info("RecordRequestCompletion", "success", success)
 }

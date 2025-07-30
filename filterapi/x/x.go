@@ -34,6 +34,8 @@ type ChatCompletionMetrics interface {
 
 	// RecordTokenUsage records token usage metrics.
 	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
+	// RecordTokenUsageWithHeaders records token usage metrics with header values as attributes.
+	RecordTokenUsageWithHeaders(ctx context.Context, headers map[string]string, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue)
 	// RecordTokenLatency records latency metrics for token generation.
@@ -56,6 +58,8 @@ type EmbeddingsMetrics interface {
 
 	// RecordTokenUsage records token usage metrics for embeddings (only input and total tokens are relevant).
 	RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
+	// RecordTokenUsageWithHeaders records token usage metrics for embeddings with header values as attributes.
+	RecordTokenUsageWithHeaders(ctx context.Context, headers map[string]string, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue)
 }

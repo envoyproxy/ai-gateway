@@ -29,26 +29,28 @@ type gatewayMutator struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	extProcImage           string
-	extProcImagePullPolicy corev1.PullPolicy
-	extProcLogLevel        string
-	envoyGatewayNamespace  string
-	udsPath                string
+	extProcImage                     string
+	extProcImagePullPolicy           corev1.PullPolicy
+	extProcLogLevel                  string
+	envoyGatewayNamespace            string
+	udsPath                          string
+	metricsRequestHeaderLabelMapping string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, envoyGatewayNamespace string,
-	udsPath string,
+	udsPath string, metricsRequestHeaderLabelMapping string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		kube:                   kube,
-		extProcImage:           extProcImage,
-		extProcImagePullPolicy: extProcImagePullPolicy,
-		extProcLogLevel:        extProcLogLevel,
-		logger:                 logger,
-		envoyGatewayNamespace:  envoyGatewayNamespace,
-		udsPath:                udsPath,
+		kube:                             kube,
+		extProcImage:                     extProcImage,
+		extProcImagePullPolicy:           extProcImagePullPolicy,
+		extProcLogLevel:                  extProcLogLevel,
+		logger:                           logger,
+		envoyGatewayNamespace:            envoyGatewayNamespace,
+		udsPath:                          udsPath,
+		metricsRequestHeaderLabelMapping: metricsRequestHeaderLabelMapping,
 	}
 }
 
@@ -69,6 +71,15 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 		return err
 	}
 	return nil
+}
+
+// buildMetricsHeaderLabelArgs builds the command line arguments for metrics header label mapping.
+func (g *gatewayMutator) buildMetricsHeaderLabelArgs() []string {
+	if g.metricsRequestHeaderLabelMapping == "" {
+		return nil
+	}
+
+	return []string{"-metricsRequestHeaderLabelMapping", g.metricsRequestHeaderLabelMapping}
 }
 
 const (
@@ -133,13 +144,13 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
-		Args: []string{
+		Args: append([]string{
 			"-configPath", filterConfigFullPath,
 			"-logLevel", g.extProcLogLevel,
 			"-extProcAddr", "unix://" + g.udsPath,
 			"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 			"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
-		},
+		}, g.buildMetricsHeaderLabelArgs()...),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,

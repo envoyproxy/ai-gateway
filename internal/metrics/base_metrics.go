@@ -17,11 +17,12 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics      *genAI
-	operation    string
-	requestStart time.Time
-	model        string
-	backend      string
+	metrics                          *genAI
+	operation                        string
+	requestStart                     time.Time
+	model                            string
+	backend                          string
+	metricsRequestHeaderLabelMapping map[string]string // maps HTTP headers to metric label names.
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
@@ -31,6 +32,17 @@ func newBaseMetrics(meter metric.Meter, operation string) baseMetrics {
 		operation: operation,
 		model:     "unknown",
 		backend:   "unknown",
+	}
+}
+
+// newBaseMetricsWithHeaderMapping creates a new baseMetrics instance with header mapping for metrics.
+func newBaseMetricsWithHeaderMapping(meter metric.Meter, operation string, metricsRequestHeaderLabelMapping map[string]string) baseMetrics {
+	return baseMetrics{
+		metrics:                          newGenAI(meter),
+		operation:                        operation,
+		model:                            "unknown",
+		backend:                          "unknown",
+		metricsRequestHeaderLabelMapping: metricsRequestHeaderLabelMapping,
 	}
 }
 
@@ -66,6 +78,20 @@ func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []at
 		attribute.Key(genaiAttributeRequestModel).String(b.model),
 	)
 	attrs = append(attrs, extraAttrs...)
+	return attrs
+}
+
+// buildBaseAttributesWithHeaders creates the base attributes for metrics recording including header values.
+func (b *baseMetrics) buildBaseAttributesWithHeaders(headers map[string]string, extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
+	attrs := b.buildBaseAttributes(extraAttrs...)
+
+	// Add header values as attributes based on the header mapping.
+	for headerName, labelName := range b.metricsRequestHeaderLabelMapping {
+		if headerValue, exists := headers[headerName]; exists {
+			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
+		}
+	}
+
 	return attrs
 }
 

@@ -37,11 +37,12 @@ import (
 
 // extProcFlags is the struct that holds the flags passed to the external processor.
 type extProcFlags struct {
-	configPath  string     // path to the configuration file.
-	extProcAddr string     // gRPC address for the external processor.
-	logLevel    slog.Level // log level for the external processor.
-	metricsPort int        // HTTP port for the metrics server.
-	healthPort  int        // HTTP port for the health check server.
+	configPath                       string     // path to the configuration file.
+	extProcAddr                      string     // gRPC address for the external processor.
+	logLevel                         slog.Level // log level for the external processor.
+	metricsPort                      int        // HTTP port for the metrics server.
+	healthPort                       int        // HTTP port for the health check server.
+	metricsRequestHeaderLabelMapping string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -70,6 +71,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "port for the metrics server.")
 	fs.IntVar(&flags.healthPort, "healthPort", 1065, "port for the health check HTTP server.")
+	fs.StringVar(&flags.metricsRequestHeaderLabelMapping,
+		"metricsRequestHeaderLabelMapping",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -83,6 +89,42 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	}
 
 	return flags, errors.Join(errs...)
+}
+
+// parseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
+// The input format is "header1:label1,header2:label2" where header names are HTTP request
+// headers and label names are Prometheus metric labels.
+// Example: "x-team-id:team_id,x-user-id:user_id".
+func parseRequestHeaderLabelMapping(s string) (map[string]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	result := make(map[string]string)
+	pairs := strings.Split(s, ",")
+
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
+		}
+
+		header := strings.TrimSpace(parts[0])
+		label := strings.TrimSpace(parts[1])
+
+		if header == "" || label == "" {
+			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
+		}
+
+		result[header] = label
+	}
+
+	return result, nil
 }
 
 // Main is a main function for the external processor exposed
@@ -137,9 +179,15 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return err
 	}
 
+	// Parse header mapping for metrics.
+	metricsRequestHeaderLabelMapping, err := parseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabelMapping)
+	if err != nil {
+		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
+	}
+
 	metricsServer, meter := startMetricsServer(metricsLis, l)
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics)
-	embeddingsMetrics := metrics.NewEmbeddings(meter)
+	chatCompletionMetrics := metrics.NewChatCompletionWithHeaderMapping(meter, metricsRequestHeaderLabelMapping, x.NewCustomChatCompletionMetrics)
+	embeddingsMetrics := metrics.NewEmbeddingsWithHeaderMapping(meter, metricsRequestHeaderLabelMapping)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
