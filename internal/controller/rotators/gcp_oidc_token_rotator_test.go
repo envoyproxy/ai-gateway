@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"k8s.io/utils/ptr"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -673,7 +674,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 	// Define OIDC values based on the real Envoy Gateway API types.
 	validOIDCConfig := aigv1a1.BackendSecurityPolicyOIDC{
 		OIDC: egv1a1.OIDC{
-			ClientID: "client-id",
+			ClientID: ptr.To("client-id"),
 			Scopes:   []string{"scope1", "scope2"},
 		},
 	}
