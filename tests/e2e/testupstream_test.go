@@ -120,7 +120,8 @@ func TestWithTestUpstream(t *testing.T) {
 	t.Run("non-llm-route", func(t *testing.T) {
 		// We should be able to make requets to /non-llm routes as well.
 		//
-		// Ifi this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 500 Internal Server Error.
+		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404 Internal Server Error
+		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
 		require.Eventually(t, func() bool {
 			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
