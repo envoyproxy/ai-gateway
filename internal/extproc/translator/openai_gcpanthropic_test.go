@@ -205,6 +205,142 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		body := bm.GetBody()
 		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
+
+	t.Run("ServiceTier nil - should succeed", func(t *testing.T) {
+		serviceTierReq := &openai.ChatCompletionRequest{
+			Model: claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
+					},
+				},
+			},
+			MaxTokens:   ptr.To(int64(1024)),
+			ServiceTier: nil,
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		hm, bm, err := translator.RequestBody(nil, serviceTierReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.NotNil(t, bm)
+
+		// Parse the body to verify ServiceTier handling.
+		body := bm.GetBody()
+		require.NotNil(t, body)
+		var anthropicReq map[string]interface{}
+		err = json.Unmarshal(body, &anthropicReq)
+		require.NoError(t, err)
+
+		// ServiceTier should not be present when input is nil.
+		_, exists := anthropicReq["service_tier"]
+		require.False(t, exists)
+	})
+
+	t.Run("ServiceTier auto - should succeed", func(t *testing.T) {
+		serviceTierReq := &openai.ChatCompletionRequest{
+			Model: claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
+					},
+				},
+			},
+			MaxTokens:   ptr.To(int64(1024)),
+			ServiceTier: ptr.To("auto"),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		hm, bm, err := translator.RequestBody(nil, serviceTierReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.NotNil(t, bm)
+
+		// Parse the body to verify ServiceTier is correctly set.
+		body := bm.GetBody()
+		require.NotNil(t, body)
+		var anthropicReq map[string]interface{}
+		err = json.Unmarshal(body, &anthropicReq)
+		require.NoError(t, err)
+
+		serviceTierValue, exists := anthropicReq["service_tier"]
+		require.True(t, exists, "service_tier should be present in request body")
+		require.Equal(t, "auto", serviceTierValue)
+	})
+
+	t.Run("ServiceTier standard_only - should succeed", func(t *testing.T) {
+		serviceTierReq := &openai.ChatCompletionRequest{
+			Model: claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
+					},
+				},
+			},
+			MaxTokens:   ptr.To(int64(1024)),
+			ServiceTier: ptr.To("standard_only"),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		hm, bm, err := translator.RequestBody(nil, serviceTierReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.NotNil(t, bm)
+
+		// Parse the body to verify ServiceTier is correctly set.
+		body := bm.GetBody()
+		require.NotNil(t, body)
+		var anthropicReq map[string]interface{}
+		err = json.Unmarshal(body, &anthropicReq)
+		require.NoError(t, err)
+
+		serviceTierValue, exists := anthropicReq["service_tier"]
+		require.True(t, exists, "service_tier should be present in request body")
+		require.Equal(t, "standard_only", serviceTierValue)
+	})
+
+	t.Run("ServiceTier unsupported value - should fail", func(t *testing.T) {
+		serviceTierReq := &openai.ChatCompletionRequest{
+			Model: claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
+					},
+				},
+			},
+			MaxTokens:   ptr.To(int64(1024)),
+			ServiceTier: ptr.To("premium"),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, _, err := translator.RequestBody(nil, serviceTierReq, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), fmt.Sprintf(serviceTierNotSupportedError, "premium"))
+	})
+
+	t.Run("ServiceTier empty string - should fail", func(t *testing.T) {
+		serviceTierReq := &openai.ChatCompletionRequest{
+			Model: claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
+					},
+				},
+			},
+			MaxTokens:   ptr.To(int64(1024)),
+			ServiceTier: ptr.To(""),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, _, err := translator.RequestBody(nil, serviceTierReq, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), fmt.Sprintf(serviceTierNotSupportedError, ""))
+	})
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
