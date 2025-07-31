@@ -1151,15 +1151,24 @@ func (t JSONUNIXTime) Equal(other JSONUNIXTime) bool {
 // GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
 type GCPVertexAIVendorFields struct {
 	// GenerationConfig holds Gemini generation configuration options.
+	// Currently only a subset of the options are supported.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
 	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitzero"`
 }
 
 // GCPVertexAIGenerationConfig represents Gemini generation configuration options.
 type GCPVertexAIGenerationConfig struct {
+	// ThinkingConfig holds Gemini thinking configuration options.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
 	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
 }
 
 // GCPAnthropicVendorFields contains GCP Anthropic-specific fields.
 type GCPAnthropicVendorFields struct {
+	// Thinking holds Anthropic thinking configuration options.
+	//
+	// https://docs.anthropic.com/en/api/messages#body-thinking
 	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
