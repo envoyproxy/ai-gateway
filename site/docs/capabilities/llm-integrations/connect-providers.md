@@ -48,12 +48,6 @@ spec:
     name: my-provider-backend
     kind: Backend
     group: gateway.envoyproxy.io
-
-  # Security policy for authentication
-  backendSecurityPolicyRef:
-    name: my-provider-auth
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
 ```
 
 #### Schema Configuration Examples
@@ -288,10 +282,6 @@ spec:
     name: openai-backend
     kind: Backend
     group: gateway.envoyproxy.io
-  backendSecurityPolicyRef:
-    name: openai-auth
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
 
 ---
 # Security configuration
@@ -300,6 +290,10 @@ kind: BackendSecurityPolicy
 metadata:
   name: openai-auth
 spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openai-backend
   type: APIKey
   apiKey:
     secretRef:

@@ -58,10 +58,6 @@ spec:
     name: provider-fallback-aws
     kind: Backend
     group: gateway.envoyproxy.io
-  backendSecurityPolicyRef:
-    name: provider-fallback-aws-credentials
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -69,6 +65,10 @@ metadata:
   name: provider-fallback-aws-credentials
   namespace: default
 spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: provider-fallback-aws
   type: AWSCredentials
   awsCredentials:
     region: us-east-1
