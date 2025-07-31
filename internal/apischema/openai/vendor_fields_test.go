@@ -82,7 +82,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						}
 					}
 				},
-				"GCPAnthropic": {
+				"Anthropic": {
 					"thinking": {
 						"type": "enabled",
 						"budget_tokens": 1000
@@ -100,7 +100,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				GCPAnthropic: &GCPAnthropicVendorFields{
+				Anthropic: &AnthropicVendorFields{
 					Thinking: &anthropic.ThinkingConfigParamUnion{
 						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
 							BudgetTokens: 1000,

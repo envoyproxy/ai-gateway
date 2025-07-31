@@ -688,8 +688,8 @@ type ChatCompletionRequest struct {
 	// PredictionContent provides configuration for a Predicted Output, which can greatly improve response times when large parts of the model response are known ahead of time.
 	PredictionContent *PredictionContent `json:"prediction,omitempty"`
 
-	GCPVertexAI  *GCPVertexAIVendorFields  `json:",inline,omitempty"`
-	GCPAnthropic *GCPAnthropicVendorFields `json:",inline,omitempty"`
+	GCPVertexAI *GCPVertexAIVendorFields `json:",inline,omitempty"`
+	Anthropic   *AnthropicVendorFields   `json:",inline,omitempty"`
 }
 
 type StreamOptions struct {
@@ -1165,8 +1165,8 @@ type GCPVertexAIGenerationConfig struct {
 	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
 }
 
-// GCPAnthropicVendorFields contains GCP Anthropic-specific fields.
-type GCPAnthropicVendorFields struct {
+// AnthropicVendorFields contains Anthropic vendor-specific fields.
+type AnthropicVendorFields struct {
 	// Thinking holds Anthropic thinking configuration options.
 	//
 	// https://docs.anthropic.com/en/api/messages#body-thinking
