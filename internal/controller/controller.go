@@ -62,8 +62,6 @@ type Options struct {
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
-	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
-	EnvoyGatewayNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
@@ -83,7 +81,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
+		logger.WithName("gateway"), options.UDSPath, options.ExtProcImage)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
@@ -150,7 +148,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
-			options.EnvoyGatewayNamespace,
 			options.UDSPath,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
