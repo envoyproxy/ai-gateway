@@ -41,7 +41,6 @@ type flags struct {
 	tlsCertName            string
 	tlsKeyName             string
 	caBundleName           string
-	envoyGatewayNamespace  string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -109,11 +108,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"tls.key",
 		"The name of the TLS key file.",
 	)
-	envoyGatewayNamespace := fs.String(
-		"envoyGatewayNamespace",
-		"envoy-gateway-system",
-		"The namespace where the Envoy Gateway system components are installed.",
-	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -148,7 +142,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		tlsCertName:            *tlsCertName,
 		tlsKeyName:             *tlsKeyName,
 		caBundleName:           *caBundleName,
-		envoyGatewayNamespace:  *envoyGatewayNamespace,
 	}, nil
 }
 
@@ -220,7 +213,6 @@ func main() {
 		ExtProcImagePullPolicy: flags.extProcImagePullPolicy,
 		ExtProcLogLevel:        flags.extProcLogLevel,
 		EnableLeaderElection:   flags.enableLeaderElection,
-		EnvoyGatewayNamespace:  flags.envoyGatewayNamespace,
 		UDSPath:                extProcUDSPath,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")

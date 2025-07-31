@@ -45,27 +45,23 @@ const (
 // extProcImage is the image of the external processor sidecar container which will be used
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
-	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewayNamespace, udsPath, extProcImage string,
-) *GatewayController {
+	client client.Client, kube kubernetes.Interface, logger logr.Logger, udsPath, extProcImage string) *GatewayController {
 	return &GatewayController{
-		client:                client,
-		kube:                  kube,
-		logger:                logger,
-		envoyGatewayNamespace: envoyGatewayNamespace,
-		udsPath:               udsPath,
-		extProcImage:          extProcImage,
+		client:       client,
+		kube:         kube,
+		logger:       logger,
+		udsPath:      udsPath,
+		extProcImage: extProcImage,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                client.Client
-	kube                  kubernetes.Interface
-	logger                logr.Logger
-	envoyGatewayNamespace string
-	udsPath               string
-	extProcImage          string // The image of the external processor sidecar container.
+	client       client.Client
+	kube         kubernetes.Interface
+	logger       logr.Logger
+	udsPath      string
+	extProcImage string // The image of the external processor sidecar container.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -310,14 +306,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Get(ctx, name, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(gw.Namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: c.envoyGatewayNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace},
 				StringData: data,
 			}
-			if _, err = c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+			if _, err = c.kube.CoreV1().Secrets(gw.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("failed to create secret %s: %w", name, err)
 			}
 			return nil
@@ -326,7 +322,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 	}
 
 	secret.StringData = data
-	if _, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.kube.CoreV1().Secrets(gw.Namespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
 	return nil
@@ -457,7 +453,7 @@ func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1.Gateway, uuid string) error {
-	pods, err := c.kube.CoreV1().Pods(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+	pods, err := c.kube.CoreV1().Pods(gw.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 	})
@@ -488,7 +484,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 	}
 
 	if rollout {
-		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+		deps, err := c.kube.AppsV1().Deployments(gw.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 		})
@@ -507,7 +503,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 			}
 		}
 
-		daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
+		daemonSets, err := c.kube.AppsV1().DaemonSets(gw.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 		})
