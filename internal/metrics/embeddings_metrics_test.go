@@ -10,14 +10,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/sdk/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {
-	mr := metric.NewManualReader()
-	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+	mr := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter).(*embeddings)
 
 	extra := attribute.Key("extra").String("value")
@@ -45,8 +45,8 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 }
 
 func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
-	mr := metric.NewManualReader()
-	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+	mr := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter).(*embeddings)
 
 	em.SetModel("text-embedding-3-small")
@@ -80,8 +80,8 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 }
 
 func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
-	mr := metric.NewManualReader()
-	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+	mr := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 
 	// Test header label mapping.
 	headerMapping := map[string]string{
