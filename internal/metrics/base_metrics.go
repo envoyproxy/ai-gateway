@@ -27,18 +27,13 @@ type baseMetrics struct {
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
 func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string) baseMetrics {
-	bm := baseMetrics{
-		metrics:   newGenAI(meter),
-		operation: operation,
-		model:     "unknown",
-		backend:   "unknown",
+	return baseMetrics{
+		metrics:                   newGenAI(meter),
+		operation:                 operation,
+		model:                     "unknown",
+		backend:                   "unknown",
+		requestHeaderLabelMapping: requestHeaderLabelMapping,
 	}
-
-	if requestHeaderLabelMapping != nil {
-		bm.requestHeaderLabelMapping = requestHeaderLabelMapping
-	}
-
-	return bm
 }
 
 // StartRequest initializes timing for a new request.
