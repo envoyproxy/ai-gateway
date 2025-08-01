@@ -688,8 +688,8 @@ type ChatCompletionRequest struct {
 	// PredictionContent provides configuration for a Predicted Output, which can greatly improve response times when large parts of the model response are known ahead of time.
 	PredictionContent *PredictionContent `json:"prediction,omitempty"`
 
-	GCPVertexAI *GCPVertexAIVendorFields `json:",inline,omitempty"`
-	Anthropic   *AnthropicVendorFields   `json:",inline,omitempty"`
+	*GCPVertexAIVendorFields `json:",inline,omitempty"`
+	*AnthropicVendorFields   `json:",inline,omitempty"`
 }
 
 type StreamOptions struct {

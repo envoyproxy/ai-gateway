@@ -34,12 +34,10 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Hello, world!"
 					}
 				],
-				"GCPVertexAI": {
-					"generationConfig": {
-						"thinkingConfig": {
-							"includeThoughts": true,
-							"thinkingBudget": 1000
-						}
+				"generationConfig": {
+					"thinkingConfig": {
+						"includeThoughts": true,
+						"thinkingBudget": 1000
 					}
 				}
 			}`),
@@ -54,7 +52,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				GCPVertexAI: &GCPVertexAIVendorFields{
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
 					GenerationConfig: &GCPVertexAIGenerationConfig{
 						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
 							IncludeThoughts: true,
@@ -74,19 +72,15 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Multiple vendors test"
 					}
 				],
-				"GCPVertexAI": {
-					"generationConfig": {
-						"thinkingConfig": {
-							"includeThoughts": true,
-							"thinkingBudget": 1000
-						}
+				"generationConfig": {
+					"thinkingConfig": {
+						"includeThoughts": true,
+						"thinkingBudget": 1000
 					}
 				},
-				"Anthropic": {
-					"thinking": {
-						"type": "enabled",
-						"budget_tokens": 1000
-					}
+				"thinking": {
+					"type": "enabled",
+					"budget_tokens": 1000
 				}
 			}`),
 			expected: &ChatCompletionRequest{
@@ -100,7 +94,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				Anthropic: &AnthropicVendorFields{
+				AnthropicVendorFields: &AnthropicVendorFields{
 					Thinking: &anthropic.ThinkingConfigParamUnion{
 						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
 							BudgetTokens: 1000,
@@ -108,7 +102,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						},
 					},
 				},
-				GCPVertexAI: &GCPVertexAIVendorFields{
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
 					GenerationConfig: &GCPVertexAIGenerationConfig{
 						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
 							IncludeThoughts: true,
@@ -200,10 +194,8 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Test malformed vendor fields"
 					}
 				],
-				"GCPVertexAI": {
-					"generationConfig": {
-						"thinkingConfig":
-					}
+				"generationConfig": {
+					"thinkingConfig":
 				}
 			}`),
 			expectedErrMsg: "invalid character",
@@ -218,7 +210,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Test invalid vendor field type"
 					}
 				],
-				"GCPVertexAI": "invalid_string_type"
+				"generationConfig": "invalid_string_type"
 			}`),
 			expectedErrMsg: "cannot unmarshal string into Go struct field",
 		},

@@ -33,8 +33,8 @@ type ChatCompletionRequest struct {
     // ...existing fields...
 
     // Vendor-specific fields are added as inline fields
-    GCPVertexAI  *GCPVertexAIVendorFields  `json:",inline,omitempty"`
-    GCPAnthropic *GCPAnthropicVendorFields `json:",inline,omitempty"`
+    *GCPVertexAIVendorFields  `json:",inline,omitempty"`
+    *AnthropicVendorFields `json:",inline,omitempty"`
 }
 
 // GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
@@ -48,8 +48,8 @@ type GCPVertexAIGenerationConfig struct {
     ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitempty"`
 }
 
-// GCPAnthropicVendorFields contains GCP Anthropic-specific fields.
-type GCPAnthropicVendorFields struct {
+// AnthropicVendorFields contains GCP Anthropic-specific fields.
+type AnthropicVendorFields struct {
     Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
 ```

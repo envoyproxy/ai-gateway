@@ -531,8 +531,8 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 
 	// 5. Handle Vendor specific fields.
 	// Since GCPAnthropic follows the Anthropic API, we also check for Anthropic vendor fields.
-	if openAIReq.Anthropic != nil {
-		anthVendorFields := openAIReq.Anthropic
+	if openAIReq.AnthropicVendorFields != nil {
+		anthVendorFields := openAIReq.AnthropicVendorFields
 		if anthVendorFields.Thinking != nil {
 			params.Thinking = *anthVendorFields.Thinking
 		}

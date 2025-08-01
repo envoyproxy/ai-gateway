@@ -391,7 +391,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						},
 					},
 				},
-				GCPVertexAI: &openai.GCPVertexAIVendorFields{
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
 					GenerationConfig: &openai.GCPVertexAIGenerationConfig{
 						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
 							IncludeThoughts: true,
