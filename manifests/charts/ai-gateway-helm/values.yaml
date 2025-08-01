@@ -13,10 +13,6 @@ extProc:
   imagePullPolicy: IfNotPresent
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
-  # Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-  # Format: "header1:label1,header2:label2"
-  # Example: "x-team-id:team_id,x-user-id:user_id"
-  metricsRequestHeaderLabelMapping: ""
 
 controller:
   logLevel: info
