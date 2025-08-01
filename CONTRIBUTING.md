@@ -42,7 +42,7 @@ For example,
 
 * The latest `kubectl` binary for running `make test-e2e`.
   * See: https://kubernetes.io/docs/tasks/tools/
-* The latest `envoy` binary for running `make test-extproc`. The current required version is v1.34 or later.
+* The latest `envoy` binary for running `make test-extproc`. The current required version is v1.35 or later.
   * On Linux, you can download the latest Envoy binary as described in https://www.envoyproxy.io/docs/envoy/latest/start/install.
     Alternatively, you can use `func-e` on Linux as well like on macOS below.
   * On macOS, since `brew envoy` tends to behind the latest version, it is recommended use `func-e` to run the latest Envoy. See https://func-e.io/.

@@ -181,11 +181,6 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
-  backendSecurityPolicyRef:
-    name: openai-apikey
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
-    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -201,11 +196,6 @@ spec:
     name: aws
     kind: Backend
     group: gateway.envoyproxy.io
-    namespace: default
-  backendSecurityPolicyRef:
-    name: aws-credentials
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
     namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -230,6 +220,10 @@ metadata:
   name: openai-apikey
   namespace: default
 spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openai
   type: APIKey
   apiKey:
     secretRef:
@@ -241,6 +235,10 @@ metadata:
   name: aws-credentials
   namespace: default
 spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: aws
   type: AWSCredentials
   awsCredentials:
     region: us-east-1

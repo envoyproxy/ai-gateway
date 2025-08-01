@@ -1007,6 +1007,71 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name: "tool definition without type field",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get the weather without type",
+							Parameters: map[string]interface{}{
+								"properties": map[string]interface{}{
+									"location": map[string]interface{}{"type": "string"},
+								},
+								"required": []interface{}{"location"},
+							},
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:        "get_weather",
+						Description: anthropic.String("Get the weather without type"),
+						InputSchema: anthropic.ToolInputSchemaParam{
+							Type: "",
+							Properties: map[string]interface{}{
+								"location": map[string]interface{}{"type": "string"},
+							},
+							Required: []string{"location"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "tool definition without properties field",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get the weather without properties",
+							Parameters: map[string]interface{}{
+								"type":     "object",
+								"required": []interface{}{"location"},
+							},
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:        "get_weather",
+						Description: anthropic.String("Get the weather without properties"),
+						InputSchema: anthropic.ToolInputSchemaParam{
+							Type:     "object",
+							Required: []string{"location"},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "unsupported tool_choice type",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,

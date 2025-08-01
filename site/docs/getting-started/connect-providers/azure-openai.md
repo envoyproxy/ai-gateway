@@ -31,10 +31,15 @@ Before you begin, you'll need:
 
 ## Configuration Steps
 
+### 1. Download configuration template
 
-### 1. Configure Azure Credentials
+```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/azure_openai.yaml
+```
 
-Edit the `basic.yaml` file to replace these placeholder values:
+### 2. Configure Azure Credentials
+
+Edit the `azure_openai.yaml` file to replace these placeholder values:
 - `AZURE_TENANT_ID`: Your Azure tenant ID
 - `AZURE_CLIENT_ID`: Your Azure client ID
 - `AZURE_CLIENT_SECRET`: Your Azure client secret
@@ -45,12 +50,12 @@ The credentials will be stored in Kubernetes secrets.
 :::
 
 
-### 2. Apply Configuration
+### 3. Apply Configuration
 
 Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running, then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
-kubectl apply -f basic.yaml
+kubectl apply -f azure_openai.yaml
 
 kubectl wait pods --timeout=2m \
   -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
@@ -58,7 +63,7 @@ kubectl wait pods --timeout=2m \
   --for=condition=Ready
 ```
 
-### 3. Test the Configuration
+### 4. Test the Configuration
 
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
@@ -98,13 +103,13 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
+To use more models, add more [AIGatewayRouteRule]s to the `azure_openai.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: envoy-ai-gateway-basic
+  name: envoy-ai-gateway-basic-azure
   namespace: default
 spec:
   schema:
@@ -120,7 +125,7 @@ spec:
               name: x-ai-eg-model
               value: gpt-4.5-preview
       backendRefs:
-        - name: envoy-ai-gateway-basic-aws
+        - name: envoy-ai-gateway-basic-azure
 ```
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule

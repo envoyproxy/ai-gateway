@@ -75,19 +75,21 @@ func (m mockProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.Ht
 
 // mockTranslator implements [translator.Translator] for testing.
 type mockTranslator struct {
-	t                 *testing.T
-	expHeaders        map[string]string
-	expRequestBody    *openai.ChatCompletionRequest
-	expResponseBody   *extprocv3.HttpBody
-	retHeaderMutation *extprocv3.HeaderMutation
-	retBodyMutation   *extprocv3.BodyMutation
-	retUsedToken      translator.LLMTokenUsage
-	retErr            error
+	t                           *testing.T
+	expHeaders                  map[string]string
+	expRequestBody              *openai.ChatCompletionRequest
+	expResponseBody             *extprocv3.HttpBody
+	retHeaderMutation           *extprocv3.HeaderMutation
+	retBodyMutation             *extprocv3.BodyMutation
+	retUsedToken                translator.LLMTokenUsage
+	retErr                      error
+	expForceRequestBodyMutation bool
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+func (m mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
+	require.Equal(m.t, m.expForceRequestBodyMutation, forceRequestBodyMutation)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 

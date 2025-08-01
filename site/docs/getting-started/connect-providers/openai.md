@@ -22,9 +22,15 @@ Before you begin, you'll need:
 Ensure you have followed the steps in [Connect Providers](../connect-providers/)
 :::
 
-### 1. Configure OpenAI Credentials
+### 1. Download configuration template
 
-Edit the `basic.yaml` file to replace the OpenAI placeholder value:
+```shell
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/openai.yaml
+```
+
+### 2. Configure OpenAI Credentials
+
+Edit the `openai.yaml` file to replace the OpenAI placeholder value:
 
 - Find the section containing `OPENAI_API_KEY`
 - Replace it with your actual OpenAI API key
@@ -34,13 +40,13 @@ Make sure to keep your API key secure and never commit it to version control.
 The key will be stored in a Kubernetes secret.
 :::
 
-### 2. Apply Configuration
+### 3. Apply Configuration
 
 Apply the updated configuration and wait for the Gateway pod to be ready. If you already have a Gateway running,
 then the secret credential update will be picked up automatically in a few seconds.
 
 ```shell
-kubectl apply -f basic.yaml
+kubectl apply -f openai.yaml
 
 kubectl wait pods --timeout=2m \
   -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
@@ -48,7 +54,7 @@ kubectl wait pods --timeout=2m \
   --for=condition=Ready
 ```
 
-### 3. Test the Configuration
+### 4. Test the Configuration
 
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
@@ -98,7 +104,7 @@ If you encounter issues:
 
 ## Configuring More Models
 
-To use more models, add more [AIGatewayRouteRule]s to the `basic.yaml` file with the [model alias] in the `value` field.
+To use more models, add more [AIGatewayRouteRule]s to the `openai.yaml` file with the [model alias] in the `value` field.
 
 For example, let's add [o1] as a chat completion model, and [text-embedding-ada-002](https://platform.openai.com/docs/models/text-embedding-ada-002) as embedding models:
 
@@ -106,7 +112,7 @@ For example, let's add [o1] as a chat completion model, and [text-embedding-ada-
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: envoy-ai-gateway-basic
+  name: envoy-ai-gateway-basic-openai
   namespace: default
 spec:
   schema:

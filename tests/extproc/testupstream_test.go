@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	openaigo "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -32,14 +32,9 @@ import (
 //
 // This does not require any environment variables to be set as it relies on the test upstream.
 func TestWithTestUpstream(t *testing.T) {
-	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
-	configPath := t.TempDir() + "/extproc-config.yaml"
-	requireTestUpstream(t)
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
-	requireWriteFilterConfig(t, configPath, &filterapi.Config{
+	config := &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -60,7 +55,14 @@ func TestWithTestUpstream(t *testing.T) {
 			{Name: "some-model2", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 			{Name: "some-model3", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
 		},
-	})
+	}
+
+	configBytes, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	env := startTestEnvironment(t, string(configBytes), true)
+
+	listenerPort := env.EnvoyListenerPort()
+	metricsPort := env.ExtProcMetricsPort()
 
 	expectedModels := openai.ModelList{
 		Object: "list",
@@ -70,8 +72,6 @@ func TestWithTestUpstream(t *testing.T) {
 			{ID: "some-model3", Object: "model", OwnedBy: "Envoy AI Gateway", Created: openai.JSONUNIXTime(now)},
 		},
 	}
-
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
 
 	for _, tc := range []struct {
 		// name is the name of the test case.
@@ -281,6 +281,52 @@ data: [DONE]
 `,
 		},
 		{
+			name:           "openai - /v1/chat/completions - streaming - forced to include usage",
+			backend:        "openai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "openai - /v1/chat/completions - streaming - forced to include usage without steam_options",
+			backend:        "openai",
+			path:           "/v1/chat/completions",
+			responseType:   "sse",
+			method:         http.MethodPost,
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
 			name:           "gcp-vertexai - /v1/chat/completions - streaming",
 			backend:        "gcp-vertexai",
 			path:           "/v1/chat/completions",
@@ -460,10 +506,30 @@ data: [DONE]
 			expStatus:           http.StatusOK,
 			expResponseBodyFunc: checkModels(expectedModels),
 		},
+		{
+			name:    "openai - /v1/chat/completions - assistant text content",
+			backend: "openai",
+			path:    "/v1/chat/completions",
+			method:  http.MethodPost,
+			requestBody: `
+{
+       "model": "whatever",
+       "messages": [
+               {"role": "user", "content": [{"type": "text", "text": "hi sir"}]},
+               {"role": "assistant","content": [{"type": "text", "text": "Hello! How can I assist you today?"}]},
+               {"role": "user", "content": [{"type": "text", "text": "what are you?"}]}
+       ]
+}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Eventually(t, func() bool {
-				req, err := http.NewRequest(tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
+				listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
+				req, err := http.NewRequestWithContext(t.Context(), tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 				require.NoError(t, err)
 				req.Header.Set("x-test-backend", tc.backend)
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
@@ -511,7 +577,11 @@ data: [DONE]
 
 				if tc.expResponseBody != "" {
 					bodyBytes, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
+					if err != nil {
+						t.Logf("error reading response body: %v", err)
+						return false
+					}
+
 					// Substitute any dynamically generated UUIDs in the response body with a placeholder
 					// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
 					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -523,10 +593,12 @@ data: [DONE]
 					}
 				} else if tc.expResponseBodyFunc != nil {
 					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
+					if err != nil {
+						t.Logf("error reading response body: %v", err)
+						return false
+					}
 					tc.expResponseBodyFunc(t, body)
 				}
-
 				return true
 			}, eventuallyTimeout, eventuallyInterval)
 		})
@@ -535,6 +607,7 @@ data: [DONE]
 	t.Run("stream non blocking", func(t *testing.T) {
 		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
 		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
+		listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 		client := openaigo.NewClient(
 			option.WithBaseURL(listenerAddress+"/v1/"),
 			option.WithHeader("x-test-backend", "openai"),
@@ -596,7 +669,7 @@ data: [DONE]
 		require.NoError(t, stream.Err())
 	})
 	t.Run("metrics", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)

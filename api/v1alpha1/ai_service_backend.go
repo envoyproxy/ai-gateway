@@ -64,6 +64,11 @@ type AIServiceBackendSpec struct {
 	// BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
 	// is being attached to.
 	//
+	// Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.
+	// When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,
+	// set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,
+	// and then remove this field from the AIServiceBackend.
+	//
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 

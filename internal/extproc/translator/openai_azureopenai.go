@@ -33,7 +33,7 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 	openAIToOpenAITranslatorV1ChatCompletion
 }
 
-func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, onRetry bool) (
+func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	modelName := req.Model
@@ -56,7 +56,7 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 	}
 
 	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
-	if onRetry {
+	if forceBodyMutation {
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
 			Key:      "content-length",
 			RawValue: []byte(strconv.Itoa(len(raw))),

@@ -112,6 +112,41 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 	}, nil
 }
 
+func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Create a BackendSecurityPolicy with invalid spec to trigger sync error.
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "invalid-bsp",
+			Namespace: "default",
+		},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: "InvalidType", // Invalid type to cause sync error.
+		},
+	}
+	err := fakeClient.Create(t.Context(), bsp)
+	require.NoError(t, err)
+
+	// Reconcile should fail during sync.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: "default",
+			Name:      "invalid-bsp",
+		},
+	})
+	require.Error(t, err)
+
+	// Check that status was updated to NotAccepted.
+	var updatedBSP aigv1a1.BackendSecurityPolicy
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "invalid-bsp"}, &updatedBSP)
+	require.NoError(t, err)
+	require.Len(t, updatedBSP.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedBSP.Status.Conditions[0].Type)
+}
+
 func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
@@ -407,18 +442,17 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 			ProjectName: "fake-project-name",
 			Region:      "fake-region",
-			WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-				ProjectID: "fake-project-id",
-				WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{
-					Name: "fake-workload-identity-provider-name",
-					OIDCProvider: aigv1a1.BackendSecurityPolicyOIDC{
+			WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				ProjectID:                    "fake-project-id",
+				WorkloadIdentityProviderName: "fake-workload-identity-provider-name",
+				OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
+					BackendSecurityPolicyOIDC: aigv1a1.BackendSecurityPolicyOIDC{
 						OIDC: egv1a1.OIDC{
 							ClientID: "some-client-id",
 						},
 					},
 				},
-				WorkloadIdentityPoolName:    "fake-workload-identity-pool-name",
-				ServiceAccountImpersonation: nil,
+				WorkloadIdentityPoolName: "fake-workload-identity-pool-name",
 			},
 		},
 	})
@@ -690,10 +724,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "",
 				Region:      "us-central1",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "pid",
-					WorkloadIdentityPoolName: "pool",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "provider",
 				},
 			},
 			wantError: "invalid GCP credentials configuration: projectName cannot be empty",
@@ -703,10 +737,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "pid",
-					WorkloadIdentityPoolName: "pool",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "provider",
 				},
 			},
 			wantError: "invalid GCP credentials configuration: region cannot be empty",
@@ -716,10 +750,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "",
-					WorkloadIdentityPoolName: "pool",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "provider",
 				},
 			},
 			wantError: "invalid GCP Workload Identity Federation configuration: projectID cannot be empty",
@@ -729,10 +763,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "pid",
-					WorkloadIdentityPoolName: "",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "",
+					WorkloadIdentityProviderName: "provider",
 				},
 			},
 			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty",
@@ -742,10 +776,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "pid",
-					WorkloadIdentityPoolName: "pool",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: ""},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "",
 				},
 			},
 			wantError: "invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty",
@@ -755,10 +789,10 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkLoadIdentityFederationConfig: aigv1a1.GCPWorkLoadIdentityFederationConfig{
-					ProjectID:                "pid",
-					WorkloadIdentityPoolName: "pool",
-					WorkloadIdentityProvider: aigv1a1.GCPWorkloadIdentityProvider{Name: "provider"},
+				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "provider",
 				},
 			},
 			wantError: "",

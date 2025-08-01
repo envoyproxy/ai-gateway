@@ -86,6 +86,11 @@ func TestWithTestUpstream(t *testing.T) {
 					req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 					req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID)
+					if tc.modelName == "some-cool-model" {
+						// TODO: remove after 0.3.0 release since this is for backward compatibility testing.
+						req.Header.Set(testupstreamlib.ExpectedHeadersKey,
+							base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer dummy-token")))
+					}
 
 					resp, err := http.DefaultClient.Do(req)
 					if err != nil {
