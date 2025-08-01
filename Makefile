@@ -154,7 +154,6 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
-	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
 	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
@@ -180,7 +179,6 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 # Example:
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
-# - `make build.extproc_custom_metrics CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_metrics directory.
 # - `make build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib`: will build the tests/internal/testupstreamlib/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
@@ -241,10 +239,6 @@ build-e2e: ## Build the docker images for the controller, extproc and testupstre
 # Example:
 # - `make docker-build.controller TAG=v1.2.3`
 #
-# To build the main functions outside cmd/ directory, set CMD_PATH_PREFIX to the directory containing the main function.
-#
-# Example:
-# - `make docker-build.extproc_custom_metrics CMD_PATH_PREFIX=examples`
 .PHONY: docker-build.%
 ifeq ($(ENABLE_MULTI_PLATFORMS),true)
 docker-build.%: GOARCH_LIST = amd64 arm64
