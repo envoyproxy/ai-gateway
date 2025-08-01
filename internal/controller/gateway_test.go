@@ -7,11 +7,9 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
@@ -117,21 +115,6 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	res, err := c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: okGwName, Namespace: namespace}})
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, res)
-
-	// Verify that side car extproc backend.
-	var backend egv1a1.Backend
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: sideCarExtProcBackendName, Namespace: namespace}, &backend)
-	require.NoError(t, err)
-	require.Len(t, backend.Spec.Endpoints, 1)
-	require.Equal(t, "/foo/bar/uds.sock", backend.Spec.Endpoints[0].Unix.Path)
-
-	// Also make sure that EnvoyExtensionPolicy is created for the Gateway.
-	var extPolicy egv1a1.EnvoyExtensionPolicy
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: fmt.Sprintf("ai-eg-eep-%s", okGwName), Namespace: namespace}, &extPolicy)
-	require.NoError(t, err)
-	require.Len(t, extPolicy.Spec.ExtProc, 1)
-	require.Len(t, extPolicy.Spec.ExtProc[0].BackendRefs, 1)
-	require.Equal(t, sideCarExtProcBackendName, string(extPolicy.Spec.ExtProc[0].BackendRefs[0].Name))
 }
 
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {

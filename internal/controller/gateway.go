@@ -10,12 +10,10 @@ import (
 	"context"
 	"fmt"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -23,7 +21,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -91,9 +88,6 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		c.logger.Info("No AIGatewayRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, nil
 	}
-	if err := c.ensureExtensionPolicy(ctx, &gw); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
@@ -109,89 +103,6 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
-}
-
-const sideCarExtProcBackendName = "envoy-ai-gateway-extproc-backend"
-
-// ensureExtensionPolicy creates or updates the extension policy for the external process running as a sidecar.
-func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapiv1.Gateway) (err error) {
-	// Ensure that the backend that makes Envoy talk to the UDS exists.
-	var backend egv1a1.Backend
-	if err = c.client.Get(ctx, client.ObjectKey{Name: sideCarExtProcBackendName, Namespace: gw.Namespace}, &backend); err != nil {
-		if apierrors.IsNotFound(err) {
-			backend = egv1a1.Backend{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sideCarExtProcBackendName,
-					Namespace: gw.Namespace,
-				},
-				Spec: egv1a1.BackendSpec{
-					Endpoints: []egv1a1.BackendEndpoint{{Unix: &egv1a1.UnixSocket{Path: c.udsPath}}},
-				},
-			}
-			if err = c.client.Create(ctx, &backend); err != nil {
-				return fmt.Errorf("failed to create backend: %w", err)
-			}
-		} else {
-			return fmt.Errorf("failed to get backend: %w", err)
-		}
-	}
-
-	perGatewayEEPName := fmt.Sprintf("ai-eg-eep-%s", gw.Name)
-	var existingPolicy egv1a1.EnvoyExtensionPolicy
-	if err = c.client.Get(ctx, client.ObjectKey{Name: perGatewayEEPName, Namespace: gw.Namespace}, &existingPolicy); err == nil {
-		return
-	} else if client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to get extension policy: %w", err)
-	}
-
-	extPolicy := &egv1a1.EnvoyExtensionPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: perGatewayEEPName, Namespace: gw.Namespace},
-		Spec: egv1a1.EnvoyExtensionPolicySpec{
-			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Kind:  "Gateway",
-						Group: "gateway.networking.k8s.io",
-						Name:  gwapiv1.ObjectName(gw.Name),
-					},
-				},
-			}},
-			ExtProc: []egv1a1.ExtProc{{
-				ProcessingMode: &egv1a1.ExtProcProcessingMode{
-					AllowModeOverride: true, // Streaming completely overrides the buffered mode.
-					Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
-					Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
-				},
-				Metadata: &egv1a1.ExtProcMetadata{WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace}},
-				BackendCluster: egv1a1.BackendCluster{
-					BackendRefs: []egv1a1.BackendRef{{
-						BackendObjectReference: gwapiv1.BackendObjectReference{
-							Name:      gwapiv1.ObjectName(sideCarExtProcBackendName),
-							Kind:      ptr.To(gwapiv1.Kind("Backend")),
-							Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
-							Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
-						},
-					}},
-					BackendSettings: &egv1a1.ClusterSettings{
-						Connection: &egv1a1.BackendConnection{
-							// Default is 32768 bytes == 32 KiB which seems small:
-							// https://github.com/envoyproxy/gateway/blob/932b8b55fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
-							//
-							// So, we set it to 50MBi.
-							//
-							// Note that currently ExtProc cluster is also defined in the extension server,
-							// so ensure that the same value is used there.
-							BufferLimit: ptr.To(resource.MustParse("50Mi")),
-						},
-					},
-				},
-			}},
-		},
-	}
-	if err = c.client.Create(ctx, extPolicy); err != nil {
-		err = fmt.Errorf("failed to create extension policy: %w", err)
-	}
-	return
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
