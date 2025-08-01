@@ -19,10 +19,10 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 var (
@@ -248,7 +248,7 @@ func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count in
 	require.Equal(t, count, m.tokenLatencyCount)
 }
 
-var _ x.ChatCompletionMetrics = &mockChatCompletionMetrics{}
+var _ metrics.ChatCompletionMetrics = &mockChatCompletionMetrics{}
 
 // mockEmbeddingTranslator implements [translator.OpenAIEmbeddingTranslator] for testing.
 type mockEmbeddingTranslator struct {
@@ -350,7 +350,7 @@ func (m *mockEmbeddingsMetrics) RequireTokensRecorded(t *testing.T, count int) {
 	require.Equal(t, count, m.tokenUsageCount)
 }
 
-var _ x.EmbeddingsMetrics = &mockEmbeddingsMetrics{}
+var _ metrics.EmbeddingsMetrics = &mockEmbeddingsMetrics{}
 
 // mockBackendAuthHandler implements [backendauth.Handler] for testing.
 type mockBackendAuthHandler struct{}

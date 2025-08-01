@@ -152,7 +152,7 @@ func TestStartMetricsServer(t *testing.T) {
 
 	require.NotNil(t, s)
 	require.NotNil(t, m)
-	ccm := metrics.DefaultChatCompletion(m, nil)
+	ccm := metrics.NewChatCompletion(m, nil)
 	ccm.StartRequest(nil)
 	ccm.SetModel("test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})

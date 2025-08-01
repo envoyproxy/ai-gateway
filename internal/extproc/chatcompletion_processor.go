@@ -21,16 +21,16 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
+func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		if config.schema.Name != filterapi.APISchemaOpenAI {
 			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
@@ -168,7 +168,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics x.ChatCompletionMetrics
+	metrics metrics.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
 	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.

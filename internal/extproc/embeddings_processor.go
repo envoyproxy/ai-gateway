@@ -19,14 +19,14 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
-func EmbeddingsProcessorFactory(em x.EmbeddingsMetrics) ProcessorFactory {
+func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		if config.schema.Name != filterapi.APISchemaOpenAI {
 			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
@@ -146,7 +146,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics x.EmbeddingsMetrics
+	metrics metrics.EmbeddingsMetrics
 }
 
 // selectTranslator selects the translator based on the output schema.
