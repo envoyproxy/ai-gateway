@@ -26,7 +26,7 @@ import (
 // Note: `x.NewCustomChatCompletionMetric` is only implemented for streaming requests.
 func TestExtProcCustomMetrics(t *testing.T) {
 	// Use the custom extproc binary which demonstrates custom metrics.
-	env := startTestEnvironment(t, extprocCustomBin, extprocCustomConfig, envoyCustomConfig)
+	env := startTestEnvironment(t, extprocCustomBin, extprocCustomConfig, nil, envoyCustomConfig)
 
 	listenerPort := env.EnvoyListenerPort()
 

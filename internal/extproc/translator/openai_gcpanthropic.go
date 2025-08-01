@@ -489,7 +489,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 		return
 	}
 
-	// Translate tools and tool choice.
+	// 3. Translate tools and tool choice.
 	tools, toolChoice, err := translateOpenAItoAnthropicTools(openAIReq.Tools, openAIReq.ToolChoice, openAIReq.ParallelToolCalls)
 	if err != nil {
 		return
