@@ -18,7 +18,7 @@ import (
 )
 
 func TestOpenAIChatCompletions(t *testing.T) {
-	env := startTestEnvironment(t, extprocBin, extprocConfig, envoyConfig)
+	env := startTestEnvironment(t, extprocBin, extprocConfig, nil, envoyConfig)
 
 	listenerPort := env.EnvoyListenerPort()
 

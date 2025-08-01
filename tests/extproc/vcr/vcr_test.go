@@ -37,10 +37,10 @@ var envoyCustomConfig string
 //go:embed extproc_custom_metrics.yaml
 var extprocCustomConfig string
 
-func startTestEnvironment(t *testing.T, extprocBin, extprocConfig, envoyConfig string) *testenvironment.TestEnvironment {
+func startTestEnvironment(t *testing.T, extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, 11434,
-		extprocBin, extprocConfig, envoyConfig, true,
+		extprocBin, extprocConfig, extprocEnv, envoyConfig, true,
 	)
 }
 

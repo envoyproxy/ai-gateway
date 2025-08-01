@@ -29,6 +29,7 @@ import (
 type TestEnvironment struct {
 	upstreamPortDefault, upstreamPort                  int
 	extprocBin, extprocConfig                          string
+	extprocEnv                                         []string
 	extProcPort, extProcMetricsPort, extProcHealthPort int
 	envoyConfig                                        string
 	envoyListenerPort, envoyAdminPort                  int
@@ -63,7 +64,7 @@ func (e *TestEnvironment) ExtProcMetricsPort() int {
 // StartTestEnvironment starts all required services and returns ports and a closer.
 func StartTestEnvironment(t *testing.T,
 	requireNewUpstream func(t *testing.T, out io.Writer, port int), upstreamPortDefault int,
-	extprocBin, extprocConfig, envoyConfig string, okToDumpLogOnFailure bool,
+	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
 	ports := requireRandomPorts(t, 6)
@@ -73,6 +74,7 @@ func StartTestEnvironment(t *testing.T,
 		upstreamPort:        ports[0],
 		extprocBin:          extprocBin,
 		extprocConfig:       extprocConfig,
+		extprocEnv:          extprocEnv,
 		extProcPort:         ports[1],
 		extProcMetricsPort:  ports[2],
 		extProcHealthPort:   ports[3],
@@ -98,6 +100,7 @@ func StartTestEnvironment(t *testing.T,
 		env.extprocOut,
 		env.extprocBin,
 		env.extprocConfig,
+		env.extprocEnv,
 		env.extProcPort,
 		env.extProcMetricsPort,
 		env.extProcHealthPort,
@@ -250,7 +253,7 @@ func requireEnvoy(t *testing.T,
 }
 
 // requireExtProc starts the external processor with the given configuration.
-func requireExtProc(t *testing.T, out io.Writer, bin, config string, port, metricsPort, healthPort int) {
+func requireExtProc(t *testing.T, out io.Writer, bin, config string, env []string, port, metricsPort, healthPort int) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 
@@ -261,6 +264,7 @@ func requireExtProc(t *testing.T, out io.Writer, bin, config string, port, metri
 		"-metricsPort", strconv.Itoa(metricsPort),
 		"-healthPort", strconv.Itoa(healthPort),
 		"-logLevel", "info")
+	cmd.Env = append(os.Environ(), env...)
 
 	StartAndAwaitReady(t, cmd, out, out, "AI Gateway External Processor is ready")
 }

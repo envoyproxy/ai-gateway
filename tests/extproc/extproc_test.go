@@ -137,7 +137,7 @@ func TestMain(m *testing.M) {
 func startTestEnvironment(t *testing.T, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, 8080,
-		extprocBin, extprocConfig, envoyConfig, okToDumpLogOnFailure,
+		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure,
 	)
 }
 
