@@ -294,7 +294,8 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				"messages": [{"role": "user", "content": "hello"}],
 				"max_completion_tokens": 1024,
 				"parallel_tool_calls": true,
-				"stop": ["\n", "stop"]
+				"stop": ["\n", "stop"],
+				"service_tier": "flex"
 			}`),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -310,6 +311,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				MaxCompletionTokens: ptr.To[int64](1024),
 				ParallelToolCalls:   ptr.To(true),
 				Stop:                []interface{}{"\n", "stop"},
+				ServiceTier:         ptr.To("flex"),
 			},
 		},
 		{

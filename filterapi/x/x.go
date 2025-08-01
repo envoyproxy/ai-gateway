@@ -32,12 +32,12 @@ type ChatCompletionMetrics interface {
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)
 
-	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
+	// RecordTokenUsage records token usage metrics with request headers as attributes.
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue)
 	// RecordRequestCompletion records latency metrics for the entire request.
-	RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue)
+	RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue)
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32, extraAttrs ...attribute.KeyValue)
+	RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue)
 	// GetTimeToFirstTokenMs returns the time to first token in stream mode in milliseconds.
 	GetTimeToFirstTokenMs() float64
 	// GetInterTokenLatencyMs returns the inter token latency in stream mode in milliseconds.
@@ -54,8 +54,8 @@ type EmbeddingsMetrics interface {
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)
 
-	// RecordTokenUsage records token usage metrics for embeddings (only input and total tokens are relevant).
-	RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue)
+	// RecordTokenUsage records token usage metrics for embeddings with request headers as attributes (only input and total tokens are relevant).
+	RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue)
 	// RecordRequestCompletion records latency metrics for the entire request.
-	RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue)
+	RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue)
 }

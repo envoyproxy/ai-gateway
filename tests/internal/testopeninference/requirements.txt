@@ -1,0 +1,7 @@
+uvicorn
+fastapi
+openai
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-distro
+openinference-instrumentation-openai

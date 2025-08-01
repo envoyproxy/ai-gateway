@@ -20,15 +20,15 @@ type embeddings struct {
 }
 
 // NewEmbeddings creates a new Embeddings instance.
-func NewEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
+func NewEmbeddings(meter metric.Meter, requestHeaderLabelMapping map[string]string) x.EmbeddingsMetrics {
 	return &embeddings{
-		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding),
+		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping),
 	}
 }
 
 // RecordTokenUsage implements [EmbeddingsMetrics.RecordTokenUsage].
-func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
-	attrs := e.buildBaseAttributes(extraAttrs...)
+func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	attrs := e.buildBaseAttributes(requestHeaders, extraAttrs...)
 
 	e.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributes(attrs...),

@@ -23,6 +23,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
+// userIDMetricsLabel is the label used for user ID in the Prometheus metrics.
+// This is passed via a helm value to the AI Gateway deployment.
+const userIDMetricsLabel = "user_id"
+
 func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
@@ -31,7 +35,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	requireWaitForGatewayPodReady(t, egSelector)
 
 	const modelName = "rate-limit-funky-model"
-	makeRequest := func(usedID string, input, output, total int, expStatus int) {
+	makeRequest := func(userID string, input, output, total int, expStatus int) {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 		defer fwd.kill()
 
@@ -43,7 +47,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
 		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-		req.Header.Set("x-user-id", usedID)
+		req.Header.Set("x-user-id", userID)
 		req.Header.Set("Host", "openai.com")
 
 		resp, err := http.DefaultClient.Do(req)
@@ -66,43 +70,43 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 	// Test the input token limit.
 	baseID := int(time.Now().UnixNano()) // To avoid collision with previous runs.
-	usedID := strconv.Itoa(baseID)
+	userID := strconv.Itoa(baseID)
 	// This input number exceeds the limit.
-	makeRequest(usedID, 10000, 0, 0, 200)
+	makeRequest(userID, 10000, 0, 0, 200)
 	// Any request with the same user ID should be rejected.
-	makeRequest(usedID, 0, 0, 0, 429)
+	makeRequest(userID, 0, 0, 0, 429)
 
 	// Test the output token limit.
-	usedID = strconv.Itoa(baseID + 1)
+	userID = strconv.Itoa(baseID + 1)
 	// This output number exceeds the input limit, but should still be allowed.
-	makeRequest(usedID, 0, 20, 0, 200)
+	makeRequest(userID, 0, 20, 0, 200)
 	// This output number exceeds the output limit.
-	makeRequest(usedID, 0, 10000, 0, 200)
+	makeRequest(userID, 0, 10000, 0, 200)
 	// Any request with the same user ID should be rejected.
-	makeRequest(usedID, 0, 0, 0, 429)
+	makeRequest(userID, 0, 0, 0, 429)
 
 	// Test the total token limit.
-	usedID = strconv.Itoa(baseID + 2)
+	userID = strconv.Itoa(baseID + 2)
 	// This total number exceeds the input limit, but should still be allowed.
-	makeRequest(usedID, 0, 0, 20, 200)
+	makeRequest(userID, 0, 0, 20, 200)
 	// This total number exceeds the output limit, but should still be allowed.
-	makeRequest(usedID, 0, 0, 200, 200)
+	makeRequest(userID, 0, 0, 200, 200)
 	// This total number exceeds the total limit.
-	makeRequest(usedID, 0, 0, 1000000, 200)
+	makeRequest(userID, 0, 0, 1000000, 200)
 	// Any request with the same user ID should be rejected.
-	makeRequest(usedID, 0, 0, 0, 429)
+	makeRequest(userID, 0, 0, 0, 429)
 
 	// Test the CEL token limit.
-	usedID = strconv.Itoa(baseID + 3)
+	userID = strconv.Itoa(baseID + 3)
 	// When the input number is 3, the CEL expression returns 100000000 which exceeds the limit.
-	makeRequest(usedID, 3, 0, 0, 200)
+	makeRequest(userID, 3, 0, 0, 200)
 	// Any request with the same user ID should be rejected.
-	makeRequest(usedID, 0, 0, 0, 429)
+	makeRequest(userID, 0, 0, 0, 429)
 
 	require.Eventually(t, func() bool {
 		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.kill()
-		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type)`
+		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, user_id)`
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -137,10 +141,14 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.Equal(t, modelName, result.Metric["gen_ai_request_model"])
 			typ := result.Metric["gen_ai_token_type"]
 			actualTypes = append(actualTypes, typ)
-			t.Logf("Type: %s, Value: %v", typ, result.Value)
+			uID, ok := result.Metric[userIDMetricsLabel]
+			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
+			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
 		// We should see input, output, and total token types.
-		require.ElementsMatch(t, []string{"input", "output", "total"}, actualTypes)
+		require.Contains(t, actualTypes, "input")
+		require.Contains(t, actualTypes, "output")
+		require.Contains(t, actualTypes, "total")
 		return true
 	}, 2*time.Minute, 1*time.Second)
 }

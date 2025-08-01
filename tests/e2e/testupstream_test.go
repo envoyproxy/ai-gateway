@@ -116,4 +116,39 @@ func TestWithTestUpstream(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("non-llm-route", func(t *testing.T) {
+		// We should be able to make requests to /non-llm routes as well.
+		//
+		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404
+		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
+		require.Eventually(t, func() bool {
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
+			defer fwd.kill()
+
+			req, err := http.NewRequest(http.MethodGet, fwd.address()+"/non-llm-route", strings.NewReader("somebody"))
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Logf("error reading response body: %v", err)
+				return false
+			}
+			if resp.StatusCode != 200 {
+				t.Logf("unexpected status code: %d (expected 200), body: %s", resp.StatusCode, body)
+				return false
+			}
+			if string(body) != `{"message":"This is a non-LLM endpoint response"}` {
+				t.Logf("unexpected response body: %s", body)
+				return false
+			}
+			return true
+		}, 10*time.Second, 1*time.Second)
+	})
 }

@@ -184,12 +184,12 @@ func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32, _ ...attribute.KeyValue) {
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32, _ map[string]string, _ ...attribute.KeyValue) {
 	m.tokenUsageCount++
 }
 
 // RecordTokenLatency implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ ...attribute.KeyValue) {
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ map[string]string, _ ...attribute.KeyValue) {
 	m.tokenLatencyCount++
 }
 
@@ -206,7 +206,7 @@ func (m *mockChatCompletionMetrics) GetInterTokenLatencyMs() float64 {
 }
 
 // RecordRequestCompletion implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
+func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string, _ ...attribute.KeyValue) {
 	if success {
 		m.requestSuccessCount++
 	} else {
@@ -304,12 +304,12 @@ func (m *mockEmbeddingsMetrics) SetModel(model string) { m.model = model }
 func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ ...attribute.KeyValue) {
+func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ map[string]string, _ ...attribute.KeyValue) {
 	m.tokenUsageCount++
 }
 
 // RecordRequestCompletion implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
+func (m *mockEmbeddingsMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string, _ ...attribute.KeyValue) {
 	if success {
 		m.requestSuccessCount++
 	} else {

@@ -426,6 +426,8 @@ func initAIGateway(ctx context.Context) (err error) {
 
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
+		// Configure the additional prometheus metrics label for user ID.
+		"--set", "controller.metricsRequestHeaderLabels=x-user-id:"+userIDMetricsLabel,
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr

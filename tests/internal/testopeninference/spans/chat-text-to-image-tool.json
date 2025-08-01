@@ -1,0 +1,158 @@
+{
+  "traceId":  "zB2zf5WhmjKHFwMTCyaZaA==",
+  "spanId":  "XwIWkDvqH7w=",
+  "flags":  256,
+  "name":  "ChatCompletion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "startTimeUnixNano":  "1753566717908121125",
+  "endTimeUnixNano":  "1753566717913829993",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"messages\": [{\"content\": \"You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.\", \"role\": \"system\"}, {\"content\": \"Draw a simple, minimalist image of a cute cat playing with a ball of yarn in a sketch style.\", \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"max_tokens\": 150, \"tool_choice\": {\"type\": \"function\", \"function\": {\"name\": \"generate_image\"}}, \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"generate_image\", \"description\": \"Generate a simple, minimalist image based on the given prompt in sketch style with low quality for cost efficiency.\", \"parameters\": {\"properties\": {\"prompt\": {\"description\": \"The text description of the image to generate.\", \"type\": \"string\"}}, \"required\": [\"prompt\"], \"type\": \"object\"}}}]}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"id\":\"chatcmpl-Bx5lWqI4bV0HErS7PX8Q3CUHXoFni\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":null,\"refusal\":null,\"role\":\"assistant\",\"annotations\":[],\"tool_calls\":[{\"id\":\"call_nhKKLlnwC3sew7xv4rnYpqVH\",\"function\":{\"arguments\":\"{\\\"prompt\\\":\\\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\\\"}\",\"name\":\"generate_image\"},\"type\":\"function\"}]}}],\"created\":1753423214,\"model\":\"gpt-4.1-nano-2025-04-14\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_38343a2f8f\",\"usage\":{\"completion_tokens\":22,\"prompt_tokens\":131,\"total_tokens\":153,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.tools.0.tool.json_schema",
+      "value":  {
+        "stringValue":  "{\"type\": \"function\", \"function\": {\"name\": \"generate_image\", \"description\": \"Generate a simple, minimalist image based on the given prompt in sketch style with low quality for cost efficiency.\", \"parameters\": {\"properties\": {\"prompt\": {\"description\": \"The text description of the image to generate.\", \"type\": \"string\"}}, \"required\": [\"prompt\"], \"type\": \"object\"}}}"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"gpt-4.1-nano\", \"max_tokens\": 150, \"tool_choice\": {\"type\": \"function\", \"function\": {\"name\": \"generate_image\"}}}"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.role",
+      "value":  {
+        "stringValue":  "system"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.content",
+      "value":  {
+        "stringValue":  "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency."
+      }
+    },
+    {
+      "key":  "llm.input_messages.1.message.role",
+      "value":  {
+        "stringValue":  "user"
+      }
+    },
+    {
+      "key":  "llm.input_messages.1.message.content",
+      "value":  {
+        "stringValue":  "Draw a simple, minimalist image of a cute cat playing with a ball of yarn in a sketch style."
+      }
+    },
+    {
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "gpt-4.1-nano-2025-04-14"
+      }
+    },
+    {
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "153"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "131"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "22"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.cache_read",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.reasoning",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.role",
+      "value":  {
+        "stringValue":  "assistant"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.id",
+      "value":  {
+        "stringValue":  "call_nhKKLlnwC3sew7xv4rnYpqVH"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.function.name",
+      "value":  {
+        "stringValue":  "generate_image"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments",
+      "value":  {
+        "stringValue":  "{\"prompt\":\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\"}"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
+}

@@ -324,7 +324,7 @@ func clusterNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
 
 // httpFilterNameForInferencePool returns the name of the ext_proc cluster for the given InferencePool.
 func httpFilterNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
-	return fmt.Sprintf("envoy.filters.http.endpointpicker_%s_%s_ext_proc", pool.GetName(), pool.GetNamespace())
+	return fmt.Sprintf("envoy.filters.http.ext_proc/endpointpicker/%s_%s_ext_proc", pool.GetName(), pool.GetNamespace())
 }
 
 // Tries to find an HTTP connection manager in the provided filter chain.

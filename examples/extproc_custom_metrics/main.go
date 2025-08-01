@@ -65,16 +65,16 @@ func (m *myCustomChatCompletionMetrics) SetBackend(backend *filterapi.Backend) {
 	m.logger.Info("SetBackend", "backend", backend.Name)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordTokenUsage(_ context.Context, inputTokens, outputTokens, totalTokens uint32, _ ...attribute.KeyValue) {
-	m.logger.Info("RecordTokenUsage", "inputTokens", inputTokens, "outputTokens", outputTokens, "totalTokens", totalTokens)
+func (m *myCustomChatCompletionMetrics) RecordTokenUsage(_ context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string, _ ...attribute.KeyValue) {
+	m.logger.Info("RecordTokenUsage", "inputTokens", inputTokens, "outputTokens", outputTokens, "totalTokens", totalTokens, "requestHeaders", requestHeaders)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, _ ...attribute.KeyValue) {
-	m.logger.Info("RecordRequestCompletion", "success", success)
+func (m *myCustomChatCompletionMetrics) RecordRequestCompletion(_ context.Context, success bool, requestHeaders map[string]string, _ ...attribute.KeyValue) {
+	m.logger.Info("RecordRequestCompletion", "success", success, "requestHeaders", requestHeaders)
 }
 
-func (m *myCustomChatCompletionMetrics) RecordTokenLatency(_ context.Context, tokens uint32, _ ...attribute.KeyValue) {
-	m.logger.Info("RecordTokenLatency", "tokens", tokens)
+func (m *myCustomChatCompletionMetrics) RecordTokenLatency(_ context.Context, tokens uint32, requestHeaders map[string]string, _ ...attribute.KeyValue) {
+	m.logger.Info("RecordTokenLatency", "tokens", tokens, "requestHeaders", requestHeaders)
 }
 
 func (m *myCustomChatCompletionMetrics) GetTimeToFirstTokenMs() (ttft float64) {

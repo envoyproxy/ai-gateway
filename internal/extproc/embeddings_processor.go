@@ -169,7 +169,7 @@ func (e *embeddingsProcessorUpstreamFilter) selectTranslator(out filterapi.Versi
 func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			e.metrics.RecordRequestCompletion(ctx, false)
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
 		}
 	}()
 
@@ -220,7 +220,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestBody(context.Context, 
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			e.metrics.RecordRequestCompletion(ctx, false)
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
 		}
 	}()
 
@@ -242,7 +242,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil)
+		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
 	}()
 	var br io.Reader
 	var isGzip bool
@@ -290,7 +290,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens)
+	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.modelNameOverride, e.backendName)
@@ -305,7 +305,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 // SetBackend implements [Processor.SetBackend].
 func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil)
+		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
 	}()
 	rp, ok := routeProcessor.(*embeddingsProcessorRouterFilter)
 	if !ok {

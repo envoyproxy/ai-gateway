@@ -39,7 +39,7 @@ graph TB
                     Controller)):::envoyGatewayStyle
     subgraph "Generated Resources"
         HTTPRoute:::generatedResourceStyle
-        EnvoyExtensionPolicy:::generatedResourceStyle
+        HTTPRouteFilter:::generatedResourceStyle
         ExtProcConfigSecret[AI Gateway ExtProc Secret]:::aiGatewayExtProcStyle
     end
 
@@ -59,10 +59,10 @@ graph TB
     EGDots -.->EnvoyGateway
 
     AIGateway -.->HTTPRoute
-    AIGateway -.->EnvoyExtensionPolicy
+    AIGateway -.->HTTPRouteFilter
     AIGateway -.->ExtProcConfigSecret
     HTTPRoute -.->EnvoyGateway
-    EnvoyExtensionPolicy -.->EnvoyGateway
+    HTTPRouteFilter -.->EnvoyGateway
     ExtProcConfigSecret -.->AIExtProc
 
     EnvoyGateway -.->|xDS/Envoy config|EnvoyProxy
@@ -92,7 +92,7 @@ The AI Gateway Controller manages AI-specific components and configurations:
 
 #### Resource Management
 - Watches AI Gateway Custom Resources (CRs)
-- Creates and manages `HTTPRoute` and `EnvoyExtensionPolicy` resources
+- Creates and manages `HTTPRoute` and `HTTPRouteFilter` resources
 - Manages backend security policies and authentication, including the credentials rotation
 
 #### Integration with Envoy Gateway

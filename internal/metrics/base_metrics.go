@@ -17,20 +17,22 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics      *genAI
-	operation    string
-	requestStart time.Time
-	model        string
-	backend      string
+	metrics                   *genAI
+	operation                 string
+	requestStart              time.Time
+	model                     string
+	backend                   string
+	requestHeaderLabelMapping map[string]string // maps HTTP headers to metric label names.
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string) baseMetrics {
+func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string) baseMetrics {
 	return baseMetrics{
-		metrics:   newGenAI(meter),
-		operation: operation,
-		model:     "unknown",
-		backend:   "unknown",
+		metrics:                   newGenAI(meter),
+		operation:                 operation,
+		model:                     "unknown",
+		backend:                   "unknown",
+		requestHeaderLabelMapping: requestHeaderLabelMapping,
 	}
 }
 
@@ -58,7 +60,7 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 }
 
 // buildBaseAttributes creates the base attributes for metrics recording.
-func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
+func (b *baseMetrics) buildBaseAttributes(headers map[string]string, extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
 	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
 	attrs = append(attrs,
 		attribute.Key(genaiAttributeOperationName).String(b.operation),
@@ -66,12 +68,20 @@ func (b *baseMetrics) buildBaseAttributes(extraAttrs ...attribute.KeyValue) []at
 		attribute.Key(genaiAttributeRequestModel).String(b.model),
 	)
 	attrs = append(attrs, extraAttrs...)
+
+	// Add header values as attributes based on the header mapping if headers are provided.
+	for headerName, labelName := range b.requestHeaderLabelMapping {
+		if headerValue, exists := headers[headerName]; exists {
+			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
+		}
+	}
+
 	return attrs
 }
 
 // RecordRequestCompletion records the completion of a request with success/failure status.
-func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool, extraAttrs ...attribute.KeyValue) {
-	attrs := b.buildBaseAttributes(extraAttrs...)
+func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	attrs := b.buildBaseAttributes(requestHeaders, extraAttrs...)
 
 	if success {
 		// According to the semantic conventions, the error attribute should not be added for successful operations.

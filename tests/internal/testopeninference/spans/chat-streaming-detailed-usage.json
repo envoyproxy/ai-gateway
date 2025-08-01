@@ -1,0 +1,134 @@
+{
+  "traceId":  "GsAfoGyxz02fAiqudpMBIA==",
+  "spanId":  "gvyCOW4zDsA=",
+  "flags":  256,
+  "name":  "ChatCompletion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "startTimeUnixNano":  "1753566780825845222",
+  "endTimeUnixNano":  "1753566780852445050",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"messages\": [{\"content\": \"Say hello\", \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"max_tokens\": 10, \"stream\": true, \"stream_options\": {\"include_usage\": true}}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"choices\": [{\"message\": {\"content\": \"Hello!\", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892\", \"created\": 1753423223, \"model\": \"gpt-4.1-nano-2025-04-14\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"system_fingerprint\": \"fp_38343a2f8f\", \"usage\": {\"completion_tokens\": 2, \"prompt_tokens\": 9, \"total_tokens\": 11, \"completion_tokens_details\": {\"accepted_prediction_tokens\": 0, \"audio_tokens\": 0, \"reasoning_tokens\": 0, \"rejected_prediction_tokens\": 0}, \"prompt_tokens_details\": {\"audio_tokens\": 0, \"cached_tokens\": 0}}}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"gpt-4.1-nano\", \"max_tokens\": 10, \"stream\": true, \"stream_options\": {\"include_usage\": true}}"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.role",
+      "value":  {
+        "stringValue":  "user"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.content",
+      "value":  {
+        "stringValue":  "Say hello"
+      }
+    },
+    {
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "gpt-4.1-nano-2025-04-14"
+      }
+    },
+    {
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "11"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "9"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "2"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.cache_read",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.reasoning",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.role",
+      "value":  {
+        "stringValue":  "assistant"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.content",
+      "value":  {
+        "stringValue":  "Hello!"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "events":  [
+    {
+      "timeUnixNano":  "1753566780830936046",
+      "name":  "First Token Stream Event"
+    }
+  ],
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
+}

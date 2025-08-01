@@ -16,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"google.golang.org/genai"
 )
 
 // Chat message role defined by the OpenAI API.
@@ -632,6 +635,16 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-seed
 	Seed *int `json:"seed,omitempty"`
 
+	// ServiceTier:string or null - Defaults to auto
+	// Specifies the processing type used for serving the request.
+	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
+	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
+	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
+	// This response value may be different from the value set in the parameter.
+	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
+	ServiceTier *string `json:"service_tier,omitempty"`
+
 	// Stop string / array / null Defaults to null
 	// Up to 4 sequences where the API will stop generating further tokens.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stop
@@ -684,6 +697,9 @@ type ChatCompletionRequest struct {
 
 	// PredictionContent provides configuration for a Predicted Output, which can greatly improve response times when large parts of the model response are known ahead of time.
 	PredictionContent *PredictionContent `json:"prediction,omitempty"`
+
+	*GCPVertexAIVendorFields `json:",inline,omitempty"`
+	*AnthropicVendorFields   `json:",inline,omitempty"`
 }
 
 type StreamOptions struct {
@@ -1140,4 +1156,29 @@ func (t *JSONUNIXTime) UnmarshalJSON(s []byte) error {
 // Equal compares two JSONUNIXTime values for equality. This is only for testing purposes.
 func (t JSONUNIXTime) Equal(other JSONUNIXTime) bool {
 	return time.Time(t).Unix() == time.Time(other).Unix()
+}
+
+// GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
+type GCPVertexAIVendorFields struct {
+	// GenerationConfig holds Gemini generation configuration options.
+	// Currently only a subset of the options are supported.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
+	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitzero"`
+}
+
+// GCPVertexAIGenerationConfig represents Gemini generation configuration options.
+type GCPVertexAIGenerationConfig struct {
+	// ThinkingConfig holds Gemini thinking configuration options.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
+	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
+}
+
+// AnthropicVendorFields contains Anthropic vendor-specific fields.
+type AnthropicVendorFields struct {
+	// Thinking holds Anthropic thinking configuration options.
+	//
+	// https://docs.anthropic.com/en/api/messages#body-thinking
+	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
