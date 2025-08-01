@@ -400,13 +400,14 @@ data: {"type": "message_stop"}
 			expStatus: http.StatusOK,
 			expResponseBody: `data: {"choices":[{"delta":{"content":"The sky appears blue","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" due to Rayleigh scattering.","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"content":" due to Rayleigh scattering."}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
 
 data: {"object":"chat.completion.chunk","usage":{"completion_tokens":12,"prompt_tokens":15,"total_tokens":27}}
 
 data: [DONE]
+
 `,
 		},
 		{

@@ -18,6 +18,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
@@ -647,12 +648,18 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 }
 
 // ResponseHeaders implements [Translator.ResponseHeaders].
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(headers map[string]string) (
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
-	// TODO: Implement if needed.
-	_ = headers
-	return nil, nil
+	if o.streamParser != nil {
+		// For streaming responses, set content-type to text/event-stream to match OpenAI API.
+		headerMutation = &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{
+				{Header: &corev3.HeaderValue{Key: contentTypeHeaderName, Value: eventStreamContentType}},
+			},
+		}
+	}
+	return
 }
 
 // ResponseBody implements [Translator.ResponseBody] for GCP Anthropic.

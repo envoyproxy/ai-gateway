@@ -257,36 +257,61 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(status)
-		if bytes.HasPrefix(expResponseBody, []byte("event:")) || bytes.HasPrefix(expResponseBody, []byte("data:")) {
-			// If it's already an SSE stream, write it directly (Anthropic).
-			if _, err = w.Write(expResponseBody); err != nil {
-				logger.Println("failed to write the raw sse response body")
+		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
+			line := string(line)
+			if line == "" {
+				continue
+			}
+			time.Sleep(streamingInterval)
+
+			if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
+				logger.Println("failed to write the response body")
 				return
 			}
-			logger.Println("raw sse response sent")
-		} else {
-			// Otherwise, wrap each line to create an SSE stream.
-			for _, lineBytes := range bytes.Split(expResponseBody, []byte("\n")) {
-				line := string(lineBytes)
-				if line == "" {
-					continue
-				}
-				time.Sleep(streamingInterval)
 
-				if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
-					logger.Println("failed to write the response body")
-					return
-				}
-				logger.Println("response line sent:", line)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			} else {
+				panic("expected http.ResponseWriter to be an http.Flusher")
 			}
+			logger.Println("response line sent:", line)
+		}
+		logger.Println("response sent")
+		r.Context().Done()
+	case "raw_sse":
+		// TODO: combine this with the "sse" case.
+		w.Header().Set("Content-Type", "text/event-stream")
+		var expResponseBody []byte
+		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
+		if err != nil {
+			logger.Println("failed to decode the response body")
+			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			return
 		}
 
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
-		} else {
-			panic("expected http.ResponseWriter to be an http.Flusher")
-		}
+		w.WriteHeader(status)
+		// Split by the event delimiter "\n\n", not by single newlines.
+		eventBlocks := bytes.Split(expResponseBody, []byte("\n\n"))
 
+		for _, block := range eventBlocks {
+			if len(bytes.TrimSpace(block)) == 0 {
+				continue
+			}
+			time.Sleep(streamingInterval)
+
+			// Write the complete event block followed by the required double newline delimiter.
+			if _, err = w.Write(append(block, "\n\n"...)); err != nil {
+				logger.Println("failed to write the response body")
+				return
+			}
+
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			} else {
+				panic("expected http.ResponseWriter to be an http.Flusher")
+			}
+			logger.Println("response block sent:", string(block))
+		}
 		logger.Println("response sent")
 		r.Context().Done()
 	case "aws-event-stream":

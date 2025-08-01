@@ -22,7 +22,7 @@ import (
 const (
 	sseEventPrefix = "event:"
 	sseDataPrefix  = "data: "
-	sseDoneMessage = ""
+	sseDoneMessage = "[DONE]"
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -175,17 +175,9 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	}
 
 	finalBody := responseBodyBuilder.String()
-	if len(finalBody) == 0 {
-		return nil, nil, LLMTokenUsage{}, nil
-	}
-
 	mut := &extprocv3.BodyMutation_Body{Body: []byte(finalBody)}
-	bodyMutation := &extprocv3.BodyMutation{Mutation: mut}
-	headerMutation := &extprocv3.HeaderMutation{
-		RemoveHeaders: []string{"content-encoding"},
-	}
 
-	return headerMutation, bodyMutation, p.tokenUsage, nil
+	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, nil
 }
 
 func (p *AnthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.ChatCompletionResponseChunk, error) {
@@ -270,8 +262,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
-		delta := openai.ChatCompletionResponseChunkChoiceDelta{}
-		return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):
 		var event anthropic.ContentBlockDeltaEvent

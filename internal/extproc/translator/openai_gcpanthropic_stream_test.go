@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -396,7 +397,7 @@ data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_to
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Nil(t, bm, "message_start should not produce a chunk")
+		assert.Empty(t, string(bm.GetBody()), "message_start should produce an empty chunk")
 	})
 
 	t.Run("handles content_block events for tool use", func(t *testing.T) {
@@ -459,7 +460,7 @@ data: {"type": "ping"}
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Nil(t, bm, "ping should not produce a chunk")
+		require.Empty(t, bm.GetBody(), "ping should produce an empty chunk")
 	})
 
 	t.Run("handles error event", func(t *testing.T) {
@@ -479,7 +480,7 @@ data: {"some_new_data": "value"}
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Nil(t, bm, "unknown events should be ignored and not produce a chunk")
+		require.Empty(t, bm.GetBody(), "unknown events should be ignored and produce an empty chunk")
 	})
 
 	t.Run("handles message_stop event", func(t *testing.T) {
@@ -509,7 +510,7 @@ data: {"type": "content_block_stop", "index": 0}
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Nil(t, bm, "thinking events should be ignored and not produce an output chunk")
+		require.Empty(t, bm.GetBody(), "thinking events should be ignored and produce an empty chunk")
 	})
 
 	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {
