@@ -6,6 +6,7 @@
 package mainlib
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,12 +108,16 @@ func TestListenAddress(t *testing.T) {
 	// Create a stale file to ensure that removing the file works correctly.
 	require.NoError(t, os.WriteFile(unixPath, []byte("stale socket"), 0o600))
 
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
 	tests := []struct {
 		addr        string
 		wantNetwork string
 		wantAddress string
 	}{
-		{":8080", "tcp", ":8080"},
+		{lis.Addr().String(), "tcp", lis.Addr().String()},
 		{"unix://" + unixPath, "unix", unixPath},
 	}
 
@@ -121,12 +128,16 @@ func TestListenAddress(t *testing.T) {
 			assert.Equal(t, tt.wantAddress, address)
 		})
 	}
-	_, err := os.Stat(unixPath)
+	_, err = os.Stat(unixPath)
 	require.ErrorIs(t, err, os.ErrNotExist, "expected the stale socket file to be removed")
 }
 
 func TestStartMetricsServer(t *testing.T) {
-	s, m := startMetricsServer("127.0.0.1:", slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
+	s, m := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
 	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
 
 	require.NotNil(t, s)
@@ -160,6 +171,10 @@ func TestStartMetricsServer(t *testing.T) {
 }
 
 func TestStartHealthCheckServer(t *testing.T) {
+	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer lis.Close() //nolint:errcheck
+
 	for _, tc := range []string{"unix", "tcp"} {
 		t.Run(tc, func(t *testing.T) {
 			var grpcLis net.Listener
@@ -183,13 +198,13 @@ func TestStartHealthCheckServer(t *testing.T) {
 			time.Sleep(time.Millisecond * 100)
 
 			httpSrv := startHealthCheckServer(
-				"", // addr unused when invoking Handler directly.
+				lis,
 				slog.Default(),
 				grpcLis,
 			)
 
 			req := httptest.NewRequest("GET", "/", nil)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			req = req.WithContext(ctx)
 
@@ -204,4 +219,140 @@ func TestStartHealthCheckServer(t *testing.T) {
 			require.Equal(t, http.StatusOK, res.StatusCode)
 		})
 	}
+}
+
+func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
+	// Test health check RPC error.
+	t.Run("health check RPC error", func(t *testing.T) {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer lis.Close()
+
+		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer grpcLis.Close()
+
+		// Start a gRPC server that returns error.
+		grpcServer := grpc.NewServer()
+		healthServer := &mockHealthServerError{}
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		go func() {
+			_ = grpcServer.Serve(grpcLis)
+		}()
+		defer grpcServer.Stop()
+
+		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
+		defer httpSrv.Close()
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(rr, req)
+		res := rr.Result()
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		body, _ := io.ReadAll(res.Body)
+		require.Contains(t, string(body), "health check RPC failed")
+	})
+
+	// Test unhealthy status.
+	t.Run("unhealthy status", func(t *testing.T) {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer lis.Close()
+
+		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer grpcLis.Close()
+
+		// Start a gRPC server that returns unhealthy status.
+		grpcServer := grpc.NewServer()
+		healthServer := &mockHealthServer{status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		go func() {
+			_ = grpcServer.Serve(grpcLis)
+		}()
+		defer grpcServer.Stop()
+
+		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
+		defer httpSrv.Close()
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(rr, req)
+		res := rr.Result()
+		defer res.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		body, _ := io.ReadAll(res.Body)
+		require.Contains(t, string(body), "unhealthy status")
+	})
+}
+
+type mockHealthServer struct {
+	grpc_health_v1.UnimplementedHealthServer
+	status grpc_health_v1.HealthCheckResponse_ServingStatus
+}
+
+func (m *mockHealthServer) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: m.status}, nil
+}
+
+type mockHealthServerError struct {
+	grpc_health_v1.UnimplementedHealthServer
+}
+
+func (m *mockHealthServerError) Check(context.Context, *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return nil, fmt.Errorf("health check failed")
+}
+
+// TestExtProcStartupMessage ensures other programs can rely on the startup message to STDERR.
+func TestExtProcStartupMessage(t *testing.T) {
+	// Create a temporary config file.
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`metadataNamespace: test_ns
+schema:
+  name: OpenAI
+  version: v1
+modelNameHeaderKey: x-model-name
+backends:
+- name: openai
+  schema:
+    name: OpenAI
+    version: v1
+`), 0o600))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// Create a pipe for stderr.
+	stderrR, stderrW := io.Pipe()
+
+	// Start a goroutine to scan stderr until it reaches "AI Gateway External Processor is ready" written by envoy.
+	go func() {
+		scanner := bufio.NewScanner(stderrR)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "AI Gateway External Processor is ready") {
+				cancel() // interrupts extproc.
+				return
+			}
+		}
+	}()
+
+	// Run ExtProc in a goroutine on ephemeral ports.
+	errCh := make(chan error, 1)
+	go func() {
+		args := []string{
+			"-configPath", configPath,
+			"-extProcAddr", ":0",
+			"-metricsPort", "0",
+			"-healthPort", "0",
+		}
+		errCh <- Main(ctx, args, stderrW)
+	}()
+
+	// block until the context is canceled or an error occurs.
+	err := <-errCh
+	require.NoError(t, err)
 }

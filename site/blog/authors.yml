@@ -9,7 +9,7 @@ missberg:
     linkedin: https://www.linkedin.com/in/ericahughberg/
 alexagriffith:
   name: Alexa Griffith
-  title: Senior Software Engineer, Bloomberg
+  title: Senior Software Engineer - Bloomberg
   url: https://github.com/alexagriffith
   image_url: https://github.com/alexagriffith.png
   page: true
@@ -52,3 +52,12 @@ mathetake:
   socials:
     github: https://github.com/mathetake
     linkedin: https://www.linkedin.com/in/mathetake/
+xunzhuo:
+  name: Xunzhuo (Bit) Liu
+  title: Envoy AI Gateway Maintainer - Tencent
+  url: https://github.com/Xunzhuo
+  image_url: https://github.com/Xunzhuo.png
+  page: true
+  socials:
+    github: Xunzhuo
+    linkedin: https://www.linkedin.com/in/bitliu/

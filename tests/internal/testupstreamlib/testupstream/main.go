@@ -15,13 +15,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"golang.org/x/exp/rand"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -37,11 +37,19 @@ var logger = log.New(os.Stdout, "[testupstream] ", 0)
 // This is useful to test the external processor request to the Envoy Gateway LLM Controller.
 func main() {
 	logger.Println("Version: ", version.Version)
-	l, err := net.Listen("tcp", ":8080") // nolint: gosec
+	// Note: Do not use "TESTUPSTREAM_PORT" as it will conflict with an automatic environment variable
+	// set by K8s, which results in a very hard-to-debug issue during e2e.
+	port := os.Getenv("LISTENER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	l, err := net.Listen("tcp", ":"+port) // nolint: gosec
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	defer l.Close()
+	// Emit startup message when the listener is ready.
+	log.Println("Test upstream is ready")
 	doMain(l)
 }
 
@@ -53,7 +61,6 @@ func doMain(l net.Listener) {
 			streamingInterval = d
 		}
 	}
-	defer l.Close()
 	http.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusOK) })
 	http.HandleFunc("/", handler)
 	if err := http.Serve(l, nil); err != nil { // nolint: gosec
@@ -173,14 +180,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// At least for the endpoints we want to support, all requests should have a Content-Length header
 	// and should not use chunked transfer encoding.
 	if r.Header.Get("Content-Length") == "" {
-		logger.Println("no Content-Length header, using request body length:", len(requestBody))
-		http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
-		return
-	}
-	if slices.Contains(r.TransferEncoding, "chunked") {
-		logger.Println("chunked transfer encoding detected")
-		http.Error(w, "chunked transfer encoding is not supported", http.StatusBadRequest)
-		return
+		// Endpoint pickers mutate the request body by sending them back to the client (due to the use of DUPLEX mode),
+		// and it will clear the Content-Length header. It should be fine to assume that these locally hosted endpoints
+		// are capable of reading the chunked transfer encoding unlike the GCP Anthropic.
+		if r.Header.Get(internalapi.EndpointPickerHeaderKey) == "" {
+			logger.Println("no Content-Length header, using request body length:", len(requestBody))
+			http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
+			return
+		}
 	}
 
 	if expectedReqBody := r.Header.Get(testupstreamlib.ExpectedRequestBodyHeaderKey); expectedReqBody != "" {
@@ -395,6 +402,9 @@ func getFakeResponse(path string) ([]byte, error) {
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
 				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
+	case "/v1/embeddings":
+		const embeddingTemplate = `{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3,0.4,0.5],"index":0}],"model":"some-cool-self-hosted-model","usage":{"prompt_tokens":3,"total_tokens":3}}`
+		return []byte(embeddingTemplate), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}

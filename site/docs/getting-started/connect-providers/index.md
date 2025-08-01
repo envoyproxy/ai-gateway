@@ -8,35 +8,21 @@ sidebar_position: 5
 
 After setting up the basic AI Gateway with the mock backend, you can configure it to work with real AI model providers. This section will guide you through connecting different AI providers to your gateway.
 
-## Available Providers
+## Example Providers
 
-Currently, Envoy AI Gateway supports the following providers:
+In this getting started guide you'll find quickstart setups to connect to the following providers:
 
 - [OpenAI](./openai.md) - Connect to OpenAI's GPT models
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
 - [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
 
+:::tip
+To learn how to connect to providers see [Connecting to AI Providers](/docs/capabilities/llm-integrations/connect-providers) and you can view all [Supported Providers](/docs/capabilities/llm-integrations/supported-providers).
+:::
+
 ## Before You Begin
 
-Before configuring any provider:
-
-1. Complete the [Basic Usage](../basic-usage.md) guide
-2. Remove the basic configuration with the mock backend
-
-   ```shell
-   kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-
-   kubectl wait pods --timeout=15s \
-     -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
-     -n envoy-gateway-system \
-     --for=delete
-   ```
-
-3. Download configuration template
-
-   ```shell
-   curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-   ```
+Before configuring any provider, complete the [Basic Usage](../basic-usage.md) guide.
 
 ## Security Best Practices
 

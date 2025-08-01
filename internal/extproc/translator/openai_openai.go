@@ -36,7 +36,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	if req.Stream {
@@ -65,8 +65,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		},
 	}
 
-	if onRetry {
-		// On retry, the body might have changed to a different provider's format.
+	if forceBodyMutation {
 		newBody = raw
 	}
 

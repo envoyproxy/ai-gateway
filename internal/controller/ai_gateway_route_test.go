@@ -73,6 +73,41 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
+	// Test error path where syncAIGatewayRoute fails.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Create a route without creating the filter to cause sync error.
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "errorroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "nonexistent", Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// This should fail during sync because backend doesn't exist.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "errorroute"}})
+	require.Error(t, err)
+
+	// Check that status was updated to NotAccepted.
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
@@ -359,10 +394,84 @@ func Test_buildPriorityAnnotation(t *testing.T) {
 	require.Equal(t, "0:orange:0,0:apple:1,0:pineapple:2", annotation)
 }
 
+func TestAIGatewayRouteController_backend(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch)
+
+	// Test successful backend retrieval.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "backend1"},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	result, err := c.backend(t.Context(), "default", "test-backend")
+	require.NoError(t, err)
+	require.Equal(t, "test-backend", result.Name)
+
+	// Test backend not found error.
+	_, err = c.backend(t.Context(), "default", "nonexistent")
+	require.Error(t, err)
+}
+
 func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This is mostly for coverage.
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch)
 	s.syncGateway(t.Context(), "ns", "non-exist")
+}
+
+func Test_newHTTPRoute_InferencePool(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Create an AIGatewayRoute with InferencePool backend.
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "inference-route",
+			Namespace: "test-ns",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:   "test-inference-pool",
+							Group:  ptr.To("inference.networking.x-k8s.io"),
+							Kind:   ptr.To("InferencePool"),
+							Weight: ptr.To(int32(100)),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c}
+	httpRoute := &gwapiv1.HTTPRoute{}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	// Verify HTTPRoute has correct backend reference for InferencePool.
+	// Note: newHTTPRoute always adds a default "unreachable" rule, so we expect 2 rules total.
+	require.Len(t, httpRoute.Spec.Rules, 2)
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+
+	// Check the first rule (our InferencePool rule).
+	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+	require.Equal(t, "inference.networking.x-k8s.io", string(*backendRef.Group))
+	require.Equal(t, "InferencePool", string(*backendRef.Kind))
+	require.Equal(t, "test-inference-pool", string(backendRef.Name))
+	require.Equal(t, "test-ns", string(*backendRef.Namespace))
+	require.Equal(t, int32(100), *backendRef.Weight)
+
+	// Check the second rule is the default "route-not-found" rule.
+	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
+	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }

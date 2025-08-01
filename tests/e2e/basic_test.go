@@ -6,7 +6,6 @@
 package e2e
 
 import (
-	"cmp"
 	"context"
 	"os"
 	"strings"
@@ -16,11 +15,14 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestExamplesBasic tests the basic example in examples/basic directory.
 func Test_Examples_Basic(t *testing.T) {
-	const manifest = "../../examples/basic/basic.yaml"
+	const manifestDir = "../../examples/basic"
+	const manifest = manifestDir + "/basic.yaml"
 	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
@@ -36,22 +38,23 @@ func Test_Examples_Basic(t *testing.T) {
 	//
 	// A test case will be skipped if the corresponding environment variable is not set.
 	t.Run("with credentials", func(t *testing.T) {
-		read, err := os.ReadFile(manifest)
+		cc := internaltesting.RequireNewCredentialsContext()
+
+		// Replace the placeholders with the actual credentials and apply the manifests.
+		openAIManifest, err := os.ReadFile(manifestDir + "/openai.yaml")
 		require.NoError(t, err)
-		// Replace the placeholder with the actual credentials.
-		openAIAPIKey := os.Getenv("TEST_OPENAI_API_KEY")
-		awsAccessKeyID := os.Getenv("TEST_AWS_ACCESS_KEY_ID")
-		awsSecretAccessKey := os.Getenv("TEST_AWS_SECRET_ACCESS_KEY")
-		replaced := strings.ReplaceAll(string(read), "OPENAI_API_KEY", cmp.Or(openAIAPIKey, "dummy-openai-api-key"))
-		replaced = strings.ReplaceAll(replaced, "AWS_ACCESS_KEY_ID", cmp.Or(awsAccessKeyID, "dummy-aws-access-key-id"))
-		replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", cmp.Or(awsSecretAccessKey, "dummy-aws-secret-access-key"))
-		require.NoError(t, kubectlApplyManifestStdin(t.Context(), replaced))
+		require.NoError(t, kubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(openAIManifest), "OPENAI_API_KEY", cc.OpenAIAPIKey)))
+		awsManifest, err := os.ReadFile(manifestDir + "/aws.yaml")
+		require.NoError(t, err)
+		awsManifestReplaced := strings.ReplaceAll(string(awsManifest), "AWS_ACCESS_KEY_ID", cc.AWSAccessKeyID)
+		awsManifestReplaced = strings.ReplaceAll(awsManifestReplaced, "AWS_SECRET_ACCESS_KEY", cc.AWSSecretAccessKey)
+		require.NoError(t, kubectlApplyManifestStdin(t.Context(), awsManifestReplaced))
 
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
 		for _, tc := range []examplesBasicTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", skip: openAIAPIKey == ""},
-			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: awsAccessKeyID == "" || awsSecretAccessKey == ""},
+			{name: "openai", modelName: "gpt-4o-mini", skip: !cc.OpenAIValid},
+			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: !cc.AWSValid},
 		} {
 			tc.run(t, egNamespace, egSelector)
 		}

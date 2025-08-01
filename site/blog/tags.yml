@@ -10,3 +10,7 @@ releases:
   label: Releases
   permalink: /releases
   description: Project Releases
+features:
+  label: Features
+  permalink: /features
+  description: Articles about Envoy AI Gateway Features

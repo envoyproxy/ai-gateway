@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -88,6 +89,29 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "mybackend"}})
 	require.NoError(t, err)
+}
+
+func TestAIServiceBackendController_Reconcile_error_with_multiple_bsps(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
+
+	const backendName, namespace = "mybackend", "default"
+	// Create Multiple Backend Security Policies that target the same backend.
+	for i := 0; i < 5; i++ {
+		bsp := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bsp-%d", i), Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backendName)}},
+			},
+		}
+		require.NoError(t, fakeClient.Create(t.Context(), bsp))
+	}
+
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{ObjectMeta: metav1.ObjectMeta{Name: backendName, Namespace: namespace}})
+	require.NoError(t, err)
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendName}})
+	require.ErrorContains(t, err, `multiple BackendSecurityPolicies found for AIServiceBackend mybackend: [bsp-0 bsp-1 bsp-2 bsp-3 bsp-4]`)
 }
 
 func Test_AiServiceBackendIndexFunc(t *testing.T) {
