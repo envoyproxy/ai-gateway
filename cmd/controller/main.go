@@ -14,7 +14,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"go.uber.org/zap/zapcore"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type flags struct {
@@ -54,42 +54,6 @@ func parsePullPolicy(s string) (corev1.PullPolicy, error) {
 	default:
 		return "", fmt.Errorf("invalid external processor pull policy: %q", s)
 	}
-}
-
-// parseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
-// The input format is "header1:label1,header2:label2" where header names are HTTP request
-// headers and label names are Prometheus metric labels.
-// Example: "x-team-id:team_id,x-user-id:user_id".
-func parseRequestHeaderLabelMapping(s string) (map[string]string, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	result := make(map[string]string)
-	pairs := strings.Split(s, ",")
-
-	for i, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			return nil, fmt.Errorf("empty header-label pair at position %d", i+1)
-		}
-
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
-		}
-
-		header := strings.TrimSpace(parts[0])
-		label := strings.TrimSpace(parts[1])
-
-		if header == "" || label == "" {
-			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
-		}
-
-		result[header] = label
-	}
-
-	return result, nil
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -182,7 +146,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 
 	// Validate metrics header labels if provided.
 	if *extProcMetricsRequestHeaderLabelMapping != "" {
-		_, err := parseRequestHeaderLabelMapping(*extProcMetricsRequestHeaderLabelMapping)
+		_, err := internalapi.ParseRequestHeaderLabelMapping(*extProcMetricsRequestHeaderLabelMapping)
 		if err != nil {
 			return flags{}, fmt.Errorf("invalid metrics header labels: %w", err)
 		}

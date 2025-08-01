@@ -8,6 +8,7 @@ package internalapi
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,4 +64,98 @@ func TestConstants(t *testing.T) {
 	require.Equal(t, "aigateway.envoy.io", InternalEndpointMetadataNamespace)
 	require.Equal(t, "per_route_rule_backend_name", InternalMetadataBackendNameKey)
 	require.Equal(t, "x-gateway-destination-endpoint", EndpointPickerHeaderKey)
+}
+
+func TestParseRequestHeaderLabelMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]string
+		wantErr  bool
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+			wantErr:  false,
+		},
+		{
+			name:     "single valid pair",
+			input:    "x-team-id:team_id",
+			expected: map[string]string{"x-team-id": "team_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "multiple valid pairs",
+			input:    "x-team-id:team_id,x-user-id:user_id",
+			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "with whitespace",
+			input:    " x-team-id : team_id , x-user-id : user_id ",
+			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			wantErr:  false,
+		},
+		{
+			name:     "invalid format - missing colon",
+			input:    "x-team-id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - empty header",
+			input:    ":team_id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - empty label",
+			input:    "x-team-id:",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "multiple colons - takes first colon",
+			input:    "x-team-id:team_id:extra",
+			expected: map[string]string{"x-team-id": "team_id:extra"},
+			wantErr:  false,
+		},
+		{
+			name:     "trailing comma - should fail",
+			input:    "x-team-id:team_id,",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "double comma - should fail",
+			input:    "x-team-id:team_id,,x-user-id:user_id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "comma with spaces - should fail",
+			input:    "x-team-id : team_id , , x-user-id : user_id",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "leading comma - should fail",
+			input:    ",x-team-id:team_id",
+			expected: nil,
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseRequestHeaderLabelMapping(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
 }

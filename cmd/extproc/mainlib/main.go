@@ -31,6 +31,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -91,42 +92,6 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	return flags, errors.Join(errs...)
 }
 
-// parseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
-// The input format is "header1:label1,header2:label2" where header names are HTTP request
-// headers and label names are Prometheus metric labels.
-// Example: "x-team-id:team_id,x-user-id:user_id".
-func parseRequestHeaderLabelMapping(s string) (map[string]string, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	result := make(map[string]string)
-	pairs := strings.Split(s, ",")
-
-	for i, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
-		}
-
-		header := strings.TrimSpace(parts[0])
-		label := strings.TrimSpace(parts[1])
-
-		if header == "" || label == "" {
-			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
-		}
-
-		result[header] = label
-	}
-
-	return result, nil
-}
-
 // Main is a main function for the external processor exposed
 // for allowing users to build their own external processor.
 //
@@ -180,7 +145,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	// Parse header mapping for metrics.
-	metricsRequestHeaderLabelMapping, err := parseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabelMapping)
+	metricsRequestHeaderLabelMapping, err := internalapi.ParseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabelMapping)
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
