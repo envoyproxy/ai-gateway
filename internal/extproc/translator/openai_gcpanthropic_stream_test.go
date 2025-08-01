@@ -557,7 +557,7 @@ data: {"type": "content_block_stop", "index": 0}
 
 		// Chunk 2: First part of the arguments.
 		chunk2Args := chunks[1].Choices[0].Delta.ToolCalls[0].Function.Arguments
-		require.JSONEq(t, `{"location": "San Fra`, chunk2Args)
+		require.Equal(t, `{"location": "San Fra`, chunk2Args) //nolint:testifylint
 
 		// Chunk 3: Second part of the arguments.
 		chunk3Args := chunks[2].Choices[0].Delta.ToolCalls[0].Function.Arguments
