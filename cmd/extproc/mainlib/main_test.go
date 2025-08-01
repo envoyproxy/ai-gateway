@@ -89,7 +89,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name: "with header mapping",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
-					"-metricsRequestHeaderLabelMapping", "x-team-id:team_id,x-user-id:user_id",
+					"-metricsRequestHeaderLabels", "x-team-id:team_id,x-user-id:user_id",
 				},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",

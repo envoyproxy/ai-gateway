@@ -29,28 +29,28 @@ type gatewayMutator struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	extProcImage                     string
-	extProcImagePullPolicy           corev1.PullPolicy
-	extProcLogLevel                  string
-	envoyGatewayNamespace            string
-	udsPath                          string
-	metricsRequestHeaderLabelMapping string
+	extProcImage               string
+	extProcImagePullPolicy     corev1.PullPolicy
+	extProcLogLevel            string
+	envoyGatewayNamespace      string
+	udsPath                    string
+	metricsRequestHeaderLabels string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, envoyGatewayNamespace string,
-	udsPath string, metricsRequestHeaderLabelMapping string,
+	udsPath string, metricsRequestHeaderLabels string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		kube:                             kube,
-		extProcImage:                     extProcImage,
-		extProcImagePullPolicy:           extProcImagePullPolicy,
-		extProcLogLevel:                  extProcLogLevel,
-		logger:                           logger,
-		envoyGatewayNamespace:            envoyGatewayNamespace,
-		udsPath:                          udsPath,
-		metricsRequestHeaderLabelMapping: metricsRequestHeaderLabelMapping,
+		kube:                       kube,
+		extProcImage:               extProcImage,
+		extProcImagePullPolicy:     extProcImagePullPolicy,
+		extProcLogLevel:            extProcLogLevel,
+		logger:                     logger,
+		envoyGatewayNamespace:      envoyGatewayNamespace,
+		udsPath:                    udsPath,
+		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
 	}
 }
 
@@ -84,8 +84,8 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMe
 	}
 
 	// Add metrics header label mapping if configured.
-	if g.metricsRequestHeaderLabelMapping != "" {
-		args = append(args, "-metricsRequestHeaderLabelMapping", g.metricsRequestHeaderLabelMapping)
+	if g.metricsRequestHeaderLabels != "" {
+		args = append(args, "-metricsRequestHeaderLabels", g.metricsRequestHeaderLabels)
 	}
 
 	return args
