@@ -7,14 +7,18 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 )
 
 // TestInferencePoolIntegration tests the InferencePool integration with AI Gateway.
@@ -29,6 +33,22 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	egSelector := "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-aigwroute"
 	requireWaitForGatewayPodReady(t, egSelector)
+
+	// Verify InferencePool status is correctly set for the Gateway.
+	t.Run("verify_inference_pool_status", func(t *testing.T) {
+		// Verify that the mistral InferencePool has correct status for the Gateway.
+		requireInferencePoolStatusValid(t, "default", "mistral", "inference-pool-with-aigwroute")
+
+		// Verify that the vllm-llama3-8b-instruct InferencePool has correct status for the Gateway.
+		// Note: This InferencePool is referenced in the AIGatewayRoute but may not exist in base.yaml.
+		// We'll check if it exists first.
+		status, err := getInferencePoolStatus(t.Context(), "default", "vllm-llama3-8b-instruct")
+		if err == nil && status != nil {
+			requireInferencePoolStatusValid(t, "default", "vllm-llama3-8b-instruct", "inference-pool-with-aigwroute")
+		} else {
+			t.Logf("InferencePool vllm-llama3-8b-instruct not found, skipping status validation: %v", err)
+		}
+	})
 
 	// Test connectivity to inferencePool + header match + inference pods with valid metrics, should return 200.
 	t.Run("endpointpicker_with_aigwroute_matched_header", func(t *testing.T) {
@@ -82,6 +102,13 @@ func TestInferencePoolIntegration(t *testing.T) {
 
 	egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-httproute"
 	requireWaitForPodReady(t, egSelector)
+
+	// Verify InferencePool status is correctly set for the HTTPRoute Gateway.
+	t.Run("verify_inference_pool_status_httproute", func(t *testing.T) {
+		// For HTTPRoute, the referenced InferencePool is "vllm-llama3-8b-instruct".
+		// The HTTPRoute Gateway name should be "inference-pool-with-httproute".
+		requireInferencePoolStatusValid(t, "default", "vllm-llama3-8b-instruct", "inference-pool-with-httproute")
+	})
 
 	// Test connectivity to inferencePool + inference pods with valid metrics.
 	t.Run("endpointpicker_with_httproute_valid_pod_metrics", func(t *testing.T) {
@@ -144,4 +171,107 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, add
 		t.Logf("Gateway connectivity test passed: status=%d", resp.StatusCode)
 		return true
 	}, 2*time.Minute, 5*time.Second, "Gateway should return expected status code", expectedStatusCode)
+}
+
+// getInferencePoolStatus retrieves the status of an InferencePool resource.
+func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1a2.InferencePoolStatus, error) {
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "inferencepool", name, "-n", namespace, "-o", "json")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get InferencePool %s/%s: %w", namespace, name, err)
+	}
+
+	var inferencePool gwaiev1a2.InferencePool
+	if err := json.Unmarshal(out, &inferencePool); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal InferencePool: %w", err)
+	}
+
+	return &inferencePool.Status, nil
+}
+
+// requireInferencePoolStatusValid validates that the InferencePool status is correctly set.
+func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName, expectedGatewayName string) {
+	require.Eventually(t, func() bool {
+		status, err := getInferencePoolStatus(t.Context(), namespace, inferencePoolName)
+		if err != nil {
+			t.Logf("Failed to get InferencePool status: %v", err)
+			return false
+		}
+
+		// Check that we have at least one parent status.
+		if len(status.Parents) == 0 {
+			t.Logf("InferencePool %s has no parent status", inferencePoolName)
+			return false
+		}
+
+		// Find the parent status for the expected Gateway.
+		var foundParent *gwaiev1a2.PoolStatus
+		for i := range status.Parents {
+			parent := &status.Parents[i]
+			if string(parent.GatewayRef.Name) == expectedGatewayName {
+				foundParent = parent
+				break
+			}
+		}
+
+		if foundParent == nil {
+			t.Logf("InferencePool %s does not have parent status for Gateway %s", inferencePoolName, expectedGatewayName)
+			return false
+		}
+
+		// Validate the GatewayRef fields.
+		if foundParent.GatewayRef.Group == nil || string(*foundParent.GatewayRef.Group) != "gateway.networking.k8s.io" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect group: %v", inferencePoolName, foundParent.GatewayRef.Group)
+			return false
+		}
+
+		if foundParent.GatewayRef.Kind == nil || string(*foundParent.GatewayRef.Kind) != "Gateway" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect kind: %v", inferencePoolName, foundParent.GatewayRef.Kind)
+			return false
+		}
+
+		if string(foundParent.GatewayRef.Name) != expectedGatewayName {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect name: %s (expected %s)", inferencePoolName, foundParent.GatewayRef.Name, expectedGatewayName)
+			return false
+		}
+
+		if foundParent.GatewayRef.Namespace == nil || string(*foundParent.GatewayRef.Namespace) != namespace {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect namespace: %v (expected %s)", inferencePoolName, foundParent.GatewayRef.Namespace, namespace)
+			return false
+		}
+
+		// Validate the conditions.
+		if len(foundParent.Conditions) == 0 {
+			t.Logf("InferencePool %s parent has no conditions", inferencePoolName)
+			return false
+		}
+
+		// Find the "Accepted" condition.
+		var acceptedCondition *metav1.Condition
+		for i := range foundParent.Conditions {
+			condition := &foundParent.Conditions[i]
+			if condition.Type == "Accepted" {
+				acceptedCondition = condition
+				break
+			}
+		}
+
+		if acceptedCondition == nil {
+			t.Logf("InferencePool %s parent does not have 'Accepted' condition", inferencePoolName)
+			return false
+		}
+
+		if acceptedCondition.Status != metav1.ConditionTrue {
+			t.Logf("InferencePool %s 'Accepted' condition status is not True: %s", inferencePoolName, acceptedCondition.Status)
+			return false
+		}
+
+		if acceptedCondition.Reason != "Accepted" {
+			t.Logf("InferencePool %s 'Accepted' condition reason is not 'Accepted': %s", inferencePoolName, acceptedCondition.Reason)
+			return false
+		}
+
+		t.Logf("InferencePool %s status validation passed: Gateway=%s, Condition=%s", inferencePoolName, expectedGatewayName, acceptedCondition.Status)
+		return true
+	}, 2*time.Minute, 5*time.Second, "InferencePool status should be correctly set")
 }

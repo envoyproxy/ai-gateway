@@ -135,6 +135,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
 	}
 
+	inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
+		WithName("inference-pool"))
+	if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+		Watches(&gwapiv1.Gateway{}, inferencePoolC.gatewayEventHandler()).
+		Watches(&aigv1a1.AIGatewayRoute{}, inferencePoolC.routeEventHandler()).
+		Watches(&gwapiv1.HTTPRoute{}, inferencePoolC.httpRouteEventHandler()).
+		Complete(inferencePoolC); err != nil {
+		return fmt.Errorf("failed to create controller for InferencePool: %w", err)
+	}
+
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("secret"), backendSecurityPolicyEventChan)
 	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.

@@ -1,0 +1,30 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+GatewayAPIInferenceExtensionVersion: v0.5.1
+apiVersion: gateway.networking.k8s.io/v1
+date: "2025-08-01T14:34:49+08:00"
+gatewayAPIChannel: experimental
+gatewayAPIVersion: v1.3.0
+implementation:
+  contact:
+  - '@envoy-ai-gateway/maintainers'
+  organization: EnvoyProxy
+  project: Envoy AI Gateway
+  url: https://github.com/envoyproxy/ai-gateway
+  version: latest
+kind: ConformanceReport
+mode: default
+profiles:
+- core:
+    result: partial
+    skippedTests:
+    - EppUnAvailableFailOpen
+    statistics:
+      Failed: 0
+      Passed: 8
+      Skipped: 1
+  name: Gateway
+  summary: Core tests partially succeeded with 1 test skips.
