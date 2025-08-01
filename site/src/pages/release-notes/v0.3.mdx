@@ -1,0 +1,116 @@
+---
+title: Envoy AI Gateway v0.3.x Release Series
+description: Release version introducing intelligent inference routing with Endpoint Picker Provider, Google Vertex AI streaming support, and enhanced provider integrations
+toc_min_heading_level: 2
+toc_max_heading_level: 2
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  PatchRelease,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v0.3.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0]; // v0.3.0
+export const patchReleases = releases.slice(1).reverse(); // Future patch releases (newest first)
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+### Deprecations
+{mainRelease.deprecations.length > 0 && (
+  <ItemList items={mainRelease.deprecations} />
+)}
+
+## 🐛 Bug Fixes
+
+<ItemList items={mainRelease.bugFixes} />
+
+## ⚠️ Breaking Changes
+
+{mainRelease.breakingChanges.length > 0 && (
+  <ItemList items={mainRelease.breakingChanges} />
+)}
+
+## 📖 Upgrade Guidance
+
+For users upgrading from v0.2.x to v0.3.0:
+
+1. **Migrate BackendSecurityPolicy references** - Update from the deprecated `backendSecurityPolicyRef` pattern to the new `targetRefs` approach in BackendSecurityPolicy resources.
+1. **Review Endpoint Picker integration** - If using inference pools, consider enabling Endpoint Picker Provider for intelligent routing based on your AI workload requirements.
+1. **Update external processor configurations** - Review any custom external processor configurations for compatibility with new endpoint picker features.
+1. **Test streaming integrations** - Validate GCP Vertex AI streaming functionality if using Google Cloud AI services.
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+{patchReleases.map((release, index) => (
+    <PatchRelease
+        key={index}
+        version={release.version}
+        date={release.date}
+        type={release.type}
+        tags={release.tags}
+        overview={release.overview}
+        features={release.features}
+        bugFixes={release.bugFixes}
+    />
+))}
+
+## 🙏 Acknowledgements
+
+This release represents the collaborative effort of our growing community. Special thanks to contributors from **Tetrate**, **Bloomberg**, **Tencent**, **Google**, and our independent contributors who made this release possible through their code contributions, testing, feedback, and community participation.
+
+The Endpoint Picker Provider integration represents a significant milestone in making AI inference routing more intelligent and efficient. We appreciate all the feedback and testing from the community that helped shape this feature.
+
+## 🔮 What's Next (beyond v0.3)
+
+We're already working on exciting features for future releases:
+
+{/* TODO: Add more of what's next */}
+
+- **Support for MCP Protocol** - Handle routing for MCP requests on the Envoy AI Gateway
+- **Restore support for referencing Kubernetes Services in AIServiceBackend** to enable seamless integration with Kubernetes-native backends
+- **What else do you want to see?** Get involved and [open an issue](https://github.com/envoyproxy/ai-gateway/issues/new?template=feature_request.md) and let us know!
+
+
+</ReleaseSeriesLayout>

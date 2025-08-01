@@ -1,0 +1,148 @@
+{
+  "series": {
+    "version": "v0.3",
+    "title": "Envoy AI Gateway v0.3.x",
+    "subtitle": "Release version introducing intelligent inference routing with Endpoint Picker Provider, Google Vertex AI streaming support, and enhanced provider integrations.",
+    "badge": "Latest",
+    "badgeType": "milestone"
+  },
+  "releases": [
+    {
+      "version": "v0.3.0",
+      "date": "August 16, 2025",
+      "type": "minor",
+      "tags": [
+        { "text": "Endpoint Picker Provider", "type": "feature" },
+        { "text": "Google Vertex AI Streaming", "type": "feature" },
+        { "text": "Expanded Provider Ecosystem", "type": "feature" },
+        { "text": "Architecture Improvements", "type": "feature" },
+        { "text": "InferencePool Support", "type": "feature" },
+        { "text": "Gateway API Inference Extension", "type": "feature" }
+      ],
+      "overview": "Envoy AI Gateway v0.3.0 significantly expands the AI provider ecosystem while introducing intelligent inference routing capabilities. This release brings Google Vertex AI and Anthropic on Vertex AI from experimental to production-ready status, introduces Endpoint Picker Provider support for dynamic load balancing, and enhances the overall provider integration experience with improved tooling and streaming support.",
+      "features": [
+        {
+          "title": "Endpoint Picker Provider (EPP) Integration",
+          "items": [
+            {
+              "title": "Gateway API Inference Extension Support",
+              "description": "Complete integration with Gateway API Inference Extension v0.5.1, enabling intelligent endpoint selection based on real-time AI inference metrics like KV-cache usage, queue depth, and LoRA adapter information."
+            },
+            {
+              "title": "Dual Integration Approaches",
+              "description": "Support for both <code>HTTPRoute + InferencePool</code> and <code>AIGatewayRoute + InferencePool</code> integration patterns, providing flexibility for different use cases from simple to advanced AI routing scenarios."
+            },
+            {
+              "title": "Dynamic Load Balancing",
+              "description": "Intelligent routing that automatically selects the optimal inference endpoint for each request, optimizing resource utilization across your entire inference infrastructure with real-time performance metrics."
+            },
+            {
+              "title": "Extensible Architecture",
+              "description": "Support for custom endpoint picker providers, allowing implementation of domain-specific routing logic tailored to unique AI workload requirements."
+            }
+          ]
+        },
+        {
+          "title": "Expanded Provider Ecosystem",
+          "items": [
+            {
+              "title": "Google Vertex AI Production Support",
+              "description": "Google Vertex AI has moved from work-in-progress to full production support, including complete streaming support for Gemini models with OpenAI API compatibility. <a href=\"/docs/capabilities/llm-integrations/supported-providers\">View all supported providers →</a>"
+            },
+            {
+              "title": "Anthropic on Vertex AI Integration",
+              "description": "Complete Anthropic Claude integration via GCP Vertex AI, moving from experimental to production-ready status with multi-tool support and configurable API versions for enterprise deployments."
+            },
+            {
+              "title": "Enhanced Gemini Capabilities",
+              "description": "Improved request/response translation for Gemini models with support for tools, response format specification, and advanced conversation handling, making Gemini integration more robust and feature-complete."
+            },
+            {
+              "title": "Strengthened OpenAI-Compatible Ecosystem",
+              "description": "Enhanced support for the broader OpenAI-compatible provider ecosystem including Groq, Together AI, Mistral, Cohere, DeepSeek, SambaNova, and more, ensuring seamless integration across the AI provider landscape."
+            }
+          ]
+        },
+        {
+          "title": "Architecture and Policy Management Improvements",
+          "items": [
+            {
+              "title": "Extension Server-Based Filter Injection",
+              "description": "Switched from EnvoyExtensionPolicy (EEP) to extension server implementation for inserting AI Gateway external processor filters. This resolves the limitation of only one EEP per Gateway, enabling users to attach their own policies alongside AI Gateway and supporting standard HTTPRoutes on the same gateway."
+            },
+            {
+              "title": "BackendSecurityPolicy TargetRef Support",
+              "description": "New <code>targetRefs</code> field in BackendSecurityPolicy enables direct targeting of AIServiceBackend resources, following Gateway API policy attachment patterns for improved resource management."
+            },
+            {
+              "title": "Backward Compatible Policy References",
+              "description": "Maintains support for both the legacy referencing pattern and the new targetRef approach, ensuring smooth migration path for existing deployments."
+            },
+            {
+              "title": "Improved Secret Management",
+              "description": "Enhanced cleanup of secrets when BackendSecurityPolicy resources are deleted, preventing resource leaks and improving security posture."
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "BackendSecurityPolicy TargetRefs",
+          "description": "Added <code>targetRefs</code> field to BackendSecurityPolicy spec, enabling direct targeting of AIServiceBackend resources using Gateway API policy attachment patterns."
+        },
+        {
+          "title": "Gateway API Inference Extension",
+          "description": "Integration with Gateway API Inference Extension v0.5.1 APIs, including InferencePool and related resources for intelligent endpoint selection."
+        },
+        {
+          "title": "Enhanced External Processor Configuration",
+          "description": "Improved external processor configuration for endpoint picker integration and per-route processing capabilities."
+        }
+      ],
+      "deprecations": [
+        {
+          "title": "<code>backendSecurityPolicyRef</code> Pattern",
+          "description": "The old pattern of AIServiceBackend referencing BackendSecurityPolicy is deprecated in favor of the new targetRefs approach. Existing configurations will continue to work but should be migrated."
+        }
+      ],
+      "bugFixes": [
+        {
+          "title": "External Processor Message Handling",
+          "description": "Fixed OpenAI assistant message type handling in external processor for improved chat completion processing."
+        },
+        {
+          "title": "Embedding Response Processing",
+          "description": "Fixed fake response handling for embedding endpoints to ensure consistent API behavior during testing and development."
+        },
+        {
+          "title": "EPP Configuration in Direct Response",
+          "description": "Fixed issue where per-route endpoint picker external processor configuration was incorrectly enabled in direct response scenarios."
+        }
+      ],
+      "breakingChanges": [
+        {
+          "title": "EnvoyExtensionPolicy Generation Removed",
+          "description": "AI Gateway no longer generates EnvoyExtensionPolicy (EEP) resources and instead uses extension server implementation for filter injection. This is an internal breaking change that improves Gateway policy flexibility. Users should manually delete any previously generated EEPs after upgrading."
+        },
+        {
+          "title": "Deprecated BackendSecurityPolicyRef Cleanup",
+          "description": "The deprecated <code>backendSecurityPolicyRef</code> field has been removed from the codebase. Users should migrate to the new <code>targetRefs</code> pattern in BackendSecurityPolicy."
+        },
+        {
+          "title": "External Processor Configuration Changes",
+          "description": "Some external processor configuration patterns may require updates for endpoint picker integration. Review endpoint picker documentation for migration guidance."
+        }
+      ],
+      "dependencies": [
+        { "title": "Go 1.24.4", "description": "Updated to latest Go version for improved performance and security." },
+        { "title": "Envoy Gateway v1.5", "description": "Built on Envoy Gateway for proven data plane capabilities." },
+        { "title": "Envoy v1.35", "description": "Leveraging Envoy Proxy's battle-tested networking capabilities." },
+        { "title": "Gateway API v1.3.1", "description": "Support for latest Gateway API specifications." },
+        { "title": "Gateway API Inference Extension v0.5.1", "description": "Integration with Gateway API Inference Extension for intelligent endpoint selection." }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "v0.2.x Series", "path": "/release-notes/v0.2" }
+  }
+}
