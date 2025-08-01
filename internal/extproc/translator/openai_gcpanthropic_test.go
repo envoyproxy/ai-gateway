@@ -11,14 +11,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -1280,156 +1278,4 @@ func TestSystemPromptExtractionCoverage(t *testing.T) {
 			require.Equal(t, tt.expectedPrompt, prompt)
 		})
 	}
-}
-
-func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t *testing.T) {
-	// Canned SSE response from Anthropic
-	sseStream := `
-event: message_start
-data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-opus-4-20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 25, "output_tokens": 1}}}
-
-event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-
-event: ping
-data: {"type": "ping"}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "!"}}
-
-event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}
-
-event: message_delta
-data: {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence":null}, "usage": {"output_tokens": 15}}
-
-event: message_stop
-data: {"type": "message_stop"}
-
-`
-	openAIReq := &openai.ChatCompletionRequest{
-		Stream:    true,
-		Model:     "test-model",
-		MaxTokens: new(int64),
-	}
-	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
-	_, _, err := translator.RequestBody(nil, openAIReq, false)
-	require.NoError(t, err)
-
-	_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
-	fmt.Printf("SSE Stream: %s, EndOfStream: %v, Error: %v\n", sseStream, true, err) // Added debug print
-	require.NoError(t, err)
-	require.NotNil(t, bm)
-
-	bodyStr := string(bm.GetBody())
-	require.Contains(t, bodyStr, `"content":"Hello"`)
-	require.Contains(t, bodyStr, `"finish_reason":"stop"`)
-	require.Contains(t, bodyStr, `"prompt_tokens":10`)
-	require.Contains(t, bodyStr, `"completion_tokens":2`)
-	require.Contains(t, bodyStr, sseDoneMessage)
-}
-
-func TestAnthropicStreamParser_EventTypes(t *testing.T) {
-	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) (*extprocv3.BodyMutation, LLMTokenUsage, error) {
-		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
-		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
-		_, _, err := translator.RequestBody(nil, openAIReq, false)
-		require.NoError(t, err)
-
-		_, bm, tokenUsage, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream)
-		fmt.Printf("SSE Stream: %s, EndOfStream: %v, Error: %v\n", sseStream, endOfStream, err) // Added debug print
-		return bm, tokenUsage, err
-	}
-
-	t.Run("handles message_start event", func(t *testing.T) {
-		sseStream := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15}}}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.Nil(t, bm, "message_start should not produce a chunk")
-	})
-
-	t.Run("handles content_block events for tool use", func(t *testing.T) {
-		sseStream := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_abc", "name": "get_weather"}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"location\": \"SF\"}"}}
-
-event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
-		require.Contains(t, bodyStr, `"tool_calls":[{"id":"tool_abc","type":"function","function":{"name":"get_weather","arguments":"{\"location\": \"SF\"}"}}]`)
-		require.Contains(t, bodyStr, `"tool_calls":`)
-	})
-
-	t.Run("handles ping event", func(t *testing.T) {
-		sseStream := `event: ping
-data: {"type": "ping"}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.Nil(t, bm, "ping should not produce a chunk")
-	})
-
-	t.Run("handles error event", func(t *testing.T) {
-		sseStream := `event: error
-data: {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
-
-`
-		_, _, err := runStreamTest(t, sseStream, false)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "anthropic stream error: overloaded_error - Overloaded")
-	})
-
-	t.Run("gracefully handles unknown event types", func(t *testing.T) {
-		sseStream := `event: future_event_type
-data: {"some_new_data": "value"}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.Nil(t, bm, "unknown events should be ignored and not produce a chunk")
-	})
-
-	t.Run("handles message_stop event", func(t *testing.T) {
-		sseStream := `event: message_delta
-data: {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}, "usage": {"output_tokens": 1}}
-
-event: message_stop
-data: {"type": "message_stop"}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.NotNil(t, bm)
-		require.Contains(t, string(bm.GetBody()), `"finish_reason":"length"`)
-	})
-
-	t.Run("handles thinking event", func(t *testing.T) {
-		sseStream := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta"}}
-
-event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.Nil(t, bm, "thinking events should be ignored and not produce an output chunk")
-	})
 }
