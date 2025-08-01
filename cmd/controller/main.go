@@ -71,7 +71,7 @@ func parseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 	for i, pair := range pairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
-			continue
+			return nil, fmt.Errorf("empty header-label pair at position %d", i+1)
 		}
 
 		parts := strings.SplitN(pair, ":", 2)
