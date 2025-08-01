@@ -1,0 +1,141 @@
+{
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
+      }
+    },
+    {
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": \"You are a helpful assistant.\", \"role\": \"developer\"}, {\"content\": \"Hello!\", \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"stream\": true, \"stream_options\": {\"include_usage\": true}}"
+      }
+    },
+    {
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"choices\": [{\"message\": {\"content\": \"Hello! How can I assist you today?\", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC\", \"created\": 1753423147, \"model\": \"gpt-4.1-nano-2025-04-14\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"system_fingerprint\": \"fp_479cfdfab2\", \"usage\": {\"completion_tokens\": 9, \"prompt_tokens\": 19, \"total_tokens\": 28, \"completion_tokens_details\": {\"accepted_prediction_tokens\": 0, \"audio_tokens\": 0, \"reasoning_tokens\": 0, \"rejected_prediction_tokens\": 0}, \"prompt_tokens_details\": {\"audio_tokens\": 0, \"cached_tokens\": 0}}}"
+      }
+    },
+    {
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-4.1-nano\", \"stream\": true, \"stream_options\": {\"include_usage\": true}}"
+      }
+    },
+    {
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "developer"
+      }
+    },
+    {
+      "key": "llm.input_messages.0.message.content",
+      "value": {
+        "stringValue": "You are a helpful assistant."
+      }
+    },
+    {
+      "key": "llm.input_messages.1.message.role",
+      "value": {
+        "stringValue": "user"
+      }
+    },
+    {
+      "key": "llm.input_messages.1.message.content",
+      "value": {
+        "stringValue": "Hello!"
+      }
+    },
+    {
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-4.1-nano-2025-04-14"
+      }
+    },
+    {
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "28"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "19"
+      }
+    },
+    {
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "9"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
+      }
+    },
+    {
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "Hello! How can I assist you today?"
+      }
+    },
+    {
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "First Token Stream Event"
+    }
+  ],
+  "status": {
+    "code": "STATUS_CODE_OK"
+  }
+}

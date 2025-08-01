@@ -68,6 +68,8 @@ type Options struct {
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
+	// MetricsRequestHeaderLabels is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	MetricsRequestHeaderLabels string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -100,8 +102,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		gatewayEventChan,
 	)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
-		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&egv1a1.HTTPRouteFilter{}).
 		WatchesRawSource(source.Channel(
 			aiGatewayRouteEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -152,6 +154,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.EnvoyGatewayNamespace,
 			options.UDSPath,
+			options.MetricsRequestHeaderLabels,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

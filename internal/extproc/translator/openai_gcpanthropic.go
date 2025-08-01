@@ -487,7 +487,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 		return
 	}
 
-	// Translate tools and tool choice.
+	// 3. Translate tools and tool choice.
 	tools, toolChoice, err := translateOpenAItoAnthropicTools(openAIReq.Tools, openAIReq.ToolChoice, openAIReq.ParallelToolCalls)
 	if err != nil {
 		return
@@ -525,6 +525,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 			}
 		}
 		params.StopSequences = stops
+	}
+
+	// 5. Handle Vendor specific fields.
+	// Since GCPAnthropic follows the Anthropic API, we also check for Anthropic vendor fields.
+	if openAIReq.AnthropicVendorFields != nil {
+		anthVendorFields := openAIReq.AnthropicVendorFields
+		if anthVendorFields.Thinking != nil {
+			params.Thinking = *anthVendorFields.Thinking
+		}
 	}
 
 	return params, nil

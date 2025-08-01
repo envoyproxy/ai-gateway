@@ -21,6 +21,7 @@ exclude:
     # They are test-only libraries.
     - tests/internal/envtest.go
     - tests/internal/testenvironment/
+    - tests/internal/testopeninference/openai_proxy.go
     - internal/testing/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go

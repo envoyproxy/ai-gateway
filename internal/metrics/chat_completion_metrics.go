@@ -25,17 +25,18 @@ type chatCompletion struct {
 }
 
 // NewChatCompletion creates a new x.ChatCompletionMetrics instance.
-func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn) x.ChatCompletionMetrics {
+func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn, requestHeaderLabelMapping map[string]string) x.ChatCompletionMetrics {
 	if newCustomFn != nil {
 		return newCustomFn(meter)
 	}
-	return DefaultChatCompletion(meter)
+
+	return DefaultChatCompletion(meter, requestHeaderLabelMapping)
 }
 
 // DefaultChatCompletion creates a new default x.ChatCompletionMetrics instance.
-func DefaultChatCompletion(meter metric.Meter) x.ChatCompletionMetrics {
+func DefaultChatCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]string) x.ChatCompletionMetrics {
 	return &chatCompletion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationChat),
+		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping),
 	}
 }
 
@@ -46,8 +47,8 @@ func (c *chatCompletion) StartRequest(headers map[string]string) {
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
-	attrs := c.buildBaseAttributes(extraAttrs...)
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	attrs := c.buildBaseAttributes(requestHeaders, extraAttrs...)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributes(attrs...),
@@ -64,8 +65,8 @@ func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outp
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
-func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, extraAttrs ...attribute.KeyValue) {
-	attrs := c.buildBaseAttributes(extraAttrs...)
+func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	attrs := c.buildBaseAttributes(requestHeaders, extraAttrs...)
 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
