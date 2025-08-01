@@ -28,10 +28,9 @@ import (
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
 const (
-	anthropicVersionKey          = "anthropic_version"
-	gcpBackendError              = "GCPBackendError"
-	tempNotSupportedError        = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
-	serviceTierNotSupportedError = "service tier %s is not supported by Anthropic"
+	anthropicVersionKey   = "anthropic_version"
+	gcpBackendError       = "GCPBackendError"
+	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
 var errStreamingNotSupported = errors.New("streaming is not yet supported for GCP Anthropic translation")
@@ -77,17 +76,6 @@ func validateTemperatureForAnthropic(temp *float64) error {
 		return fmt.Errorf(tempNotSupportedError, *temp)
 	}
 	return nil
-}
-
-func translateAnthropicServiceTier(serviceTier *string) (anthropic.MessageNewParamsServiceTier, error) {
-	switch *serviceTier {
-	case string(anthropic.MessageNewParamsServiceTierStandardOnly):
-		return anthropic.MessageNewParamsServiceTierStandardOnly, nil
-	case string(anthropic.MessageNewParamsServiceTierAuto):
-		return anthropic.MessageNewParamsServiceTierAuto, nil
-	default:
-		return "", fmt.Errorf(serviceTierNotSupportedError, *serviceTier)
-	}
 }
 
 func isAnthropicSupportedImageMediaType(mediaType string) bool {
@@ -514,13 +502,6 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 		System:     systemBlocks,
 		Tools:      tools,
 		ToolChoice: toolChoice,
-	}
-
-	if openAIReq.ServiceTier != nil {
-		params.ServiceTier, err = translateAnthropicServiceTier(openAIReq.ServiceTier)
-		if err != nil {
-			return
-		}
 	}
 
 	if openAIReq.Temperature != nil {
