@@ -395,6 +395,9 @@ var chatCompletionFakeResponses = []string{
 
 func getFakeResponse(path string) ([]byte, error) {
 	switch path {
+	case "/non-llm-route":
+		const template = `{"message":"This is a non-LLM endpoint response"}`
+		return []byte(template), nil
 	case "/v1/chat/completions":
 		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,

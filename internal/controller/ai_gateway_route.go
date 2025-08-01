@@ -24,6 +24,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 const (
@@ -31,12 +32,14 @@ const (
 	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
 	routeNotFoundResponseHTTPFilterName = "ai-eg-route-not-found-response"
 	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
+	egAnnotationPrefix                  = "gateway.envoyproxy.io/"
 	// We use this annotation to ensure that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	// This will result in metadata being added to the underling Envoy route
 	// @see https://gateway.envoyproxy.io/contributions/design/metadata/
-	httpRouteBackendRefPriorityAnnotationKey = "gateway.envoyproxy.io/backend-ref-priority"
-	egOwningGatewayNameLabel                 = "gateway.envoyproxy.io/owning-gateway-name"
-	egOwningGatewayNamespaceLabel            = "gateway.envoyproxy.io/owning-gateway-namespace"
+	httpRouteBackendRefPriorityAnnotationKey           = egAnnotationPrefix + "backend-ref-priority"
+	httpRouteAnnotationForAIGatewayGeneratedIndication = egAnnotationPrefix + internalapi.AIGatewayGeneratedHTTPRouteAnnotation
+	egOwningGatewayNameLabel                           = egAnnotationPrefix + "owning-gateway-name"
+	egOwningGatewayNamespaceLabel                      = egAnnotationPrefix + "owning-gateway-namespace"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
 )
@@ -293,6 +296,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	}
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	dst.ObjectMeta.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
+	dst.ObjectMeta.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	parentRefs := aiGatewayRoute.Spec.ParentRefs

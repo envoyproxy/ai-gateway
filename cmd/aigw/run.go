@@ -150,7 +150,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath)
+	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath, true)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {

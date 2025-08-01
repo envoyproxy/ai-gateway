@@ -68,6 +68,7 @@ metadata:
   namespace: default
   annotations:
     gateway.envoyproxy.io/backend-ref-priority: 0:envoy-ai-gateway-basic-openai:0,1:envoy-ai-gateway-basic-aws:0,2:envoy-ai-gateway-basic-testupstream:0
+    gateway.envoyproxy.io/ai-gateway-generated: "true"
   ownerReferences:
     - apiVersion: aigateway.envoyproxy.io/v1alpha1
       blockOwnerDeletion: true
@@ -141,37 +142,6 @@ spec:
             kind: HTTPRouteFilter
             name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
           type: ExtensionRef
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyExtensionPolicy
-metadata:
-  name: ai-eg-eep-envoy-ai-gateway-basic
-  namespace: default
-spec:
-  extProc:
-    - backendRefs:
-        - group: gateway.envoyproxy.io
-          kind: Backend
-          name: envoy-ai-gateway-extproc-backend
-          namespace: default
-      backendSettings:
-        connection:
-          bufferLimit: 50Mi
-      metadata:
-        writableNamespaces:
-          - io.envoy.ai_gateway
-      processingMode:
-        allowModeOverride: true
-        request:
-          body: Buffered
-        response:
-          body: Buffered
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: envoy-ai-gateway-basic
-status:
-  ancestors: null
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
@@ -291,14 +261,4 @@ spec:
     - name: http
       port: 8888
       protocol: HTTP
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: envoy-ai-gateway-extproc-backend
-  namespace: default
-spec:
-  endpoints:
-    - unix:
-        path: /var/run/translate.sock
 
