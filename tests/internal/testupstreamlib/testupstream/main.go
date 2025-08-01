@@ -257,25 +257,36 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(status)
-		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
-			line := string(line)
-			if line == "" {
-				continue
-			}
-			time.Sleep(streamingInterval)
-
-			if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
-				logger.Println("failed to write the response body")
+		if bytes.HasPrefix(expResponseBody, []byte("event:")) || bytes.HasPrefix(expResponseBody, []byte("data:")) {
+			// If it's already an SSE stream, write it directly (Anthropic).
+			if _, err = w.Write(expResponseBody); err != nil {
+				logger.Println("failed to write the raw sse response body")
 				return
 			}
+			logger.Println("raw sse response sent")
+		} else {
+			// Otherwise, wrap each line to create an SSE stream.
+			for _, lineBytes := range bytes.Split(expResponseBody, []byte("\n")) {
+				line := string(lineBytes)
+				if line == "" {
+					continue
+				}
+				time.Sleep(streamingInterval)
 
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			} else {
-				panic("expected http.ResponseWriter to be an http.Flusher")
+				if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
+					logger.Println("failed to write the response body")
+					return
+				}
+				logger.Println("response line sent:", line)
 			}
-			logger.Println("response line sent:", line)
 		}
+
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		} else {
+			panic("expected http.ResponseWriter to be an http.Flusher")
+		}
+
 		logger.Println("response sent")
 		r.Context().Done()
 	case "aws-event-stream":
