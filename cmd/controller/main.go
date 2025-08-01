@@ -116,8 +116,8 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"envoy-gateway-system",
 		"The namespace where the Envoy Gateway system components are installed.",
 	)
-	extProcMetricsRequestHeaderLabelMapping := fs.String(
-		"extProcMetricsRequestHeaderLabelMapping",
+	metricsRequestHeaderLabelMapping := fs.String(
+		"metricsRequestHeaderLabelMapping",
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
 	)
@@ -145,8 +145,8 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	}
 
 	// Validate metrics header labels if provided.
-	if *extProcMetricsRequestHeaderLabelMapping != "" {
-		_, err := internalapi.ParseRequestHeaderLabelMapping(*extProcMetricsRequestHeaderLabelMapping)
+	if *metricsRequestHeaderLabelMapping != "" {
+		_, err := internalapi.ParseRequestHeaderLabelMapping(*metricsRequestHeaderLabelMapping)
 		if err != nil {
 			return flags{}, fmt.Errorf("invalid metrics header labels: %w", err)
 		}
@@ -164,7 +164,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		tlsKeyName:                       *tlsKeyName,
 		caBundleName:                     *caBundleName,
 		envoyGatewayNamespace:            *envoyGatewayNamespace,
-		metricsRequestHeaderLabelMapping: *extProcMetricsRequestHeaderLabelMapping,
+		metricsRequestHeaderLabelMapping: *metricsRequestHeaderLabelMapping,
 	}, nil
 }
 
