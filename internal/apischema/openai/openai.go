@@ -636,10 +636,11 @@ type ChatCompletionRequest struct {
 	// Specifies the processing type used for serving the request.
 	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
 	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
-	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier. Contact sales to learn more about Priority processing.
+	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
+	// Field is only intented for OpenAI processing.
 	ServiceTier *string `json:"service_tier,omitempty"`
 
 	// Stop string / array / null Defaults to null
