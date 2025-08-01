@@ -278,6 +278,42 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Println("response sent")
 		r.Context().Done()
+	case "raw_sse":
+		// TODO: combine this with the "sse" case.
+		w.Header().Set("Content-Type", "text/event-stream")
+		var expResponseBody []byte
+		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
+		if err != nil {
+			logger.Println("failed to decode the response body")
+			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(status)
+		// Split by the event delimiter "\n\n", not by single newlines.
+		eventBlocks := bytes.Split(expResponseBody, []byte("\n\n"))
+
+		for _, block := range eventBlocks {
+			if len(bytes.TrimSpace(block)) == 0 {
+				continue
+			}
+			time.Sleep(streamingInterval)
+
+			// Write the complete event block followed by the required double newline delimiter.
+			if _, err = w.Write(append(block, "\n\n"...)); err != nil {
+				logger.Println("failed to write the response body")
+				return
+			}
+
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			} else {
+				panic("expected http.ResponseWriter to be an http.Flusher")
+			}
+			logger.Println("response block sent:", string(block))
+		}
+		logger.Println("response sent")
+		r.Context().Done()
 	case "aws-event-stream":
 		w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
 
