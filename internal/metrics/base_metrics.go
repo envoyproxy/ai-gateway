@@ -70,11 +70,9 @@ func (b *baseMetrics) buildBaseAttributes(headers map[string]string, extraAttrs 
 	attrs = append(attrs, extraAttrs...)
 
 	// Add header values as attributes based on the header mapping if headers are provided.
-	if headers != nil {
-		for headerName, labelName := range b.requestHeaderLabelMapping {
-			if headerValue, exists := headers[headerName]; exists {
-				attrs = append(attrs, attribute.Key(labelName).String(headerValue))
-			}
+	for headerName, labelName := range b.requestHeaderLabelMapping {
+		if headerValue, exists := headers[headerName]; exists {
+			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
 		}
 	}
 
