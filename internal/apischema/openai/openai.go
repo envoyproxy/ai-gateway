@@ -643,7 +643,6 @@ type ChatCompletionRequest struct {
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	// Field is only intended for OpenAI processing.
 	ServiceTier *string `json:"service_tier,omitempty"`
 
 	// Stop string / array / null Defaults to null
