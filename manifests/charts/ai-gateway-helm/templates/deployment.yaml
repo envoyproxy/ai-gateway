@@ -46,8 +46,8 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
-            {{- if .Values.controller.prometheusMetricsRequestHeaderLabelMapping }}
-            - --extProcMetricsRequestHeaderLabelMapping={{ .Values.controller.prometheusMetricsRequestHeaderLabelMapping }}
+            {{- if .Values.controller.metricsRequestHeaderLabels }}
+            - --metricsRequestHeaderLabels={{ .Values.controller.metricsRequestHeaderLabels }}
             {{- end }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}

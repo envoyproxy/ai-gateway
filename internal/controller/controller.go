@@ -68,8 +68,8 @@ type Options struct {
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
-	// MetricsRequestHeaderLabelMapping is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-	MetricsRequestHeaderLabelMapping string
+	// MetricsRequestHeaderLabels is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	MetricsRequestHeaderLabels string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -154,7 +154,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.EnvoyGatewayNamespace,
 			options.UDSPath,
-			options.MetricsRequestHeaderLabelMapping,
+			options.MetricsRequestHeaderLabels,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

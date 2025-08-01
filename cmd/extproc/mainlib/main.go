@@ -38,12 +38,12 @@ import (
 
 // extProcFlags is the struct that holds the flags passed to the external processor.
 type extProcFlags struct {
-	configPath                       string     // path to the configuration file.
-	extProcAddr                      string     // gRPC address for the external processor.
-	logLevel                         slog.Level // log level for the external processor.
-	metricsPort                      int        // HTTP port for the metrics server.
-	healthPort                       int        // HTTP port for the health check server.
-	metricsRequestHeaderLabelMapping string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	configPath                 string     // path to the configuration file.
+	extProcAddr                string     // gRPC address for the external processor.
+	logLevel                   slog.Level // log level for the external processor.
+	metricsPort                int        // HTTP port for the metrics server.
+	healthPort                 int        // HTTP port for the health check server.
+	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -72,8 +72,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "port for the metrics server.")
 	fs.IntVar(&flags.healthPort, "healthPort", 1065, "port for the health check HTTP server.")
-	fs.StringVar(&flags.metricsRequestHeaderLabelMapping,
-		"metricsRequestHeaderLabelMapping",
+	fs.StringVar(&flags.metricsRequestHeaderLabels,
+		"metricsRequestHeaderLabels",
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
 	)
@@ -145,14 +145,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	// Parse header mapping for metrics.
-	metricsRequestHeaderLabelMapping, err := internalapi.ParseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabelMapping)
+	metricsRequestHeaderLabels, err := internalapi.ParseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabels)
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
 
 	metricsServer, meter := startMetricsServer(metricsLis, l)
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics, metricsRequestHeaderLabelMapping)
-	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabelMapping)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics, metricsRequestHeaderLabels)
+	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {
