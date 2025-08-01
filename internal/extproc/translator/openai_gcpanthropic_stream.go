@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -15,8 +14,9 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 const (
@@ -36,7 +36,6 @@ type streamingToolCall struct {
 // AnthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
 type AnthropicStreamParser struct {
-	eventScanner    *bufio.Scanner
 	buffer          bytes.Buffer
 	activeMessageID string
 	activeToolCalls map[int]*streamingToolCall
@@ -54,6 +53,24 @@ func NewAnthropicStreamParser(modelName string) *AnthropicStreamParser {
 	}
 }
 
+func (p *AnthropicStreamParser) writeChunk(eventBlock string, builder *strings.Builder) error {
+	chunk, err := p.parseAndHandleEvent(eventBlock)
+	if err != nil {
+		return err
+	}
+	if chunk != nil {
+		var chunkBytes []byte
+		chunkBytes, err = json.Marshal(chunk)
+		if err != nil {
+			return fmt.Errorf("failed to marshal stream chunk: %w", err)
+		}
+		builder.WriteString(sseDataPrefix)
+		builder.Write(chunkBytes)
+		builder.WriteString("\n\n")
+	}
+	return nil
+}
+
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
@@ -67,30 +84,26 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	for {
 		eventBlock, remaining, found := bytes.Cut(p.buffer.Bytes(), []byte("\n\n"))
 		if !found {
-			break // No complete event in buffer, wait for more data.
+			break
 		}
 
-		// Create an explicit, safe copy of the event data before modifying the buffer.
-		// This prevents any possibility of the underlying byte slice being modified.
 		eventBlockBytes := make([]byte, len(eventBlock))
 		copy(eventBlockBytes, eventBlock)
 
 		p.buffer.Reset()
-		p.buffer.Write(remaining) // Put remaining data back in buffer.
+		p.buffer.Write(remaining)
 
-		chunk, err := p.parseAndHandleEvent(string(eventBlockBytes))
-		if err != nil {
+		if err := p.writeChunk(string(eventBlockBytes), &responseBodyBuilder); err != nil {
 			return nil, nil, LLMTokenUsage{}, err
 		}
+	}
 
-		if chunk != nil {
-			chunkBytes, err := json.Marshal(chunk)
-			if err != nil {
-				return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to marshal stream chunk: %w", err)
-			}
-			responseBodyBuilder.WriteString(sseDataPrefix)
-			responseBodyBuilder.Write(chunkBytes)
-			responseBodyBuilder.WriteString("\n\n")
+	if endOfStream && p.buffer.Len() > 0 {
+		finalEventBlock := p.buffer.String()
+		p.buffer.Reset()
+
+		if err := p.writeChunk(finalEventBlock, &responseBodyBuilder); err != nil {
+			return nil, nil, LLMTokenUsage{}, err
 		}
 	}
 
@@ -127,7 +140,7 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 			},
 		}
 
-		// Add active tool calls to the final chunk
+		// Add active tool calls to the final chunk.
 		var toolCalls []openai.ChatCompletionMessageToolCallParam
 		for _, tool := range p.activeToolCalls {
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
@@ -212,7 +225,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
-		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)
+		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockStart]()):
@@ -253,7 +266,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
-		p.tokenUsage.OutputTokens += uint32(event.Usage.OutputTokens)
+		p.tokenUsage.OutputTokens += uint32(event.Usage.OutputTokens) //nolint:gosec
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}

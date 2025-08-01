@@ -9,18 +9,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
 	"testing"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // mockErrorReader is a helper for testing io.Reader failures.
 type mockErrorReader struct{}
 
-func (r *mockErrorReader) Read(p []byte) (n int, err error) {
+func (r *mockErrorReader) Read(_ []byte) (n int, err error) {
 	return 0, fmt.Errorf("mock reader error")
 }
 
@@ -79,7 +79,7 @@ data: {"type": "message_stop"}
 		},
 		{
 			name:          "malformed_final_event_block",
-			sseStream:     "event: message_stop\ndata: {invalid", // No trailing \n\n
+			sseStream:     "event: message_stop\ndata: {invalid", // No trailing \n\n.
 			endOfStream:   true,
 			expectedError: "unmarshal message_stop",
 		},
@@ -252,12 +252,12 @@ data: {"type":"message_stop"}
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
 
-		require.Contains(t, bodyStr, `"content":"Okay"`)                   // Check for the start of the text response
-		require.Contains(t, bodyStr, `"name":"get_weather"`)               // Check for the tool name
-		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"location\\\":") // Check for the start of the arguments
-		require.Contains(t, bodyStr, "renheit\\\"}\"")                     // Check for the end of the arguments
-		require.Contains(t, bodyStr, `"finish_reason":"tool_calls"`)       // Check for the correct finish reason
-		require.Contains(t, bodyStr, sseDoneMessage)                       // Check for the DONE message
+		require.Contains(t, bodyStr, `"content":"Okay"`)
+		require.Contains(t, bodyStr, `"name":"get_weather"`)
+		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"location\\\":")
+		require.Contains(t, bodyStr, "renheit\\\"}\"")
+		require.Contains(t, bodyStr, `"finish_reason":"tool_calls"`)
+		require.Contains(t, bodyStr, sseDoneMessage)
 	})
 
 	t.Run("handles streaming with web search tool use", func(t *testing.T) {
@@ -374,7 +374,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		finalToolCall := finalToolCallChunk.Choices[0].Delta.ToolCalls[0]
 		require.Equal(t, "tool_abc", finalToolCall.ID)
 		require.Equal(t, "get_weather", finalToolCall.Function.Name)
-		require.Equal(t, `{"location": "SF"}`, finalToolCall.Function.Arguments)
+		require.JSONEq(t, `{"location": "SF"}`, finalToolCall.Function.Arguments)
 	})
 }
 
@@ -426,7 +426,7 @@ data: {"type": "content_block_stop", "index": 0}
 			jsonBody := strings.TrimPrefix(line, "data: ")
 
 			var chunk openai.ChatCompletionResponseChunk
-			err := json.Unmarshal([]byte(jsonBody), &chunk)
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
 			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
 			chunks = append(chunks, chunk)
 		}
@@ -551,17 +551,17 @@ data: {"type": "content_block_stop", "index": 0}
 		// 3. Verify the contents of each relevant chunk.
 
 		// Chunk 1: Tool call start.
-		chunk1_tool_calls := chunks[0].Choices[0].Delta.ToolCalls
-		require.NotNil(t, chunk1_tool_calls)
-		require.Equal(t, "get_weather", chunk1_tool_calls[0].Function.Name)
+		chunk1ToolCalls := chunks[0].Choices[0].Delta.ToolCalls
+		require.NotNil(t, chunk1ToolCalls)
+		require.Equal(t, "get_weather", chunk1ToolCalls[0].Function.Name)
 
 		// Chunk 2: First part of the arguments.
-		chunk2_args := chunks[1].Choices[0].Delta.ToolCalls[0].Function.Arguments
-		require.Equal(t, `{"location": "San Fra`, chunk2_args)
+		chunk2Args := chunks[1].Choices[0].Delta.ToolCalls[0].Function.Arguments
+		require.JSONEq(t, `{"location": "San Fra`, chunk2Args)
 
 		// Chunk 3: Second part of the arguments.
-		chunk3_args := chunks[2].Choices[0].Delta.ToolCalls[0].Function.Arguments
-		require.Equal(t, `ncisco"}`, chunk3_args)
+		chunk3Args := chunks[2].Choices[0].Delta.ToolCalls[0].Function.Arguments
+		require.Equal(t, `ncisco"}`, chunk3Args)
 	})
 	t.Run("sends role on first chunk", func(t *testing.T) {
 		sseStream := `event: message_start
@@ -641,5 +641,4 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		require.Contains(t, bodyStr, `"content":"Hello"`)
 		require.NotContains(t, bodyStr, "this is a comment")
 	})
-
 }

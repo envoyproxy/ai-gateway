@@ -44,7 +44,6 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride string
-	isStreamRequest   bool
 	streamParser      *AnthropicStreamParser
 }
 
