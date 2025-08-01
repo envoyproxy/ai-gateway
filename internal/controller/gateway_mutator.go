@@ -73,13 +73,22 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 	return nil
 }
 
-// buildMetricsHeaderLabelArgs builds the command line arguments for metrics header label mapping.
-func (g *gatewayMutator) buildMetricsHeaderLabelArgs() []string {
-	if g.metricsRequestHeaderLabelMapping == "" {
-		return nil
+// buildExtProcArgs builds all command line arguments for the extproc container.
+func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMetricsPort, extProcHealthPort int) []string {
+	args := []string{
+		"-configPath", filterConfigFullPath,
+		"-logLevel", g.extProcLogLevel,
+		"-extProcAddr", "unix://" + g.udsPath,
+		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
+		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
 	}
 
-	return []string{"-metricsRequestHeaderLabelMapping", g.metricsRequestHeaderLabelMapping}
+	// Add metrics header label mapping if configured.
+	if g.metricsRequestHeaderLabelMapping != "" {
+		args = append(args, "-metricsRequestHeaderLabelMapping", g.metricsRequestHeaderLabelMapping)
+	}
+
+	return args
 }
 
 const (
@@ -144,13 +153,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
-		Args: append([]string{
-			"-configPath", filterConfigFullPath,
-			"-logLevel", g.extProcLogLevel,
-			"-extProcAddr", "unix://" + g.udsPath,
-			"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
-			"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
-		}, g.buildMetricsHeaderLabelArgs()...),
+		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,
