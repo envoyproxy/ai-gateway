@@ -25,21 +25,18 @@ type chatCompletion struct {
 }
 
 // NewChatCompletion creates a new x.ChatCompletionMetrics instance.
-func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn, requestHeaderLabelMapping ...map[string]string) x.ChatCompletionMetrics {
+func NewChatCompletion(meter metric.Meter, newCustomFn x.NewCustomChatCompletionMetricsFn, requestHeaderLabelMapping map[string]string) x.ChatCompletionMetrics {
 	if newCustomFn != nil {
 		return newCustomFn(meter)
 	}
 
-	if len(requestHeaderLabelMapping) > 0 && requestHeaderLabelMapping[0] != nil {
-		return DefaultChatCompletion(meter, requestHeaderLabelMapping[0])
-	}
-	return DefaultChatCompletion(meter)
+	return DefaultChatCompletion(meter, requestHeaderLabelMapping)
 }
 
 // DefaultChatCompletion creates a new default x.ChatCompletionMetrics instance.
-func DefaultChatCompletion(meter metric.Meter, requestHeaderLabelMapping ...map[string]string) x.ChatCompletionMetrics {
+func DefaultChatCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]string) x.ChatCompletionMetrics {
 	return &chatCompletion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping...),
+		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping),
 	}
 }
 

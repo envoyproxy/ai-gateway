@@ -18,7 +18,7 @@ import (
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := NewEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter, nil).(*embeddings)
 
 	extra := attribute.Key("extra").String("value")
 	attrs := []attribute.KeyValue{
@@ -47,7 +47,7 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := NewEmbeddings(meter).(*embeddings)
+	em := NewEmbeddings(meter, nil).(*embeddings)
 
 	em.SetModel("text-embedding-3-small")
 	em.SetBackend(&filterapi.Backend{

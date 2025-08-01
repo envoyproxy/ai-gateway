@@ -20,14 +20,9 @@ type embeddings struct {
 }
 
 // NewEmbeddings creates a new Embeddings instance.
-func NewEmbeddings(meter metric.Meter, requestHeaderLabelMapping ...map[string]string) x.EmbeddingsMetrics {
-	if len(requestHeaderLabelMapping) > 0 && requestHeaderLabelMapping[0] != nil {
-		return &embeddings{
-			baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping[0]),
-		}
-	}
+func NewEmbeddings(meter metric.Meter, requestHeaderLabelMapping map[string]string) x.EmbeddingsMetrics {
 	return &embeddings{
-		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding),
+		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping),
 	}
 }
 

@@ -26,7 +26,7 @@ type baseMetrics struct {
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping ...map[string]string) baseMetrics {
+func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string) baseMetrics {
 	bm := baseMetrics{
 		metrics:   newGenAI(meter),
 		operation: operation,
@@ -34,8 +34,8 @@ func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapp
 		backend:   "unknown",
 	}
 
-	if len(requestHeaderLabelMapping) > 0 && requestHeaderLabelMapping[0] != nil {
-		bm.requestHeaderLabelMapping = requestHeaderLabelMapping[0]
+	if requestHeaderLabelMapping != nil {
+		bm.requestHeaderLabelMapping = requestHeaderLabelMapping
 	}
 
 	return bm
