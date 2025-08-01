@@ -20,22 +20,20 @@ type embeddings struct {
 }
 
 // NewEmbeddings creates a new Embeddings instance.
-func NewEmbeddings(meter metric.Meter) x.EmbeddingsMetrics {
+func NewEmbeddings(meter metric.Meter, requestHeaderLabelMapping ...map[string]string) x.EmbeddingsMetrics {
+	if len(requestHeaderLabelMapping) > 0 && requestHeaderLabelMapping[0] != nil {
+		return &embeddings{
+			baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping[0]),
+		}
+	}
 	return &embeddings{
 		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding),
 	}
 }
 
-// NewEmbeddingsWithHeaderMapping creates a new Embeddings instance with header mapping support.
-func NewEmbeddingsWithHeaderMapping(meter metric.Meter, metricsRequestHeaderLabelMapping map[string]string) x.EmbeddingsMetrics {
-	return &embeddings{
-		baseMetrics: newBaseMetricsWithHeaderMapping(meter, genaiOperationEmbedding, metricsRequestHeaderLabelMapping),
-	}
-}
-
 // RecordTokenUsage implements [EmbeddingsMetrics.RecordTokenUsage].
-func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
-	attrs := e.buildBaseAttributes(extraAttrs...)
+func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	attrs := e.buildBaseAttributes(requestHeaders, extraAttrs...)
 
 	e.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributes(attrs...),
@@ -47,16 +45,7 @@ func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTok
 	)
 }
 
-// RecordTokenUsageWithHeaders implements [EmbeddingsMetrics.RecordTokenUsageWithHeaders].
-func (e *embeddings) RecordTokenUsageWithHeaders(ctx context.Context, headers map[string]string, inputTokens, totalTokens uint32, extraAttrs ...attribute.KeyValue) {
-	attrs := e.buildBaseAttributesWithHeaders(headers, extraAttrs...)
-
-	e.metrics.tokenUsage.Record(ctx, float64(inputTokens),
-		metric.WithAttributes(attrs...),
-		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
-	)
-	e.metrics.tokenUsage.Record(ctx, float64(totalTokens),
-		metric.WithAttributes(attrs...),
-		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
-	)
+// RecordRequestCompletion implements [EmbeddingsMetrics.RecordRequestCompletion].
+func (e *embeddings) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
+	e.baseMetrics.RecordRequestCompletion(ctx, success, requestHeaders, extraAttrs...)
 }

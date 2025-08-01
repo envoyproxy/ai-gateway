@@ -186,8 +186,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	metricsServer, meter := startMetricsServer(metricsLis, l)
-	chatCompletionMetrics := metrics.NewChatCompletionWithHeaderMapping(meter, metricsRequestHeaderLabelMapping, x.NewCustomChatCompletionMetrics)
-	embeddingsMetrics := metrics.NewEmbeddingsWithHeaderMapping(meter, metricsRequestHeaderLabelMapping)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics, metricsRequestHeaderLabelMapping)
+	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabelMapping)
 
 	server, err := extproc.NewServer(l)
 	if err != nil {

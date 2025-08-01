@@ -226,9 +226,9 @@ func TestStartMetricsServer(t *testing.T) {
 	ccm.StartRequest(nil)
 	ccm.SetModel("test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})
-	ccm.RecordTokenUsage(t.Context(), 10, 5, 15)
-	ccm.RecordRequestCompletion(t.Context(), true)
-	ccm.RecordTokenLatency(t.Context(), 10)
+	ccm.RecordTokenUsage(t.Context(), 10, 5, 15, nil)
+	ccm.RecordRequestCompletion(t.Context(), true, nil)
+	ccm.RecordTokenLatency(t.Context(), 10, nil)
 
 	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
 
