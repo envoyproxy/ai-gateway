@@ -71,15 +71,11 @@ func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
 		c.timeToFirstToken = time.Since(c.requestStart).Seconds()
-		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken,
-			metric.WithAttributes(attrs...),
-		)
+		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributes(attrs...))
 	} else if tokens > 0 {
 		// Calculate time between tokens.
 		c.interTokenLatency = time.Since(c.lastTokenTime).Seconds() / float64(tokens)
-		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency,
-			metric.WithAttributes(attrs...),
-		)
+		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributes(attrs...))
 	}
 	c.lastTokenTime = time.Now()
 }
