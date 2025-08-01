@@ -238,29 +238,29 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 }
 
 // openAIMessageToGeminiMessage converts an OpenAI ChatCompletionRequest to a GCP Gemini GenerateContentRequest.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMessage(openAIReq *openai.ChatCompletionRequest) (gcp.GenerateContentRequest, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMessage(openAIReq *openai.ChatCompletionRequest) (*gcp.GenerateContentRequest, error) {
 	// Convert OpenAI messages to Gemini Contents and SystemInstruction.
 	contents, systemInstruction, err := openAIMessagesToGeminiContents(openAIReq.Messages)
 	if err != nil {
-		return gcp.GenerateContentRequest{}, err
+		return nil, err
 	}
 
 	// Convert OpenAI tools to Gemini tools.
 	tools, err := openAIToolsToGeminiTools(openAIReq.Tools)
 	if err != nil {
-		return gcp.GenerateContentRequest{}, fmt.Errorf("error converting tools: %w", err)
+		return nil, fmt.Errorf("error converting tools: %w", err)
 	}
 
 	// Convert tool config.
 	toolConfig, err := openAIToolChoiceToGeminiToolConfig(openAIReq.ToolChoice)
 	if err != nil {
-		return gcp.GenerateContentRequest{}, fmt.Errorf("error converting tool choice: %w", err)
+		return nil, fmt.Errorf("error converting tool choice: %w", err)
 	}
 
 	// Convert generation config.
 	generationConfig, err := openAIReqToGeminiGenerationConfig(openAIReq)
 	if err != nil {
-		return gcp.GenerateContentRequest{}, fmt.Errorf("error converting generation config: %w", err)
+		return nil, fmt.Errorf("error converting generation config: %w", err)
 	}
 
 	gcr := gcp.GenerateContentRequest{
@@ -271,7 +271,32 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 		SystemInstruction: systemInstruction,
 	}
 
-	return gcr, nil
+	// Apply vendor-specific fields after standard OpenAI-to-Gemini translation.
+	// Vendor fields take precedence over translated fields when conflicts occur.
+	o.applyVendorSpecificFields(openAIReq, &gcr)
+
+	return &gcr, nil
+}
+
+// applyVendorSpecificFields applies GCP Vertex AI vendor-specific fields to the Gemini request.
+// These fields allow users to access advanced GCP-specific features not available in the OpenAI API.
+// Vendor fields override any conflicting fields that were set during the standard translation process.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificFields(openAIReq *openai.ChatCompletionRequest, gcr *gcp.GenerateContentRequest) {
+	// Early return if no vendor fields are specified.
+	if openAIReq.GCPVertexAIVendorFields == nil {
+		return
+	}
+
+	gcpVendorFields := openAIReq.GCPVertexAIVendorFields
+	// Apply vendor-specific generation config if present.
+	if vendorGenConfig := gcpVendorFields.GenerationConfig; vendorGenConfig != nil {
+		if gcr.GenerationConfig == nil {
+			gcr.GenerationConfig = &genai.GenerationConfig{}
+		}
+		if vendorGenConfig.ThinkingConfig != nil {
+			gcr.GenerationConfig.ThinkingConfig = vendorGenConfig.ThinkingConfig
+		}
+	}
 }
 
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (openai.ChatCompletionResponse, error) {
