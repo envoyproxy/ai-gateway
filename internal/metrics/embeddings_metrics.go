@@ -44,8 +44,3 @@ func (e *embeddings) RecordTokenUsage(ctx context.Context, inputTokens, totalTok
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
 	)
 }
-
-// RecordRequestCompletion implements [EmbeddingsMetrics.RecordRequestCompletion].
-func (e *embeddings) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
-	e.baseMetrics.RecordRequestCompletion(ctx, success, requestHeaders, extraAttrs...)
-}
