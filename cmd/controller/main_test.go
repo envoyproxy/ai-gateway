@@ -29,7 +29,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.Equal(t, "/certs", f.tlsCertDir)
 		require.Equal(t, "tls.crt", f.tlsCertName)
 		require.Equal(t, "tls.key", f.tlsKeyName)
-		require.Equal(t, "envoy-gateway-system", f.envoyGatewayNamespace)
 		require.NoError(t, err)
 	})
 	t.Run("all flags", func(t *testing.T) {
