@@ -246,7 +246,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 
 	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
-		Secrets(envoyGatewayNamespace).Get(ctx,
+		Secrets("").Get(ctx,
 		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get filter config secret: %w", err)
