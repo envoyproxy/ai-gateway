@@ -226,7 +226,8 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 			return nil, fmt.Errorf("failed to unmarshal content_block_start: %w", err)
 		}
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.ToolUse]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.ServerToolUse]()) {
-			p.activeToolCalls[int(event.Index)] = &streamingToolCall{
+			toolIdx := int(event.Index)
+			p.activeToolCalls[toolIdx] = &streamingToolCall{
 				ID:        event.ContentBlock.ID,
 				Name:      event.ContentBlock.Name,
 				InputJSON: bytes.Buffer{}, // Initialize the InputJSON buffer.
@@ -234,13 +235,11 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
-						ID:   event.ContentBlock.ID,
-						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+						Index: &toolIdx,
+						ID:    event.ContentBlock.ID,
+						Type:  openai.ChatCompletionMessageToolCallTypeFunction,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name: event.ContentBlock.Name,
-							// Setting Arguments as empty as the arguments are populated in ContentBlockDelta events,
-							// not at the start of the block.
-							Arguments: "",
 						},
 					},
 				},
@@ -278,10 +277,11 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 			if !ok {
 				return nil, fmt.Errorf("received input_json_delta for unknown tool at index %d", event.Index)
 			}
+			index := int(event.Index)
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
-						ID: tool.ID,
+						Index: &index,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Arguments: event.Delta.PartialJSON,
 						},
