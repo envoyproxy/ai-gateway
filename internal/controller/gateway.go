@@ -9,12 +9,11 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	appsv1 "k8s.io/api/apps/v1"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +22,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -386,7 +386,6 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	daemonSets []appsv1.DaemonSet,
 	uuid string,
 ) error {
-
 	rollout := true
 	for _, pod := range pods {
 		// Get the pod spec and check if it has the extproc container.
@@ -444,9 +443,10 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	pods []corev1.Pod,
 	deployments []appsv1.Deployment,
 	daemonSets []appsv1.DaemonSet,
-	error error,
+	err error,
 ) {
-	ps, err := c.kube.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+	var ps *corev1.PodList
+	ps, err = c.kube.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 	})
@@ -456,7 +456,8 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	}
 	pods = ps.Items
 
-	ds, err := c.kube.AppsV1().Deployments("").List(ctx, metav1.ListOptions{
+	var ds *appsv1.DeploymentList
+	ds, err = c.kube.AppsV1().Deployments("").List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 	})
@@ -466,7 +467,8 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	}
 	deployments = ds.Items
 
-	dss, err := c.kube.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{
+	var dss *appsv1.DaemonSetList
+	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
 			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
 	})
