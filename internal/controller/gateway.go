@@ -22,7 +22,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
@@ -46,7 +45,7 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	udsPath, extProcImage string,
+	udsPath, extProcImage string, standAlone bool,
 ) *GatewayController {
 	return &GatewayController{
 		client:       client,
@@ -54,6 +53,7 @@ func NewGatewayController(
 		logger:       logger,
 		udsPath:      udsPath,
 		extProcImage: extProcImage,
+		standAlone:   standAlone,
 	}
 }
 
@@ -64,6 +64,8 @@ type GatewayController struct {
 	logger       logr.Logger
 	udsPath      string
 	extProcImage string // The image of the external processor sidecar container.
+	// standAlone indicates whether the controller is running in standalone mode.
+	standAlone bool
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -94,13 +96,16 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get objects for gateway %s: %w", gw.Name, err)
 	}
-	if len(pods) == 0 && len(deployments) == 0 && len(daemonSets) == 0 {
+	if len(pods) == 0 && len(deployments) == 0 && len(daemonSets) == 0 && !c.standAlone {
 		// This means that the gateway is not running any pods, deployments or daemonsets and just after the gateway is created.
 		// Wait for EG to create the pods, deployments or daemonsets to be able to reconcile the filter config. Until that happens,
 		// we are yet to know which namespace the Gateway's pods, deployments, and daemonsets are running in.
+		//
+		// On standalone mode, we won't have these resources and code assume that the filter config Secret is created in the "empty" namespace,
+		// so we don't need to enter this branch.
 		const requeueAfter = 5 * time.Second
 		c.logger.Info("No pods, deployments or daemonsets found for the Gateway.", "namespace", gw.Namespace, "name", gw.Name, "requeueAfter", requeueAfter.String())
-		return reconcile.Result{RequeueAfter: requeueAfter}, nil
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
