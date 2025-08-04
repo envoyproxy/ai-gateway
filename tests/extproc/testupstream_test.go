@@ -369,7 +369,7 @@ data: [DONE]
 			backend:        "gcp-anthropicai",
 			path:           "/v1/chat/completions",
 			method:         http.MethodPost,
-			responseType:   "raw_sse",
+			responseType:   "sse",
 			requestBody:    `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
 			expRequestBody: `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
 			expHost:        "gcp-region-aiplatform.googleapis.com",
@@ -415,7 +415,7 @@ data: [DONE]
 			backend:      "gcp-anthropicai",
 			path:         "/v1/chat/completions",
 			method:       http.MethodPost,
-			responseType: "raw_sse",
+			responseType: "sse",
 			requestBody: `{
 		"model": "claude-3-sonnet",
 		"max_tokens": 1024,
