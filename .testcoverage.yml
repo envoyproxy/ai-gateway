@@ -23,6 +23,6 @@ exclude:
     - tests/internal/testenvironment/
     - tests/internal/testopeninference/openai_proxy.go
     - internal/testing/
-    - tests/internal/testupstreamlib/testupstream.go
+    - tests/internal/testupstreamlib/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go
