@@ -461,11 +461,11 @@ data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {
 event: message_stop
 data: {"type": "message_stop"}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\":\"Bosto"}}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"n, MA\"}"}}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 

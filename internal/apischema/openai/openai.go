@@ -436,16 +436,16 @@ type ChatCompletionMessageToolCallFunctionParam struct {
 	// format. Note that the model does not always generate valid JSON, and may
 	// hallucinate parameters not defined by your function schema. Validate the
 	// arguments in your code before calling your function.
-	Arguments string `json:"arguments,omitempty"`
+	Arguments string `json:"arguments"`
 	// The name of the function to call.
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 }
 
 type ChatCompletionMessageToolCallParam struct {
 	// Add this Index field. It is required for streaming.
-	Index *int `json:"index"`
+	Index *int `json:"index,omitempty"`
 	// The ID of the tool call.
-	ID string `json:"id,omitempty"`
+	ID *string `json:"id"`
 	// The function that the model called.
 	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
 	// The type of the tool. Currently, only `function` is supported.

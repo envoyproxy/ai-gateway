@@ -272,7 +272,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 							Content: ptr.To("Ok, I will call the tool."),
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
-									ID:   "toolu_01",
+									ID:   ptr.To("toolu_01"),
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Name:      "get_weather",
@@ -357,7 +357,7 @@ func TestMessageTranslation(t *testing.T) {
 					Value: openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
-								ID:       testTool,
+								ID:       ptr.To(testTool),
 								Type:     openai.ChatCompletionMessageToolCallTypeFunction,
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":"NYC"}`},
 							},
@@ -478,7 +478,7 @@ func TestMessageTranslation(t *testing.T) {
 					Value: openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
-								ID:       testTool,
+								ID:       ptr.To(testTool),
 								Type:     openai.ChatCompletionMessageToolCallTypeFunction,
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":`},
 							},

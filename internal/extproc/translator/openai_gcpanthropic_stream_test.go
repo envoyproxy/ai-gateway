@@ -373,7 +373,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		require.NotNil(t, finalToolCallChunk.Choices[0].Delta.ToolCalls, "Final chunk should have tool calls")
 
 		finalToolCall := finalToolCallChunk.Choices[0].Delta.ToolCalls[0]
-		require.Equal(t, "tool_abc", finalToolCall.ID)
+		require.Equal(t, "tool_abc", *finalToolCall.ID)
 		require.Equal(t, "get_weather", finalToolCall.Function.Name)
 		require.JSONEq(t, `{"location": "SF"}`, finalToolCall.Function.Arguments)
 	})
@@ -438,7 +438,7 @@ data: {"type": "content_block_stop", "index": 0}
 		// Check the first chunk (the tool call initiation).
 		firstChunk := chunks[0]
 		require.NotNil(t, firstChunk.Choices[0].Delta.ToolCalls)
-		require.Equal(t, "tool_abc", firstChunk.Choices[0].Delta.ToolCalls[0].ID)
+		require.Equal(t, "tool_abc", *firstChunk.Choices[0].Delta.ToolCalls[0].ID)
 		require.Equal(t, "get_weather", firstChunk.Choices[0].Delta.ToolCalls[0].Function.Name)
 
 		// Check the second chunk (the arguments delta).

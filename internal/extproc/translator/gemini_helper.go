@@ -211,7 +211,7 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
 	for _, toolCall := range msg.ToolCalls {
-		knownToolCalls[toolCall.ID] = toolCall.Function.Name
+		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {
 			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments: %w", err)
@@ -555,7 +555,7 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 		toolCallID := uuid.New().String()
 
 		toolCall := openai.ChatCompletionMessageToolCallParam{
-			ID:   toolCallID,
+			ID:   &toolCallID,
 			Type: "function",
 			Function: openai.ChatCompletionMessageToolCallFunctionParam{
 				Name:      part.FunctionCall.Name,

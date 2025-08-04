@@ -144,7 +144,7 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 		var toolCalls []openai.ChatCompletionMessageToolCallParam
 		for _, tool := range p.activeToolCalls {
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-				ID:   tool.ID,
+				ID:   &tool.ID,
 				Type: openai.ChatCompletionMessageToolCallTypeFunction,
 				Function: openai.ChatCompletionMessageToolCallFunctionParam{
 					Name:      tool.Name,
@@ -236,7 +236,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
 						Index: &toolIdx,
-						ID:    event.ContentBlock.ID,
+						ID:    &event.ContentBlock.ID,
 						Type:  openai.ChatCompletionMessageToolCallTypeFunction,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name: event.ContentBlock.Name,

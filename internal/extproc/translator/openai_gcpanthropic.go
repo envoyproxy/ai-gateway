@@ -363,7 +363,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 			return
 		}
 		toolUse := anthropic.ToolUseBlockParam{
-			ID:    toolCall.ID,
+			ID:    *toolCall.ID,
 			Type:  "tool_use",
 			Name:  toolCall.Function.Name,
 			Input: input,
@@ -645,7 +645,7 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
 	}
 	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-		ID:   block.ID,
+		ID:   &block.ID,
 		Type: openai.ChatCompletionMessageToolCallTypeFunction,
 		Function: openai.ChatCompletionMessageToolCallFunctionParam{
 			Name:      block.Name,
