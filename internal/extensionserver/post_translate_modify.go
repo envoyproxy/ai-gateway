@@ -162,14 +162,13 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	var aigwRoute aigv1a1.AIGatewayRoute
 	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
-		// This can support directly using inferencePool in httproute.
-		if apierrors.IsNotFound(err) && pool != nil {
-			s.log.Info("AIGatewayRoute not found, but found InferencePool in cluster metadata. Skipping cluster modification.",
-				"namespace", httpRouteNamespace, "name", httpRouteName)
-			return
+		if apierrors.IsNotFound(err) {
+			s.log.Info("Skipping user-created HTTPRoute cluster modification",
+				"cluster_name", cluster.Name, "namespace", httpRouteNamespace, "name")
+		} else {
+			s.log.Error(err, "failed to get AIGatewayRoute",
+				"cluster_name", cluster.Name, "namespace", httpRouteNamespace, "name", httpRouteName)
 		}
-		s.log.Error(err, "failed to get AIGatewayRoute object",
-			"namespace", httpRouteNamespace, "name", httpRouteName)
 		return
 	}
 
