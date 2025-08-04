@@ -7,15 +7,15 @@ package controller
 
 import (
 	"context"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strconv"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"

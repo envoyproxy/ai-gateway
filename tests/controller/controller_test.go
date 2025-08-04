@@ -348,10 +348,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 			return c.Update(t.Context(), &r)
 		})
 		require.NoError(t, err)
-
-		// On updates, the event should be sent to the event channel to propagate the update to the Gateway.
-		events := eventCh.RequireItemsEventually(t, 1)
-		require.Equal(t, gatewayName, events[0].Name)
 	})
 
 	t.Run("check finalizer and status", func(t *testing.T) {

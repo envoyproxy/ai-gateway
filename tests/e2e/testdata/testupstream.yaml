@@ -50,7 +50,7 @@ spec:
               value: another-cool-model
       backendRefs:
         - name: translation-testupstream-another-cool-model-backend
-          weight: 50
+          weight: 100
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
