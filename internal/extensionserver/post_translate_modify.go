@@ -164,7 +164,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping user-created HTTPRoute cluster modification",
-				"cluster_name", cluster.Name, "namespace", httpRouteNamespace, "name")
+				"namespace", httpRouteNamespace, "name", httpRouteName)
 			return
 		}
 		s.log.Error(err, "failed to get AIGatewayRoute object",
