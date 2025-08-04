@@ -105,7 +105,6 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 // updateAIServiceBackendStatus updates the status of the AIServiceBackend.
 func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, backend *aigv1a1.AIServiceBackend, conditionType string, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the latest version of the route to avoid conflicts.
 		if err := c.client.Get(ctx, client.ObjectKey{Name: backend.Name, Namespace: backend.Namespace}, backend); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil

@@ -311,7 +311,6 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 // updateBackendSecurityPolicyStatus updates the status of the BackendSecurityPolicy.
 func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the latest version of the route to avoid conflicts.
 		if err := c.client.Get(ctx, client.ObjectKey{Name: bsp.Name, Namespace: bsp.Namespace}, bsp); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil

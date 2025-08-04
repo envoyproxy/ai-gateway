@@ -353,7 +353,6 @@ func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name 
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
 func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, conditionType string, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the latest version of the route to avoid conflicts.
 		if err := c.client.Get(ctx, client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, route); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
