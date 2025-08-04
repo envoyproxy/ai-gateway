@@ -568,7 +568,7 @@ func Test_main(t *testing.T) {
 	})
 	t.Run("sse with distinct event blocks", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", nil)
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
 		require.NoError(t, err)
 
 		// Define two complete SSE events, separated by "\n\n".
