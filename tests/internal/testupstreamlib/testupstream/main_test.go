@@ -45,14 +45,16 @@ func Test_main(t *testing.T) {
 
 	t.Run("sse", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
 		now := time.Now()
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -61,7 +63,8 @@ func Test_main(t *testing.T) {
 
 		reader := bufio.NewReader(response.Body)
 		for i := 0; i < 5; i++ {
-			dataLine, err := reader.ReadString('\n')
+			var dataLine string
+			dataLine, err = reader.ReadString('\n')
 			require.NoError(t, err)
 			require.Equal(t, fmt.Sprintf("data: %d\n", i+1), dataLine)
 			// Ensure that the server sends the response line every second.
@@ -77,9 +80,11 @@ func Test_main(t *testing.T) {
 
 	t.Run("health", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/health", nil)
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/health", nil)
 		require.NoError(t, err)
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -89,7 +94,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("not expected path", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/thisisrealpath", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -99,7 +105,8 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -107,14 +114,16 @@ func Test_main(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
 
-		responseBody, err := io.ReadAll(response.Body)
+		var responseBody []byte
+		responseBody, err = io.ReadAll(response.Body)
 		require.NoError(t, err)
 		require.Equal(t, "unexpected path: got /thisisrealpath, expected /foobar\n", string(responseBody))
 	})
 
 	t.Run("not expected body", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("not expected request body")))
 		require.NoError(t, err)
 
@@ -123,21 +132,24 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
 		}()
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
 
-		responseBody, err := io.ReadAll(response.Body)
+		var responseBody []byte
+		responseBody, err = io.ReadAll(response.Body)
 		require.NoError(t, err)
 		require.Equal(t, "unexpected request body: got not expected request body, expected expected request body\n", string(responseBody))
 	})
 
 	t.Run("not expected header", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -147,7 +159,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("x-foo")))
 		request.Header.Set("x-foo", "not-bar")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -157,7 +170,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected body", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/foobar", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -177,7 +191,8 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ResponseHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("response_header:response_value")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -185,7 +200,8 @@ func Test_main(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, response.StatusCode)
 
-		responseBody, err := io.ReadAll(response.Body)
+		var responseBody []byte
+		responseBody, err = io.ReadAll(response.Body)
 		require.NoError(t, err)
 		require.Equal(t, "response body", string(responseBody))
 		require.Equal(t, "response_value", response.Header.Get("response_header"))
@@ -197,7 +213,8 @@ func Test_main(t *testing.T) {
 		for _, eventType := range []string{"sse", "aws-event-stream"} {
 			t.Run(eventType, func(t *testing.T) {
 				t.Parallel()
-				request, err := http.NewRequestWithContext(t.Context(), "GET",
+				var request *http.Request
+				request, err = http.NewRequestWithContext(t.Context(), "GET",
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
 				request.Header.Set(testupstreamlib.ResponseTypeKey, eventType)
@@ -207,7 +224,8 @@ func Test_main(t *testing.T) {
 					base64.StdEncoding.EncodeToString([]byte("expected request body")))
 				request.Header.Set(testupstreamlib.ResponseBodyHeaderKey, "09i,30qg9i4,gq03,gq0")
 
-				response, err := http.DefaultClient.Do(request)
+				var response *http.Response
+				response, err = http.DefaultClient.Do(request)
 				require.NoError(t, err)
 				defer func() {
 					_ = response.Body.Close()
@@ -222,7 +240,8 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		for _, isGzip := range []bool{false, true} {
 			t.Run(fmt.Sprintf("gzip=%t", isGzip), func(t *testing.T) {
-				request, err := http.NewRequestWithContext(t.Context(), "GET",
+				var request *http.Request
+				request, err = http.NewRequestWithContext(t.Context(), "GET",
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
 
@@ -234,7 +253,8 @@ func Test_main(t *testing.T) {
 					request.Header.Set(testupstreamlib.ResponseTypeKey, "gzip")
 				}
 
-				response, err := http.DefaultClient.Do(request)
+				var response *http.Response
+				response, err = http.DefaultClient.Do(request)
 				require.NoError(t, err)
 				defer func() {
 					_ = response.Body.Close()
@@ -242,7 +262,8 @@ func Test_main(t *testing.T) {
 
 				require.Equal(t, http.StatusOK, response.StatusCode)
 
-				responseBody, err := io.ReadAll(response.Body)
+				var responseBody []byte
+				responseBody, err = io.ReadAll(response.Body)
 				require.NoError(t, err)
 
 				var chat openai.ChatCompletion
@@ -255,7 +276,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("fake response for embeddings", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequest("POST",
+		var request *http.Request
+		request, err = http.NewRequest("POST",
 			"http://"+l.Addr().String()+"/v1/embeddings", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -264,7 +286,8 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -272,7 +295,8 @@ func Test_main(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, response.StatusCode)
 
-		responseBody, err := io.ReadAll(response.Body)
+		var responseBody []byte
+		responseBody, err = io.ReadAll(response.Body)
 		require.NoError(t, err)
 
 		// Verify it's valid JSON with expected structure.
@@ -295,14 +319,16 @@ func Test_main(t *testing.T) {
 
 	t.Run("fake response for unknown path", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/foo", nil)
 		require.NoError(t, err)
 
 		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foo")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -313,14 +339,16 @@ func Test_main(t *testing.T) {
 
 	t.Run("aws-event-stream", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
 		now := time.Now()
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -342,7 +370,8 @@ func Test_main(t *testing.T) {
 		}
 
 		// Read the last event.
-		event, err := decoder.Decode(response.Body, nil)
+		var event eventstream.Message
+		event, err = decoder.Decode(response.Body, nil)
 		require.NoError(t, err)
 		require.Equal(t, "end", event.Headers.Get("event-type").String())
 
@@ -353,7 +382,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected host not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -364,7 +394,8 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ExpectedHostKey,
 			base64.StdEncoding.EncodeToString([]byte("example.com")))
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -374,7 +405,8 @@ func Test_main(t *testing.T) {
 	})
 	t.Run("expected raw query not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -384,13 +416,15 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, "alt=sse")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
 		}()
 
-		bdy, err := io.ReadAll(response.Body)
+		var bdy []byte
+		bdy, err = io.ReadAll(response.Body)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
 		require.Contains(t, string(bdy), "unexpected raw query: got , expected alt=sse")
@@ -398,7 +432,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected host match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -407,7 +442,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.ExpectedHostKey, "localhost")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -417,7 +453,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -427,7 +464,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.ExpectedHeadersKey, "fewoamfwoajfum092um3f")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -437,7 +475,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers invalid pairs", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -448,7 +487,8 @@ func Test_main(t *testing.T) {
 		request.Header.Set(testupstreamlib.ExpectedHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("x-baz"))) // Missing value.
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -458,7 +498,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected headers not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -471,7 +512,8 @@ func Test_main(t *testing.T) {
 
 		request.Header.Set("x-foo", "not-bar")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -481,7 +523,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("non expected headers invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -491,7 +534,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey, "fewoamfwoajfum092um3f")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -501,7 +545,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected test upstream id", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -509,7 +554,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, "aaaaaaaaa")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -519,7 +565,8 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected test upstream id not match", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
@@ -527,7 +574,8 @@ func Test_main(t *testing.T) {
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 		request.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, "bbbbbbbbb")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -537,13 +585,15 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected path invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
 		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey, "fewoamfwoajfum092um3f")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
@@ -553,17 +603,75 @@ func Test_main(t *testing.T) {
 
 	t.Run("expected request body invalid encoding", func(t *testing.T) {
 		t.Parallel()
-		request, err := http.NewRequestWithContext(t.Context(), "GET",
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET",
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
 		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, "fewoamfwoajfum092um3f")
 
-		response, err := http.DefaultClient.Do(request)
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
 		require.NoError(t, err)
 		defer func() {
 			_ = response.Body.Close()
 		}()
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
+	})
+	t.Run("sse with empty lines", func(t *testing.T) {
+		t.Parallel()
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", nil)
+		require.NoError(t, err)
+		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+		// Note the double newline "\n\n" to create an empty line.
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("part1\n\npart2")))
+
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		var bodyBytes []byte
+		bodyBytes, err = io.ReadAll(response.Body)
+		require.NoError(t, err)
+		// The server should skip the empty line and only send the two data parts.
+		expectedBody := "data: part1\n\ndata: part2\n\n"
+		require.Equal(t, expectedBody, string(bodyBytes))
+	})
+	t.Run("sse with distinct event blocks", func(t *testing.T) {
+		t.Parallel()
+		var request *http.Request
+		request, err = http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", nil)
+		require.NoError(t, err)
+
+		// Define two complete SSE events, separated by "\n\n".
+		// This structure is designed to hit the `bytes.Split(expResponseBody, []byte("\n\n"))` logic.
+		ssePayload := "data: first event data\nid: 1\n\ndata: second event data\nid: 2"
+
+		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte(ssePayload)))
+
+		var response *http.Response
+		response, err = http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		require.Equal(t, http.StatusOK, response.StatusCode)
+
+		var bodyBytes []byte
+		bodyBytes, err = io.ReadAll(response.Body)
+		require.NoError(t, err)
+
+		// The server should stream the blocks exactly as they were, adding the final "\n\n" delimiter
+		// after each one. The resulting body should match the original payload plus the final delimiter.
+		expectedBody := ssePayload + "\n\n"
+		require.Equal(t, expectedBody, string(bodyBytes))
 	})
 }
