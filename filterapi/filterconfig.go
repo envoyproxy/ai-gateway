@@ -112,6 +112,8 @@ const (
 	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
 	// Used for Claude models hosted on Google Cloud Vertex AI.
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
+	// APISchemaAnthropic represents the native Anthropic API schema.
+	APISchemaAnthropic APISchemaName = "Anthropic"
 )
 
 // RouteRuleName is the name of the route rule.

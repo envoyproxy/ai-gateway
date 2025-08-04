@@ -129,6 +129,42 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Co
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
+func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	var model string
+	var body *openai.ChatCompletionRequest
+	var err error
+
+	if c.config.schema.Name == filterapi.APISchemaOpenAI {
+		// Parse as OpenAI format
+		model, body, err = parseOpenAIChatCompletionBody(rawBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse OpenAI request body: %w", err)
+		}
+		if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
+			// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
+			// to avoid the bypassing of the token usage calculation.
+			body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+			// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
+			// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
+			rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to set stream_options: %w", err)
+			}
+			c.forcedStreamOptionIncludeUsage = true
+			// TODO: alternatively, we could just return 403 or 400 error here. That makes sense since configuring the
+			// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
+			// setting this option to false means that clients are trying to escape that rule.
+		}
+	} else if c.config.schema.Name == filterapi.APISchemaAnthropic {
+		// Parse as Anthropic format to extract model name
+		model, err = parseAnthropicModelName(rawBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Anthropic request body: %w", err)
+		}
+		// For Anthropic input, we don't need to parse into OpenAI struct
+		body = nil
+	} else {
+		return nil, fmt.Errorf("unsupported input schema: %s", c.config.schema.Name)
 func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
@@ -213,21 +249,45 @@ type chatCompletionProcessorUpstreamFilter struct {
 	forcedStreamOptionIncludeUsage bool
 }
 
-// selectTranslator selects the translator based on the output schema.
+// selectTranslator selects the translator based on the input and output schemas.
 func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
-	switch out.Name {
-	case filterapi.APISchemaOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(out.Version, c.modelNameOverride)
-	case filterapi.APISchemaAWSBedrock:
-		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
-	case filterapi.APISchemaAzureOpenAI:
-		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
-	case filterapi.APISchemaGCPVertexAI:
-		c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator(c.modelNameOverride)
-	case filterapi.APISchemaGCPAnthropic:
-		c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
-	default:
-		return fmt.Errorf("unsupported API schema: backend=%s", out)
+	// Select translator based on input schema (config) and output schema (backend)
+	inputSchema := c.config.schema.Name
+
+	if inputSchema == filterapi.APISchemaOpenAI {
+		// OpenAI input → various outputs
+		switch out.Name {
+		case filterapi.APISchemaOpenAI:
+			c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(out.Version, c.modelNameOverride)
+		case filterapi.APISchemaAWSBedrock:
+			c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
+		case filterapi.APISchemaAzureOpenAI:
+			c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
+		case filterapi.APISchemaGCPVertexAI:
+			c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator(c.modelNameOverride)
+		case filterapi.APISchemaGCPAnthropic:
+			c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
+		default:
+			return fmt.Errorf("unsupported API schema: input=OpenAI, output=%s", out.Name)
+		}
+	} else if inputSchema == filterapi.APISchemaAnthropic {
+		// Anthropic input → various outputs
+		switch out.Name {
+		case filterapi.APISchemaAnthropic:
+			// TODO: Implement Anthropic → Anthropic passthrough translator
+			return fmt.Errorf("Anthropic → Anthropic translator not implemented yet")
+		case filterapi.APISchemaGCPAnthropic:
+			// For Anthropic → GCP Anthropic, use a simple passthrough translator
+			c.translator = translator.NewAnthropicToGCPAnthropicTranslator(c.modelNameOverride)
+		case filterapi.APISchemaAWSBedrock:
+			// For Anthropic → AWS Bedrock, use InvokeModel API with minimal translation
+			slog.Error("DEBUG: Creating AnthropicToAWSInvokeModelTranslator", "model", c.modelNameOverride)
+			c.translator = translator.NewAnthropicToAWSInvokeModelTranslator(c.modelNameOverride)
+		default:
+			return fmt.Errorf("unsupported API schema: input=Anthropic, output=%s", out.Name)
+		}
+	} else {
+		return fmt.Errorf("unsupported input API schema: %s", inputSchema)
 	}
 	return nil
 }
@@ -440,7 +500,15 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
-	c.stream = c.originalRequestBody.Stream
+
+	// Determine if this is a streaming request
+	if c.originalRequestBody != nil {
+		// For OpenAI requests, use the parsed struct
+		c.stream = c.originalRequestBody.Stream
+	} else {
+		// For Anthropic requests, parse the raw body to check for stream field
+		c.stream = isStreamingRequest(c.originalRequestBodyRaw)
+	}
 	if isEndpointPicker {
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
@@ -470,6 +538,32 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	return openAIReq.Model, &openAIReq, nil
+}
+
+// parseAnthropicModelName extracts the model name from an Anthropic API request.
+func parseAnthropicModelName(body *extprocv3.HttpBody) (modelName string, err error) {
+	var anthropicReq map[string]interface{}
+	if err := json.Unmarshal(body.Body, &anthropicReq); err != nil {
+		return "", fmt.Errorf("failed to unmarshal Anthropic body: %w", err)
+	}
+
+	model, ok := anthropicReq["model"].(string)
+	if !ok || model == "" {
+		return "", fmt.Errorf("model field is required in Anthropic request")
+	}
+
+	return model, nil
+}
+
+// isStreamingRequest checks if a request body indicates streaming is enabled.
+func isStreamingRequest(rawBody []byte) bool {
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(rawBody, &reqMap); err != nil {
+		return false
+	}
+
+	stream, ok := reqMap["stream"].(bool)
+	return ok && stream
 }
 
 // buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
