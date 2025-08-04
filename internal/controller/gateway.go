@@ -45,8 +45,12 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	udsPath, extProcImage string, standAlone bool,
+	udsPath, extProcImage string, standAlone bool, uuidFn func() string,
 ) *GatewayController {
+	uf := uuidFn
+	if uf == nil {
+		uf = uuid.NewString
+	}
 	return &GatewayController{
 		client:       client,
 		kube:         kube,
@@ -54,6 +58,7 @@ func NewGatewayController(
 		udsPath:      udsPath,
 		extProcImage: extProcImage,
 		standAlone:   standAlone,
+		uuidFn:       uf,
 	}
 }
 
@@ -66,6 +71,7 @@ type GatewayController struct {
 	extProcImage string // The image of the external processor sidecar container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
+	uuidFn     func() string // Function to generate a new UUID for the filter config.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -108,16 +114,18 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
+	uid := c.uuidFn()
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
-	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, routes.Items, uuid.NewString()); err != nil {
+	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, routes.Items, uid); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uuid.NewString()); err != nil {
+	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid); err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}

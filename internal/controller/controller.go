@@ -11,6 +11,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,7 +84,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.UDSPath, options.ExtProcImage, false)
+		logger.WithName("gateway"), options.UDSPath, options.ExtProcImage, false, uuid.NewString)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,

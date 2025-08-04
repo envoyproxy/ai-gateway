@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -50,6 +51,7 @@ func Test_translate(t *testing.T) {
 			outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
 				outConfigMaps, outSecrets, outDeployments, outServices,
 				outBackends, outBackendTLSPolicy, outGatewayClass, outGateway := requireCollectTranslatedObjects(t, buf.String())
+			fmt.Println(buf.String())
 			expHTTPRoutes, expEnvoyExtensionPolicy, expHTTPRouteFilter,
 				expConfigMaps, expSecrets, expDeployments, expServices,
 				expBackends, expBackendTLSPolicy, expGatewayClass, expGateway := requireCollectTranslatedObjects(t, string(outBuf))
