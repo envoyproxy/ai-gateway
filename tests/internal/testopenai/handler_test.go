@@ -24,6 +24,59 @@ import (
 
 var noopLogger = log.New(io.Discard, "[testopenai] ", 0)
 
+// TestSplitSSEEvents tests the SSE event splitting logic.
+func TestSplitSSEEvents(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:  "single event",
+			input: "data: {\"message\": \"hello\"}",
+			expected: []string{
+				"data: {\"message\": \"hello\"}",
+			},
+		},
+		{
+			name:  "multiple events with blank lines",
+			input: "data: {\"chunk\": 1}\n\ndata: {\"chunk\": 2}\n\ndata: [DONE]\n\n",
+			expected: []string{
+				"data: {\"chunk\": 1}",
+				"data: {\"chunk\": 2}",
+				"data: [DONE]",
+			},
+		},
+		{
+			name:  "events with multiple fields",
+			input: "event: message\ndata: {\"text\": \"hello\"}\n\nevent: close\ndata: [DONE]\n\n",
+			expected: []string{
+				"event: message\ndata: {\"text\": \"hello\"}",
+				"event: close\ndata: [DONE]",
+			},
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:  "trailing content without double newline",
+			input: "data: {\"message\": \"incomplete\"}",
+			expected: []string{
+				"data: {\"message\": \"incomplete\"}",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := splitSSEEvents(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 // TestRecordNewInteraction tests the recording functionality with a mock server.
 func TestRecordNewInteraction(t *testing.T) {
 	// Create a mock OpenAI server.

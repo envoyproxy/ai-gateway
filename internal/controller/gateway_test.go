@@ -10,10 +10,12 @@ import (
 	"strconv"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -750,4 +752,30 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 		"should indicate that multiple BSPs with targetRefs exist for the same backend")
 	require.Nil(t, backend, "should not return backend when multiple BSPs with targetRefs exist")
 	require.Nil(t, bsp, "should not return BSP when multiple BSPs with targetRefs exist for the same backend")
+}
+
+func TestGatewayController_cleanUpV02(t *testing.T) {
+	c := &GatewayController{
+		logger: ctrl.Log.WithName("test"),
+		client: requireNewFakeClientWithIndexes(t),
+	}
+
+	err := c.client.Create(t.Context(), &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
+		Name:      "ai-eg-eep-foo",
+		Namespace: "ns",
+	}})
+	require.NoError(t, err)
+	err = c.client.Create(t.Context(), &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
+		Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns",
+	}})
+	require.NoError(t, err)
+
+	c.cleanUpV02(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns"},
+	})
+	// Check that the EEP and Backend are deleted.
+	err = c.client.Get(t.Context(), client.ObjectKey{Name: "ai-eg-eep-foo", Namespace: "ns"}, &egv1a1.EnvoyExtensionPolicy{})
+	require.True(t, apierrors.IsNotFound(err), "expected EEP to be deleted, but got: %v", err)
+	err = c.client.Get(t.Context(), client.ObjectKey{Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns"}, &egv1a1.Backend{})
+	require.True(t, apierrors.IsNotFound(err), "expected Backend to be deleted, but got: %v", err)
 }

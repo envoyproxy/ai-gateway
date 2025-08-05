@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
@@ -67,8 +68,8 @@ type GatewayController struct {
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
 func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var gw gwapiv1.Gateway
-	if err := c.client.Get(ctx, req.NamespacedName, &gw); err != nil {
+	gw := &gwapiv1.Gateway{}
+	if err := c.client.Get(ctx, req.NamespacedName, gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -91,18 +92,52 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
-	if err := c.reconcileFilterConfigSecret(ctx, &gw, routes.Items, gw.Name); err != nil {
+	if err := c.reconcileFilterConfigSecret(ctx, gw, routes.Items, gw.Name); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// Clean up resources created by the v0.2 version of the controller but not used in v0.3+.
+	c.cleanUpV02(ctx, gw)
 
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, &gw, uuid.NewString()); err != nil {
+	if err := c.annotateGatewayPods(ctx, gw, uuid.NewString()); err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+// cleanUpV02 is to clean up resources created by the v0.2 version of the controller but not used in v0.3+.
+// More specifically, this deletes the EnvoyExtensionPolicy and Backend resources that were created in
+// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L111
+//
+// # These objects have become unnecessary since https://github.com/envoyproxy/ai-gateway/commit/7055df134e0df116690afb610e047c0657204072
+//
+// TODO: delete after v0.3 release.
+func (c *GatewayController) cleanUpV02(ctx context.Context, gw *gwapiv1.Gateway) {
+	// Delete the EnvoyExtensionPolicy.
+	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L133C2-L133C59
+	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
+		Name:      fmt.Sprintf("ai-eg-eep-%s", gw.Name),
+		Namespace: gw.Namespace,
+	}})
+	// Delete the Backend resource that existed per namespace.
+	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L108
+	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
+		Name: "envoy-ai-gateway-extproc-backend", Namespace: gw.Namespace,
+	}})
+}
+
+func ensureObjDeletion[obj client.Object](ctx context.Context, logger logr.Logger, c client.Client, object obj) {
+	name, namespace, kind := object.GetName(), object.GetNamespace(), object.GetObjectKind().GroupVersionKind().String()
+	err := c.Delete(ctx, object)
+	if err != nil && !apierrors.IsNotFound(err) {
+		logger.Error(err, "Failed to delete object", "name", name, "namespace", namespace, "kind", kind)
+	} else if err == nil {
+		logger.Info("Delete object", "name", name, "namespace", namespace, "kind", kind)
+	}
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
