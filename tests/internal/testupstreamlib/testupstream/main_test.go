@@ -573,8 +573,47 @@ func Test_main(t *testing.T) {
 
 		// Define two complete SSE events, separated by "\n\n".
 		// This structure is designed to hit the `bytes.Split(expResponseBody, []byte("\n\n"))` logic.
-		ssePayload := "data: first event data\nid: 1\n\ndata: second event data\nid: 2"
+		ssePayload := "data: 1\n\ndata: 2"
 
+		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte(ssePayload)))
+
+		now := time.Now()
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		require.Equal(t, http.StatusOK, response.StatusCode)
+
+		reader := bufio.NewReader(response.Body)
+		for i := 0; i < 2; i++ {
+			dataLine, err := reader.ReadString('\n')
+			require.NoError(t, err)
+			require.Equal(t, fmt.Sprintf("data: %d\n", i+1), dataLine)
+			// Ensure that the server sends the response line every second.
+			require.Greater(t, time.Since(now), 100*time.Millisecond, time.Since(now).String())
+			require.Less(t, time.Since(now), 300*time.Millisecond, time.Since(now).String())
+			now = time.Now()
+
+			// Ignore the additional newline character.
+			_, err = reader.ReadString('\n')
+			require.NoError(t, err)
+		}
+	})
+	t.Run("sse with empty block should be skipped", func(t *testing.T) {
+		t.Parallel()
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
+		require.NoError(t, err)
+
+		// This payload contains an empty block between two valid SSE messages.
+		// The server is expected to split by "\n\n", find the empty block, and skip it.
+		ssePayload := "data: first\n\n\n\ndata: second"
+
+		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte("/sse")))
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(ssePayload)))
@@ -590,9 +629,9 @@ func Test_main(t *testing.T) {
 		bodyBytes, err := io.ReadAll(response.Body)
 		require.NoError(t, err)
 
-		// The server should stream the blocks exactly as they were, adding the final "\n\n" delimiter
-		// after each one. The resulting body should match the original payload plus the final delimiter.
-		expectedBody := ssePayload + "\n\n"
+		// The expected response should only contain the two valid data blocks.
+		// The empty block should have been filtered out by the server.
+		expectedBody := "data: first\n\ndata: second\n\n"
 		require.Equal(t, expectedBody, string(bodyBytes))
 	})
 }
