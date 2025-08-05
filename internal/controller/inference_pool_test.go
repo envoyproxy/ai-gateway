@@ -265,9 +265,10 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 	var resolvedRefsCondition *metav1.Condition
 	for i := range parent.Conditions {
 		condition := &parent.Conditions[i]
-		if condition.Type == "Accepted" {
+		switch condition.Type {
+		case "Accepted":
 			acceptedCondition = condition
-		} else if condition.Type == "ResolvedRefs" {
+		case "ResolvedRefs":
 			resolvedRefsCondition = condition
 		}
 	}
@@ -962,9 +963,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 	var acceptedCondition, resolvedRefsCondition *metav1.Condition
 	for i := range parent.Conditions {
 		condition := &parent.Conditions[i]
-		if condition.Type == "Accepted" {
+		switch condition.Type {
+		case "Accepted":
 			acceptedCondition = condition
-		} else if condition.Type == "ResolvedRefs" {
+		case "ResolvedRefs":
 			resolvedRefsCondition = condition
 		}
 	}
@@ -1124,7 +1126,7 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 			Selector: map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{
 				"app": "test-app",
 			},
-			TargetPortNumber:     8080,
+			TargetPortNumber: 8080,
 			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
 				// ExtensionRef is nil.
 			},
@@ -1571,9 +1573,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *t
 		var acceptedCondition, resolvedRefsCondition *metav1.Condition
 		for i := range parent.Conditions {
 			condition := &parent.Conditions[i]
-			if condition.Type == "Accepted" {
+			switch condition.Type {
+			case "Accepted":
 				acceptedCondition = condition
-			} else if condition.Type == "ResolvedRefs" {
+			case "ResolvedRefs":
 				resolvedRefsCondition = condition
 			}
 		}
@@ -1749,9 +1752,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus_ExtensionRefError(t *
 	var acceptedCondition, resolvedRefsCondition *metav1.Condition
 	for i := range parent.Conditions {
 		condition := &parent.Conditions[i]
-		if condition.Type == "Accepted" {
+		switch condition.Type {
+		case "Accepted":
 			acceptedCondition = condition
-		} else if condition.Type == "ResolvedRefs" {
+		case "ResolvedRefs":
 			resolvedRefsCondition = condition
 		}
 	}
