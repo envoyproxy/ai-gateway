@@ -286,8 +286,8 @@ func TestNormalizeJSON(t *testing.T) {
 	}{
 		{
 			name:     "normalizes JSON formatting",
-			input:    `{"choices": [{"logprobs": {}, "message": {"content": "Hello"}}]}`,
-			expected: `{"choices":[{"logprobs":{},"message":{"content":"Hello"}}]}`,
+			input:    `{"choices": [{"message": {"content": "Hello"}}]}`,
+			expected: `{"choices":[{"message":{"content":"Hello"}}]}`,
 		},
 		{
 			name:     "handles whitespace",
