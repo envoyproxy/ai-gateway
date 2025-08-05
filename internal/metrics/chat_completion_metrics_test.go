@@ -22,7 +22,7 @@ func TestNewProcessorMetrics(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = DefaultChatCompletion(meter, nil).(*chatCompletion)
+		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 	)
 
 	assert.NotNil(t, pm)
@@ -33,7 +33,7 @@ func TestStartRequest(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = DefaultChatCompletion(meter, nil).(*chatCompletion)
+		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 	)
 
 	before := time.Now()
@@ -49,7 +49,7 @@ func TestRecordTokenUsage(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = DefaultChatCompletion(meter, nil).(*chatCompletion)
+		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 
 		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
@@ -84,7 +84,7 @@ func TestRecordTokenLatency(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = DefaultChatCompletion(meter, nil).(*chatCompletion)
+		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 
 		extra = attribute.Key("extra").String("value")
 		attrs = attribute.NewSet(
@@ -126,7 +126,7 @@ func TestRecordRequestCompletion(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = DefaultChatCompletion(meter, nil).(*chatCompletion)
+		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 
 		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
@@ -174,7 +174,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 			"x-org-id":  "org_id",
 		}
 
-		pm = NewChatCompletion(meter, nil, headerMapping).(*chatCompletion)
+		pm = NewChatCompletion(meter, headerMapping).(*chatCompletion)
 	)
 
 	// Test with headers that should be mapped.
