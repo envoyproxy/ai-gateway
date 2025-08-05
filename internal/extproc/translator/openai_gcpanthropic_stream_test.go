@@ -106,7 +106,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t
 	t.Run("handles simple text stream", func(t *testing.T) {
 		sseStream := `
 event: message_start
-data: {"type": "message_start", "message": {"ID": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-opus-4-20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 25, "output_tokens": 1}}}
+data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-opus-4-20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 25, "output_tokens": 1}}}
 
 event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
@@ -153,7 +153,7 @@ data: {"type": "message_stop"}
 
 	t.Run("handles text and tool use stream", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type":"message_start","message":{"ID":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-opus-4-20250514","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}
+data: {"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-opus-4-20250514","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -204,7 +204,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: content_block_start
-data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","ID":"toolu_01T1x1fJ34qAmk2tNTrN7Up6","name":"get_weather","input":{}}}
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01T1x1fJ34qAmk2tNTrN7Up6","name":"get_weather","input":{}}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}
@@ -263,7 +263,7 @@ data: {"type":"message_stop"}
 
 	t.Run("handles streaming with web search tool use", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type":"message_start","message":{"ID":"msg_01G...","type":"message","role":"assistant","usage":{"input_tokens":2679,"output_tokens":3}}}
+data: {"type":"message_start","message":{"id":"msg_01G...","type":"message","role":"assistant","usage":{"input_tokens":2679,"output_tokens":3}}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -284,7 +284,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: content_block_start
-data: {"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","ID":"srvtoolu_014hJH82Qum7Td6UV8gDXThB","name":"web_search","input":{}}}
+data: {"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","id":"srvtoolu_014hJH82Qum7Td6UV8gDXThB","name":"web_search","input":{}}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"weather NYC today\"}"}}
@@ -335,7 +335,7 @@ data: {"type":"message_stop"}
 	t.Run("handles unterminated tool call at end of stream", func(t *testing.T) {
 		// This stream starts a tool call but ends without a content_block_stop or message_stop.
 		sseStream := `event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","ID":"tool_abc","name":"get_weather"}}
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool_abc","name":"get_weather"}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"SF\"}"}}
@@ -392,7 +392,7 @@ func TestAnthropicStreamParser_EventTypes(t *testing.T) {
 
 	t.Run("handles message_start event", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type": "message_start", "message": {"ID": "msg_123", "usage": {"input_tokens": 15}}}
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15}}}
 
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
@@ -402,7 +402,7 @@ data: {"type": "message_start", "message": {"ID": "msg_123", "usage": {"input_to
 
 	t.Run("handles content_block events for tool use", func(t *testing.T) {
 		sseStream := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "ID": "tool_abc", "name": "get_weather"}}
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_abc", "name": "get_weather"}}
 
 event: content_block_delta
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"location\": \"SF\"}"}}
@@ -515,7 +515,7 @@ data: {"type": "content_block_stop", "index": 0}
 
 	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {
 		sseStream := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "ID": "tool_123", "name": "get_weather"}}
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_123", "name": "get_weather"}}
 
 event: content_block_delta
 data: {"type": "content_block_delta","index": 0,"delta": {"type": "input_json_delta","partial_json": "{\"location\": \"San Fra"}}
@@ -566,7 +566,7 @@ data: {"type": "content_block_stop", "index": 0}
 	})
 	t.Run("sends role on first chunk", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type":"message_start","message":{"ID":"msg_123","usage":{"input_tokens":10}}}
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
@@ -602,7 +602,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 
 	t.Run("accumulates output tokens", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type":"message_start","message":{"ID":"msg_123","usage":{"input_tokens":20}}}
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":20}}}
 
 event: message_delta
 data: {"type":"message_delta","delta":{},"usage":{"output_tokens":10}}
@@ -627,7 +627,7 @@ data: {"type":"message_stop"}
 
 	t.Run("ignores SSE comments", func(t *testing.T) {
 		sseStream := `event: message_start
-data: {"type":"message_start","message":{"ID":"msg_123","usage":{"input_tokens":10}}}
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
 
 : this is a comment and should be ignored
 

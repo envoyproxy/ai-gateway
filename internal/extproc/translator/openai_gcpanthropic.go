@@ -45,7 +45,7 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride string
-	streamParser      *AnthropicStreamParser
+	streamParser      *anthropicStreamParser
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -564,7 +564,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	specifier := "rawPredict"
 	if openAIReq.Stream {
 		specifier = "streamRawPredict"
-		o.streamParser = NewAnthropicStreamParser(modelName)
+		o.streamParser = newAnthropicStreamParser(modelName)
 	}
 
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
