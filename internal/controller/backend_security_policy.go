@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -308,10 +309,21 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 }
 
 // updateBackendSecurityPolicyStatus updates the status of the BackendSecurityPolicy.
-func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, route *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
-	route.Status.Conditions = newConditions(conditionType, message)
-	if err := c.client.Status().Update(ctx, route); err != nil {
-		c.logger.Error(err, "failed to update BackendSecurityPolicy status")
+func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := c.client.Get(ctx, client.ObjectKey{Name: bsp.Name, Namespace: bsp.Namespace}, bsp); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		bsp.Status.Conditions = newConditions(conditionType, message)
+		return c.client.Status().Update(ctx, bsp)
+	})
+	if err != nil {
+		c.logger.Error(err, "failed to update BackendSecurityPolicy status",
+			"namespace", bsp.Namespace, "name", bsp.Name)
 	}
 }
 

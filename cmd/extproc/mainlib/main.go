@@ -29,7 +29,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -151,7 +150,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	metricsServer, meter := startMetricsServer(metricsLis, l)
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, x.NewCustomChatCompletionMetrics, metricsRequestHeaderLabels)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
 	server, err := extproc.NewServer(l)

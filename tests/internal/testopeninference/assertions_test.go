@@ -240,6 +240,56 @@ func TestRequireSpanEqual(t *testing.T) {
 			},
 			shouldFail: false,
 		},
+		{
+			name: "nested zero structs in JSON value",
+			expected: &tracev1.Span{
+				Attributes: []*commonv1.KeyValue{
+					{
+						Key: "output.value",
+						Value: &commonv1.AnyValue{
+							Value: &commonv1.AnyValue_StringValue{
+								StringValue: `{
+                            "usage": {
+                                "completion_tokens": 9,
+                                "prompt_tokens": 19,
+                                "total_tokens": 28
+                            }
+                        }`,
+							},
+						},
+					},
+				},
+			},
+			actual: &tracev1.Span{
+				Attributes: []*commonv1.KeyValue{
+					{
+						Key: "output.value",
+						Value: &commonv1.AnyValue{
+							Value: &commonv1.AnyValue_StringValue{
+								StringValue: `{
+                            "usage": {
+                                "completion_tokens": 9,
+                                "prompt_tokens": 19,
+                                "total_tokens": 28,
+                                "completion_tokens_details": {
+                                    "accepted_prediction_tokens": 0,
+                                    "audio_tokens": 0,
+                                    "reasoning_tokens": 0,
+                                    "rejected_prediction_tokens": 0
+                                },
+                                "prompt_tokens_details": {
+                                    "audio_tokens": 0,
+                                    "cached_tokens": 0
+                                }
+                            }
+                        }`,
+							},
+						},
+					},
+				},
+			},
+			shouldFail: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -287,7 +337,7 @@ func TestNormalizeJSON(t *testing.T) {
 		{
 			name:     "normalizes JSON formatting",
 			input:    `{"choices": [{"logprobs": {}, "message": {"content": "Hello"}}]}`,
-			expected: `{"choices":[{"logprobs":{},"message":{"content":"Hello"}}]}`,
+			expected: `{"choices":[{"message":{"content":"Hello"}}]}`,
 		},
 		{
 			name:     "handles whitespace",

@@ -46,7 +46,7 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &current)
 	// Make sure the finalizer is added.
 	require.NoError(t, err)
-	require.Contains(t, current.ObjectMeta.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
+	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 	current.Spec.APISchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")}
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
@@ -168,8 +168,8 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 rule + 1 for the default rule.
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
-		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].BackendRef.Name))
-		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].BackendRef.Name))
+		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].Name))
+		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].Name))
 		// Defaulting to the empty path, which shouldn't reach in practice.
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
