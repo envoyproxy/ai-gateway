@@ -1126,7 +1126,7 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 			Selector: map[gwaiev1a2.LabelKey]gwaiev1a2.LabelValue{
 				"app": "test-app",
 			},
-			TargetPortNumber: 8080,
+			TargetPortNumber:     8080,
 			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
 				// ExtensionRef is nil.
 			},
