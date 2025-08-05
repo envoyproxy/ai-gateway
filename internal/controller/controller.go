@@ -13,6 +13,8 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -135,6 +137,32 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		Owns(&corev1.Secret{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
+	}
+
+	// Check if InferencePool CRD exists before creating the controller.
+	crdClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create CRD client for inference extension: %w", err)
+	}
+	const inferencePoolCRD = "inferencepools.inference.networking.x-k8s.io"
+	if _, crdErr := crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, inferencePoolCRD, metav1.GetOptions{}); crdErr != nil {
+		if apierrors.IsNotFound(crdErr) {
+			logger.Info("InferencePool CRD not found, skipping InferencePool controller. " +
+				"If you need it, please install the Gateway API Inference Extension CRDs.")
+		} else {
+			return fmt.Errorf("failed to query InferencePool CRD: %w", crdErr)
+		}
+	} else {
+		// CRD exists, create the controller.
+		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
+			WithName("inference-pool"))
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+			Watches(&gwapiv1.Gateway{}, inferencePoolC.gatewayEventHandler()).
+			Watches(&aigv1a1.AIGatewayRoute{}, inferencePoolC.aiGatewayRouteEventHandler()).
+			Watches(&gwapiv1.HTTPRoute{}, inferencePoolC.httpRouteEventHandler()).
+			Complete(inferencePoolC); err != nil {
+			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
+		}
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.

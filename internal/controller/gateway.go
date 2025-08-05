@@ -179,7 +179,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 					}
 					ec.Models = append(ec.Models, filterapi.Model{
 						Name:      h.Value,
-						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC(),
+						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
 					})
 				}
