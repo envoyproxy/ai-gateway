@@ -12,7 +12,7 @@ The test server works by:
 
 1. Automatically loading all pre-recorded API interactions from embedded "cassette" YAML files
 2. Matching incoming requests against recorded interactions based on the `X-Cassette-Name` header
-3. Replaying the recorded responses
+3. Replaying the recorded responses with delays faster than real platforms to keep tests fast.
 
 This approach provides:
 

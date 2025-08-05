@@ -7,6 +7,7 @@ package testopeninference
 
 import (
 	"encoding/json"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -156,17 +157,79 @@ func isZeroValue(v *commonv1.AnyValue) bool {
 	}
 }
 
-// normalizeJSON compacts JSON strings, handling invalid input as-is.
+// normalizeJSON compacts JSON strings, removing zero-value objects.
 func normalizeJSON(s string) string {
 	var v any
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return s
 	}
-	b, err := json.Marshal(v)
+	processedV := processValue(v)
+	b, err := json.Marshal(processedV)
 	if err != nil {
 		return s
 	}
 	return string(b)
+}
+
+// processValue recursively processes JSON values, removing zero-value objects.
+func processValue(v any) any {
+	if v == nil {
+		return nil
+	}
+
+	val := reflect.ValueOf(v)
+	switch val.Kind() {
+	case reflect.Map:
+		result := make(map[string]any)
+		allZero := true
+		for _, key := range val.MapKeys() {
+			keyStr := key.String()
+			elem := val.MapIndex(key)
+			processed := processValue(elem.Interface())
+			if !isZero(processed) {
+				allZero = false
+				result[keyStr] = processed
+			}
+		}
+		if allZero {
+			return nil
+		}
+		return result
+	case reflect.Slice:
+		result := make([]any, 0, val.Len())
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			processed := processValue(elem.Interface())
+			result = append(result, processed)
+		}
+		return result
+	default:
+		if isZero(v) {
+			return nil
+		}
+		return v
+	}
+}
+
+// isZero checks if a JSON value is considered zero.
+func isZero(v any) bool {
+	if v == nil {
+		return true
+	}
+
+	val := reflect.ValueOf(v)
+	switch val.Kind() {
+	case reflect.Bool:
+		return !val.Bool()
+	case reflect.Float64:
+		return val.Float() == 0
+	case reflect.String:
+		return val.Len() == 0
+	case reflect.Array:
+		return true
+	default:
+		return false
+	}
 }
 
 // normalizeErrorMessage converts Python dicts to JSON and extracts error codes.
