@@ -650,6 +650,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]
 
 		// Create the streaming choice.
 		choice := openai.ChatCompletionResponseChunkChoice{
+			Index:        0,
 			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
 		}
 
