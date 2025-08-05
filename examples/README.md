@@ -16,8 +16,3 @@ Demonstrates usage-based rate limiting to control costs and prevent abuse.
 
 ### [Monitoring](./monitoring/)
 Example setup for comprehensive monitoring and observability with Prometheus and Grafana.
-
-
-### [Custom Metrics](./extproc_custom_metrics/)
-Example of implementing custom metrics collection using the external processor interface.
-
