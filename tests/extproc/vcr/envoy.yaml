@@ -22,16 +22,15 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
-                # Custom access log format to capture dynamic metadata
                 access_log:
-                  - name: dynamic_metadata
+                  - name: access_log_stdout
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
                 route_config:
                   name: local_route
                   virtual_hosts:
                     - name: backend
-                      domains: ["*"]
+                      domains: [ "*" ]
                       routes:
                         # These paths must match those registered in cmd/extproc/mainlib/main.go
                         - match:
@@ -57,20 +56,22 @@ static_resources:
                               "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
                               disabled: true
                 http_filters:
-                  # Simulate real config injected via EnvoyExtensionPolicy
+                  # ROUTER FILTER (HTTP Connection Manager Level)
+                  # Enabled only on AIGatewayRoute paths (/v1/chat/completions, /v1/embeddings, /v1/models).
+                  # Extracts model name (embeddings/chat), or return a direct response (/models).
+                  # Configured by insertRouterLevelAIGatewayExtProc() in post_translate_modify.go
                   - name: envoy.filters.http.ext_proc
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                      allow_mode_override: true
                       message_timeout: 5s  # Increase timeout from default 200ms to 5s
                       grpc_service:
                         envoy_grpc:
                           cluster_name: ext_proc
                       processing_mode:
-                        request_header_mode: SEND
-                        response_header_mode: SEND
-                        request_body_mode: BUFFERED
-                        response_body_mode: BUFFERED
+                        request_header_mode: SEND       # Examine headers before routing
+                        response_header_mode: SEND      # Examine response headers from upstream
+                        request_body_mode: BUFFERED     # Process complete OpenAI request body
+                        response_body_mode: BUFFERED    # Process complete response body
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
@@ -89,6 +90,11 @@ static_resources:
           explicit_http_config:
             http_protocol_options: {}
           http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
@@ -97,19 +103,10 @@ static_resources:
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  # AI Gateway upstream extproc configuration (runs after routing)
-                  # request_header_mode: SEND - Process request headers to select backend
-                  request_header_mode: "SEND"
-                  # request_body_mode: NONE - Request body already processed downstream
-                  request_body_mode: "NONE"
-                  # response_header_mode: SEND - Process response headers for streaming detection
-                  # NOTE: Must be SEND (not SKIP) to allow ProcessResponseHeaders to set
-                  # mode override to STREAMED for streaming responses
-                  response_header_mode: "SEND"
-                  # response_body_mode: BUFFERED - Process response body for metrics/costs
-                  # NOTE: Standard AI Gateway uses NONE here, but for custom metrics
-                  # that need TTFT/ITL, this must be BUFFERED or STREAMED
-                  response_body_mode: "BUFFERED"
+                  request_header_mode: "SEND"    # Transform request format and inject auth headers
+                  request_body_mode: "NONE"      # Body already processed by router filter
+                  response_header_mode: "SEND"   # Mode override can switch this to STREAMED
+                  response_body_mode: "NONE"     # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc

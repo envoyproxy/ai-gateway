@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -351,8 +352,18 @@ func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name 
 
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
 func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, conditionType string, message string) {
-	route.Status.Conditions = newConditions(conditionType, message)
-	if err := c.client.Status().Update(ctx, route); err != nil {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := c.client.Get(ctx, client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, route); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		route.Status.Conditions = newConditions(conditionType, message)
+		return c.client.Status().Update(ctx, route)
+	})
+	if err != nil {
 		c.logger.Error(err, "failed to update AIGatewayRoute status")
 	}
 }
