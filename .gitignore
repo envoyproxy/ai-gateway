@@ -36,3 +36,6 @@ site/yarn-debug.log*
 site/yarn-error.log*
 site/static/.DS_Store
 site/temp
+
+# auto generated conformance report
+inference-extension-conformance-test-report.yaml
