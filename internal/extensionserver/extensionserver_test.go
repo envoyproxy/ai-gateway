@@ -126,9 +126,6 @@ func Test_maybeModifyCluster(t *testing.T) {
 			Name: "httproute/ns/name/rule/invalid",
 		}, errLog: "failed to parse HTTPRoute rule index"},
 		{c: &clusterv3.Cluster{
-			Name: "httproute/ns/nonexistent/rule/0",
-		}, errLog: `failed to get AIGatewayRoute object`},
-		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/99999",
 		}, errLog: `HTTPRoute rule index out of range`},
 		{c: &clusterv3.Cluster{
@@ -235,26 +232,12 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("AIGatewayRoute not found but has InferencePool metadata", func(t *testing.T) {
+	t.Run("AIGatewayRoute not found", func(t *testing.T) {
 		var buf bytes.Buffer
 		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-
-		// Create cluster with InferencePool metadata but non-existent route.
-		cluster := &clusterv3.Cluster{
-			Name: "httproute/test-ns/nonexistent-route/rule/0",
-			Metadata: &corev3.Metadata{
-				FilterMetadata: map[string]*structpb.Struct{
-					internalapi.InternalEndpointMetadataNamespace: {
-						Fields: map[string]*structpb.Value{
-							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002"),
-						},
-					},
-				},
-			},
-		}
-
+		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
 		s.maybeModifyCluster(cluster)
-		require.Contains(t, buf.String(), "AIGatewayRoute not found, but found InferencePool in cluster metadata")
+		require.Contains(t, buf.String(), "Skipping user-created HTTPRoute cluster modification")
 	})
 
 	t.Run("cluster with InferencePool metadata and existing route", func(t *testing.T) {
