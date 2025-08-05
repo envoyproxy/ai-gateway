@@ -24,7 +24,6 @@ func TestDefaultConfig(t *testing.T) {
 
 	cfg := filterapi.MustLoadDefaultConfig()
 	require.Equal(t, &filterapi.Config{
-		Schema:             filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 		ModelNameHeaderKey: "x-ai-eg-model",
 	}, cfg)
 
@@ -48,7 +47,6 @@ llmRequestCosts:
 	require.NoError(t, err)
 
 	expectedCfg := &filterapi.Config{
-		Schema:             filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
 		ModelNameHeaderKey: "x-ai-eg-model",
 		MetadataNamespace:  "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
