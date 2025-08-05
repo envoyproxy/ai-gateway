@@ -282,4 +282,4 @@ spec:
         - 500
       triggers:
         - connect-failure
-        - retriable-status-codes 
+        - retriable-status-codes
