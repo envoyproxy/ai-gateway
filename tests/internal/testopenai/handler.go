@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
@@ -231,18 +232,75 @@ func (h *cassetteHandler) recordNewInteraction(r *http.Request, body []byte, w h
 
 // writeResponse writes a cassette interaction response to the HTTP response writer.
 func writeResponse(w http.ResponseWriter, interaction *cassette.Interaction) {
-	// Write response headers.
+	// Play back the response headers from the VCR cassette.
 	for key, values := range interaction.Response.Headers {
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
 	}
 
-	// Write status code.
+	// Play back the response code from the VCR cassette.
 	w.WriteHeader(interaction.Response.Code)
 
-	// TODO: flush between SSE events.
-	_, _ = w.Write([]byte(interaction.Response.Body))
+	// Simulate a quite fast response delay or TTFT (Time To First Token).
+	time.Sleep(2 * time.Millisecond)
+
+	// Check if this is an SSE response.
+	contentType := interaction.Response.Headers.Get("Content-Type")
+	if strings.HasPrefix(contentType, "text/event-stream") {
+		writeSSEResponse(w, interaction.Response.Body)
+	} else {
+		_, _ = w.Write([]byte(interaction.Response.Body))
+	}
+}
+
+// writeSSEResponse writes SSE events with proper flushing between events.
+func writeSSEResponse(w http.ResponseWriter, body string) {
+	flusher, _ := w.(http.Flusher) // Safe because we use http.Server.
+
+	events := splitSSEEvents(body)
+
+	for _, event := range events {
+		if event == "" {
+			continue
+		}
+		_, _ = w.Write([]byte(event))
+		_, _ = w.Write([]byte("\n\n")) // SSE event separator.
+
+		// Simulate a quite fast ITL (Inter-Token Latency).
+		time.Sleep(1 * time.Millisecond)
+
+		flusher.Flush()
+	}
+}
+
+// splitSSEEvents splits an SSE response into individual events.
+// Events are separated by double newlines (\n\n).
+func splitSSEEvents(body string) []string {
+	var events []string
+	var current []byte
+
+	bytes := []byte(body)
+	for i := 0; i < len(bytes); i++ {
+		current = append(current, bytes[i])
+
+		// Check for double newline (event separator).
+		if i > 0 && bytes[i] == '\n' && bytes[i-1] == '\n' {
+			// Remove the trailing newlines from current event.
+			event := string(current[:len(current)-2])
+			if event != "" {
+				events = append(events, event)
+			}
+			current = nil
+		}
+	}
+
+	// Add any remaining content as final event.
+	if len(current) > 0 {
+		events = append(events, string(current))
+	}
+
+	return events
 }
 
 // matchRequest checks if an HTTP request matches a cassette request.

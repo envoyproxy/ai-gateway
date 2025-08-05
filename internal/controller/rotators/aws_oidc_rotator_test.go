@@ -128,7 +128,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
-		ClientID: "some-client-id",
+		ClientID: ptr.To("some-client-id"),
 		ClientSecret: gwapiv1.SecretObjectReference{
 			Name:      gwapiv1.ObjectName(testClientSecret),
 			Namespace: (*gwapiv1.Namespace)(ptr.To(policyNameSpace)),

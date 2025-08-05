@@ -1253,7 +1253,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 	t.Run("portForInferencePool custom", func(t *testing.T) {
 		customPool := pool.DeepCopy()
 		customPort := gwaiev1a2.PortNumber(8888)
-		customPool.Spec.ExtensionRef.ExtensionReference.PortNumber = &customPort
+		customPool.Spec.ExtensionRef.PortNumber = &customPort
 		port := portForInferencePool(customPool)
 		require.Equal(t, uint32(8888), port)
 	})
@@ -1296,7 +1296,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 
 	t.Run("nil ExtensionRef panics", func(t *testing.T) {
 		invalidPool := pool.DeepCopy()
-		invalidPool.Spec.EndpointPickerConfig.ExtensionRef = nil
+		invalidPool.Spec.ExtensionRef = nil
 		require.Panics(t, func() {
 			buildExtProcClusterForInferencePoolEndpointPicker(invalidPool)
 		})

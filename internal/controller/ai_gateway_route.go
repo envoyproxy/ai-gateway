@@ -292,12 +292,12 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Rules = rules
 
-	if dst.ObjectMeta.Annotations == nil {
-		dst.ObjectMeta.Annotations = make(map[string]string)
+	if dst.Annotations == nil {
+		dst.Annotations = make(map[string]string)
 	}
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
-	dst.ObjectMeta.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
-	dst.ObjectMeta.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
+	dst.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
+	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
 	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
 	parentRefs := aiGatewayRoute.Spec.ParentRefs
@@ -312,7 +312,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			Namespace: namespace,
 		})
 	}
-	dst.Spec.CommonRouteSpec.ParentRefs = parentRefs
+	dst.Spec.ParentRefs = parentRefs
 	return nil
 }
 
