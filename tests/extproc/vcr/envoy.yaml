@@ -58,7 +58,7 @@ static_resources:
                 http_filters:
                   # ROUTER FILTER (HTTP Connection Manager Level)
                   # Enabled only on AIGatewayRoute paths (/v1/chat/completions, /v1/embeddings, /v1/models).
-                  # Selects backend e.g. by model name.
+                  # Extracts model name (embeddings/chat), or return a direct response (/models).
                   # Configured by insertRouterLevelAIGatewayExtProc() in post_translate_modify.go
                   - name: envoy.filters.http.ext_proc
                     typed_config:
