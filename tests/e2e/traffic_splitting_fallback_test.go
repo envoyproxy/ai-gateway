@@ -24,7 +24,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=traffic-splitting-fallback"
 
-	// Wait for the gateway to be ready
+	// Wait for the gateway to be ready.
 	requireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("traffic-distribution", func(t *testing.T) {
@@ -48,6 +48,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
+			defer resp.Body.Close()
 			require.Equal(t, 200, resp.StatusCode)
 
 			// Check response headers for backend identification.
@@ -63,8 +64,8 @@ func TestTrafficSplittingFallback(t *testing.T) {
 		}
 
 		// Validate that both backends received traffic (with reasonable tolerance for 50/50 split).
-		require.Greater(t, backendAResponses, 0, "Backend A should receive some traffic")
-		require.Greater(t, backendBResponses, 0, "Backend B should receive some traffic")
+		require.Positive(t, backendAResponses, "Backend A should receive some traffic")
+		require.Positive(t, backendBResponses, "Backend B should receive some traffic")
 		require.Equal(t, requestCount, backendAResponses+backendBResponses, "All requests should be handled")
 
 		// Check that distribution is roughly 50/50 (within 20% tolerance).
@@ -83,12 +84,12 @@ func TestTrafficSplittingFallback(t *testing.T) {
 
 	t.Run("fallback-backend-c", func(t *testing.T) {
 		// Test that when backend-a and backend-b return 5xx errors,
-		// traffic falls back to backend-c with model-c override
+		// traffic falls back to backend-c with model-c override.
 		require.Eventually(t, func() bool {
 			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
 			defer fwd.kill()
 
-			// Make multiple requests and count responses from each backend
+			// Make multiple requests and count responses from each backend.
 			backendCounts := make(map[string]int)
 			numRequests := 20
 
@@ -97,7 +98,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 					`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 				require.NoError(t, err)
 				req.Header.Set("x-ai-eg-model", "model-a")
-				// Set all backends to return 500 errors
+				// Set all backends to return 500 errors.
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "500")
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"Fallback response from backend C"}}]}`)))
 
@@ -108,23 +109,23 @@ func TestTrafficSplittingFallback(t *testing.T) {
 				}
 				defer resp.Body.Close()
 
-				// Count which backend responded
+				// Count which backend responded.
 				backendID := resp.Header.Get("testupstream-id")
 				backendCounts[backendID]++
 
 			}
 
-			// Log the distribution
+			// Log the distribution.
 			t.Logf("Backend distribution: %v", backendCounts)
 
-			// Verify that all traffic went to backend-c (fallback)
-			// Since we're setting all backends to return 500, the fallback should route to backend-c
+			// Verify that all traffic went to backend-c (fallback).
+			// Since we're setting all backends to return 500, the fallback should route to backend-c.
 			if backendCounts["backend-c"] == 0 {
 				return false
 			}
 
-			// Most traffic should go to backend-c (fallback)
-			// Some traffic might still go to backend-a and backend-b initially before they fail
+			// Most traffic should go to backend-c (fallback).
+			// Some traffic might still go to backend-a and backend-b initially before they fail.
 			return backendCounts["backend-c"] > 0
 		}, 30*time.Second, 1*time.Second)
 	})
