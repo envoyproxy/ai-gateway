@@ -27,15 +27,14 @@ const (
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
 type streamingToolCall struct {
-	ID         string
-	Name       string
-	InputJSON  bytes.Buffer
-	SentHeader bool
+	id        string
+	name      string
+	inputJSON string
 }
 
-// AnthropicStreamParser manages the stateful translation of an Anthropic SSE stream
+// anthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
-type AnthropicStreamParser struct {
+type anthropicStreamParser struct {
 	buffer          bytes.Buffer
 	activeMessageID string
 	activeToolCalls map[int]*streamingToolCall
@@ -45,15 +44,15 @@ type AnthropicStreamParser struct {
 	sentFirstChunk  bool
 }
 
-// NewAnthropicStreamParser creates a new parser for a streaming request.
-func NewAnthropicStreamParser(modelName string) *AnthropicStreamParser {
-	return &AnthropicStreamParser{
+// newAnthropicStreamParser creates a new parser for a streaming request.
+func newAnthropicStreamParser(modelName string) *anthropicStreamParser {
+	return &anthropicStreamParser{
 		model:           modelName,
 		activeToolCalls: make(map[int]*streamingToolCall),
 	}
 }
 
-func (p *AnthropicStreamParser) writeChunk(eventBlock string, builder *strings.Builder) error {
+func (p *anthropicStreamParser) writeChunk(eventBlock string, builder *strings.Builder) error {
 	chunk, err := p.parseAndHandleEvent(eventBlock)
 	if err != nil {
 		return err
@@ -73,7 +72,7 @@ func (p *AnthropicStreamParser) writeChunk(eventBlock string, builder *strings.B
 
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
-func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
+func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, error,
 ) {
 	if _, err := p.buffer.ReadFrom(body); err != nil {
@@ -87,15 +86,12 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 			break
 		}
 
-		eventBlockBytes := make([]byte, len(eventBlock))
-		copy(eventBlockBytes, eventBlock)
+		if err := p.writeChunk(string(eventBlock), &responseBodyBuilder); err != nil {
+			return nil, nil, LLMTokenUsage{}, err
+		}
 
 		p.buffer.Reset()
 		p.buffer.Write(remaining)
-
-		if err := p.writeChunk(string(eventBlockBytes), &responseBodyBuilder); err != nil {
-			return nil, nil, LLMTokenUsage{}, err
-		}
 	}
 
 	if endOfStream && p.buffer.Len() > 0 {
@@ -144,11 +140,11 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 		var toolCalls []openai.ChatCompletionMessageToolCallParam
 		for _, tool := range p.activeToolCalls {
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-				ID:   &tool.ID,
+				ID:   &tool.id,
 				Type: openai.ChatCompletionMessageToolCallTypeFunction,
 				Function: openai.ChatCompletionMessageToolCallFunctionParam{
-					Name:      tool.Name,
-					Arguments: tool.InputJSON.String(),
+					Name:      tool.name,
+					Arguments: tool.inputJSON,
 				},
 			})
 		}
@@ -180,7 +176,7 @@ func (p *AnthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, nil
 }
 
-func (p *AnthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.ChatCompletionResponseChunk, error) {
+func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.ChatCompletionResponseChunk, error) {
 	var eventType string
 	var eventData strings.Builder
 
@@ -209,7 +205,7 @@ func (p *AnthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.
 	return nil, nil
 }
 
-func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, data []byte) (*openai.ChatCompletionResponseChunk, error) {
+func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType string, data []byte) (*openai.ChatCompletionResponseChunk, error) {
 	switch eventType {
 	case string(constant.ValueOf[constant.MessageStart]()):
 		var event anthropic.MessageStartEvent
@@ -228,9 +224,9 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.ToolUse]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.ServerToolUse]()) {
 			toolIdx := int(event.Index)
 			p.activeToolCalls[toolIdx] = &streamingToolCall{
-				ID:        event.ContentBlock.ID,
-				Name:      event.ContentBlock.Name,
-				InputJSON: bytes.Buffer{}, // Initialize the InputJSON buffer.
+				id:        event.ContentBlock.ID,
+				name:      event.ContentBlock.Name,
+				inputJSON: "",
 			}
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
@@ -288,7 +284,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 					},
 				},
 			}
-			tool.InputJSON.WriteString(event.Delta.PartialJSON)
+			tool.inputJSON += event.Delta.PartialJSON
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		case string(constant.ValueOf[constant.ThinkingDelta]()):
 			// This is a latency-hiding event, ignore it.
@@ -335,7 +331,7 @@ func (p *AnthropicStreamParser) handleAnthropicStreamEvent(eventType string, dat
 }
 
 // constructOpenAIChatCompletionChunk builds the stream chunk.
-func (p *AnthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.ChatCompletionResponseChunkChoiceDelta, finishReason openai.ChatCompletionChoicesFinishReason) *openai.ChatCompletionResponseChunk {
+func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.ChatCompletionResponseChunkChoiceDelta, finishReason openai.ChatCompletionChoicesFinishReason) *openai.ChatCompletionResponseChunk {
 	// Add the 'assistant' role to the very first chunk of the response.
 	if !p.sentFirstChunk {
 		// Only add the role if the delta actually contains content or a tool call.
