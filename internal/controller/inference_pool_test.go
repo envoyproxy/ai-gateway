@@ -468,15 +468,15 @@ func TestInferencePoolController_RouteReferencesGateway(t *testing.T) {
 		},
 	}
 
-	result := c.routeReferencesGateway(parentRefs, "test-gateway", "test-namespace")
+	result := c.routeReferencesGateway(parentRefs, "test-gateway", "test-namespace", "test-namespace")
 	require.True(t, result, "Should return true when route references the gateway with matching namespace")
 
 	// Test with matching gateway name but different namespace.
-	result = c.routeReferencesGateway(parentRefs, "test-gateway", "different-namespace")
+	result = c.routeReferencesGateway(parentRefs, "test-gateway", "different-namespace", "test-namespace")
 	require.False(t, result, "Should return false when route references the gateway with different namespace")
 
 	// Test with different gateway name.
-	result = c.routeReferencesGateway(parentRefs, "different-gateway", "test-namespace")
+	result = c.routeReferencesGateway(parentRefs, "different-gateway", "test-namespace", "test-namespace")
 	require.False(t, result, "Should return false when route references different gateway")
 
 	// Test with nil namespace (should match any namespace).
@@ -486,11 +486,11 @@ func TestInferencePoolController_RouteReferencesGateway(t *testing.T) {
 		},
 	}
 
-	result = c.routeReferencesGateway(parentRefsNoNamespace, "test-gateway", "any-namespace")
+	result = c.routeReferencesGateway(parentRefsNoNamespace, "test-gateway", "any-namespace", "any-namespace")
 	require.True(t, result, "Should return true when route references gateway without namespace specified")
 
 	// Test with empty parent refs.
-	result = c.routeReferencesGateway([]gwapiv1.ParentReference{}, "test-gateway", "test-namespace")
+	result = c.routeReferencesGateway([]gwapiv1.ParentReference{}, "test-gateway", "test-namespace", "test-namespace")
 	require.False(t, result, "Should return false when no parent refs")
 }
 
@@ -647,7 +647,7 @@ func TestInferencePoolController_RouteEventHandler(t *testing.T) {
 	}
 
 	// Test route event handler.
-	handler := c.routeEventHandler()
+	handler := c.aiGatewayRouteEventHandler()
 	require.NotNil(t, handler, "Route event handler should not be nil")
 
 	// Test that the route references the InferencePool.

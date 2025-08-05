@@ -108,10 +108,11 @@ func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inf
 	referencedGateways := make(map[string]*gwapiv1.Gateway)
 
 	// Check each Gateway to see if it references this InferencePool through routes.
-	for _, gw := range gateways.Items {
-		if c.gatewayReferencesInferencePool(ctx, &gw, inferencePool.Name, inferencePool.Namespace) {
+	for i := range gateways.Items {
+		gw := &gateways.Items[i]
+		if c.gatewayReferencesInferencePool(ctx, gw, inferencePool.Name, inferencePool.Namespace) {
 			gatewayKey := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
-			referencedGateways[gatewayKey] = &gw
+			referencedGateways[gatewayKey] = gw
 		}
 	}
 
@@ -158,11 +159,12 @@ func (c *InferencePoolController) gatewayReferencesInferencePool(ctx context.Con
 		return false
 	}
 
-	for _, route := range aiGatewayRoutes.Items {
+	for i := range aiGatewayRoutes.Items {
+		route := &aiGatewayRoutes.Items[i]
 		// Check if this route references the Gateway.
-		if c.routeReferencesGateway(route.Spec.ParentRefs, gateway.Name, gateway.Namespace) {
+		if c.routeReferencesGateway(route.Spec.ParentRefs, gateway.Name, gateway.Namespace, route.Namespace) {
 			// Check if this route references the InferencePool.
-			if c.routeReferencesInferencePool(&route, inferencePoolName) {
+			if c.routeReferencesInferencePool(route, inferencePoolName) {
 				return true
 			}
 		}
@@ -175,11 +177,12 @@ func (c *InferencePoolController) gatewayReferencesInferencePool(ctx context.Con
 		return false
 	}
 
-	for _, route := range httpRoutes.Items {
+	for i := range httpRoutes.Items {
+		route := &httpRoutes.Items[i]
 		// Check if this route references the Gateway.
-		if c.routeReferencesGateway(route.Spec.ParentRefs, gateway.Name, gateway.Namespace) {
+		if c.routeReferencesGateway(route.Spec.ParentRefs, gateway.Name, gateway.Namespace, route.Namespace) {
 			// Check if this route references the InferencePool.
-			if c.httpRouteReferencesInferencePool(&route, inferencePoolName) {
+			if c.httpRouteReferencesInferencePool(route, inferencePoolName) {
 				return true
 			}
 		}
@@ -189,7 +192,7 @@ func (c *InferencePoolController) gatewayReferencesInferencePool(ctx context.Con
 }
 
 // routeReferencesGateway checks if a route references the given Gateway.
-func (c *InferencePoolController) routeReferencesGateway(parentRefs []gwapiv1.ParentReference, gatewayName string, gatewayNamespace string) bool {
+func (c *InferencePoolController) routeReferencesGateway(parentRefs []gwapiv1.ParentReference, gatewayName string, gatewayNamespace string, routeNamespace string) bool {
 	for _, parentRef := range parentRefs {
 		// Check if the name matches.
 		if string(parentRef.Name) != gatewayName {
@@ -197,17 +200,16 @@ func (c *InferencePoolController) routeReferencesGateway(parentRefs []gwapiv1.Pa
 		}
 
 		// Check namespace - if not specified in parentRef, it defaults to the route's namespace.
-		// But since we're checking cross-namespace references, we need to check if the namespace matches.
 		if parentRef.Namespace != nil {
 			if string(*parentRef.Namespace) == gatewayNamespace {
 				return true
 			}
 		} else {
 			// If namespace is not specified, it means same namespace as the route.
-			// We need to check if the route's namespace matches the gateway's namespace.
-			// This will be handled by the caller since we don't have route context here.
-			// For now, we'll assume it's a match if namespace is not specified.
-			return true
+			// Check if the route's namespace matches the gateway's namespace.
+			if routeNamespace == gatewayNamespace {
+				return true
+			}
 		}
 	}
 	return false
@@ -336,8 +338,8 @@ func (c *InferencePoolController) gatewayEventHandler() handler.EventHandler {
 	})
 }
 
-// routeEventHandler returns an event handler for AIGatewayRoute resources.
-func (c *InferencePoolController) routeEventHandler() handler.EventHandler {
+// aiGatewayRouteEventHandler returns an event handler for AIGatewayRoute resources.
+func (c *InferencePoolController) aiGatewayRouteEventHandler() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
 		route, ok := obj.(*aigv1a1.AIGatewayRoute)
 		if !ok {
