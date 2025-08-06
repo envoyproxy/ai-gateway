@@ -397,11 +397,11 @@ event: message_stop
 data: {"type": "message_stop"}
 `,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"delta":{"content":"The sky appears blue","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"The sky appears blue","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" due to Rayleigh scattering."}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
 
 data: {"object":"chat.completion.chunk","usage":{"completion_tokens":12,"prompt_tokens":15,"total_tokens":27}}
 
@@ -460,13 +460,13 @@ data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {
 event: message_stop
 data: {"type": "message_stop"}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
 data: {"object":"chat.completion.chunk","usage":{"completion_tokens":20,"prompt_tokens":50,"total_tokens":70}}
 
