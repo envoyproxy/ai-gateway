@@ -11,6 +11,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -64,8 +65,6 @@ type Options struct {
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
-	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
-	EnvoyGatewayNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
@@ -87,10 +86,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
+		logger.WithName("gateway"), options.UDSPath, options.ExtProcImage, false, uuid.NewString)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
-		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
-		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -180,7 +177,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
-			options.EnvoyGatewayNamespace,
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
 		))
