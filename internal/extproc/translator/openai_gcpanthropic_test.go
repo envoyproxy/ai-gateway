@@ -214,7 +214,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	t.Run("Request with Thinking enabled", func(t *testing.T) {
 		thinkingReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
-			Messages:  []openai.ChatCompletionMessageParamUnion{}, // Keep messages simple for this test
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: ptr.To(int64(100)),
 			AnthropicVendorFields: &openai.AnthropicVendorFields{
 				Thinking: &anthropic.ThinkingConfigParamUnion{
@@ -238,7 +238,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	t.Run("Request with Thinking disabled", func(t *testing.T) {
 		thinkingReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
-			Messages:  []openai.ChatCompletionMessageParamUnion{}, // Keep messages simple for this test
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: ptr.To(int64(100)),
 			AnthropicVendorFields: &openai.AnthropicVendorFields{
 				Thinking: &anthropic.ThinkingConfigParamUnion{
