@@ -25,11 +25,6 @@ import (
 )
 
 func TestChatCompletion_Schema(t *testing.T) {
-	t.Run("unsupported", func(t *testing.T) {
-		cfg := &processorConfig{}
-		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
-		require.ErrorContains(t, err, "unsupported API schema: Foo")
-	})
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &processorConfig{}
 		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)

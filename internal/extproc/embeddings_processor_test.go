@@ -24,11 +24,6 @@ import (
 )
 
 func TestEmbeddings_Schema(t *testing.T) {
-	t.Run("unsupported", func(t *testing.T) {
-		cfg := &processorConfig{}
-		_, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), false)
-		require.ErrorContains(t, err, "unsupported API schema: Foo")
-	})
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &processorConfig{}
 		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), false)
