@@ -161,11 +161,6 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 
 	lines := bytes.Split(eventBlock, []byte("\n"))
 	for _, line := range lines {
-		// Per the SSE spec, lines starting with a colon are comments and should be ignored.
-		if bytes.HasPrefix(line, []byte(":")) {
-			continue
-		}
-
 		if bytes.HasPrefix(line, []byte(sseEventPrefix)) {
 			eventType = bytes.TrimSpace(bytes.TrimPrefix(line, []byte(sseEventPrefix)))
 		} else if bytes.HasPrefix(line, []byte(sseDataPrefix)) {
