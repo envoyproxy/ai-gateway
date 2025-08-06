@@ -9,10 +9,12 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,26 +46,33 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewayNamespace, udsPath, extProcImage string,
+	udsPath, extProcImage string, standAlone bool, uuidFn func() string,
 ) *GatewayController {
+	uf := uuidFn
+	if uf == nil {
+		uf = uuid.NewString
+	}
 	return &GatewayController{
-		client:                client,
-		kube:                  kube,
-		logger:                logger,
-		envoyGatewayNamespace: envoyGatewayNamespace,
-		udsPath:               udsPath,
-		extProcImage:          extProcImage,
+		client:       client,
+		kube:         kube,
+		logger:       logger,
+		udsPath:      udsPath,
+		extProcImage: extProcImage,
+		standAlone:   standAlone,
+		uuidFn:       uf,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                client.Client
-	kube                  kubernetes.Interface
-	logger                logr.Logger
-	envoyGatewayNamespace string
-	udsPath               string
-	extProcImage          string // The image of the external processor sidecar container.
+	client       client.Client
+	kube         kubernetes.Interface
+	logger       logr.Logger
+	udsPath      string
+	extProcImage string // The image of the external processor sidecar container.
+	// standAlone indicates whether the controller is running in standalone mode.
+	standAlone bool
+	uuidFn     func() string // Function to generate a new UUID for the filter config.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -90,9 +99,27 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
+	namespace, pods, deployments, daemonSets, err := c.getObjectsForGateway(ctx, gw)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get objects for gateway %s: %w", gw.Name, err)
+	}
+	if len(pods) == 0 && len(deployments) == 0 && len(daemonSets) == 0 && !c.standAlone {
+		// This means that the gateway is not running any pods, deployments or daemonsets and just after the gateway is created.
+		// Wait for EG to create the pods, deployments or daemonsets to be able to reconcile the filter config. Until that happens,
+		// we are yet to know which namespace the Gateway's pods, deployments, and daemonsets are running in.
+		//
+		// On standalone mode, we won't have these resources and code assume that the filter config Secret is created in the "empty" namespace,
+		// so we don't need to enter this branch.
+		const requeueAfter = 5 * time.Second
+		c.logger.Info("No pods, deployments or daemonsets found for the Gateway.", "namespace", gw.Namespace, "name", gw.Name, "requeueAfter", requeueAfter.String())
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	uid := c.uuidFn()
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
-	if err := c.reconcileFilterConfigSecret(ctx, gw, routes.Items, gw.Name); err != nil {
+	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, routes.Items, uid); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -102,7 +129,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, gw, uuid.NewString()); err != nil {
+	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid); err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
@@ -154,7 +181,7 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 }
 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
-func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
+func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, configSecretName, configSecretNamespace string, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid}
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
@@ -249,27 +276,26 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		return fmt.Errorf("failed to marshal extproc config: %w", err)
 	}
 
-	name := FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace)
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Get(ctx, name, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, configSecretName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: c.envoyGatewayNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: configSecretName, Namespace: configSecretNamespace},
 				StringData: data,
 			}
-			if _, err = c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-				return fmt.Errorf("failed to create secret %s: %w", name, err)
+			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+				return fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
 			}
 			return nil
 		}
-		return fmt.Errorf("failed to get secret %s: %w", name, err)
+		return fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
 	}
 
 	secret.StringData = data
-	if _, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
 	return nil
@@ -399,17 +425,14 @@ func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace
 // the mutation hook invoked.
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
-func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1.Gateway, uuid string) error {
-	pods, err := c.kube.CoreV1().Pods(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
+func (c *GatewayController) annotateGatewayPods(ctx context.Context,
+	pods []corev1.Pod,
+	deployments []appsv1.Deployment,
+	daemonSets []appsv1.DaemonSet,
+	uuid string,
+) error {
 	rollout := true
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
 		for i := range podSpec.Containers {
@@ -421,7 +444,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 		}
 
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
-		_, err = c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 			[]byte(fmt.Sprintf(
 				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
 			), metav1.PatchOptions{})
@@ -431,17 +454,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 	}
 
 	if rollout {
-		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to list deployments: %w", err)
-		}
-
-		for _, dep := range deps.Items {
+		for _, dep := range deployments {
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
-			_, err = c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
+			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				[]byte(fmt.Sprintf(
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				), metav1.PatchOptions{})
@@ -450,17 +465,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 			}
 		}
 
-		daemonSets, err := c.kube.AppsV1().DaemonSets(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to list daemonsets: %w", err)
-		}
-
-		for _, daemonSet := range daemonSets.Items {
+		for _, daemonSet := range daemonSets {
 			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
-			_, err = c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
 				[]byte(fmt.Sprintf(
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				), metav1.PatchOptions{})
@@ -470,4 +477,56 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 		}
 	}
 	return nil
+}
+
+// getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.
+// They are all created and managed by the Envoy Gateway controller. Depending on the deployment strategy of Envoy Gateway,
+// the namespace is either the same as the Gateway's namespace or the Envoy Gateway system namespace.
+// This returns the **unique** namespace where the Gateway's pods, deployments, and daemonsets are running.
+func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv1.Gateway) (
+	namespace string,
+	pods []corev1.Pod,
+	deployments []appsv1.Deployment,
+	daemonSets []appsv1.DaemonSet,
+	err error,
+) {
+	listOption := metav1.ListOptions{LabelSelector: fmt.Sprintf(
+		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
+	)}
+	var ps *corev1.PodList
+	ps, err = c.kube.CoreV1().Pods("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list pods: %w", err)
+		return
+	}
+	pods = ps.Items
+
+	var ds *appsv1.DeploymentList
+	ds, err = c.kube.AppsV1().Deployments("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list deployments: %w", err)
+		return
+	}
+	deployments = ds.Items
+
+	var dss *appsv1.DaemonSetList
+	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list daemonsets: %w", err)
+		return
+	}
+	daemonSets = dss.Items
+
+	// We assume that all pods, deployments, and daemonsets are in the same namespace. Otherwise, it would be a bug in the EG
+	// or the disruptive configuration change of EG.
+	if len(pods) > 0 {
+		namespace = pods[0].Namespace
+	}
+	if len(deployments) > 0 {
+		namespace = deployments[0].Namespace
+	}
+	if len(daemonSets) > 0 {
+		namespace = daemonSets[0].Namespace
+	}
+	return
 }
