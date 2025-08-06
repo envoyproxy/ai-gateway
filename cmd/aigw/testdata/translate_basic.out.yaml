@@ -184,6 +184,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: envoy-ai-gateway-basic-default
+  namespace: envoy-gateway-system
 stringData:
   filter-config.yaml: |
     backends:
@@ -223,9 +224,6 @@ stringData:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: some-cool-self-hosted-model
       OwnedBy: Envoy AI Gateway
-    schema:
-      name: OpenAI
-      version: v1
     uuid: aigw-translate
 ---
 apiVersion: v1

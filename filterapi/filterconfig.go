@@ -38,8 +38,6 @@ type Config struct {
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
-	// InputSchema specifies the API schema of the input format of requests to the filter.
-	Schema VersionedAPISchema `json:"schema"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
 	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
 	// Backends is the list of backends that this listener can route to.
