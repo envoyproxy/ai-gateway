@@ -493,11 +493,11 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	daemonSets []appsv1.DaemonSet,
 	err error,
 ) {
+	listOption := metav1.ListOptions{LabelSelector: fmt.Sprintf(
+		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
+	)}
 	var ps *corev1.PodList
-	ps, err = c.kube.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-	})
+	ps, err = c.kube.CoreV1().Pods("").List(ctx, listOption)
 	if err != nil {
 		err = fmt.Errorf("failed to list pods: %w", err)
 		return
@@ -505,10 +505,7 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	pods = ps.Items
 
 	var ds *appsv1.DeploymentList
-	ds, err = c.kube.AppsV1().Deployments("").List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-	})
+	ds, err = c.kube.AppsV1().Deployments("").List(ctx, listOption)
 	if err != nil {
 		err = fmt.Errorf("failed to list deployments: %w", err)
 		return
@@ -516,10 +513,7 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	deployments = ds.Items
 
 	var dss *appsv1.DaemonSetList
-	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-	})
+	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, listOption)
 	if err != nil {
 		err = fmt.Errorf("failed to list daemonsets: %w", err)
 		return
@@ -528,14 +522,14 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 
 	// We assume that all pods, deployments, and daemonsets are in the same namespace. Otherwise, it would be a bug in the EG
 	// or the disruptive configuration change of EG.
-	for _, pod := range pods {
-		namespace = pod.Namespace
+	if len(pods) > 0 {
+		namespace = pods[0].Namespace
 	}
-	for _, dep := range deployments {
-		namespace = dep.Namespace
+	if len(deployments) > 0 {
+		namespace = deployments[0].Namespace
 	}
-	for _, ds := range daemonSets {
-		namespace = ds.Namespace
+	if len(daemonSets) > 0 {
+		namespace = daemonSets[0].Namespace
 	}
 	return
 }
