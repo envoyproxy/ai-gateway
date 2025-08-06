@@ -42,7 +42,6 @@ type flags struct {
 	tlsCertName                string
 	tlsKeyName                 string
 	caBundleName               string
-	envoyGatewayNamespace      string
 	metricsRequestHeaderLabels string
 }
 
@@ -111,11 +110,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"tls.key",
 		"The name of the TLS key file.",
 	)
-	envoyGatewayNamespace := fs.String(
-		"envoyGatewayNamespace",
-		"envoy-gateway-system",
-		"The namespace where the Envoy Gateway system components are installed.",
-	)
 	metricsRequestHeaderLabels := fs.String(
 		"metricsRequestHeaderLabels",
 		"",
@@ -163,7 +157,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		tlsCertName:                *tlsCertName,
 		tlsKeyName:                 *tlsKeyName,
 		caBundleName:               *caBundleName,
-		envoyGatewayNamespace:      *envoyGatewayNamespace,
 		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 	}, nil
 }
@@ -236,7 +229,6 @@ func main() {
 		ExtProcImagePullPolicy:     flags.extProcImagePullPolicy,
 		ExtProcLogLevel:            flags.extProcLogLevel,
 		EnableLeaderElection:       flags.enableLeaderElection,
-		EnvoyGatewayNamespace:      flags.envoyGatewayNamespace,
 		UDSPath:                    extProcUDSPath,
 		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 	}); err != nil {

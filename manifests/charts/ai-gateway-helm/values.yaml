@@ -18,9 +18,6 @@ controller:
   logLevel: info
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
-  # This is the namespace where the Envoy Gateway controller is installed.
-  # It is hence where the gateway pods are running and the AI Gateway controller will mutate the pods.
-  envoyGatewayNamespace: "envoy-gateway-system"
 
   # Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
   # Format: "header1:label1,header2:label2"
