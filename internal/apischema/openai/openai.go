@@ -573,6 +573,8 @@ type ChatCompletionRequest struct {
 	// like text, images, and audio.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
 	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+	// ^^ not omitempty because OpenAI requires either ('messages' and 'model')
+	// or ('messages', 'model' and 'stream') arguments to be given.
 
 	// Model: ID of the model to use
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-model

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -27,6 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
@@ -73,6 +75,8 @@ type chatCompletionProcessorRouterFilter struct {
 	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
 	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.ChatCompletionSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -89,17 +93,42 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
 	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
 	// c.upstreamFilter can be nil.
+	var statusCode int
 	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		return c.upstreamFilter.ProcessResponseBody(ctx, body)
+		resp, err = c.upstreamFilter.ProcessResponseBody(ctx, body)
+
+		// Safely convert status to int.
+		upstream := c.upstreamFilter.(*chatCompletionProcessorUpstreamFilter)
+		if statusInt, _ := strconv.Atoi(upstream.responseHeaders[":status"]); statusInt > 0 {
+			statusCode = statusInt
+		}
+	} else {
+		// We won't know the status code, but it isn't needed, except in error.
+		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
 	}
-	return c.passThroughProcessor.ProcessResponseBody(ctx, body)
+
+	if c.span == nil {
+		return
+	}
+
+	// Record chunk timing for streaming responses.
+	if c.originalRequestBody.Stream {
+		c.span.RecordChunk()
+	}
+
+	// End the span when response processing is complete.
+	if body.EndOfStream {
+		c.span.EndSpan(statusCode, body.Body)
+	}
+
+	return
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -131,13 +160,25 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	})
 	c.originalRequestBody = body
 	c.originalRequestBodyRaw = rawBody.Body
+
+	// Tracing may need to inject headers, so create a mutation. This only
+	// occurs when tracing is not noop.
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: additionalHeaders,
+	}
+	c.span = c.config.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		c.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: additionalHeaders,
-					},
+					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
 			},

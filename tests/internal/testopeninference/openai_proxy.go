@@ -31,7 +31,7 @@ func startOpenAIProxy(ctx context.Context, logger *log.Logger, openaiBaseURL, ot
 
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context: ".",
+			Context: ".", Dockerfile: "Dockerfile.openai_proxy",
 		},
 		Env:          env,
 		ExposedPorts: []string{"8080/tcp"},

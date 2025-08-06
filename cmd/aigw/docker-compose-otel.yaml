@@ -1,0 +1,80 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+volumes:
+  aigw-target:  # Stores the binary between aigw-build and aigw
+  envoy-cache:  # Stores downloaded Envoy versions
+
+services:
+  aigw-build:
+    image: golang:1.24.6
+    container_name: aigw-build
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+      - aigw-target:/workspace/out
+    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix
+    ports:
+      - "6006:6006"
+    environment:
+      PHOENIX_ENABLE_AUTH: "false"
+
+  ollama-pull:
+    image: alpine/ollama
+    container_name: ollama-pull
+    environment:
+      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+    env_file:
+      - ../../.env.ollama
+    entrypoint: sh
+    command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
+    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+      - "localhost:host-gateway"
+
+  aigw:
+    image: debian:trixie-slim
+    container_name: aigw
+    depends_on:
+      aigw-build:
+        condition: service_completed_successfully
+      phoenix:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
+      - OTEL_BSP_SCHEDULE_DELAY=100
+    ports:
+      - "1975:1975"
+    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - aigw-target:/app
+      - ./testdata/ai-gateway-ollama-docker.yaml:/app/config.yaml:ro
+      - envoy-cache:/tmp/envoy-gateway
+    working_dir: /app
+    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
+
+  openai-client:
+    build:
+      context: ../../tests/internal/testopeninference
+      dockerfile: Dockerfile.openai_client
+    container_name: openai-client
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    environment:
+      - OPENAI_BASE_URL=http://aigw:1975/v1
+      - OPENAI_API_KEY=unused
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_BSP_SCHEDULE_DELAY=100
+    depends_on:
+      aigw:
+        condition: service_started
