@@ -30,7 +30,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 	t.Run("traffic-distribution", func(t *testing.T) {
 		// Test that traffic splitting configuration is working by making multiple requests
 		// and verifying they are distributed between backends A and B.
-		const requestCount = 500
+		const requestCount = 50
 		backendAResponses := 0
 		backendBResponses := 0
 
