@@ -30,7 +30,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 	t.Run("traffic-distribution", func(t *testing.T) {
 		// Test that traffic splitting configuration is working by making multiple requests
 		// and verifying they are distributed between backends A and B.
-		const requestCount = 50
+		const requestCount = 500
 		backendAResponses := 0
 		backendBResponses := 0
 
@@ -72,11 +72,9 @@ func TestTrafficSplittingFallback(t *testing.T) {
 		backendARatio := float64(backendAResponses) / float64(requestCount)
 		backendBRatio := float64(backendBResponses) / float64(requestCount)
 
-		// Validate that both backends receive traffic within 50/50 distribution (30%-70% tolerance).
-		require.Greater(t, backendARatio, 0.3, "Backend A should receive at least 30% of traffic")
-		require.Less(t, backendARatio, 0.7, "Backend A should receive at most 70% of traffic")
-		require.Greater(t, backendBRatio, 0.3, "Backend B should receive at least 30% of traffic")
-		require.Less(t, backendBRatio, 0.7, "Backend B should receive at most 70% of traffic")
+		// Validate that both backends receive traffic within 50/50 distribution (±20% tolerance).
+		require.InDelta(t, 0.5, backendARatio, 0.2, "Backend A should receive approximately 50% of traffic")
+		require.InDelta(t, 0.5, backendBRatio, 0.2, "Backend B should receive approximately 50% of traffic")
 
 		t.Logf("Traffic distribution: Backend A=%d (%.1f%%), Backend B=%d (%.1f%%)",
 			backendAResponses, backendARatio*100, backendBResponses, backendBRatio*100)
@@ -118,15 +116,14 @@ func TestTrafficSplittingFallback(t *testing.T) {
 			// Log the distribution.
 			t.Logf("Backend distribution: %v", backendCounts)
 
-			// Verify that all traffic went to backend-c (fallback).
-			// Since we're setting all backends to return 500, the fallback should route to backend-c.
-			if backendCounts["backend-c"] == 0 {
-				return false
-			}
+			// Verify that we don't get any responses from backend-a or backend-b during fallback.
+			require.Equal(t, 0, backendCounts["backend-a"], "Backend A should not receive any traffic during fallback")
+			require.Equal(t, 0, backendCounts["backend-b"], "Backend B should not receive any traffic during fallback")
 
-			// Most traffic should go to backend-c (fallback).
-			// Some traffic might still go to backend-a and backend-b initially before they fail.
-			return backendCounts["backend-c"] > 0
+			// Verify that all requests resulted in responses from backend-c.
+			require.Equal(t, numRequests, backendCounts["backend-c"], "All traffic should go to backend-c during fallback")
+
+			return true
 		}, 30*time.Second, 1*time.Second)
 	})
 }
