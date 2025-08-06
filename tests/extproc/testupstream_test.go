@@ -39,7 +39,6 @@ func TestWithTestUpstream(t *testing.T) {
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		Schema:             openAISchema,
 		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,
