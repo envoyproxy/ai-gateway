@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -307,90 +306,84 @@ func buildAcceptedCondition(gen int64, controllerName string, conditionType stri
 }
 
 // gatewayEventHandler returns an event handler for Gateway resources.
-func (c *InferencePoolController) gatewayEventHandler() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		gateway, ok := obj.(*gwapiv1.Gateway)
-		if !ok {
-			return nil
-		}
+func (c *InferencePoolController) gatewayEventHandler(ctx context.Context, obj client.Object) []reconcile.Request {
+	gateway, ok := obj.(*gwapiv1.Gateway)
+	if !ok {
+		return nil
+	}
 
-		// Find all InferencePools in the same namespace that might be affected by this Gateway.
-		var inferencePools gwaiev1a2.InferencePoolList
-		if err := c.client.List(ctx, &inferencePools, client.InNamespace(gateway.Namespace)); err != nil {
-			c.logger.Error(err, "failed to list InferencePools for Gateway event", "gateway", gateway.Name)
-			return nil
-		}
+	// Find all InferencePools in the same namespace that might be affected by this Gateway.
+	var inferencePools gwaiev1a2.InferencePoolList
+	if err := c.client.List(ctx, &inferencePools, client.InNamespace(gateway.Namespace)); err != nil {
+		c.logger.Error(err, "failed to list InferencePools for Gateway event", "gateway", gateway.Name)
+		return nil
+	}
 
-		var requests []reconcile.Request
-		for _, pool := range inferencePools.Items {
-			// Check if this Gateway references the InferencePool.
-			if c.gatewayReferencesInferencePool(ctx, gateway, pool.Name, pool.Namespace) {
+	var requests []reconcile.Request
+	for _, pool := range inferencePools.Items {
+		// Check if this Gateway references the InferencePool.
+		if c.gatewayReferencesInferencePool(ctx, gateway, pool.Name, pool.Namespace) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: client.ObjectKey{
+					Name:      pool.Name,
+					Namespace: pool.Namespace,
+				},
+			})
+		}
+	}
+
+	return requests
+}
+
+// aiGatewayRouteEventHandler returns an event handler for AIGatewayRoute resources.
+func (c *InferencePoolController) aiGatewayRouteEventHandler(_ context.Context, obj client.Object) []reconcile.Request {
+	route, ok := obj.(*aigv1a1.AIGatewayRoute)
+	if !ok {
+		return nil
+	}
+
+	// Find all InferencePools referenced by this AIGatewayRoute.
+	var requests []reconcile.Request
+	for _, rule := range route.Spec.Rules {
+		for _, backendRef := range rule.BackendRefs {
+			if backendRef.IsInferencePool() {
 				requests = append(requests, reconcile.Request{
 					NamespacedName: client.ObjectKey{
-						Name:      pool.Name,
-						Namespace: pool.Namespace,
+						Name:      backendRef.Name,
+						Namespace: route.Namespace,
 					},
 				})
 			}
 		}
+	}
 
-		return requests
-	})
-}
-
-// aiGatewayRouteEventHandler returns an event handler for AIGatewayRoute resources.
-func (c *InferencePoolController) aiGatewayRouteEventHandler() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-		route, ok := obj.(*aigv1a1.AIGatewayRoute)
-		if !ok {
-			return nil
-		}
-
-		// Find all InferencePools referenced by this AIGatewayRoute.
-		var requests []reconcile.Request
-		for _, rule := range route.Spec.Rules {
-			for _, backendRef := range rule.BackendRefs {
-				if backendRef.IsInferencePool() {
-					requests = append(requests, reconcile.Request{
-						NamespacedName: client.ObjectKey{
-							Name:      backendRef.Name,
-							Namespace: route.Namespace,
-						},
-					})
-				}
-			}
-		}
-
-		return requests
-	})
+	return requests
 }
 
 // httpRouteEventHandler returns an event handler for HTTPRoute resources.
-func (c *InferencePoolController) httpRouteEventHandler() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-		route, ok := obj.(*gwapiv1.HTTPRoute)
-		if !ok {
-			return nil
-		}
+func (c *InferencePoolController) httpRouteEventHandler(_ context.Context, obj client.Object) []reconcile.Request {
+	route, ok := obj.(*gwapiv1.HTTPRoute)
+	if !ok {
+		return nil
+	}
 
-		// Find all InferencePools referenced by this HTTPRoute.
-		var requests []reconcile.Request
-		for _, rule := range route.Spec.Rules {
-			for _, backendRef := range rule.BackendRefs {
-				if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.x-k8s.io" &&
-					backendRef.Kind != nil && string(*backendRef.Kind) == "InferencePool" {
-					requests = append(requests, reconcile.Request{
-						NamespacedName: client.ObjectKey{
-							Name:      string(backendRef.Name),
-							Namespace: route.Namespace,
-						},
-					})
-				}
+	// Find all InferencePools referenced by this HTTPRoute.
+	var requests []reconcile.Request
+	for _, rule := range route.Spec.Rules {
+		for _, backendRef := range rule.BackendRefs {
+			if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.x-k8s.io" &&
+				backendRef.Kind != nil && string(*backendRef.Kind) == "InferencePool" {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: client.ObjectKey{
+						Name:      string(backendRef.Name),
+						Namespace: route.Namespace,
+					},
+				})
 			}
 		}
+	}
 
-		return requests
-	})
+	return requests
 }
 
 // buildResolvedRefsCondition builds a ResolvedRefs condition for the InferencePool status.
