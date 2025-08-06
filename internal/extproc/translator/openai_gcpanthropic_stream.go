@@ -52,7 +52,7 @@ func newAnthropicStreamParser(modelName string) *anthropicStreamParser {
 	}
 }
 
-func (p *anthropicStreamParser) writeChunk(eventBlock string, builder *strings.Builder) error {
+func (p *anthropicStreamParser) writeChunk(eventBlock string, buf *[]byte) error {
 	chunk, err := p.parseAndHandleEvent(eventBlock)
 	if err != nil {
 		return err
@@ -63,9 +63,9 @@ func (p *anthropicStreamParser) writeChunk(eventBlock string, builder *strings.B
 		if err != nil {
 			return fmt.Errorf("failed to marshal stream chunk: %w", err)
 		}
-		builder.WriteString(sseDataPrefix)
-		builder.Write(chunkBytes)
-		builder.WriteString("\n\n")
+		*buf = append(*buf, sseDataPrefix...)
+		*buf = append(*buf, chunkBytes...)
+		*buf = append(*buf, '\n', '\n')
 	}
 	return nil
 }
@@ -79,14 +79,14 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read from stream body: %w", err)
 	}
 
-	var responseBodyBuilder strings.Builder
+	mut := &extprocv3.BodyMutation_Body{Body: nil}
 	for {
 		eventBlock, remaining, found := bytes.Cut(p.buffer.Bytes(), []byte("\n\n"))
 		if !found {
 			break
 		}
 
-		if err := p.writeChunk(string(eventBlock), &responseBodyBuilder); err != nil {
+		if err := p.writeChunk(string(eventBlock), &mut.Body); err != nil {
 			return nil, nil, LLMTokenUsage{}, err
 		}
 
@@ -98,7 +98,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 		finalEventBlock := p.buffer.String()
 		p.buffer.Reset()
 
-		if err := p.writeChunk(finalEventBlock, &responseBodyBuilder); err != nil {
+		if err := p.writeChunk(finalEventBlock, &mut.Body); err != nil {
 			return nil, nil, LLMTokenUsage{}, err
 		}
 	}
@@ -142,22 +142,23 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 			if err != nil {
 				return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
-			responseBodyBuilder.WriteString(sseDataPrefix)
-			responseBodyBuilder.Write(chunkBytes)
-			responseBodyBuilder.WriteString("\n\n")
+			// Write the final chunk to the response body.
+			mut.Body = append(mut.Body, sseDataPrefix...)
+			mut.Body = append(mut.Body, chunkBytes...)
+			mut.Body = append(mut.Body, '\n', '\n')
 		}
-		responseBodyBuilder.WriteString(sseDataPrefix + sseDoneMessage + "\n\n")
+		// Add the final [DONE] message to indicate the end of the stream.
+		mut.Body = append(mut.Body, sseDataPrefix...)
+		mut.Body = append(mut.Body, sseDoneMessage...)
+		mut.Body = append(mut.Body, '\n', '\n')
 	}
-
-	finalBody := responseBodyBuilder.String()
-	mut := &extprocv3.BodyMutation_Body{Body: []byte(finalBody)}
 
 	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, nil
 }
 
 func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.ChatCompletionResponseChunk, error) {
 	var eventType string
-	var eventData strings.Builder
+	var eventData []byte
 
 	lines := strings.Split(eventBlock, "\n")
 	for _, line := range lines {
@@ -172,13 +173,12 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
 			data := strings.TrimSpace(strings.TrimPrefix(line, sseDataPrefix))
-			eventData.WriteString(data)
+			eventData = append(eventData, data...)
 		}
 	}
 
-	// After checking all lines, if we found an event, handle it.
-	if eventType != "" && eventData.Len() > 0 {
-		return p.handleAnthropicStreamEvent(eventType, []byte(eventData.String()))
+	if eventType != "" && len(eventData) > 0 {
+		return p.handleAnthropicStreamEvent(eventType, eventData)
 	}
 
 	return nil, nil
