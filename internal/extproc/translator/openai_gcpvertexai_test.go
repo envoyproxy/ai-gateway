@@ -529,7 +529,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:   false,
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("270")},
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("256")},
 				}},
 			},
 			wantBodyMut: &extprocv3.BodyMutation{
@@ -539,7 +539,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         {
             "finish_reason": "stop",
             "index": 0,
-            "logprobs": {},
             "message": {
                 "content": "AI Gateways act as intermediaries between clients and LLM services.",
                 "role": "assistant"
@@ -572,13 +571,13 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{
 					{
-						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("39")},
+						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("28")},
 					},
 				},
 			},
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{"object":"chat.completion","usage":{}}`),
+					Body: []byte(`{"object":"chat.completion"}`),
 				},
 			},
 			wantTokenUsage: LLMTokenUsage{},
@@ -597,7 +596,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`data: {"choices":[{"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
+					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
 
 data: [DONE]
 `),

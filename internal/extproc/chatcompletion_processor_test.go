@@ -25,20 +25,15 @@ import (
 )
 
 func TestChatCompletion_Schema(t *testing.T) {
-	t.Run("unsupported", func(t *testing.T) {
-		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: "Foo", Version: "v123"}}
-		_, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
-		require.ErrorContains(t, err, "unsupported API schema: Foo")
-	})
 	t.Run("supported openai / on route", func(t *testing.T) {
-		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}}
+		cfg := &processorConfig{}
 		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
-		cfg := &processorConfig{schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"}}
+		cfg := &processorConfig{}
 		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)

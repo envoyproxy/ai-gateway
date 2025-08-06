@@ -21,7 +21,6 @@ import (
 // This will be created by the server and passed to the processor when it detects a new configuration.
 type processorConfig struct {
 	uuid               string
-	schema             filterapi.VersionedAPISchema
 	modelNameHeaderKey string
 	metadataNamespace  string
 	requestCosts       []processorConfigRequestCost

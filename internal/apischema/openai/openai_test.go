@@ -910,3 +910,62 @@ func TestUnmarshalJSON_Unmarshal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), time.Time(data.Time).Unix())
 }
+
+func TestChatCompletionResponseChunkChoice(t *testing.T) {
+	t.Run("streaming chunk with content", func(t *testing.T) {
+		choice := ChatCompletionResponseChunkChoice{
+			Index: 0,
+			Delta: &ChatCompletionResponseChunkChoiceDelta{
+				Content: ptr.To("Hello"),
+				Role:    "assistant",
+			},
+		}
+
+		jsonData, err := json.Marshal(choice)
+		require.NoError(t, err)
+
+		expected := `{"index":0,"delta":{"content":"Hello","role":"assistant"}}`
+		require.JSONEq(t, expected, string(jsonData))
+	})
+
+	t.Run("streaming chunk with empty content", func(t *testing.T) {
+		choice := ChatCompletionResponseChunkChoice{
+			Index: 0,
+			Delta: &ChatCompletionResponseChunkChoiceDelta{
+				Content: ptr.To(""),
+				Role:    "assistant",
+			},
+		}
+
+		jsonData, err := json.Marshal(choice)
+		require.NoError(t, err)
+
+		expected := `{"index":0,"delta":{"content":"","role":"assistant"}}`
+		require.JSONEq(t, expected, string(jsonData))
+	})
+
+	t.Run("streaming chunk with tool calls", func(t *testing.T) {
+		choice := ChatCompletionResponseChunkChoice{
+			Index: 0,
+			Delta: &ChatCompletionResponseChunkChoiceDelta{
+				Role: "assistant",
+				ToolCalls: []ChatCompletionMessageToolCallParam{
+					{
+						ID:   "tooluse_QklrEHKjRu6Oc4BQUfy7ZQ",
+						Type: "function",
+						Function: ChatCompletionMessageToolCallFunctionParam{
+							Name:      "cosine",
+							Arguments: "",
+						},
+					},
+				},
+			},
+		}
+
+		jsonData, err := json.Marshal(choice)
+		require.NoError(t, err)
+
+		expected := `{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}`
+		require.JSONEq(t, expected, string(jsonData))
+	})
+}

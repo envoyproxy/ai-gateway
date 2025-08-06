@@ -87,7 +87,6 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 	newConfig := &processorConfig{
 		uuid:               config.UUID,
-		schema:             config.Schema,
 		modelNameHeaderKey: config.ModelNameHeaderKey,
 		backends:           backends,
 		metadataNamespace:  config.MetadataNamespace,
