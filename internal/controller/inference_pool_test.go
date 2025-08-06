@@ -552,7 +552,7 @@ func TestInferencePoolController_GatewayReferencesInferencePool(t *testing.T) {
 	require.False(t, result, "Should return false when InferencePool is in different namespace")
 }
 
-func TestInferencePoolController_GatewayEventHandler(t *testing.T) {
+func TestInferencePoolController_gatewayEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
 
@@ -608,21 +608,15 @@ func TestInferencePoolController_GatewayEventHandler(t *testing.T) {
 			GatewayClassName: "test-class",
 		},
 	}
+	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
-	// Test gateway event handler by directly calling the map function.
-	// We need to extract the map function from the EnqueueRequestsFromMapFunc handler.
-	handler := c.gatewayEventHandler()
-
-	// Since we can't directly access the map function, we'll test the logic indirectly
-	// by verifying that the gateway references the inference pool.
-	result := c.gatewayReferencesInferencePool(context.Background(), gateway, "test-inference-pool", "default")
-	require.True(t, result, "Gateway should reference the InferencePool")
-
-	// Verify the handler is not nil.
-	require.NotNil(t, handler, "Gateway event handler should not be nil")
+	res := c.gatewayEventHandler(t.Context(), gateway)
+	require.Len(t, res, 1, "Should return one InferencePool for Gateway with AIGatewayRoute referencing it")
+	require.Equal(t, inferencePool.Name, res[0].Name, "Should return the correct InferencePool name")
+	require.Equal(t, inferencePool.Namespace, res[0].Namespace, "Should return the correct InferencePool namespace")
 }
 
-func TestInferencePoolController_RouteEventHandler(t *testing.T) {
+func TestInferencePoolController_aiGatewayRouteEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
 
@@ -647,20 +641,15 @@ func TestInferencePoolController_RouteEventHandler(t *testing.T) {
 		},
 	}
 
-	// Test route event handler.
-	handler := c.aiGatewayRouteEventHandler()
-	require.NotNil(t, handler, "Route event handler should not be nil")
-
-	// Test that the route references the InferencePool.
-	result := c.routeReferencesInferencePool(aiGatewayRoute, "test-inference-pool")
-	require.True(t, result, "AIGatewayRoute should reference the InferencePool")
-
-	// Test negative case.
-	result = c.routeReferencesInferencePool(aiGatewayRoute, "different-pool")
-	require.False(t, result, "AIGatewayRoute should not reference different InferencePool")
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), nil))
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1a1.AIGatewayRoute{}))
+	res := c.aiGatewayRouteEventHandler(t.Context(), aiGatewayRoute)
+	require.Len(t, res, 1, "Should return one InferencePool for AIGatewayRoute with BackendRef")
+	require.Equal(t, "test-inference-pool", res[0].Name, "Should return the correct InferencePool name")
+	require.Equal(t, aiGatewayRoute.Namespace, res[0].Namespace, "Should return the correct InferencePool namespace")
 }
 
-func TestInferencePoolController_HTTPRouteEventHandler(t *testing.T) {
+func TestInferencePoolController_httpRouteEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
 
@@ -689,17 +678,12 @@ func TestInferencePoolController_HTTPRouteEventHandler(t *testing.T) {
 		},
 	}
 
-	// Test HTTP route event handler.
-	handler := c.httpRouteEventHandler()
-	require.NotNil(t, handler, "HTTP route event handler should not be nil")
-
-	// Test that the HTTP route references the InferencePool.
-	result := c.httpRouteReferencesInferencePool(httpRoute, "test-inference-pool")
-	require.True(t, result, "HTTPRoute should reference the InferencePool")
-
-	// Test negative case.
-	result = c.httpRouteReferencesInferencePool(httpRoute, "different-pool")
-	require.False(t, result, "HTTPRoute should not reference different InferencePool")
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), nil))
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1a1.AIGatewayRoute{}))
+	res := c.httpRouteEventHandler(t.Context(), httpRoute)
+	require.Len(t, res, 1, "Should return one InferencePool for HTTPRoute with BackendRef")
+	require.Equal(t, "test-inference-pool", res[0].Name, "Should return the correct InferencePool name")
+	require.Equal(t, httpRoute.Namespace, res[0].Namespace, "Should return the correct InferencePool namespace")
 }
 
 func TestInferencePoolController_EdgeCases(t *testing.T) {

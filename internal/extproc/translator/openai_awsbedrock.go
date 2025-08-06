@@ -677,6 +677,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		}
 	case event.Role != nil:
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+			Index: 0,
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 				Role:    *event.Role,
 				Content: &emptyString,
@@ -686,6 +687,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	case event.Delta != nil:
 		if event.Delta.Text != nil {
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 					Role:    o.role,
 					Content: event.Delta.Text,
@@ -693,6 +695,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			})
 		} else if event.Delta.ToolUse != nil {
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 					Role: o.role,
 					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
@@ -709,6 +712,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	case event.Start != nil:
 		if event.Start.ToolUse != nil {
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 					Role: o.role,
 					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
@@ -725,6 +729,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		}
 	case event.StopReason != nil:
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+			Index: 0,
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 				Role:    o.role,
 				Content: ptr.To(emptyString),

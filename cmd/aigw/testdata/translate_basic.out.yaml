@@ -224,9 +224,6 @@ stringData:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: some-cool-self-hosted-model
       OwnedBy: Envoy AI Gateway
-    schema:
-      name: OpenAI
-      version: v1
     uuid: envoy-ai-gateway-basic
 ---
 apiVersion: v1
