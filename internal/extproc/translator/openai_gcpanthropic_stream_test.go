@@ -642,4 +642,13 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		require.Contains(t, bodyStr, `"content":"Hello"`)
 		require.NotContains(t, bodyStr, "this is a comment")
 	})
+	t.Run("handles data-only event as a message event", func(t *testing.T) {
+		sseStream := `data: some text
+
+data: another message with two lines
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.Empty(t, bm.GetBody(), "data-only events should be treated as no-op 'message' events and produce an empty chunk")
+	})
 }

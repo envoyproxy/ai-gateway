@@ -103,27 +103,6 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 		}
 	}
 
-	// After the loop, if it's the end of the stream and the buffer still contains
-	// the final event (which has no trailing \n\n), process it now.
-	if endOfStream && p.buffer.Len() > 0 {
-		finalEventBlock := p.buffer.String()
-		p.buffer.Reset() // Clear the buffer as we are done with it.
-
-		chunk, err := p.parseAndHandleEvent(finalEventBlock)
-		if err != nil {
-			return nil, nil, LLMTokenUsage{}, err
-		}
-		if chunk != nil {
-			chunkBytes, err := json.Marshal(chunk)
-			if err != nil {
-				return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to marshal final event chunk: %w", err)
-			}
-			responseBodyBuilder.WriteString(sseDataPrefix)
-			responseBodyBuilder.Write(chunkBytes)
-			responseBodyBuilder.WriteString("\n\n")
-		}
-	}
-
 	if endOfStream {
 		p.tokenUsage.TotalTokens = p.tokenUsage.InputTokens + p.tokenUsage.OutputTokens
 		finalChunk := openai.ChatCompletionResponseChunk{
@@ -198,7 +177,7 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.
 	}
 
 	// After checking all lines, if we found an event, handle it.
-	if eventType != "" {
+	if eventType != "" && eventData.Len() > 0 {
 		return p.handleAnthropicStreamEvent(eventType, []byte(eventData.String()))
 	}
 
