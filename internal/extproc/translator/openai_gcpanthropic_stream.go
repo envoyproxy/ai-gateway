@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
@@ -52,7 +51,7 @@ func newAnthropicStreamParser(modelName string) *anthropicStreamParser {
 	}
 }
 
-func (p *anthropicStreamParser) writeChunk(eventBlock string, buf *[]byte) error {
+func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
 	chunk, err := p.parseAndHandleEvent(eventBlock)
 	if err != nil {
 		return err
@@ -86,7 +85,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 			break
 		}
 
-		if err := p.writeChunk(string(eventBlock), &mut.Body); err != nil {
+		if err := p.writeChunk(eventBlock, &mut.Body); err != nil {
 			return nil, nil, LLMTokenUsage{}, err
 		}
 
@@ -95,7 +94,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	}
 
 	if endOfStream && p.buffer.Len() > 0 {
-		finalEventBlock := p.buffer.String()
+		finalEventBlock := p.buffer.Bytes()
 		p.buffer.Reset()
 
 		if err := p.writeChunk(finalEventBlock, &mut.Body); err != nil {
@@ -156,36 +155,36 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
 	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, nil
 }
 
-func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock string) (*openai.ChatCompletionResponseChunk, error) {
-	var eventType string
+func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.ChatCompletionResponseChunk, error) {
+	var eventType []byte
 	var eventData []byte
 
-	lines := strings.Split(eventBlock, "\n")
+	lines := bytes.Split(eventBlock, []byte("\n"))
 	for _, line := range lines {
 		// Per the SSE spec, lines starting with a colon are comments and should be ignored.
-		if strings.HasPrefix(line, ":") {
+		if bytes.HasPrefix(line, []byte(":")) {
 			continue
 		}
 
-		if strings.HasPrefix(line, sseEventPrefix) {
-			eventType = strings.TrimSpace(strings.TrimPrefix(line, sseEventPrefix))
-		} else if strings.HasPrefix(line, sseDataPrefix) {
+		if bytes.HasPrefix(line, []byte(sseEventPrefix)) {
+			eventType = bytes.TrimSpace(bytes.TrimPrefix(line, []byte(sseEventPrefix)))
+		} else if bytes.HasPrefix(line, []byte(sseDataPrefix)) {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
-			data := strings.TrimSpace(strings.TrimPrefix(line, sseDataPrefix))
+			data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte(sseDataPrefix)))
 			eventData = append(eventData, data...)
 		}
 	}
 
-	if eventType != "" && len(eventData) > 0 {
+	if len(eventType) > 0 && len(eventData) > 0 {
 		return p.handleAnthropicStreamEvent(eventType, eventData)
 	}
 
 	return nil, nil
 }
 
-func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType string, data []byte) (*openai.ChatCompletionResponseChunk, error) {
-	switch eventType {
+func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, data []byte) (*openai.ChatCompletionResponseChunk, error) {
+	switch string(eventType) {
 	case string(constant.ValueOf[constant.MessageStart]()):
 		var event anthropic.MessageStartEvent
 		if err := json.Unmarshal(data, &event); err != nil {
