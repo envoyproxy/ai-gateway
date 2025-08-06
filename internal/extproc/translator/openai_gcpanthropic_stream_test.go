@@ -148,7 +148,7 @@ data: {"type": "message_stop"}
 		require.Contains(t, bodyStr, `"finish_reason":"stop"`)
 		require.Contains(t, bodyStr, `"prompt_tokens":25`)
 		require.Contains(t, bodyStr, `"completion_tokens":15`)
-		require.Contains(t, bodyStr, sseDoneMessage)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
 	})
 
 	t.Run("handles text and tool use stream", func(t *testing.T) {
@@ -258,7 +258,7 @@ data: {"type":"message_stop"}
 		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"location\\\":")
 		require.Contains(t, bodyStr, "renheit\\\"}\"")
 		require.Contains(t, bodyStr, `"finish_reason":"tool_calls"`)
-		require.Contains(t, bodyStr, sseDoneMessage)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
 	})
 
 	t.Run("handles streaming with web search tool use", func(t *testing.T) {
@@ -329,7 +329,7 @@ data: {"type":"message_stop"}
 		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"query\\\":\\\"weather NYC today\\\"}\"")
 		require.Contains(t, bodyStr, `"content":"Here's the current weather information for New York"`)
 		require.Contains(t, bodyStr, `"finish_reason":"stop"`)
-		require.Contains(t, bodyStr, sseDoneMessage)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
 	})
 
 	t.Run("handles unterminated tool call at end of stream", func(t *testing.T) {

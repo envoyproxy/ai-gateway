@@ -18,10 +18,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-const (
-	sseEventPrefix = "event:"
-	sseDataPrefix  = "data: "
-	sseDoneMessage = "[DONE]"
+var (
+	sseEventPrefix = []byte("event:")
+	sseDataPrefix  = []byte("data: ")
+	sseDoneMessage = []byte("[DONE]")
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -161,12 +161,12 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 
 	lines := bytes.Split(eventBlock, []byte("\n"))
 	for _, line := range lines {
-		if bytes.HasPrefix(line, []byte(sseEventPrefix)) {
-			eventType = bytes.TrimSpace(bytes.TrimPrefix(line, []byte(sseEventPrefix)))
-		} else if bytes.HasPrefix(line, []byte(sseDataPrefix)) {
+		if bytes.HasPrefix(line, sseEventPrefix) {
+			eventType = bytes.TrimSpace(bytes.TrimPrefix(line, sseEventPrefix))
+		} else if bytes.HasPrefix(line, sseDataPrefix) {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
-			data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte(sseDataPrefix)))
+			data := bytes.TrimSpace(bytes.TrimPrefix(line, sseDataPrefix))
 			eventData = append(eventData, data...)
 		}
 	}
