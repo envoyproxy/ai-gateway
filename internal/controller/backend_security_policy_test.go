@@ -33,6 +33,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -67,6 +68,13 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
 			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{
+					Kind:  "AIServiceBackend",
+					Group: "aigw.envoyproxy.io",
+					Name:  gwapiv1.ObjectName(asb.Name),
+				},
 			},
 		},
 	})

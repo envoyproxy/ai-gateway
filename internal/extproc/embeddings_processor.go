@@ -28,9 +28,6 @@ import (
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
 func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
-		if config.schema.Name != filterapi.APISchemaOpenAI {
-			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
-		}
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &embeddingsProcessorRouterFilter{

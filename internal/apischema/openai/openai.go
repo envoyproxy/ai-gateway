@@ -834,7 +834,7 @@ type ChatCompletionResponse struct {
 
 	// Usage is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
-	Usage ChatCompletionResponseUsage `json:"usage,omitempty"`
+	Usage ChatCompletionResponseUsage `json:"usage,omitzero"`
 }
 
 // ChatCompletionChoicesFinishReason The reason the model stopped generating tokens. This will be `stop` if the model
@@ -905,7 +905,7 @@ type ChatCompletionResponseChoice struct {
 	// The index of the choice in the list of choices.
 	Index int64 `json:"index"`
 	// Log probability information for the choice.
-	Logprobs ChatCompletionChoicesLogprobs `json:"logprobs,omitempty"`
+	Logprobs ChatCompletionChoicesLogprobs `json:"logprobs,omitzero"`
 	// Message is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
 	Message ChatCompletionResponseChoiceMessage `json:"message,omitempty"`
@@ -998,7 +998,9 @@ func (c *ChatCompletionResponseChunk) String() string {
 // ChatCompletionResponseChunkChoice is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoice struct {
-	Delta        *ChatCompletionResponseChunkChoiceDelta `json:"delta,omitempty"`
+	Index        int64                                   `json:"index"`
+	Delta        *ChatCompletionResponseChunkChoiceDelta `json:"delta,omitzero"`
+	Logprobs     *ChatCompletionChoicesLogprobs          `json:"logprobs,omitzero"`
 	FinishReason ChatCompletionChoicesFinishReason       `json:"finish_reason,omitempty"`
 }
 

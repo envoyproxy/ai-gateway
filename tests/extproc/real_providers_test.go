@@ -42,7 +42,6 @@ func TestWithRealProviders(t *testing.T) {
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		Schema:             openAISchema,
 		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,

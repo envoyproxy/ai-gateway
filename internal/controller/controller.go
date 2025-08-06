@@ -157,9 +157,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
 			WithName("inference-pool"))
 		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
-			Watches(&gwapiv1.Gateway{}, inferencePoolC.gatewayEventHandler()).
-			Watches(&aigv1a1.AIGatewayRoute{}, inferencePoolC.aiGatewayRouteEventHandler()).
-			Watches(&gwapiv1.HTTPRoute{}, inferencePoolC.httpRouteEventHandler()).
+			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
+			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
+			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).
 			Complete(inferencePoolC); err != nil {
 			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
 		}
