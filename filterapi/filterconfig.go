@@ -112,6 +112,9 @@ const (
 	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
 	// Used for Claude models hosted on Google Cloud Vertex AI.
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
+	// APISchemaGCPAnthropicToNative represents GCP Anthropic with native Anthropic output.
+	// Used for Claude models hosted on Google Cloud Vertex AI that should return native Anthropic format.
+	APISchemaGCPAnthropicToNative APISchemaName = "GCPAnthropicToNative"
 	// APISchemaAnthropic represents the native Anthropic API schema.
 	APISchemaAnthropic APISchemaName = "Anthropic"
 )

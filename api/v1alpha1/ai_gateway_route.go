@@ -85,10 +85,10 @@ type AIGatewayRouteSpec struct {
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected AIServiceBackend during the routing process.
 	//
-	// Currently, the only supported schema is OpenAI as the input schema.
+	// Currently, the supported schemas are OpenAI and Anthropic as input schemas.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self.name == 'OpenAI'"
+	// +kubebuilder:validation:XValidation:rule="self.name == 'OpenAI' || self.name == 'Anthropic'"
 	APISchema VersionedAPISchema `json:"schema"`
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).

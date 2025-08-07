@@ -17,39 +17,45 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// NewAnthropicToGCPAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
+// NewGCPAnthropicToNativeAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
 // This is essentially a passthrough translator with GCP-specific modifications.
-func NewAnthropicToGCPAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
-	return &anthropicToGCPAnthropicTranslator{
+func NewGCPAnthropicToNativeAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+	return &gcpAnthropicToNativeTranslator{
 		modelNameOverride: modelNameOverride,
 	}
 }
 
-type anthropicToGCPAnthropicTranslator struct {
+type gcpAnthropicToNativeTranslator struct {
 	modelNameOverride string
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
 // This handles the transformation from native Anthropic format to GCP Anthropic format.
-func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, _ *openai.ChatCompletionRequest, _ bool) (
+func (a *gcpAnthropicToNativeTranslator) RequestBody(raw []byte, _ *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
+	fmt.Printf("DEBUG [GCPAnthropicToNative]: RequestBody method called - this should NOT happen for this translator!\n")
 	// Parse the incoming Anthropic request.
 	var anthropicReq map[string]interface{}
 	if err = json.Unmarshal(raw, &anthropicReq); err != nil {
 		return nil, nil, fmt.Errorf("failed to unmarshal Anthropic request: %w", err)
 	}
 
+	fmt.Printf("DEBUG [GCPAnthropicToNative]: Original request body: %s\n", string(raw))
+
 	// Apply model name override if configured.
 	if a.modelNameOverride != "" {
+		fmt.Printf("DEBUG [GCPAnthropicToNative]: Applying model override: %s\n", a.modelNameOverride)
 		anthropicReq["model"] = a.modelNameOverride
 	}
 
 	modelName := anthropicReq["model"].(string)
+	fmt.Printf("DEBUG [GCPAnthropicToNative]: Extracted model name: %s\n", modelName)
 
+	// Remove model field from request body since it is specified in the URL path.
 	delete(anthropicReq, "model")
+	fmt.Printf("DEBUG [GCPAnthropicToNative]: Removed model field from request body\n")
 
-	// Add GCP-specific anthropic_version field if not present.
 	if _, exists := anthropicReq[anthropicVersionKey]; !exists {
 		anthropicReq[anthropicVersionKey] = anthropicVertex.DefaultVersion
 	}
@@ -59,6 +65,8 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, _ *openai.Ch
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal modified request: %w", err)
 	}
+
+	fmt.Printf("DEBUG [GCPAnthropicToNative]: Final request body: %s\n", string(body))
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"
@@ -72,7 +80,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, _ *openai.Ch
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders] for Anthropic to GCP Anthropic.
-func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string) (
+func (a *gcpAnthropicToNativeTranslator) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	// For Anthropic to GCP Anthropic, no header transformation is needed.
@@ -81,7 +89,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string)
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for Anthropic to GCP Anthropic.
 // This is essentially a passthrough since both use the same Anthropic response format.
-func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
+func (a *gcpAnthropicToNativeTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	// Read the response body for both streaming and non-streaming.

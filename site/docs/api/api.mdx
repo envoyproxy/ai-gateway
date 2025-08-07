@@ -536,7 +536,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="schema"
   type="[VersionedAPISchema](#versionedapischema)"
   required="true"
-  description="APISchema specifies the API schema of the input that the target Gateway(s) will receive.<br />Based on this schema, the ai-gateway will perform the necessary transformation to the<br />output schema specified in the selected AIServiceBackend during the routing process.<br />Currently, the only supported schema is OpenAI as the input schema."
+  description="APISchema specifies the API schema of the input that the target Gateway(s) will receive.<br />Based on this schema, the ai-gateway will perform the necessary transformation to the<br />output schema specified in the selected AIServiceBackend during the routing process.<br />Currently, the supported schemas are OpenAI and Anthropic as input schemas."
 /><ApiField
   name="rules"
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
@@ -666,6 +666,11 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaGCPAnthropic is the schema followed by Anthropic models hosted on GCP's Vertex AI platform.<br />This is majorly the Anthropic API with some GCP specific parameters as described in below URL.<br />https://docs.anthropic.com/en/api/claude-on-vertex-ai<br />"
+/><ApiField
+  name="GCPAnthropicToNative"
+  type="enum"
+  required="false"
+  description="APISchemaGCPAnthropicToNative represents GCP Anthropic with native Anthropic output format.<br />Used for Claude models hosted on Google Cloud Vertex AI that should return native Anthropic format.<br />"
 /><ApiField
   name="Anthropic"
   type="enum"

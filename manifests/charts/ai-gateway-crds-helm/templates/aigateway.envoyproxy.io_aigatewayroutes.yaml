@@ -700,7 +700,7 @@ spec:
                   Based on this schema, the ai-gateway will perform the necessary transformation to the
                   output schema specified in the selected AIServiceBackend during the routing process.
 
-                  Currently, the only supported schema is OpenAI as the input schema.
+                  Currently, the supported schemas are OpenAI and Anthropic as input schemas.
                 properties:
                   name:
                     description: Name is the name of the API schema of the AIGatewayRoute
@@ -711,6 +711,7 @@ spec:
                     - AzureOpenAI
                     - GCPVertexAI
                     - GCPAnthropic
+                    - GCPAnthropicToNative
                     - Anthropic
                     type: string
                   version:
@@ -734,7 +735,7 @@ spec:
                 - name
                 type: object
                 x-kubernetes-validations:
-                - rule: self.name == 'OpenAI'
+                - rule: self.name == 'OpenAI' || self.name == 'Anthropic'
               targetRefs:
                 description: |-
                   TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.

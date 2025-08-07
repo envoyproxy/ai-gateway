@@ -13,7 +13,7 @@ The AI Gateway now supports two API formats:
 
 - **No Translation Overhead**: Direct passthrough to Anthropic API when routing to native Anthropic backend
 - **Full Feature Access**: Access to all Anthropic-specific features (thinking, tools, citations, etc.)
-- **Flexible Routing**: Route to different Anthropic backends (native API, AWS Bedrock, GCP Vertex AI) from the same endpoint
+- **Flexible Routing**: Route to different Anthropic backends (native API, GCP Vertex AI) from the same endpoint
 - **Future-Proof**: Native support for new Anthropic features as they're released
 
 ## Quick Start
@@ -31,9 +31,6 @@ Replace the placeholder values in the secrets with your actual credentials:
 ```bash
 # For Anthropic API
 kubectl patch secret anthropic-api-key -p '{"stringData":{"apiKey":"your-actual-anthropic-api-key"}}'
-
-# For AWS Bedrock (if using)
-kubectl patch secret aws-credentials -p '{"stringData":{"credentials":"[default]\naws_access_key_id=your-key\naws_secret_access_key=your-secret"}}'
 
 # For GCP Vertex AI (if using)
 kubectl patch secret gcp-service-account-key -p '{"stringData":{"serviceAccountKey":"your-gcp-service-account-json"}}'
@@ -101,8 +98,8 @@ Use the `x-provider` header to select the backend:
 # Route to native Anthropic API
 curl -H "x-provider: anthropic" ...
 
-# Route to AWS Bedrock
-curl -H "x-provider: aws" ...
+# Route to GCP Vertex AI
+curl -H "x-provider: gcp" ...
 
 # Route to GCP Vertex AI
 curl -H "x-provider: gcp" ...
@@ -113,7 +110,7 @@ curl -H "x-provider: gcp" ...
 The gateway automatically extracts the model from the request and routes based on model names:
 
 - `claude-3-5-sonnet-20241022` → Native Anthropic API
-- `anthropic.claude-3-5-sonnet-20241022-v2:0` → AWS Bedrock
+
 - Any other model → Fallback to native Anthropic API
 
 ### 3. Custom Header Routing
@@ -137,19 +134,6 @@ spec:
     name: anthropic-api
 ```
 
-### AWS Bedrock
-
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: anthropic-aws-bedrock
-spec:
-  schema:
-    name: AWSBedrock
-  backendRef:
-    name: aws-bedrock
-```
 
 ### GCP Vertex AI
 
@@ -286,7 +270,7 @@ If you're currently using the OpenAI format (`/v1/chat/completions`), here's how
 **Native Anthropic Format:**
 ```json
 {
-  "model": "claude-3-5-sonnet-20241022", 
+  "model": "claude-3-5-sonnet-20241022",
   "messages": [{"role": "user", "content": "Hello"}],
   "max_tokens": 100
 }
@@ -312,7 +296,7 @@ spec:
   schema:
     name: OpenAI
 
-# New Anthropic-based configuration  
+# New Anthropic-based configuration
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 spec:
@@ -327,17 +311,14 @@ graph TD
     A[Client] -->|Native Anthropic Request| B[AI Gateway /v1/messages]
     B --> C{Route Based On}
     C -->|x-provider: anthropic| D[Native Anthropic API]
-    C -->|x-provider: aws| E[AWS Bedrock]
-    C -->|x-provider: gcp| F[GCP Vertex AI]
-    C -->|Model Name| G[Model-Based Routing]
-    
-    D --> H[Passthrough Translator]
-    E --> I[Anthropic→AWS Translator]
-    F --> J[Anthropic→GCP Translator]
-    
-    H --> K[Native Anthropic Response]
-    I --> L[Translated AWS Response]
-    J --> M[Translated GCP Response]
+    C -->|x-provider: gcp| E[GCP Vertex AI]
+    C -->|Model Name| F[Model-Based Routing]
+
+    D --> G[Passthrough Translator]
+    E --> H[Anthropic→GCP Translator]
+
+    G --> I[Native Anthropic Response]
+    H --> J[Translated GCP Response]
 ```
 
 ## Troubleshooting
@@ -364,7 +345,7 @@ graph TD
 llmRequestCosts:
   - metadataKey: anthropic_input_tokens
     type: InputToken
-  - metadataKey: anthropic_output_tokens  
+  - metadataKey: anthropic_output_tokens
     type: OutputToken
 ```
 
@@ -384,7 +365,7 @@ rules:
 backendRefs:
   - name: anthropic-native
     weight: 70
-  - name: anthropic-aws-bedrock
+  - name: anthropic-gcp-vertex
     weight: 30
 ```
 
@@ -400,7 +381,7 @@ For questions and issues:
 
 We welcome contributions! Areas for improvement:
 
-- Additional backend translators (Anthropic→AWS, Anthropic→GCP)
+- Additional backend translators (Anthropic→GCP)
 - Enhanced examples and documentation
 - Performance optimizations
-- Test coverage 
+- Test coverage
