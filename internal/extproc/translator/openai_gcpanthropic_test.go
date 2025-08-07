@@ -211,6 +211,54 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		body := bm.GetBody()
 		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
+	t.Run("Request with Thinking enabled", func(t *testing.T) {
+		thinkingReq := &openai.ChatCompletionRequest{
+			Model:     claudeTestModel,
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
+			MaxTokens: ptr.To(int64(100)),
+			AnthropicVendorFields: &openai.AnthropicVendorFields{
+				Thinking: &anthropic.ThinkingConfigParamUnion{
+					OfEnabled: &anthropic.ThinkingConfigEnabledParam{},
+				},
+			},
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, thinkingReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+
+		body := bm.GetBody()
+		require.NotNil(t, body)
+
+		thinkingBlock := gjson.GetBytes(body, "thinking")
+		require.True(t, thinkingBlock.Exists(), "The 'thinking' field should exist in the request body")
+		require.True(t, thinkingBlock.IsObject(), "The 'thinking' field should be a JSON object")
+		require.Equal(t, "enabled", thinkingBlock.Map()["type"].String())
+	})
+	t.Run("Request with Thinking disabled", func(t *testing.T) {
+		thinkingReq := &openai.ChatCompletionRequest{
+			Model:     claudeTestModel,
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
+			MaxTokens: ptr.To(int64(100)),
+			AnthropicVendorFields: &openai.AnthropicVendorFields{
+				Thinking: &anthropic.ThinkingConfigParamUnion{
+					OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
+				},
+			},
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, thinkingReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+
+		body := bm.GetBody()
+		require.NotNil(t, body)
+
+		thinkingBlock := gjson.GetBytes(body, "thinking")
+		require.True(t, thinkingBlock.Exists(), "The 'thinking' field should exist in the request body")
+		require.True(t, thinkingBlock.IsObject(), "The 'thinking' field should be a JSON object")
+		require.Equal(t, "disabled", thinkingBlock.Map()["type"].String())
+	})
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
