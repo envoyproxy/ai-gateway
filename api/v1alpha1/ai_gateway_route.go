@@ -67,6 +67,8 @@ type AIGatewayRouteSpec struct {
 	// Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0.
 	//
 	// +kubebuilder:validation:MaxItems=128
+	//
+	// +optional
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
 
 	// ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
@@ -75,6 +77,8 @@ type AIGatewayRouteSpec struct {
 	//
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(match, match.kind == 'Gateway')", message="only Gateway is supported"
+	//
+	// +optional
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
 
 	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
@@ -111,6 +115,8 @@ type AIGatewayRouteSpec struct {
 	//
 	// Currently, the filter is only implemented as an external processor filter, which might be
 	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
+	//
+	// +optional
 	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
@@ -319,6 +325,8 @@ type AIGatewayRouteRuleBackendRef struct {
 
 	// Name of the model in the backend. If provided this will override the name provided in the request.
 	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
 	ModelNameOverride string `json:"modelNameOverride,omitempty"`
 
 	// Weight is the weight of the backend. This is exactly the same as the weight in

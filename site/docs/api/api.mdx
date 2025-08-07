@@ -471,7 +471,7 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 /><ApiField
   name="modelNameOverride"
   type="string"
-  required="true"
+  required="false"
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="weight"
@@ -525,12 +525,12 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
 <ApiField
   name="targetRefs"
   type="[LocalPolicyTargetReferenceWithSectionName](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReferenceWithSectionName) array"
-  required="true"
+  required="false"
   description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0."
 /><ApiField
   name="parentRefs"
   type="ParentReference array"
-  required="true"
+  required="false"
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway."
 /><ApiField
   name="schema"
@@ -545,7 +545,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
 /><ApiField
   name="filterConfig"
   type="[AIGatewayFilterConfig](#aigatewayfilterconfig)"
-  required="true"
+  required="false"
   description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external processor filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
 /><ApiField
   name="llmRequestCosts"
