@@ -1,0 +1,164 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 1120
+        host: api.openai.com
+        body: |-
+            {
+              "max_tokens": 150,
+              "messages": [
+                {
+                  "content": "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.",
+                  "role": "system"
+                },
+                {
+                  "content": "Draw a simple, minimalist image of a cute cat playing with a ball of yarn in a sketch style.",
+                  "role": "user"
+                }
+              ],
+              "model": "gpt-4.1-nano",
+              "tool_choice": {
+                "function": {
+                  "name": "generate_image"
+                },
+                "type": "function"
+              },
+              "tools": [
+                {
+                  "function": {
+                    "description": "Generate a simple, minimalist image based on the given prompt in sketch style with low quality for cost efficiency.",
+                    "name": "generate_image",
+                    "parameters": {
+                      "properties": {
+                        "prompt": {
+                          "description": "The text description of the image to generate.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "prompt"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "type": "function"
+                }
+              ]
+            }
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "811"
+            Content-Type:
+                - application/json
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 1164
+        body: |-
+            {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "logprobs": null,
+                  "message": {
+                    "annotations": [],
+                    "content": null,
+                    "refusal": null,
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"prompt\":\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\"}",
+                          "name": "generate_image"
+                        },
+                        "id": "call_nhKKLlnwC3sew7xv4rnYpqVH",
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1753423214,
+              "id": "chatcmpl-Bx5lWqI4bV0HErS7PX8Q3CUHXoFni",
+              "model": "gpt-4.1-nano-2025-04-14",
+              "object": "chat.completion",
+              "service_tier": "default",
+              "system_fingerprint": "fp_38343a2f8f",
+              "usage": {
+                "completion_tokens": 22,
+                "completion_tokens_details": {
+                  "accepted_prediction_tokens": 0,
+                  "audio_tokens": 0,
+                  "reasoning_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                },
+                "prompt_tokens": 131,
+                "prompt_tokens_details": {
+                  "audio_tokens": 0,
+                  "cached_tokens": 0
+                },
+                "total_tokens": 153
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 96496f931fe2e547-KUL
+            Content-Type:
+                - application/json
+            Date:
+                - Fri, 25 Jul 2025 06:00:15 GMT
+            Openai-Processing-Ms:
+                - "418"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "425"
+            X-Ratelimit-Limit-Requests:
+                - "500"
+            X-Ratelimit-Limit-Tokens:
+                - "200000"
+            X-Ratelimit-Remaining-Requests:
+                - "499"
+            X-Ratelimit-Remaining-Tokens:
+                - "199928"
+            X-Ratelimit-Reset-Requests:
+                - 120ms
+            X-Ratelimit-Reset-Tokens:
+                - 21ms
+            X-Request-Id:
+                - req_688a526bfe1bc5abdd9ef8b550fd9ad0
+        status: 200 OK
+        code: 200
+        duration: 767.381875ms

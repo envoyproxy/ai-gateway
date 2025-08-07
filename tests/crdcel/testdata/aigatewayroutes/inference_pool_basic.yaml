@@ -1,0 +1,25 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Valid InferencePool backend reference
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: inference-pool-basic
+  namespace: default
+spec:
+  parentRefs:
+  - name: gateway
+  schema:
+    name: OpenAI
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/chat/completions
+    backendRefs:
+    - group: inference.networking.x-k8s.io
+      kind: InferencePool
+      name: my-inference-pool

@@ -103,7 +103,7 @@ func TestOidcTokenProvider_GetToken(t *testing.T) {
 			ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 
 			oidcConfig := &egv1a1.OIDC{
-				ClientID: "clientID",
+				ClientID: ptr.To("clientID"),
 				ClientSecret: gwapiv1.SecretObjectReference{
 					Name:      "clientSecret",
 					Namespace: ptr.To[gwapiv1.Namespace]("default"),
@@ -161,7 +161,7 @@ func TestOidcTokenProvider_GetToken_Success(t *testing.T) {
 		ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 
 		oidcConfig := &egv1a1.OIDC{
-			ClientID: "clientID",
+			ClientID: ptr.To("clientID"),
 			ClientSecret: gwapiv1.SecretObjectReference{
 				Name:      "clientSecret",
 				Namespace: ptr.To[gwapiv1.Namespace]("default"),

@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"golang.org/x/exp/rand"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -36,11 +37,19 @@ var logger = log.New(os.Stdout, "[testupstream] ", 0)
 // This is useful to test the external processor request to the Envoy Gateway LLM Controller.
 func main() {
 	logger.Println("Version: ", version.Version)
-	l, err := net.Listen("tcp", ":8080") // nolint: gosec
+	// Note: Do not use "TESTUPSTREAM_PORT" as it will conflict with an automatic environment variable
+	// set by K8s, which results in a very hard-to-debug issue during e2e.
+	port := os.Getenv("LISTENER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	l, err := net.Listen("tcp", ":"+port) // nolint: gosec
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	defer l.Close()
+	// Emit startup message when the listener is ready.
+	log.Println("Test upstream is ready")
 	doMain(l)
 }
 
@@ -52,7 +61,6 @@ func doMain(l net.Listener) {
 			streamingInterval = d
 		}
 	}
-	defer l.Close()
 	http.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusOK) })
 	http.HandleFunc("/", handler)
 	if err := http.Serve(l, nil); err != nil { // nolint: gosec
@@ -154,11 +162,32 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if expectedRawQuery := r.Header.Get(testupstreamlib.ExpectedRawQueryHeaderKey); expectedRawQuery != "" {
+		if r.URL.RawQuery != expectedRawQuery {
+			logger.Printf("unexpected raw query: got %q, expected %q\n", r.URL.RawQuery, expectedRawQuery)
+			http.Error(w, "unexpected raw query: got "+r.URL.RawQuery+", expected "+expectedRawQuery, http.StatusBadRequest)
+			return
+		}
+	}
+
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		logger.Println("failed to read the request body")
 		http.Error(w, "failed to read the request body", http.StatusInternalServerError)
 		return
+	}
+
+	// At least for the endpoints we want to support, all requests should have a Content-Length header
+	// and should not use chunked transfer encoding.
+	if r.Header.Get("Content-Length") == "" {
+		// Endpoint pickers mutate the request body by sending them back to the client (due to the use of DUPLEX mode),
+		// and it will clear the Content-Length header. It should be fine to assume that these locally hosted endpoints
+		// are capable of reading the chunked transfer encoding unlike the GCP Anthropic.
+		if r.Header.Get(internalapi.EndpointPickerHeaderKey) == "" {
+			logger.Println("no Content-Length header, using request body length:", len(requestBody))
+			http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
+			return
+		}
 	}
 
 	if expectedReqBody := r.Header.Get(testupstreamlib.ExpectedRequestBodyHeaderKey); expectedReqBody != "" {
@@ -219,6 +248,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
+
 		var expResponseBody []byte
 		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
@@ -228,25 +258,59 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(status)
-		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
-			line := string(line)
-			if line == "" {
-				continue
-			}
-			time.Sleep(streamingInterval)
 
-			if _, err = w.Write([]byte(fmt.Sprintf("data: %s\n\n", line))); err != nil {
-				logger.Println("failed to write the response body")
-				return
+		// Auto-detect the SSE format. If the body contains the event message separator "\n\n",
+		// we treat it as a stream of pre-formatted "raw" SSE events. Otherwise, we treat it
+		// as a simple line-by-line stream that needs to be formatted.
+		if bytes.Contains(expResponseBody, []byte("\n\n")) {
+			eventBlocks := bytes.Split(expResponseBody, []byte("\n\n"))
+
+			for _, block := range eventBlocks {
+				// Skip any empty blocks that can result from splitting.
+				if len(bytes.TrimSpace(block)) == 0 {
+					continue
+				}
+				time.Sleep(streamingInterval)
+
+				// Write the complete event block followed by the required double newline delimiter.
+				if _, err = w.Write(append(block, "\n\n"...)); err != nil {
+					logger.Println("failed to write the response body")
+					return
+				}
+
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				} else {
+					panic("expected http.ResponseWriter to be an http.Flusher")
+				}
+				logger.Println("response block sent:", string(block))
 			}
 
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			} else {
-				panic("expected http.ResponseWriter to be an http.Flusher")
+		} else {
+			logger.Println("detected line-by-line stream, formatting as SSE")
+			lines := bytes.Split(expResponseBody, []byte("\n"))
+
+			for _, line := range lines {
+				if len(line) == 0 {
+					continue
+				}
+				time.Sleep(streamingInterval)
+
+				// Format the line as an SSE 'data' message.
+				if _, err = fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+					logger.Println("failed to write the response body")
+					return
+				}
+
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				} else {
+					panic("expected http.ResponseWriter to be an http.Flusher")
+				}
+				logger.Println("response line sent:", string(line))
 			}
-			logger.Println("response line sent:", line)
 		}
+
 		logger.Println("response sent")
 		r.Context().Done()
 	case "aws-event-stream":
@@ -366,6 +430,9 @@ var chatCompletionFakeResponses = []string{
 
 func getFakeResponse(path string) ([]byte, error) {
 	switch path {
+	case "/non-llm-route":
+		const template = `{"message":"This is a non-LLM endpoint response"}`
+		return []byte(template), nil
 	case "/v1/chat/completions":
 		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
@@ -373,6 +440,9 @@ func getFakeResponse(path string) ([]byte, error) {
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
 				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
+	case "/v1/embeddings":
+		const embeddingTemplate = `{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3,0.4,0.5],"index":0}],"model":"some-cool-self-hosted-model","usage":{"prompt_tokens":3,"total_tokens":3}}`
+		return []byte(embeddingTemplate), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}

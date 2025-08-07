@@ -9,13 +9,14 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -23,12 +24,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
@@ -45,32 +46,39 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	envoyGatewayNamespace, udsPath, extProcImage string,
+	udsPath, extProcImage string, standAlone bool, uuidFn func() string,
 ) *GatewayController {
+	uf := uuidFn
+	if uf == nil {
+		uf = uuid.NewString
+	}
 	return &GatewayController{
-		client:                client,
-		kube:                  kube,
-		logger:                logger,
-		envoyGatewayNamespace: envoyGatewayNamespace,
-		udsPath:               udsPath,
-		extProcImage:          extProcImage,
+		client:       client,
+		kube:         kube,
+		logger:       logger,
+		udsPath:      udsPath,
+		extProcImage: extProcImage,
+		standAlone:   standAlone,
+		uuidFn:       uf,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                client.Client
-	kube                  kubernetes.Interface
-	logger                logr.Logger
-	envoyGatewayNamespace string
-	udsPath               string
-	extProcImage          string // The image of the external processor sidecar container.
+	client       client.Client
+	kube         kubernetes.Interface
+	logger       logr.Logger
+	udsPath      string
+	extProcImage string // The image of the external processor sidecar container.
+	// standAlone indicates whether the controller is running in standalone mode.
+	standAlone bool
+	uuidFn     func() string // Function to generate a new UUID for the filter config.
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
 func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var gw gwapiv1.Gateway
-	if err := c.client.Get(ctx, req.NamespacedName, &gw); err != nil {
+	gw := &gwapiv1.Gateway{}
+	if err := c.client.Get(ctx, req.NamespacedName, gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -90,107 +98,73 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		c.logger.Info("No AIGatewayRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, nil
 	}
-	if err := c.ensureExtensionPolicy(ctx, &gw); err != nil {
-		return ctrl.Result{}, err
+
+	namespace, pods, deployments, daemonSets, err := c.getObjectsForGateway(ctx, gw)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get objects for gateway %s: %w", gw.Name, err)
 	}
+	if len(pods) == 0 && len(deployments) == 0 && len(daemonSets) == 0 && !c.standAlone {
+		// This means that the gateway is not running any pods, deployments or daemonsets and just after the gateway is created.
+		// Wait for EG to create the pods, deployments or daemonsets to be able to reconcile the filter config. Until that happens,
+		// we are yet to know which namespace the Gateway's pods, deployments, and daemonsets are running in.
+		//
+		// On standalone mode, we won't have these resources and code assume that the filter config Secret is created in the "empty" namespace,
+		// so we don't need to enter this branch.
+		const requeueAfter = 5 * time.Second
+		c.logger.Info("No pods, deployments or daemonsets found for the Gateway.", "namespace", gw.Namespace, "name", gw.Name, "requeueAfter", requeueAfter.String())
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	uid := c.uuidFn()
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
-	if err := c.reconcileFilterConfigSecret(ctx, &gw, routes.Items, gw.Name); err != nil {
+	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, routes.Items, uid); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// Clean up resources created by the v0.2 version of the controller but not used in v0.3+.
+	c.cleanUpV02(ctx, gw)
 
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, &gw, uuid.NewString()); err != nil {
+	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid); err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-const sideCarExtProcBackendName = "envoy-ai-gateway-extproc-backend"
+// cleanUpV02 is to clean up resources created by the v0.2 version of the controller but not used in v0.3+.
+// More specifically, this deletes the EnvoyExtensionPolicy and Backend resources that were created in
+// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L111
+//
+// # These objects have become unnecessary since https://github.com/envoyproxy/ai-gateway/commit/7055df134e0df116690afb610e047c0657204072
+//
+// TODO: delete after v0.3 release.
+func (c *GatewayController) cleanUpV02(ctx context.Context, gw *gwapiv1.Gateway) {
+	// Delete the EnvoyExtensionPolicy.
+	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L133C2-L133C59
+	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
+		Name:      fmt.Sprintf("ai-eg-eep-%s", gw.Name),
+		Namespace: gw.Namespace,
+	}})
+	// Delete the Backend resource that existed per namespace.
+	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L108
+	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
+		Name: "envoy-ai-gateway-extproc-backend", Namespace: gw.Namespace,
+	}})
+}
 
-// ensureExtensionPolicy creates or updates the extension policy for the external process running as a sidecar.
-func (c *GatewayController) ensureExtensionPolicy(ctx context.Context, gw *gwapiv1.Gateway) (err error) {
-	// Ensure that the backend that makes Envoy talk to the UDS exists.
-	var backend egv1a1.Backend
-	if err = c.client.Get(ctx, client.ObjectKey{Name: sideCarExtProcBackendName, Namespace: gw.Namespace}, &backend); err != nil {
-		if apierrors.IsNotFound(err) {
-			backend = egv1a1.Backend{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sideCarExtProcBackendName,
-					Namespace: gw.Namespace,
-				},
-				Spec: egv1a1.BackendSpec{
-					Endpoints: []egv1a1.BackendEndpoint{{Unix: &egv1a1.UnixSocket{Path: c.udsPath}}},
-				},
-			}
-			if err = c.client.Create(ctx, &backend); err != nil {
-				return fmt.Errorf("failed to create backend: %w", err)
-			}
-		} else {
-			return fmt.Errorf("failed to get backend: %w", err)
-		}
+func ensureObjDeletion[obj client.Object](ctx context.Context, logger logr.Logger, c client.Client, object obj) {
+	name, namespace, kind := object.GetName(), object.GetNamespace(), object.GetObjectKind().GroupVersionKind().String()
+	err := c.Delete(ctx, object)
+	if err != nil && !apierrors.IsNotFound(err) {
+		logger.Error(err, "Failed to delete object", "name", name, "namespace", namespace, "kind", kind)
+	} else if err == nil {
+		logger.Info("Delete object", "name", name, "namespace", namespace, "kind", kind)
 	}
-
-	perGatewayEEPName := fmt.Sprintf("ai-eg-eep-%s", gw.Name)
-	var existingPolicy egv1a1.EnvoyExtensionPolicy
-	if err = c.client.Get(ctx, client.ObjectKey{Name: perGatewayEEPName, Namespace: gw.Namespace}, &existingPolicy); err == nil {
-		return
-	} else if client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to get extension policy: %w", err)
-	}
-
-	extPolicy := &egv1a1.EnvoyExtensionPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: perGatewayEEPName, Namespace: gw.Namespace},
-		Spec: egv1a1.EnvoyExtensionPolicySpec{
-			PolicyTargetReferences: egv1a1.PolicyTargetReferences{TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-				{
-					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-						Kind:  "Gateway",
-						Group: "gateway.networking.k8s.io",
-						Name:  gwapiv1.ObjectName(gw.Name),
-					},
-				},
-			}},
-			ExtProc: []egv1a1.ExtProc{{
-				ProcessingMode: &egv1a1.ExtProcProcessingMode{
-					AllowModeOverride: true, // Streaming completely overrides the buffered mode.
-					Request:           &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
-					Response:          &egv1a1.ProcessingModeOptions{Body: ptr.To(egv1a1.BufferedExtProcBodyProcessingMode)},
-				},
-				Metadata: &egv1a1.ExtProcMetadata{WritableNamespaces: []string{aigv1a1.AIGatewayFilterMetadataNamespace}},
-				BackendCluster: egv1a1.BackendCluster{
-					BackendRefs: []egv1a1.BackendRef{{
-						BackendObjectReference: gwapiv1.BackendObjectReference{
-							Name:      gwapiv1.ObjectName(sideCarExtProcBackendName),
-							Kind:      ptr.To(gwapiv1.Kind("Backend")),
-							Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
-							Namespace: ptr.To(gwapiv1.Namespace(gw.Namespace)),
-						},
-					}},
-					BackendSettings: &egv1a1.ClusterSettings{
-						Connection: &egv1a1.BackendConnection{
-							// Default is 32768 bytes == 32 KiB which seems small:
-							// https://github.com/envoyproxy/gateway/blob/932b8b55fa562ae917da19b497a4370733478f1/internal/xds/translator/cluster.go#L49
-							//
-							// So, we set it to 50MBi.
-							//
-							// Note that currently ExtProc cluster is also defined in the extension server,
-							// so ensure that the same value is used there.
-							BufferLimit: ptr.To(resource.MustParse("50Mi")),
-						},
-					},
-				},
-			}},
-		},
-	}
-	if err = c.client.Create(ctx, extPolicy); err != nil {
-		err = fmt.Errorf("failed to create extension policy: %w", err)
-	}
-	return
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
@@ -207,14 +181,10 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 }
 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
-func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw *gwapiv1.Gateway, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
+func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, configSecretName, configSecretNamespace string, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
-	input := aiGatewayRoutes[0].Spec.APISchema
-
 	ec := &filterapi.Config{UUID: uuid}
-	ec.Schema = schemaToFilterAPI(input)
 	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
-	ec.SelectedRouteHeaderKey = selectedRouteHeaderKey
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -222,36 +192,49 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		spec := aiGatewayRoute.Spec
 		for i := range spec.Rules {
 			rule := &spec.Rules[i]
-			backends := make([]filterapi.Backend, len(rule.BackendRefs))
+			for _, m := range rule.Matches {
+				for _, h := range m.Headers {
+					// If explicitly set to something that is not an exact match, skip.
+					// If not set, we assume it's an exact match.
+					//
+					// Also, we only care about the AIModel header to declare models.
+					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != aigv1a1.AIModelHeaderKey {
+						continue
+					}
+					ec.Models = append(ec.Models, filterapi.Model{
+						Name:      h.Value,
+						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
+						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+					})
+				}
+			}
 			for j := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[j]
-				b := &backends[j]
-				b.Name = fmt.Sprintf("%s.%s", backendRef.Name, aiGatewayRoute.Namespace)
+				b := filterapi.Backend{}
+				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
 				b.ModelNameOverride = backendRef.ModelNameOverride
-				var backendObj *aigv1a1.AIServiceBackend
-				backendObj, err = c.backend(ctx, aiGatewayRoute.Namespace, backendRef.Name)
-				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
-				}
-				b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
-				if bspRef := backendObj.Spec.BackendSecurityPolicyRef; bspRef != nil {
-					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, aiGatewayRoute.Namespace, string(bspRef.Name))
+				if backendRef.IsInferencePool() {
+					// We assume that InferencePools are all OpenAI schema.
+					schema := aiGatewayRoute.Spec.APISchema
+					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaName(schema.Name), Version: ptr.Deref(schema.Version, "v1")}
+				} else {
+					var backendObj *aigv1a1.AIServiceBackend
+					var bsp *aigv1a1.BackendSecurityPolicy
+					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 					if err != nil {
-						return fmt.Errorf("failed to create backend auth: %w", err)
+						return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
+					}
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					if bsp != nil {
+						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
+						if err != nil {
+							return fmt.Errorf("failed to create backend auth: %w", err)
+						}
 					}
 				}
+
+				ec.Backends = append(ec.Backends, b)
 			}
-			configRule := filterapi.RouteRule{Backends: backends}
-			configRule.Name = routeName(aiGatewayRoute, i)
-			configRule.Headers = make([]filterapi.HeaderMatch, len(rule.Matches))
-			for j, match := range rule.Matches {
-				configRule.Headers[j].Name = match.Headers[0].Name
-				configRule.Headers[j].Value = match.Headers[0].Value
-			}
-			configRule.ModelsOwnedBy = ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy)
-			// Convert to UTC time in force to avoid timezone issues.
-			configRule.ModelsCreatedAt = ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).Time.UTC()
-			ec.Rules = append(ec.Rules, configRule)
 
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
 				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
@@ -293,37 +276,33 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, gw 
 		return fmt.Errorf("failed to marshal extproc config: %w", err)
 	}
 
-	name := FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace)
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Get(ctx, name, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, configSecretName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: c.envoyGatewayNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: configSecretName, Namespace: configSecretNamespace},
 				StringData: data,
 			}
-			if _, err = c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-				return fmt.Errorf("failed to create secret %s: %w", name, err)
+			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+				return fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
 			}
 			return nil
 		}
-		return fmt.Errorf("failed to get secret %s: %w", name, err)
+		return fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
 	}
 
 	secret.StringData = data
-	if _, err := c.kube.CoreV1().Secrets(c.envoyGatewayNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
 	return nil
 }
 
-func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, namespace, bspName string) (*filterapi.BackendAuth, error) {
-	backendSecurityPolicy, err := c.backendSecurityPolicy(ctx, namespace, bspName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspName, err)
-	}
+func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
+	namespace := backendSecurityPolicy.Namespace
 	switch backendSecurityPolicy.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
@@ -333,9 +312,6 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		}
 		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		if backendSecurityPolicy.Spec.AWSCredentials == nil {
-			return nil, fmt.Errorf("AWSCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-		}
 		var secretName string
 		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
 			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
@@ -346,19 +322,13 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
-		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil || awsCred.OIDCExchangeToken != nil {
-			return &filterapi.BackendAuth{
-				AWSAuth: &filterapi.AWSAuth{
-					CredentialFileLiteral: credentialsLiteral,
-					Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
-				},
-			}, nil
-		}
-		return nil, nil
+		return &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: credentialsLiteral,
+				Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
+			},
+		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
-		if backendSecurityPolicy.Spec.AzureCredentials == nil {
-			return nil, fmt.Errorf("AzureCredentials type selected but not defined %s", backendSecurityPolicy.Name)
-		}
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if err != nil {
@@ -366,6 +336,20 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, names
 		}
 		return &filterapi.BackendAuth{
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
+		}, nil
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		}
+		return &filterapi.BackendAuth{
+			GCPAuth: &filterapi.GCPAuth{
+				AccessToken: gcpAccessToken,
+				Region:      gcpCreds.Region,
+				ProjectName: gcpCreds.ProjectName,
+			},
 		}, nil
 	default:
 		return nil, fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
@@ -391,9 +375,44 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 	return "", fmt.Errorf("secret %s does not contain key %s", name, dataKey)
 }
 
-func (c *GatewayController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
-	backend := &aigv1a1.AIServiceBackend{}
-	return backend, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend)
+// backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
+func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1a1.AIServiceBackend, bsp *aigv1a1.BackendSecurityPolicy, err error) {
+	backend = &aigv1a1.AIServiceBackend{}
+	if err = c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
+		return
+	}
+
+	// Old Pattern using BackendSecurityPolicyRef. Prioritize this field over the new pattern as per the documentation.
+	if bspRef := backend.Spec.BackendSecurityPolicyRef; bspRef != nil {
+		bsp, err = c.backendSecurityPolicy(ctx, namespace, string(bspRef.Name))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
+		}
+		return
+	}
+
+	// New Pattern using BackendSecurityPolicy.
+	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
+	key := fmt.Sprintf("%s.%s", name, namespace)
+	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
+		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
+		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
+	}
+	switch len(backendSecurityPolicyList.Items) {
+	case 0:
+	case 1:
+		bsp = &backendSecurityPolicyList.Items[0]
+	default:
+		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
+		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
+		//
+		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
+		// is created after the AIServiceBackend's reconciliation.
+		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
+			"count", len(backendSecurityPolicyList.Items))
+		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
+	}
+	return
 }
 
 func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
@@ -406,17 +425,14 @@ func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace
 // the mutation hook invoked.
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
-func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1.Gateway, uuid string) error {
-	pods, err := c.kube.CoreV1().Pods(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
+func (c *GatewayController) annotateGatewayPods(ctx context.Context,
+	pods []corev1.Pod,
+	deployments []appsv1.Deployment,
+	daemonSets []appsv1.DaemonSet,
+	uuid string,
+) error {
 	rollout := true
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
 		for i := range podSpec.Containers {
@@ -428,7 +444,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 		}
 
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
-		_, err = c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 			[]byte(fmt.Sprintf(
 				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
 			), metav1.PatchOptions{})
@@ -438,17 +454,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 	}
 
 	if rollout {
-		deps, err := c.kube.AppsV1().Deployments(c.envoyGatewayNamespace).List(ctx, metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-				egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to list deployments: %w", err)
-		}
-
-		for _, dep := range deps.Items {
+		for _, dep := range deployments {
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
-			_, err = c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
+			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				[]byte(fmt.Sprintf(
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				), metav1.PatchOptions{})
@@ -456,6 +464,69 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context, gw *gwapiv1
 				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
 		}
+
+		for _, daemonSet := range daemonSets {
+			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
+			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+				[]byte(fmt.Sprintf(
+					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
+				), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
+			}
+		}
 	}
 	return nil
+}
+
+// getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.
+// They are all created and managed by the Envoy Gateway controller. Depending on the deployment strategy of Envoy Gateway,
+// the namespace is either the same as the Gateway's namespace or the Envoy Gateway system namespace.
+// This returns the **unique** namespace where the Gateway's pods, deployments, and daemonsets are running.
+func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv1.Gateway) (
+	namespace string,
+	pods []corev1.Pod,
+	deployments []appsv1.Deployment,
+	daemonSets []appsv1.DaemonSet,
+	err error,
+) {
+	listOption := metav1.ListOptions{LabelSelector: fmt.Sprintf(
+		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
+	)}
+	var ps *corev1.PodList
+	ps, err = c.kube.CoreV1().Pods("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list pods: %w", err)
+		return
+	}
+	pods = ps.Items
+
+	var ds *appsv1.DeploymentList
+	ds, err = c.kube.AppsV1().Deployments("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list deployments: %w", err)
+		return
+	}
+	deployments = ds.Items
+
+	var dss *appsv1.DaemonSetList
+	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, listOption)
+	if err != nil {
+		err = fmt.Errorf("failed to list daemonsets: %w", err)
+		return
+	}
+	daemonSets = dss.Items
+
+	// We assume that all pods, deployments, and daemonsets are in the same namespace. Otherwise, it would be a bug in the EG
+	// or the disruptive configuration change of EG.
+	if len(pods) > 0 {
+		namespace = pods[0].Namespace
+	}
+	if len(deployments) > 0 {
+		namespace = deployments[0].Namespace
+	}
+	if len(daemonSets) > 0 {
+		namespace = daemonSets[0].Namespace
+	}
+	return
 }

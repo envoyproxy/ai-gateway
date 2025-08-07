@@ -28,12 +28,15 @@ import (
 // setupDefaultAIGatewayResourcesWithAvailableCredentials sets up the default AI Gateway resources with available
 // credentials and returns the path to the resources file and the credentials context.
 func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (string, internaltesting.CredentialsContext) {
-	credCtx := internaltesting.RequireNewCredentialsContext(t)
+	credCtx := internaltesting.RequireNewCredentialsContext()
 	// Set up the credential substitution.
 	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
 	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", credCtx.AWSFilePath)
-	err := os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
+	awsCredTmpFile := filepath.Join(t.TempDir(), "aws-credentials")
+	err := os.WriteFile(awsCredTmpFile, []byte(credCtx.AWSFileLiteral), 0o600)
+	require.NoError(t, err)
+	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", awsCredTmpFile)
+	err = os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
 	return aiGatewayResourcesPath, credCtx
 }
@@ -53,11 +56,10 @@ func TestRun(t *testing.T) {
 		<-done
 	}()
 
-	// This is the health checking to see the extproc is working as expected.
+	// This is the health checking to see the envoy admin is working as expected.
 	require.Eventually(t, func() bool {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:1975/v1/chat/completions",
-			strings.NewReader("{}"))
-		req.Header.Set("Content-Type", "application/json")
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:9901/ready",
+			strings.NewReader(""))
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -67,23 +69,21 @@ func TestRun(t *testing.T) {
 		defer func() {
 			require.NoError(t, resp.Body.Close())
 		}()
-		// We don't care about the content and just check the connection is successful.
 		raw, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		body := string(raw)
-		t.Logf("status=%d, body: %s", resp.StatusCode, body)
-		// This ensures that the response is returned from the external processor where the body says about the
-		// matching rule not found since we send an empty JSON.
-		if resp.StatusCode != http.StatusNotFound || body != "no matching rule found" {
+		t.Logf("status=%d, response: %s", resp.StatusCode, body)
+		if resp.StatusCode != http.StatusOK && body != "live" {
 			return false
 		}
 		return true
 	}, 120*time.Second, 1*time.Second)
 
-	for _, tc := range []struct {
+	type testCase struct {
 		testName, modelName string
 		required            internaltesting.RequiredCredential
-	}{
+	}
+	cases := []testCase{
 		{
 			testName:  "openai",
 			modelName: "gpt-4o-mini",
@@ -94,7 +94,25 @@ func TestRun(t *testing.T) {
 			modelName: "us.meta.llama3-2-1b-instruct-v1:0",
 			required:  internaltesting.RequiredCredentialAWS,
 		},
-	} {
+		{
+			testName: "openai with fallback route",
+			// gpt-4o is not explicitly listed in the route, but it should still work by matching the fallback route.
+			modelName: "gpt-4o",
+			required:  internaltesting.RequiredCredentialOpenAI,
+		},
+	}
+
+	const ollamaModelName = "qwen3:0.6b"
+	if checkIfOllamaReady(t, ollamaModelName) {
+		cases = append(cases, testCase{
+			testName:  "ollama",
+			modelName: ollamaModelName,
+		})
+	} else {
+		t.Logf("Ollama is not ready for serving the model %s. Skipping the test case. If ollama is already running, then `ollama pull %[1]s`", ollamaModelName)
+	}
+
+	for _, tc := range cases {
 		t.Run(tc.testName, func(t *testing.T) {
 			client := openai.NewClient(option.WithBaseURL("http://localhost:1975" + "/v1/"))
 			cc.MaybeSkip(t, tc.required)
@@ -175,4 +193,25 @@ func Test_mustStartExtProc(t *testing.T) {
 	cancel()
 	// Wait for the external processor to stop.
 	time.Sleep(1 * time.Second)
+}
+
+// checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.
+func checkIfOllamaReady(t *testing.T, modelName string) bool {
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+	tags := string(body)
+	t.Logf("Ollama tags: %s", tags)
+	return strings.Contains(tags, modelName)
 }

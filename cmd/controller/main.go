@@ -28,20 +28,21 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type flags struct {
-	extProcLogLevel        string
-	extProcImage           string
-	extProcImagePullPolicy corev1.PullPolicy
-	enableLeaderElection   bool
-	logLevel               zapcore.Level
-	extensionServerPort    string
-	tlsCertDir             string
-	tlsCertName            string
-	tlsKeyName             string
-	caBundleName           string
-	envoyGatewayNamespace  string
+	extProcLogLevel            string
+	extProcImage               string
+	extProcImagePullPolicy     corev1.PullPolicy
+	enableLeaderElection       bool
+	logLevel                   zapcore.Level
+	extensionServerPort        string
+	tlsCertDir                 string
+	tlsCertName                string
+	tlsKeyName                 string
+	caBundleName               string
+	metricsRequestHeaderLabels string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -109,10 +110,10 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"tls.key",
 		"The name of the TLS key file.",
 	)
-	envoyGatewayNamespace := fs.String(
-		"envoyGatewayNamespace",
-		"envoy-gateway-system",
-		"The namespace where the Envoy Gateway system components are installed.",
+	metricsRequestHeaderLabels := fs.String(
+		"metricsRequestHeaderLabels",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -137,18 +138,26 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		return flags{}, err
 	}
 
+	// Validate metrics header labels if provided.
+	if *metricsRequestHeaderLabels != "" {
+		_, err := internalapi.ParseRequestHeaderLabelMapping(*metricsRequestHeaderLabels)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid metrics header labels: %w", err)
+		}
+	}
+
 	return flags{
-		extProcLogLevel:        *extProcLogLevelPtr,
-		extProcImage:           *extProcImagePtr,
-		extProcImagePullPolicy: extProcPullPolicy,
-		enableLeaderElection:   *enableLeaderElectionPtr,
-		logLevel:               zapLogLevel,
-		extensionServerPort:    *extensionServerPortPtr,
-		tlsCertDir:             *tlsCertDir,
-		tlsCertName:            *tlsCertName,
-		tlsKeyName:             *tlsKeyName,
-		caBundleName:           *caBundleName,
-		envoyGatewayNamespace:  *envoyGatewayNamespace,
+		extProcLogLevel:            *extProcLogLevelPtr,
+		extProcImage:               *extProcImagePtr,
+		extProcImagePullPolicy:     extProcPullPolicy,
+		enableLeaderElection:       *enableLeaderElectionPtr,
+		logLevel:                   zapLogLevel,
+		extensionServerPort:        *extensionServerPortPtr,
+		tlsCertDir:                 *tlsCertDir,
+		tlsCertName:                *tlsCertName,
+		tlsKeyName:                 *tlsKeyName,
+		caBundleName:               *caBundleName,
+		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 	}, nil
 }
 
@@ -201,7 +210,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath)
+	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -216,12 +225,12 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:           flags.extProcImage,
-		ExtProcImagePullPolicy: flags.extProcImagePullPolicy,
-		ExtProcLogLevel:        flags.extProcLogLevel,
-		EnableLeaderElection:   flags.enableLeaderElection,
-		EnvoyGatewayNamespace:  flags.envoyGatewayNamespace,
-		UDSPath:                extProcUDSPath,
+		ExtProcImage:               flags.extProcImage,
+		ExtProcImagePullPolicy:     flags.extProcImagePullPolicy,
+		ExtProcLogLevel:            flags.extProcLogLevel,
+		EnableLeaderElection:       flags.enableLeaderElection,
+		UDSPath:                    extProcUDSPath,
+		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

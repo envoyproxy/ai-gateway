@@ -3,13 +3,12 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_e2e
-
 package e2e
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,20 +22,20 @@ import (
 )
 
 const (
-	egDefaultVersion     = "v1.4.0"
+	egDefaultVersion     = "v0.0.0-latest"
 	egNamespace          = "envoy-gateway-system"
 	egDefaultServicePort = 80
 
 	kindClusterName = "envoy-ai-gateway"
 	kindLogDir      = "./logs"
+	metallbVersion  = "v0.13.10"
 )
 
 var egVersion = func() string {
 	if v, ok := os.LookupEnv("EG_VERSION"); ok {
 		return v
-	} else {
-		return egDefaultVersion
 	}
+	return egDefaultVersion
 }()
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
@@ -63,7 +62,7 @@ func TestMain(m *testing.M) {
 
 	run := false
 	defer func() {
-		// If the setup or some tests panic, try to collect the cluster logs
+		// If the setup or some tests panic, try to collect the cluster logs.
 		if r := recover(); r != nil {
 			cleanupKindCluster(true)
 		}
@@ -77,22 +76,22 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	if err := initMetalLB(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	if err := installInferencePoolEnvironment(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
 	if err := initEnvoyGateway(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
 
-	if err := installInferenceExtensionCRD(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
 	if err := initAIGateway(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if err := initTestupstream(ctx); err != nil {
 		cancel()
 		panic(err)
 	}
@@ -108,7 +107,7 @@ func TestMain(m *testing.M) {
 
 	cleanupKindCluster(code != 0)
 
-	os.Exit(code)
+	os.Exit(code) // nolint: gocritic
 }
 
 func initKindCluster(ctx context.Context) (err error) {
@@ -151,6 +150,166 @@ func initKindCluster(ctx context.Context) (err error) {
 	return nil
 }
 
+func initMetalLB(ctx context.Context) (err error) {
+	initLog("Installing MetalLB")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
+	}()
+
+	// Install MetalLB manifests.
+	initLog("\tApplying MetalLB manifests")
+	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/metallb/metallb/%s/config/manifests/metallb-native.yaml", metallbVersion)
+	if err = kubectlApplyManifest(ctx, manifestURL); err != nil {
+		return fmt.Errorf("failed to apply MetalLB manifests: %w", err)
+	}
+
+	// Create memberlist secret if it doesn't exist.
+	initLog("\tCreating memberlist secret if needed")
+	cmd := kubectl(ctx, "get", "secret", "-n", "metallb-system", "memberlist", "--no-headers", "--ignore-not-found", "-o", "custom-columns=NAME:.metadata.name")
+	cmd.Stdout = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check memberlist secret: %w", err)
+	}
+
+	if strings.TrimSpace(string(out)) == "" {
+		// Generate random secret key.
+		cmd = exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
+		cmd.Stderr = os.Stderr
+		var secretKey []byte
+		secretKey, err = cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to generate secret key: %w", err)
+		}
+
+		cmd = kubectl(ctx, "create", "secret", "generic", "-n", "metallb-system", "memberlist", "--from-literal=secretkey="+strings.TrimSpace(string(secretKey)))
+		if err = cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create memberlist secret: %w", err)
+		}
+	}
+
+	// Wait for MetalLB deployments to be ready.
+	initLog("\tWaiting for MetalLB controller deployment to be ready")
+	if err = kubectlWaitForDeploymentReady("metallb-system", "controller"); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB controller: %w", err)
+	}
+
+	initLog("\tWaiting for MetalLB speaker daemonset to be ready")
+	if err = kubectlWaitForDaemonSetReady("metallb-system", "speaker"); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB speaker: %w", err)
+	}
+
+	// Configure IP address pools based on Docker network IPAM.
+	initLog("\tConfiguring IP address pools")
+	if err = configureMetalLBAddressPools(ctx); err != nil {
+		return fmt.Errorf("failed to configure MetalLB address pools: %w", err)
+	}
+
+	return nil
+}
+
+func configureMetalLBAddressPools(ctx context.Context) error {
+	// Get Docker network information for kind cluster.
+	cmd := exec.CommandContext(ctx, "docker", "network", "inspect", "kind")
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to inspect docker network: %w", err)
+	}
+
+	// Parse JSON output.
+	var networks []struct {
+		IPAM struct {
+			Config []struct {
+				Subnet string `json:"Subnet"`
+			} `json:"Config"`
+		} `json:"IPAM"`
+	}
+
+	if err := json.Unmarshal(out, &networks); err != nil {
+		return fmt.Errorf("failed to parse docker network info: %w", err)
+	}
+
+	if len(networks) == 0 || len(networks[0].IPAM.Config) == 0 {
+		return fmt.Errorf("no IPAM config found in docker network")
+	}
+
+	// Find IPv4 subnet and calculate address range.
+	var addressRanges []string
+	for _, config := range networks[0].IPAM.Config {
+		subnet := config.Subnet
+		if !strings.Contains(subnet, ":") { // IPv4.
+			// Extract network prefix (e.g., "172.18.0.0/16" -> "172.18.0").
+			parts := strings.Split(subnet, ".")
+			if len(parts) >= 3 {
+				addressPrefix := strings.Join(parts[:3], ".")
+				addressRange := fmt.Sprintf("%s.200-%s.250", addressPrefix, addressPrefix)
+				addressRanges = append(addressRanges, fmt.Sprintf("    - %s", addressRange))
+			}
+		}
+	}
+
+	if len(addressRanges) == 0 {
+		return fmt.Errorf("no valid IPv4 address ranges found")
+	}
+
+	// Create MetalLB configuration manifest.
+	manifest := fmt.Sprintf(`apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  namespace: metallb-system
+  name: kube-services
+spec:
+  addresses:
+%s
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: kube-services
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - kube-services`, strings.Join(addressRanges, "\n"))
+
+	// Apply configuration with retries.
+	const retryInterval = 5 * time.Second
+	const timeout = 2 * time.Minute
+
+	retryCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var lastErr error
+	attempt := 1
+
+	for {
+		select {
+		case <-retryCtx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("timeout applying MetalLB configuration after %d attempts, last error: %w", attempt-1, lastErr)
+			}
+			return fmt.Errorf("timeout applying MetalLB configuration after %d attempts", attempt-1)
+		default:
+			if err := kubectlApplyManifestStdin(ctx, manifest); err == nil {
+				return nil
+			} else {
+				lastErr = err
+				if strings.Contains(err.Error(), "webhook") && strings.Contains(err.Error(), "connection refused") {
+					// This is expected during MetalLB startup, continue retrying.
+					fmt.Printf("\t\tAttempt %d: MetalLB webhook not ready yet, retrying in %v...\n", attempt, retryInterval)
+				} else {
+					// Other errors might be more serious, but still retry.
+					fmt.Printf("\t\tAttempt %d: Error applying MetalLB config: %v, retrying in %v...\n", attempt, err, retryInterval)
+				}
+				attempt++
+				time.Sleep(retryInterval)
+			}
+		}
+	}
+}
+
 func cleanupKindCluster(testsFailed bool) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
@@ -169,8 +328,44 @@ func cleanupKindCluster(testsFailed bool) {
 }
 
 func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml"
 	return kubectlApplyManifest(ctx, infExtURL)
+}
+
+func installVLLMDeployment(ctx context.Context) (err error) {
+	const vllmURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml"
+	return kubectlApplyManifest(ctx, vllmURL)
+}
+
+func installInferenceModel(ctx context.Context) (err error) {
+	const inferenceModelURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml"
+	return kubectlApplyManifest(ctx, inferenceModelURL)
+}
+
+func installInferencePoolResources(ctx context.Context) (err error) {
+	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml"
+	return kubectlApplyManifest(ctx, inferencePoolURL)
+}
+
+func installInferencePoolEnvironment(ctx context.Context) (err error) {
+	// Install all InferencePool related resources in sequence.
+	if err = installInferenceExtensionCRD(ctx); err != nil {
+		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
+	}
+
+	if err = installVLLMDeployment(ctx); err != nil {
+		return fmt.Errorf("failed to install vLLM deployment: %w", err)
+	}
+
+	if err = installInferenceModel(ctx); err != nil {
+		return fmt.Errorf("failed to install inference model: %w", err)
+	}
+
+	if err = installInferencePoolResources(ctx); err != nil {
+		return fmt.Errorf("failed to install inference pool resources: %w", err)
+	}
+
+	return nil
 }
 
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
@@ -196,6 +391,10 @@ func initEnvoyGateway(ctx context.Context) (err error) {
 	if err = kubectlApplyManifest(ctx, "../../manifests/envoy-gateway-config/"); err != nil {
 		return
 	}
+	initLog("\tApplying InferencePool Patch for Envoy Gateway")
+	if err = kubectlApplyManifest(ctx, "../../examples/inference-pool/config.yaml"); err != nil {
+		return
+	}
 	initLog("\tRestart Envoy Gateway deployment")
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
@@ -216,17 +415,19 @@ func initAIGateway(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm_crd := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
 		"../../manifests/charts/ai-gateway-crds-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
-	helm_crd.Stdout = os.Stdout
-	helm_crd.Stderr = os.Stderr
-	if err = helm_crd.Run(); err != nil {
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
 		return
 	}
 
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
+		// Configure the additional prometheus metrics label for user ID.
+		"--set", "controller.metricsRequestHeaderLabels=x-user-id:"+userIDMetricsLabel,
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
@@ -239,21 +440,6 @@ func initAIGateway(ctx context.Context) (err error) {
 		return
 	}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
-}
-
-func initTestupstream(ctx context.Context) (err error) {
-	initLog("Installing Test Upstream sever")
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
-	}()
-	initLog("\tapplying manifests")
-	if err = kubectlApplyManifest(ctx, "./init/testupstream/"); err != nil {
-		return
-	}
-	initLog("\twaiting for deployment")
-	return kubectlWaitForDeploymentReady("default", "testupstream")
 }
 
 func initPrometheus(ctx context.Context) (err error) {
@@ -314,6 +500,23 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	return
 }
 
+func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
+	// Wait for daemonset to be created.
+	cmd := kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"daemonset/"+daemonset, "--for=create")
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for daemonset %s in namespace %s: %w", daemonset, namespace, err)
+	}
+
+	// Wait for daemonset pods to be ready using jsonpath.
+	cmd = kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"daemonset/"+daemonset, "--for=jsonpath={.status.numberReady}=1")
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for daemonset %s pods to be ready in namespace %s: %w", daemonset, namespace, err)
+	}
+	return
+}
+
 func requireWaitForGatewayPodReady(t *testing.T, selector string) {
 	// Wait for the Envoy Gateway pod containing the extproc container.
 	require.Eventually(t, func() bool {
@@ -328,6 +531,10 @@ func requireWaitForGatewayPodReady(t *testing.T, selector string) {
 		return strings.Contains(string(out), "ai-gateway-extproc")
 	}, 2*time.Minute, 1*time.Second)
 
+	requireWaitForPodReady(t, selector)
+}
+
+func requireWaitForPodReady(t *testing.T, selector string) {
 	// This repeats the wait subcommand in order to be able to wait for the
 	// resources not created yet.
 	require.Eventually(t, func() bool {

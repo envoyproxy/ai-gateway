@@ -3,108 +3,124 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_extproc
-
 package extproc
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"os"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
+// Real providers test cases require the real credentials to be set in the environment. So,
+// we use the long timeout and interval to wait for the requests to not only succeed but also to
+// reduce the unnecessary use of credentials during the tests.
+const (
+	realProvidersEventuallyTimeout  = 60 * time.Second
+	realProvidersEventuallyInterval = 1 * time.Second
+)
+
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
-	requireBinaries(t)
-	accessLogPath := t.TempDir() + "/access.log"
-	requireRunEnvoy(t, accessLogPath)
-	configPath := t.TempDir() + "/extproc-config.yaml"
+	cc := internaltesting.RequireNewCredentialsContext()
 
-	cc := internaltesting.RequireNewCredentialsContext(t)
-
-	requireWriteFilterConfig(t, configPath, &filterapi.Config{
+	config := &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		Schema: openAISchema,
-		// This can be any header key, but it must match the envoy.yaml routing configuration.
-		SelectedRouteHeaderKey: routeSelectorHeader,
-		ModelNameHeaderKey:     "x-model-name",
-		Rules: []filterapi.RouteRule{
+		ModelNameHeaderKey: "x-model-name",
+		Backends: []filterapi.Backend{
+			alwaysFailingBackend,
+			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
+			}},
+			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: cc.AWSFileLiteral,
+				Region:                "us-east-1",
+			}}},
+			{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
+			}},
+			{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
+			}},
+			{Name: "groq", Schema: groqSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GroqAPIKey},
+			}},
+			{Name: "grok", Schema: grokSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.GrokAPIKey},
+			}},
+			{Name: "sambanova", Schema: sambaNovaSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.SambaNovaAPIKey},
+			}},
+			{Name: "deepinfra", Schema: deepInfraSchema, Auth: &filterapi.BackendAuth{
+				APIKey: &filterapi.APIKeyAuth{Key: cc.DeepInfraAPIKey},
+			}},
+		},
+		Models: []filterapi.Model{
 			{
-				Name:    "openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gpt-4o-mini"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
-					}},
-				},
-			},
-			{
-				Name: "aws-bedrock-route",
-				Headers: []filterapi.HeaderMatch{
-					{Name: "x-model-name", Value: "us.meta.llama3-2-1b-instruct-v1:0"},
-					{Name: "x-model-name", Value: "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
-				},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-						CredentialFileLiteral: cc.AWSFileLiteral,
-						Region:                "us-east-1",
-					}}},
-				},
-			},
-			{
-				Name:    "azure-openai-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "o1"}},
-				Backends: []filterapi.Backend{
-					alwaysFailingBackend,
-					{Name: "azure-openai", Schema: azureOpenAISchema, Auth: &filterapi.BackendAuth{
-						AzureAuth: &filterapi.AzureAuth{AccessToken: cc.AzureAccessToken},
-					}},
-				},
-			},
-			{
-				Name:    "gemini-route",
-				Headers: []filterapi.HeaderMatch{{Name: "x-model-name", Value: "gemini-2.0-flash-lite"}},
-				Backends: []filterapi.Backend{
-					{Name: "gemini", Schema: geminiSchema, Auth: &filterapi.BackendAuth{
-						APIKey: &filterapi.APIKeyAuth{Key: cc.GeminiAPIKey},
-					}},
-				},
+				Name:      "grok-3",
+				OwnedBy:   "xAI",
+				CreatedAt: time.Now(),
 			},
 		},
-	})
+	}
+	configBytes, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	env := startTestEnvironment(t, string(configBytes),
+		// Do not dump the log by default since it "might" contain sensitive information.
+		// On CI, they should be redacted by GHA automatically, but it would be better to not log them at all just in case.
+		// Note: This test won't run on CI for fork PRs.
+		false)
 
-	requireExtProc(t, os.Stdout, extProcExecutablePath(), configPath)
+	listenerPort := env.EnvoyListenerPort()
+	listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 
 	t.Run("health-checking", func(t *testing.T) {
-		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
-		} {
-			t.Run(tc.modelName, func(t *testing.T) {
-				cc.MaybeSkip(t, tc.required)
-				requireEventuallyNonStreamingRequestOK(t, tc.modelName, "Say this is a test")
-			})
-		}
+		t.Run("chat/completions", func(t *testing.T) {
+			for _, tc := range []realProvidersTestCase{
+				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
+				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
+				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
+				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cc.MaybeSkip(t, tc.required)
+					requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress, tc.modelName, "Say this is a test")
+				})
+			}
+		})
+		t.Run("embeddings", func(t *testing.T) {
+			for _, tc := range []realProvidersTestCase{
+				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
+				{name: "gemini", modelName: "gemini-embedding-exp-03-07", required: internaltesting.RequiredCredentialGemini},
+				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cc.MaybeSkip(t, tc.required)
+					requireEventuallyEmbeddingsRequestOK(t, listenerAddress, tc.modelName)
+				})
+			}
+		})
 	})
 
 	// Read all access logs and check if the used token is logged.
@@ -114,14 +130,13 @@ func TestWithRealProviders(t *testing.T) {
 		cc.MaybeSkip(t, internaltesting.RequiredCredentialOpenAI|internaltesting.RequiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
 		require.Eventually(t, func() bool {
-			accessLog, err := os.ReadFile(accessLogPath)
-			require.NoError(t, err)
+			accessLog := env.EnvoyStdout()
 			// This should match the format of the access log in envoy.yaml.
 			type lineFormat struct {
 				UsedToken float64 `json:"used_token,omitempty"`
 				SomeCel   float64 `json:"some_cel,omitempty"`
 			}
-			scanner := bufio.NewScanner(bytes.NewReader(accessLog))
+			scanner := bufio.NewScanner(strings.NewReader(accessLog))
 			for scanner.Scan() {
 				line := scanner.Bytes()
 				var l lineFormat
@@ -141,7 +156,7 @@ func TestWithRealProviders(t *testing.T) {
 				return true
 			}
 			return false
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -190,7 +205,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("response: %+v", acc)
 					}
 					return nonEmptyCompletion
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -203,7 +218,7 @@ func TestWithRealProviders(t *testing.T) {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
 				require.Eventually(t, func() bool {
-					// Step 1: Initial tool call request
+					// Step 1: Initial tool call request.
 					question := "What is the weather in New York City?"
 					params := openai.ChatCompletionNewParams{
 						Messages: []openai.ChatCompletionMessageParamUnion{
@@ -234,7 +249,7 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("error: %v", err)
 						return false
 					}
-					// Step 2: Verify tool call
+					// Step 2: Verify tool call.
 					if len(completion.Choices) == 0 {
 						t.Logf("Expected a response but got none: %+v", completion)
 						return false
@@ -244,13 +259,13 @@ func TestWithRealProviders(t *testing.T) {
 						t.Logf("Expected tool call from completion result but got none")
 						return false
 					}
-					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response
+					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response.
 					params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
 					getWeatherCalled := false
 					for _, toolCall := range toolCalls {
 						if toolCall.Function.Name == "get_weather" {
 							getWeatherCalled = true
-							// Extract the location from the function call arguments
+							// Extract the location from the function call arguments.
 							var args map[string]interface{}
 							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
 								t.Logf("Error unmarshalling the function arguments: %v", argErr)
@@ -259,11 +274,11 @@ func TestWithRealProviders(t *testing.T) {
 							if location != "New York City" {
 								t.Logf("Expected location to be New York City but got %s", location)
 							}
-							// Simulate getting weather data
+							// Simulate getting weather data.
 							weatherData := "Sunny, 25°C"
 							toolMessage := openai.ToolMessage(weatherData, toolCall.ID)
 							params.Messages = append(params.Messages, toolMessage)
-							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log
+							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log.
 						}
 					}
 					if getWeatherCalled == false {
@@ -277,7 +292,7 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 
-					// Step 4: Verify that the second response is correct
+					// Step 4: Verify that the second response is correct.
 					if len(secondChatCompletion.Choices) == 0 {
 						t.Logf("Expected a response but got none: %+v", secondChatCompletion)
 						return false
@@ -285,7 +300,7 @@ func TestWithRealProviders(t *testing.T) {
 					completionResult := secondChatCompletion.Choices[0].Message.Content
 					t.Logf("content of completion response using tool: %s", secondChatCompletion.Choices[0].Message.Content)
 					return strings.Contains(completionResult, "New York City") && strings.Contains(completionResult, "sunny") && strings.Contains(completionResult, "25°C")
-				}, eventuallyTimeout, eventuallyInterval)
+				}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 			})
 		}
 	})
@@ -303,19 +318,15 @@ func TestWithRealProviders(t *testing.T) {
 				models = append(models, it.Current().ID)
 			}
 			assert.NoError(c, it.Err())
-		}, eventuallyTimeout, eventuallyInterval)
+		}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 
 		require.Equal(t, []string{
-			"gpt-4o-mini",
-			"us.meta.llama3-2-1b-instruct-v1:0",
-			"us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-			"o1",
-			"gemini-2.0-flash-lite",
+			"grok-3",
 		}, models)
 	})
 	t.Run("aws-bedrock-large-body", func(t *testing.T) {
 		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
-		requireEventuallyNonStreamingRequestOK(t,
+		requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress,
 			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
 	})
 }
@@ -328,7 +339,7 @@ type realProvidersTestCase struct {
 	required  internaltesting.RequiredCredential
 }
 
-func requireEventuallyNonStreamingRequestOK(t *testing.T, modelName, msg string) {
+func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listenerAddress, modelName, msg string) {
 	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 	require.Eventually(t, func() bool {
 		chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
@@ -349,5 +360,34 @@ func requireEventuallyNonStreamingRequestOK(t *testing.T, modelName, msg string)
 			}
 		}
 		return nonEmptyCompletion
-	}, eventuallyTimeout, eventuallyInterval)
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
+}
+
+func requireEventuallyEmbeddingsRequestOK(t *testing.T, listenerAddress, modelName string) {
+	client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
+	require.Eventually(t, func() bool {
+		embedding, err := client.Embeddings.New(t.Context(), openai.EmbeddingNewParams{
+			Input: openai.EmbeddingNewParamsInputUnion{
+				OfString: openai.String("The quick brown fox jumped over the lazy dog"),
+			},
+			Model: modelName,
+		})
+		if err != nil {
+			t.Logf("embeddings error: %v", err)
+			return false
+		}
+
+		if len(embedding.Data) == 0 {
+			t.Logf("no embeddings returned in response")
+			return false
+		}
+
+		if len(embedding.Data[0].Embedding) == 0 {
+			t.Logf("empty embedding vector in response")
+			return false
+		}
+
+		t.Logf("response: %+v", embedding.Data[0].Embedding)
+		return true
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }

@@ -27,7 +27,7 @@ func TestGatewayMutator_Default(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "envoy-gateway-system", "/tmp/extproc.sock",
+		"info", "/tmp/extproc.sock", "",
 	)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
@@ -50,7 +50,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	g := newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "envoy-gateway-system", "/tmp/extproc.sock",
+		"info", "/tmp/extproc.sock", "",
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
@@ -79,6 +79,20 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			Containers: []corev1.Container{{Name: "envoy"}},
 		},
 	}
+	// At this point, the config secret does not exist, so the pod should not be mutated.
 	err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
 	require.NoError(t, err)
+	require.Len(t, pod.Spec.Containers, 1)
+
+	// Create the config secret and mutate the pod again.
+	_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+				gwName, gwNamespace,
+			), Namespace: "test-namespace"},
+		}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, pod.Spec.Containers, 2)
 }

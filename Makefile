@@ -52,7 +52,7 @@ precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-t
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
-	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc ./...
+	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -105,6 +105,7 @@ editorconfig:
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
 	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -120,18 +121,19 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 
 ##@ Testing
 
-# This runs the unit tests for the codebase.
+# This runs the unit tests for the codebase, excluding the integration tests.
 .PHONY: test
-test: ## Run the unit tests for the codebase.
-	@echo "test => ./..."
-	@go test $(GO_TEST_ARGS) ./...
+test: ## Run the unit tests for the codebase. This doesn't run the integration tests like test-* targets.
+	@PKGS=$$(go list ./... | grep -v -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc"); \
+	  echo "Running unit tests for packages: $$PKGS"; \
+	  go test $(GO_TEST_ARGS) $$PKGS
 
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
 test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=coverage.xml -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
 
-ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
+ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 
 # This runs the integration tests of CEL validation rules in CRD definitions.
 #
@@ -140,36 +142,33 @@ ENVTEST_K8S_VERSIONS ?= 1.29.0 1.30.0 1.31.0
 test-crdcel: apigen ## Run the integration tests of CEL validation in CRD definitions with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run CEL Validation on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) --tags test_crdcel; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
 # It is useful for the fast iteration of the extproc code.
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
+# The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
-	@$(MAKE) build.extproc_custom_router CMD_PATH_PREFIX=examples
-	@$(MAKE) build.extproc_custom_metrics CMD_PATH_PREFIX=examples
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_extproc
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
   		echo "Run Controller tests on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_controller; \
+        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
     done
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e
 test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
-	@go test ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS) -tags test_e2e
-
-
+	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
@@ -178,7 +177,6 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 # Example:
 # - `make build.controller`: will build the cmd/controller directory.
 # - `make build.extproc`: will build the cmd/extproc directory.
-# - `make build.extproc_custom_router CMD_PATH_PREFIX=examples`: will build the examples/extproc_custom_router directory.
 # - `make build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib`: will build the tests/internal/testupstreamlib/testupstream directory.
 #
 # By default, this will build for the current GOOS and GOARCH.
@@ -239,10 +237,6 @@ build-e2e: ## Build the docker images for the controller, extproc and testupstre
 # Example:
 # - `make docker-build.controller TAG=v1.2.3`
 #
-# To build the main functions outside cmd/ directory, set CMD_PATH_PREFIX to the directory containing the main function.
-#
-# Example:
-# - `make docker-build.extproc_custom_router CMD_PATH_PREFIX=examples`
 .PHONY: docker-build.%
 ifeq ($(ENABLE_MULTI_PLATFORMS),true)
 docker-build.%: GOARCH_LIST = amd64 arm64

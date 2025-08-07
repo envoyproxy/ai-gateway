@@ -7,6 +7,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "ai-gateway-helm.controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ai-gateway-helm.labels" . | nindent 4 }}
 spec:
@@ -45,10 +46,12 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            {{- if .Values.controller.metricsRequestHeaderLabels }}
+            - --metricsRequestHeaderLabels={{ .Values.controller.metricsRequestHeaderLabels }}
+            {{- end }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
-            - --envoyGatewayNamespace={{ .Values.controller.envoyGatewayNamespace }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
             {{- end }}

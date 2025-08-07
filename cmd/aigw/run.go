@@ -150,7 +150,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath)
+	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath, true)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -171,14 +171,18 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
 
 	server := root.GetRootCommand()
-	egOut := &bytes.Buffer{}
-	server.SetOut(egOut)
-	server.SetErr(egOut)
+	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
+	if c.Debug {
+		server.SetOut(stdout)
+		server.SetErr(stderr)
+	} else {
+		server.SetOut(io.Discard)
+		server.SetErr(io.Discard)
+	}
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
 	if err := server.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
-	stderrLogger.Info("Envoy Gateway output", "output", egOut.String())
 	return nil
 }
 
@@ -242,7 +246,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 
 	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
-		Secrets(envoyGatewayNamespace).Get(ctx,
+		Secrets("").Get(ctx,
 		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get filter config secret: %w", err)

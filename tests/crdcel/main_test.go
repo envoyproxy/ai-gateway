@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build test_crdcel
-
 package celvalidation
 
 import (
@@ -32,6 +30,8 @@ func TestAIGatewayRoutes(t *testing.T) {
 	}{
 		{name: "basic.yaml"},
 		{name: "llmcosts.yaml"},
+		{name: "parent_refs.yaml"},
+		{name: "parent_refs_default_kind.yaml"},
 		{
 			name:   "non_openai_schema.yaml",
 			expErr: `spec.schema: Invalid value: "object": failed rule: self.name == 'OpenAI'`,
@@ -41,12 +41,29 @@ func TestAIGatewayRoutes(t *testing.T) {
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
 		{
-			name:   "unsupported_match.yaml",
-			expErr: "spec.rules[0].matches[0].headers: Invalid value: \"array\": currently only exact match is supported",
+			name:   "target_refs_with_parent_refs.yaml",
+			expErr: `spec: Invalid value: "object": targetRefs is deprecated, use parentRefs only`,
 		},
 		{
-			name:   "no_target_refs.yaml",
-			expErr: `spec.targetRefs: Invalid value: 0: spec.targetRefs in body should have at least 1 items`,
+			name:   "parent_refs_invalid_kind.yaml",
+			expErr: `spec.parentRefs: Invalid value: "array": only Gateway is supported`,
+		},
+		{name: "inference_pool_valid.yaml"},
+		{
+			name:   "inference_pool_mixed_backends.yaml",
+			expErr: "spec.rules[0]: Invalid value: \"object\": cannot mix InferencePool and AIServiceBackend references in the same rule",
+		},
+		{
+			name:   "inference_pool_multiple.yaml",
+			expErr: "spec.rules[0]: Invalid value: \"object\": only one InferencePool backend is allowed per rule",
+		},
+		{
+			name:   "inference_pool_partial_ref.yaml",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": group and kind must be specified together",
+		},
+		{
+			name:   "inference_pool_unsupported_group.yaml",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.x-k8s.io group is supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,7 +137,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{
 			name:   "multiple_security_policies.yaml",
-			expErr: "Too many: 3: must have at most 2 items",
+			expErr: "When type is APIKey, only apiKey field should be set",
 		},
 		{
 			name:   "azure_credentials_missing_client_id.yaml",
@@ -138,7 +155,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "azure_multiple_auth.yaml",
 			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
 		},
-		// CEL validation test cases - these should fail due to type mismatch
+		// CEL validation test cases - these should fail due to type mismatch.
 		{
 			name:   "apikey_with_aws_credentials.yaml",
 			expErr: "When type is APIKey, only apiKey field should be set",
@@ -167,12 +184,22 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "gcp_with_apikey.yaml",
 			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
 		},
-		// Valid test cases - these should pass
+		// Valid test cases - these should pass.
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 		{name: "gcp_oidc.yaml"},
+		{name: "targetrefs_basic.yaml"},
+		{name: "targetrefs_multiple.yaml"},
+		{
+			name:   "targetrefs_invalid_kind.yaml",
+			expErr: "targetRefs must reference AIServiceBackend resources",
+		},
+		{
+			name:   "targetrefs_invalid_group.yaml",
+			expErr: "targetRefs must reference AIServiceBackend resources",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))

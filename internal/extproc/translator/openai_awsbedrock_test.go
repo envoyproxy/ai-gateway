@@ -90,7 +90,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							},
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
-									ID: "call_6g7a",
+									ID: ptr.To("call_6g7a"),
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
 										Name:      "exec_python_code",
@@ -706,6 +706,120 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test parallel tool calls for anthropic claude model",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role: openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "What is the weather in Dallas, Texas and Orlando, Florida in Fahrenheit?",
+							},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID: ptr.To("tool-1"),
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_current_weather",
+										Arguments: "{\"city\": \"Dallas\", \"state\": \"TX\", \"unit\": \"fahrenheit\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallType(openai.ToolTypeFunction),
+								},
+								{
+									ID: ptr.To("tool-2"),
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_current_weather",
+										Arguments: "{\"city\": \"Orlando\", \"state\": \"FL\", \"unit\": \"fahrenheit\"}",
+									},
+									Type: openai.ChatCompletionMessageToolCallType(openai.ToolTypeFunction),
+								},
+							},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleTool,
+						Value: openai.ChatCompletionToolMessageParam{
+							Content: openai.StringOrArray{
+								Value: "The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.",
+							},
+							Role:       openai.ChatMessageRoleTool,
+							ToolCallID: "tool-1",
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleTool,
+						Value: openai.ChatCompletionToolMessageParam{
+							Content: openai.StringOrArray{
+								Value: "The weather in Orlando FL is 78 degrees fahrenheit with clear skies.",
+							},
+							Role:       openai.ChatMessageRoleTool,
+							ToolCallID: "tool-2",
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("What is the weather in Dallas, Texas and Orlando, Florida in Fahrenheit?"),
+							},
+						},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      "get_current_weather",
+									ToolUseID: "tool-1",
+									Input:     map[string]interface{}{"city": "Dallas", "state": "TX", "unit": "fahrenheit"},
+								},
+							},
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									Name:      "get_current_weather",
+									ToolUseID: "tool-2",
+									Input:     map[string]interface{}{"city": "Orlando", "state": "FL", "unit": "fahrenheit"},
+								},
+							},
+						},
+					},
+					{
+						Role: awsbedrock.ConversationRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{Text: ptr.To("The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.")},
+									},
+									ToolUseID: ptr.To("tool-1"),
+								},
+							},
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{Text: ptr.To("The weather in Orlando FL is 78 degrees fahrenheit with clear skies.")},
+									},
+									ToolUseID: ptr.To("tool-2"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -801,49 +915,49 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 		result := strings.Join(results, "")
 
 		require.Equal(t,
-			`data: {"choices":[{"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+			`data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"To","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":"To","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" calculate the cosine","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" calculate the cosine","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" of 7,","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" of 7,","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" we can use the","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" we can use the","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" \"","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" \"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"cosine\" function","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":"cosine\" function","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" that","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" that","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" is","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" is","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" available to","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" available to","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" us.","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" us.","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" Let","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" Let","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"'s use","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":"'s use","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" this","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" this","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" function to","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" function to","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" get","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" get","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":" the result","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":" the result","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":".","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":".","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"","function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":null,"function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"","function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":null,"function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
 data: {"object":"chat.completion.chunk","usage":{"completion_tokens":75,"prompt_tokens":386,"total_tokens":461}}
 
@@ -1042,7 +1156,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Role:    awsbedrock.ConversationRoleAssistant,
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
-									ID: "call_6g7a",
+									ID: ptr.To("call_6g7a"),
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Name:      "exec_python_code",
 										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
@@ -1092,7 +1206,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Role:    awsbedrock.ConversationRoleAssistant,
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
-									ID: "call_6g7a",
+									ID: ptr.To("call_6g7a"),
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Name:      "exec_python_code",
 										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
@@ -1145,40 +1259,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 
 // base64RealStreamingEvents is the base64 encoded raw binary response from bedrock anthropic.claude model.
 // The request is to find the cosine of number 7 with a tool configuration.
-/*
-{
-  "messages": [
-    {
-      "role": "user",
-      "content": [{"text": "What is the cosine of 7?"}]
-    }
-  ],
-  "toolConfig": {
-    "tools": [
-      {
-        "toolSpec": {
-          "name": "cosine",
-          "description": "Calculate the cosine of x.",
-          "inputSchema": {
-            "json": {
-              "type": "object",
-              "properties": {
-                "x": {
-                  "type": "number",
-                  "description": "The number to pass to the function."
-                }
-              },
-              "required": ["x"]
-            }
-          }
-        }
-      }
-    ]
-  },
-  "system": [{"text": "You must only do math by using a tool."}]
-}
-*/
-
 const base64RealStreamingEvents = "AAAAmwAAAFJGkfmwCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDRCIsInJvbGUiOiJhc3Npc3RhbnQifbCidJ0AAACpAAAAV+0a5tkLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiVG8ifSwicCI6ImFiY2RlZmdoaWprbG1uIn0rY75JAAAAsQAAAFe9ijqaCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBjYWxjdWxhdGUgdGhlIGNvc2luZSJ9LCJwIjoiYWJjIn3hywqfAAAA2gAAAFdTaHzGCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBvZiA3LCJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxMjM0NTYifUsRwHsAAADXAAAAV6v4uHcLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiIHdlIGNhbiB1c2UgdGhlIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVSJ9jBuxjAAAALwAAABXRRr+Kws6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgXCIifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGIn3SOp66AAAA2wAAAFduCFV2CzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6ImNvc2luZVwiIGZ1bmN0aW9uIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXIn2f+1UQAAAA2QAAAFcUyAYWCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiB0aGF0In0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaMDEyMzQ1NiJ9uD7t8wAAAM8AAABX+2hkNAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgaXMifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWSJ9p52nrQAAAMQAAABXjLhVJQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgYXZhaWxhYmxlIHRvIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0QifYC08b0AAADTAAAAV154HrcLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiIHVzLiJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxIn0mTm4jAAAAtAAAAFd1arXqCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBMZXQifSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3In34BFwTAAAA0AAAAFcZ2GRnCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IidzIHVzZSJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWVyJ9vfdBjQAAALwAAABXRRr+Kws6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgdGhpcyJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNEIn1Xtb4jAAAAuAAAAFewmljrCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsidGV4dCI6IiBmdW5jdGlvbiB0byJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFycyJ9GYv84AAAALQAAABXdWq16gs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgZ2V0In0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2dyJ99bdUOgAAAN4AAABXpujaBgs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIgdGhlIHJlc3VsdCJ9LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWjAxMjM0NSJ9niPS/gAAAM0AAABXgag3VAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiIuIn0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFkifRc68JQAAACuAAAAVig9Cl8LOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1AifY2eizoAAAEEAAAAV67xblsLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tTdGFydA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjoxLCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVIiLCJzdGFydCI6eyJ0b29sVXNlIjp7Im5hbWUiOiJjb3NpbmUiLCJ0b29sVXNlSWQiOiJ0b29sdXNlX1FrbHJFSEtqUnU2T2M0QlFVZnk3WlEifX19kpNGawAAAK0AAABXGJpAGQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjEsImRlbHRhIjp7InRvb2xVc2UiOnsiaW5wdXQiOiIifX0sInAiOiJhYmNkZWZnIn3XeK+kAAAAswAAAFfHSmn6CzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MSwiZGVsdGEiOnsidG9vbFVzZSI6eyJpbnB1dCI6IntcInhcIjogN30ifX0sInAiOiJhYmMifaN4jhsAAACxAAAAVsqNCgwLOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjEsInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlMifUJp3UkAAACFAAAAUQBIgekLOmV2ZW50LXR5cGUHAAttZXNzYWdlU3RvcA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7InAiOiJhYmNkIiwic3RvcFJlYXNvbiI6InRvb2xfdXNlIn3ejv14AAAAygAAAE5X40OECzpldmVudC10eXBlBwAIbWV0YWRhdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJtZXRyaWNzIjp7ImxhdGVuY3lNcyI6MTk1N30sInAiOiJhYmNkZWZnIiwidXNhZ2UiOnsiaW5wdXRUb2tlbnMiOjM4Niwib3V0cHV0VG9rZW5zIjo3NSwidG90YWxUb2tlbnMiOjQ2MX19Ke/W4Q=="
 
 func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T) {

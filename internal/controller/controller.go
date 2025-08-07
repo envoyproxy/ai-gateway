@@ -11,8 +11,11 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -21,6 +24,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -42,7 +46,7 @@ func init() {
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
-	utilruntime.Must(gwaiev1a2.AddToScheme(Scheme))
+	utilruntime.Must(gwaiev1a2.Install(Scheme))
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
@@ -61,12 +65,12 @@ type Options struct {
 	// EnableLeaderElection enables leader election for the controller manager.
 	// Enabling this ensures there is only one active controller manager.
 	EnableLeaderElection bool
-	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway system resources are deployed.
-	EnvoyGatewayNamespace string
 	// UDSPath is the path to the UDS socket for the external processor.
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
+	// MetricsRequestHeaderLabels is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	MetricsRequestHeaderLabels string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -82,10 +86,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.UDSPath, options.ExtProcImage)
+		logger.WithName("gateway"), options.UDSPath, options.ExtProcImage, false, uuid.NewString)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
-		// We need the annotation change event to reconcile the Gateway referenced by AIGatewayRoutes.
-		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -99,8 +101,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		gatewayEventChan,
 	)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
-		Owns(&egv1a1.EnvoyExtensionPolicy{}).
 		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&egv1a1.HTTPRouteFilter{}).
 		WatchesRawSource(source.Channel(
 			aiGatewayRouteEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -129,8 +131,35 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			backendSecurityPolicyEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
+		Owns(&corev1.Secret{}).
 		Complete(backendSecurityPolicyC); err != nil {
 		return fmt.Errorf("failed to create controller for BackendSecurityPolicy: %w", err)
+	}
+
+	// Check if InferencePool CRD exists before creating the controller.
+	crdClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create CRD client for inference extension: %w", err)
+	}
+	const inferencePoolCRD = "inferencepools.inference.networking.x-k8s.io"
+	if _, crdErr := crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, inferencePoolCRD, metav1.GetOptions{}); crdErr != nil {
+		if apierrors.IsNotFound(crdErr) {
+			logger.Info("InferencePool CRD not found, skipping InferencePool controller. " +
+				"If you need it, please install the Gateway API Inference Extension CRDs.")
+		} else {
+			return fmt.Errorf("failed to query InferencePool CRD: %w", crdErr)
+		}
+	} else {
+		// CRD exists, create the controller.
+		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
+			WithName("inference-pool"))
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
+			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
+			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).
+			Complete(inferencePoolC); err != nil {
+			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
+		}
 	}
 
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
@@ -148,8 +177,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
-			options.EnvoyGatewayNamespace,
 			options.UDSPath,
+			options.MetricsRequestHeaderLabels,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
@@ -185,6 +214,9 @@ const (
 	// k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend is the index name that maps from a BackendSecurityPolicy
 	// to the AIServiceBackend that references it.
 	k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend = "BackendSecurityPolicyToReferencingAIServiceBackend"
+	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
+	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
+	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -192,22 +224,27 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Backends: %w", err)
+		return fmt.Errorf("failed to create index from Backends to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
 		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for AIGatewayRoute to Gateway: %w", err)
+		return fmt.Errorf("failed to create index from Gateway to AIGatewayRoute: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.AIServiceBackend{},
 		k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend, aiServiceBackendIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy to AIServiceBackend: %w", err)
+		return fmt.Errorf("failed to create index from BackendSecurityPolicy to AIServiceBackend: %w", err)
 	}
 	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
-		return fmt.Errorf("failed to index field for BackendSecurityPolicy: %w", err)
+		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
+		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
 	return nil
 }
@@ -215,7 +252,10 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
 	var ret []string
-	for _, ref := range aiGatewayRoute.Spec.TargetRefs { // TODO: handle parentRefs per #580.
+	for _, ref := range aiGatewayRoute.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+	}
+	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
 	}
 	return ret
@@ -260,6 +300,15 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 	return []string{key}
 }
 
+func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
+	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
+	var ret []string
+	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
+	}
+	return ret
+}
+
 func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespace string) string {
 	if secretRef.Namespace != nil {
 		return fmt.Sprintf("%s.%s", secretRef.Name, *secretRef.Namespace)
@@ -286,4 +335,49 @@ func newConditions(conditionType, message string) []metav1.Condition {
 		condition.Reason = "ReconciliationFailed"
 	}
 	return []metav1.Condition{condition}
+}
+
+// aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
+const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
+
+// handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
+// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
+// so that the finalizer is persisted.
+//
+// onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
+// be a recoverable error. For example, onDeletionFn only propagates the deletion of the object to other resources.
+// See the call sites of this function for examples.
+func handleFinalizer[objType client.Object](
+	ctx context.Context, client client.Client,
+	logger logr.Logger,
+	o objType,
+	onDeletionFn func(ctx context.Context, o objType) error,
+) (onDelete bool) {
+	if o.GetDeletionTimestamp().IsZero() {
+		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
+			if err := client.Update(ctx, o); err != nil {
+				// This shouldn't happen in normal operation, but if it does, we log the error.
+				logger.Error(err, "Failed to add finalizer to object",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		return false
+	}
+	if ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
+		ctrlutil.RemoveFinalizer(o, aiGatewayControllerFinalizer)
+		if onDeletionFn != nil {
+			if err := onDeletionFn(ctx, o); err != nil {
+				// onDeletionFn can return an error, but it should not be a recoverable error.
+				logger.Error(err, "Failed to handle finalizer deletion",
+					"namespace", o.GetNamespace(), "name", o.GetName())
+			}
+		}
+		if err := client.Update(ctx, o); err != nil {
+			// This shouldn't happen in normal operation, but if it does, we log the error.
+			logger.Error(err, "Failed to remove finalizer from object",
+				"namespace", o.GetNamespace(), "name", o.GetName())
+		}
+	}
+	return true
 }

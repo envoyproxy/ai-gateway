@@ -10,7 +10,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,23 +17,21 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/tidwall/sjson"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
+func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
-		if config.schema.Name != filterapi.APISchemaOpenAI {
-			return nil, fmt.Errorf("unsupported API schema: %s", config.schema.Name)
-		}
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &chatCompletionProcessorRouterFilter{
@@ -73,6 +70,9 @@ type chatCompletionProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.ChatCompletionRequest
 	originalRequestBodyRaw []byte
+	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
+	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
+	forcedStreamOptionIncludeUsage bool
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -104,30 +104,28 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
+		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
+		// to avoid the bypassing of the token usage calculation.
+		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
+		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to set stream_options: %w", err)
+		}
+		c.forcedStreamOptionIncludeUsage = true
+		// TODO: alternatively, we could just return 403 or 400 error here. That makes sense since configuring the
+		// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
+		// setting this option to false means that clients are trying to escape that rule.
+	}
 
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
-	routeName, err := c.config.router.Calculate(c.requestHeaders)
-	if err != nil {
-		if errors.Is(err, x.ErrNoMatchingRule) {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-						Body:   []byte(err.Error()),
-					},
-				},
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to calculate route: %w", err)
-	}
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		// Also set the selected backend to the request header with the key specified in the config.
-		Header: &corev3.HeaderValue{Key: c.config.selectedRouteHeaderKey, RawValue: []byte(routeName)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
@@ -157,6 +155,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      string
+	backendName            string
 	handler                backendauth.Handler
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
@@ -166,9 +165,11 @@ type chatCompletionProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics x.ChatCompletionMetrics
+	metrics metrics.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
+	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
+	forcedStreamOptionIncludeUsage bool
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -180,6 +181,10 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
+	case filterapi.APISchemaGCPVertexAI:
+		c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator(c.modelNameOverride)
+	case filterapi.APISchemaGCPAnthropic:
+		c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -195,7 +200,7 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			c.metrics.RecordRequestCompletion(ctx, false)
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
 		}
 	}()
 
@@ -203,7 +208,12 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	c.metrics.StartRequest(c.requestHeaders)
 	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
 
-	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
+	// We force the body mutation in the following cases:
+	// * The request is a retry request because the body mutation might have happened the previous iteration.
+	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
+	//	the token usage is calculated correctly without being bypassed.
+	forceBodyMutation := c.onRetry || c.forcedStreamOptionIncludeUsage
+	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -220,6 +230,10 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		}
 	}
 
+	var dm *structpb.Struct
+	if bm := bodyMutation.GetBody(); bm != nil {
+		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -229,6 +243,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 				},
 			},
 		},
+		DynamicMetadata: dm,
 	}, nil
 }
 
@@ -241,7 +256,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(context.Conte
 func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			c.metrics.RecordRequestCompletion(ctx, false)
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
 		}
 	}()
 
@@ -268,7 +283,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx conte
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil)
+		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
 	}()
 	var br io.Reader
 	var isGzip bool
@@ -317,18 +332,27 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens)
+	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens, c.requestHeaders)
 	if c.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens)
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, c.requestHeaders)
+
+		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
+		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
+		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = c.maybeBuildDynamicMetadata()
+		metadata, err := buildDynamicMetadata(c.config, &c.costs, c.requestHeaders, c.modelNameOverride, c.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
+		if c.stream {
+			// Adding token latency information to metadata.
+			c.mergeWithTokenLatencyMetadata(metadata)
+		}
+		resp.DynamicMetadata = metadata
 	}
 
 	return resp, nil
@@ -337,8 +361,9 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 // SetBackend implements [Processor.SetBackend].
 func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil)
+		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
 	}()
+	pickedEndpoint, isEndpointPicker := c.requestHeaders[internalapi.EndpointPickerHeaderKey]
 	rp, ok := routeProcessor.(*chatCompletionProcessorRouterFilter)
 	if !ok {
 		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
@@ -346,6 +371,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	rp.upstreamFilterCount++
 	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
+	c.backendName = b.Name
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
@@ -354,8 +380,27 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
+	if isEndpointPicker {
+		if c.logger.Enabled(ctx, slog.LevelDebug) {
+			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
+		}
+	}
 	rp.upstreamFilter = c
+	c.forcedStreamOptionIncludeUsage = rp.forcedStreamOptionIncludeUsage
 	return
+}
+
+func (c *chatCompletionProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
+	timeToFirstTokenMs := c.metrics.GetTimeToFirstTokenMs()
+	interTokenLatencyMs := c.metrics.GetInterTokenLatencyMs()
+	ns := c.config.metadataNamespace
+	innerVal := metadata.Fields[ns].GetStructValue()
+	if innerVal == nil {
+		innerVal = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		metadata.Fields[ns] = structpb.NewStructValue(innerVal)
+	}
+	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
+	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
 }
 
 func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ChatCompletionRequest, err error) {
@@ -366,26 +411,53 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 	return openAIReq.Model, &openAIReq, nil
 }
 
-func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(c.config.requestCosts))
-	for i := range c.config.requestCosts {
-		rc := &c.config.requestCosts[i]
+// buildContentLengthDynamicMetadataOnRequest builds dynamic metadata for the request with content length.
+//
+// This is necessary to ensure that the content length can be set after the extproc filter has processed the request,
+// which will happen in the header mutation filter.
+//
+// This is needed since the content length header is unconditionally cleared by Envoy as we use REPLACE_AND_CONTINUE
+// processing mode in the request headers phase at upstream filter. This is sort of a workaround, and it is necessary
+// for now.
+func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, contentLength int) *structpb.Struct {
+	metadata := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			config.metadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"content_length": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(contentLength)},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return metadata
+}
+
+func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, modelNameOverride, backendName string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(config.requestCosts)+2)
+	for i := range config.requestCosts {
+		rc := &config.requestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
-			cost = c.costs.InputTokens
+			cost = costs.InputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = c.costs.OutputTokens
+			cost = costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = c.costs.TotalTokens
+			cost = costs.TotalTokens
 		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
-				c.requestHeaders[c.config.modelNameHeaderKey],
-				c.requestHeaders[c.config.selectedRouteHeaderKey],
-				c.costs.InputTokens,
-				c.costs.OutputTokens,
-				c.costs.TotalTokens,
+				requestHeaders[config.modelNameHeaderKey],
+				backendName,
+				costs.InputTokens,
+				costs.OutputTokens,
+				costs.TotalTokens,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -394,15 +466,24 @@ func (c *chatCompletionProcessorUpstreamFilter) maybeBuildDynamicMetadata() (*st
 		default:
 			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
 		}
-		c.logger.Info("Setting request cost metadata", "type", rc.Type, "cost", cost, "metadataKey", rc.MetadataKey)
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
+
+	if modelNameOverride != "" {
+		metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: modelNameOverride}}
+	}
+
+	if backendName != "" {
+		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+	}
+
 	if len(metadata) == 0 {
 		return nil, nil
 	}
+
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			c.config.metadataNamespace: {
+			config.metadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{Fields: metadata},
 				},

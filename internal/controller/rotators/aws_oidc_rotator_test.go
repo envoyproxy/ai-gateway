@@ -32,10 +32,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// -----------------------------------------------------------------------------
-// Test Helper Methods
-// -----------------------------------------------------------------------------
-
 const (
 	clientSecretKey    = "client-secret"
 	testClientSecret   = "test_client_secret"
@@ -53,7 +49,7 @@ const (
 	policyName         = "test-secret"
 )
 
-// createTestAwsSecret creates a test secret with given credentials
+// createTestAwsSecret creates a test secret with given credentials.
 func createTestAwsSecret(t *testing.T, client client.Client, bspName string, accessKey, secretKey, sessionToken string, profile string, awsRegion string) {
 	if profile == "" {
 		profile = awsProfileName
@@ -72,7 +68,7 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 	require.NoError(t, err)
 }
 
-// verifyAwsCredentialsSecret verifies the credentials in a secret
+// verifyAwsCredentialsSecret verifies the credentials in a secret.
 func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, secretName, expectedKeyID, expectedSecret, expectedToken, profile, region string) {
 	secret, err := LookupSecret(t.Context(), client, namespace, GetBSPSecretName(secretName))
 	require.NoError(t, err)
@@ -80,7 +76,7 @@ func verifyAwsCredentialsSecret(t *testing.T, client client.Client, namespace, s
 	require.Equal(t, expectedSecretData, string(secret.Data[AwsCredentialsKey]))
 }
 
-// createOidcClientSecret creates the OIDC client secret
+// createOidcClientSecret creates the OIDC client secret.
 func createOidcClientSecret(t *testing.T, client client.Client, name string) {
 	data := map[string][]byte{
 		clientSecretKey: []byte(testClientSecret),
@@ -99,7 +95,7 @@ func createOidcClientSecret(t *testing.T, client client.Client, name string) {
 	require.NoError(t, err)
 }
 
-// MockSTSOperations implements the STSClient interface for testing
+// MockSTSOperations implements the STSClient interface for testing.
 type mockStsOperations struct {
 	assumeRoleWithWebIdentityFunc func(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
 }
@@ -132,7 +128,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			Issuer:        discoveryServer.URL,
 			TokenEndpoint: &tokenServer.URL,
 		},
-		ClientID: "some-client-id",
+		ClientID: ptr.To("some-client-id"),
 		ClientSecret: gwapiv1.SecretObjectReference{
 			Name:      gwapiv1.ObjectName(testClientSecret),
 			Namespace: (*gwapiv1.Namespace)(ptr.To(policyNameSpace)),
