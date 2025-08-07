@@ -34,10 +34,6 @@ spans formatted with [OpenInference semantics][openinference].
 - **aigw** (port 1975): Local Envoy AI Gateway to Ollama
 - **Phoenix** (port 6006): OpenTelemetry trace viewer UI
 
-#### Quick Start with OpenTelemetry
-
-For manual testing with OpenTelemetry tracing and Phoenix:
-
 1. **Start Ollama** on your host machine:
    ```bash
    OLLAMA_HOST=0.0.0.0 ollama serve
