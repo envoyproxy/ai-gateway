@@ -48,8 +48,8 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 	t.Setenv("KUBEBUILDER_ASSETS", string(output))
 
 	const (
-		egURLBase    = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.3.0/charts/gateway-helm/crds/generated/"
-		gwAPIURLBase = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.2.1/config/crd/standard/"
+		egURLBase    = "https://raw.githubusercontent.com/envoyproxy/gateway/refs/tags/v1.5.0-rc.2/charts/gateway-helm/crds/generated/"
+		gwAPIURLBase = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/tags/v1.3.0/config/crd/standard/"
 	)
 	for _, url := range []string{
 		egURLBase + "gateway.envoyproxy.io_envoyextensionpolicies.yaml",
@@ -61,7 +61,7 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 		crds = append(crds, requireThirdPartyCRDDownloaded(t, path, url))
 	}
 
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.2.0/manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml"
 	crds = append(crds, requireThirdPartyCRDDownloaded(t, "inference_extension_for_tests.yaml", infExtURL))
 
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
