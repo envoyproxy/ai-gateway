@@ -38,3 +38,4 @@ header:
     - tests/extproc/testdata/server.crt
     - .env.ollama
     - tests/internal/testopenai/cassettes
+    - .github/codecov.yml

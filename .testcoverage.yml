@@ -5,10 +5,8 @@ local-prefix: "github.com/envoyproxy/ai-gateway/"
 
 threshold:
   file: 70
-  # TODO: increase to 90.
   package: 81
-  # TODO: increase to 95.
-  total: 83
+  total: 86
 
 exclude:
   paths:
