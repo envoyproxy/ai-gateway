@@ -204,9 +204,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 				if err != nil {
 					return nil, fmt.Errorf("failed to marshal tool use input: %w", err)
 				}
-				if len(argsBytes) > 0 {
-					argsJSON = string(argsBytes)
-				}
+				argsJSON = string(argsBytes)
 			}
 
 			// Store the complete input JSON in our state.
@@ -270,16 +268,12 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 				return nil, fmt.Errorf("received input_json_delta for unknown tool at index %d", event.Index)
 			}
 			index := int(event.Index)
-			args := ""
-			if len(event.Delta.PartialJSON) > 0 {
-				args = event.Delta.PartialJSON
-			}
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
 						Index: &index,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
-							Arguments: args,
+							Arguments: event.Delta.PartialJSON,
 						},
 					},
 				},
