@@ -336,26 +336,24 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		br = bytes.NewReader(body.Body)
 	}
 
-	if v, ok := c.responseHeaders[":status"]; ok {
-		code, _ := strconv.Atoi(v)
-		if code >= 200 && code < 300 {
-			var headerMutation *extprocv3.HeaderMutation
-			var bodyMutation *extprocv3.BodyMutation
-			headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
-			if err != nil {
-				return nil, fmt.Errorf("failed to transform response error: %w", err)
-			}
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ResponseBody{
-					ResponseBody: &extprocv3.BodyResponse{
-						Response: &extprocv3.CommonResponse{
-							HeaderMutation: headerMutation,
-							BodyMutation:   bodyMutation,
-						},
+	code, _ := strconv.Atoi(c.responseHeaders[":status"]) // Assume all responses have a status code.
+	if isGoodStatusCode(code) {
+		var headerMutation *extprocv3.HeaderMutation
+		var bodyMutation *extprocv3.BodyMutation
+		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response error: %w", err)
+		}
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						BodyMutation:   bodyMutation,
 					},
 				},
-			}, nil
-		}
+			},
+		}, nil
 	}
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
