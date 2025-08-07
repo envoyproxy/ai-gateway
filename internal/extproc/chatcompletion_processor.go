@@ -96,22 +96,20 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
 	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
 	// c.upstreamFilter can be nil.
-	var statusCode int
 	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		resp, err = c.upstreamFilter.ProcessResponseBody(ctx, body)
+	} else {
+		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
+	}
+	if c.span == nil {
+		return
+	}
 
-		// Safely convert status to int.
-		upstream := c.upstreamFilter.(*chatCompletionProcessorUpstreamFilter)
+	var statusCode int
+	if upstream, ok := c.upstreamFilter.(*chatCompletionProcessorUpstreamFilter); ok {
 		if statusInt, _ := strconv.Atoi(upstream.responseHeaders[":status"]); statusInt > 0 {
 			statusCode = statusInt
 		}
-	} else {
-		// We won't know the status code, but it isn't needed, except in error.
-		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
-	}
-
-	if c.span == nil {
-		return
 	}
 
 	// Record chunk timing for streaming responses.
