@@ -31,6 +31,7 @@ concurrency:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   unittest:
@@ -78,6 +79,7 @@ jobs:
           files: ./out/go-test-coverage.out
           name: codecov-envoy-ai-gateway
           verbose: true
+          # https://github.com/codecov/codecov-action/issues/1594#issuecomment-2394913029
           use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   test_crdcel:
