@@ -881,7 +881,7 @@ func TestNewBearerAuthRoundTripper(t *testing.T) {
 			}
 
 			// Call the function under test.
-			roundTripper, err := NewBearerAuthRoundTripper(tt.token)
+			roundTripper, err := newBearerAuthRoundTripper(tt.token)
 
 			// Validate error expectation.
 			if tt.wantErr {
@@ -936,7 +936,7 @@ func TestBearerAuthRoundTripper_RoundTrip(t *testing.T) {
 			defer server.Close()
 
 			// Create the round tripper.
-			roundTripper, err := NewBearerAuthRoundTripper(tt.token)
+			roundTripper, err := newBearerAuthRoundTripper(tt.token)
 			require.NoError(t, err)
 
 			// Create a request to the test server.

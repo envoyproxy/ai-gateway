@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -88,6 +87,24 @@ type gcpOIDCTokenRotator struct {
 	stsTokenFunc stsTokenGenerator
 }
 
+// sharedTransport is a shared HTTP transport used for GCP API calls.
+// It is initialized with the GCP proxy URL if provided in the environment variable.
+var (
+	sharedTransport *http.Transport
+	initError       error
+)
+
+func init() {
+	gcpProxyURL, err := getGCPProxyURL()
+	if err != nil {
+		initError = fmt.Errorf("error getting GCP proxy URL: %w", err)
+		// transport without proxy url.
+		sharedTransport = &http.Transport{}
+	} else {
+		sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+	}
+}
+
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
 func NewGCPOIDCTokenRotator(
 	client client.Client,
@@ -97,6 +114,9 @@ func NewGCPOIDCTokenRotator(
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
+	if initError != nil {
+		logger.Error(initError, "Error during initializing gcp token rotator")
+	}
 
 	if bsp.Spec.GCPCredentials == nil {
 		return nil, fmt.Errorf("GCP credentials are not configured in BackendSecurityPolicy %s/%s", bsp.Namespace, bsp.Name)
@@ -249,7 +269,7 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	// This step does not pass the token via the auth header.
 	// The empty string implies that the auth header will be skipped.
-	roundTripper, err := NewBearerAuthRoundTripper("")
+	roundTripper, err := newBearerAuthRoundTripper("")
 	if err != nil {
 		return nil, fmt.Errorf("error creating HTTP transport for STS token exchange: %w", err)
 	}
@@ -295,54 +315,23 @@ func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv
 	}, nil
 }
 
-var (
-	// sharedTransport is a singleton HTTP transport that gets reused across all bearerAuthRoundTripper instances
-	// to avoid connection pool fragmentation.
-	sharedTransport *http.Transport
-	// transportOnce ensures the shared transport is initialized only once.
-	transportOnce sync.Once
-)
+// bearerAuthRoundTripper implements [http.RoundTripper].
+var _ http.RoundTripper = &bearerAuthRoundTripper{}
 
-// getSharedTransportWithProxy returns a singleton HTTP transport configured with GCP proxy settings.
-// This prevents connection pool fragmentation by reusing the same transport across multiple
-// bearerAuthRoundTripper instances.
-func getSharedTransportWithProxy() (*http.Transport, error) {
-	var err error
-	transportOnce.Do(func() {
-		var gcpProxyURL *url.URL
-		gcpProxyURL, err = getGCPProxyURL()
-		if err != nil {
-			err = fmt.Errorf("error getting GCP proxy URL: %w", err)
-			return
-		}
-
-		// Same as http.DefaultTransport, but with proxy support.
-		sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
-	})
-
-	if err != nil {
-		return nil, err
-	}
-	return sharedTransport, nil
-}
-
+// bearerAuthRoundTripper is an HTTP RoundTripper that adds a Bearer token to the Authorization header.
 type bearerAuthRoundTripper struct {
 	base  *http.Transport
 	token string
 }
 
-func NewBearerAuthRoundTripper(token string) (http.RoundTripper, error) {
-	baseTransport, err := getSharedTransportWithProxy()
-	if err != nil {
-		return nil, err
-	}
-
+func newBearerAuthRoundTripper(token string) (http.RoundTripper, error) {
 	return &bearerAuthRoundTripper{
-		base:  baseTransport,
+		base:  sharedTransport,
 		token: token,
 	}, nil
 }
 
+// RoundTrip implements [RoundTripper.RoundTrip].
 func (rt *bearerAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req2 := req.Clone(req.Context())
 	if rt.token != "" {
@@ -374,7 +363,7 @@ func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig ai
 
 	// Use the STS token as the source token for impersonation.
 	// Create an HTTP client with a custom RoundTripper that adds the Bearer token Authorization header.
-	roundTripper, err := NewBearerAuthRoundTripper(stsToken)
+	roundTripper, err := newBearerAuthRoundTripper(stsToken)
 	if err != nil {
 		return nil, fmt.Errorf("error creating BearerAuthRoundTripper: %w", err)
 	}
