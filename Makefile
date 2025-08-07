@@ -11,6 +11,9 @@
 # The Go-based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
+# The Kubernetes deployment targets are defined in Makefile.kube.mk.
+include Makefile.kube.mk
+
 # The list of commands that can be built.
 COMMANDS := controller extproc
 
