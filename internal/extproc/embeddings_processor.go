@@ -255,8 +255,8 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		br = bytes.NewReader(body.Body)
 	}
 
-	code, _ := strconv.Atoi(e.responseHeaders[":status"]) // Assume all responses have a status code.
-	if isGoodStatusCode(code) {
+	// Assume all responses have a valid status code header.
+	if code, _ := strconv.Atoi(e.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
 		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, br)

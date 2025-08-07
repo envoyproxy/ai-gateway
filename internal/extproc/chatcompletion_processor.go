@@ -336,8 +336,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		br = bytes.NewReader(body.Body)
 	}
 
-	code, _ := strconv.Atoi(c.responseHeaders[":status"]) // Assume all responses have a status code.
-	if isGoodStatusCode(code) {
+	// Assume all responses have a valid status code header.
+	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
 		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
