@@ -83,7 +83,7 @@ func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]s
 	if m.returnedSpan != nil {
 		return m.returnedSpan
 	}
-	return tracing.NoopChatCompletionSpan{}
+	return nil
 }
 
 func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
@@ -513,7 +513,7 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseBody(t *testing.T) {
 	t.Run("no ok path with passthrough", func(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
-			span:                tracing.NoopChatCompletionSpan{},
+			span:                nil,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
 		}
 		_, err := p.ProcessResponseHeaders(t.Context(), nil)
@@ -523,7 +523,7 @@ func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResp
 	})
 	t.Run("ok path with upstream filter", func(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
-			span:                tracing.NoopChatCompletionSpan{},
+			span:                nil,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
 			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
 				translator: &mockTranslator{t: t, expHeaders: map[string]string{}},
@@ -550,7 +550,6 @@ func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResp
 }
 
 type mockSpan struct {
-	tracing.NoopChatCompletionSpan
 	recordChunkCalled int
 	endSpanCalled     bool
 	endSpanStatusCode int

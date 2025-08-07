@@ -490,7 +490,7 @@ func configureTracingForTest(t *testing.T) (*testotel.OTLPCollector, trace.Trace
 	provider, propagator, err := configureTracing(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = maybeShutdown(context.Background(), provider)
+		_ = maybeTracerProviderShutdown(context.Background(), provider)
 	})
 
 	return collector, provider.Tracer("test-tracer"), propagator

@@ -161,8 +161,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	c.originalRequestBody = body
 	c.originalRequestBodyRaw = rawBody.Body
 
-	// Tracing may need to inject headers, so create a mutation. This only
-	// occurs when tracing is not noop.
+	// Tracing may need to inject headers, so create a header mutation here.
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
 	}

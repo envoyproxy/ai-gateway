@@ -49,14 +49,3 @@ func TestChatCompletionSpan_EndSpan(t *testing.T) {
 		attribute.Int("respBodyLen", len(respBody)),
 	}, actualSpan.Attributes)
 }
-
-func TestNoopChatCompletionSpan(_ *testing.T) {
-	span := NoopChatCompletionSpan{}
-
-	// Test chunk recording doesn't panic.
-	span.RecordChunk()
-	span.RecordChunk()
-
-	// Test EndSpan doesn't panic.
-	span.EndSpan(200, []byte(respBody))
-}

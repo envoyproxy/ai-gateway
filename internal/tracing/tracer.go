@@ -76,7 +76,7 @@ func (t *chatCompletionTracer) StartSpanAndInjectHeaders(ctx context.Context, he
 		return &chatCompletionSpan{span: span, recorder: recorder}
 	}
 
-	return NoopChatCompletionSpan{}
+	return nil
 }
 
 type headerMutationCarrier struct {

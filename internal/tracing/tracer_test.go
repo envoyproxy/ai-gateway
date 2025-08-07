@@ -167,8 +167,7 @@ func TestNewChatCompletionTracer_Noop(t *testing.T) {
 		[]byte("{}"),
 	)
 
-	// Verify it returns NoopSpan.
-	require.IsType(t, NoopChatCompletionSpan{}, span)
+	require.Nil(t, span)
 
 	// Verify no headers were injected.
 	require.Empty(t, headerMutation.SetHeaders)

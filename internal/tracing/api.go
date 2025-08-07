@@ -81,13 +81,7 @@ type ChatCompletionRecorder interface {
 // NoopChatCompletionTracer is a ChatCompletionTracer that doesn't do anything.
 type NoopChatCompletionTracer struct{}
 
+// StartSpanAndInjectHeaders implements ChatCompletionTracer.StartSpanAndInjectHeaders.
 func (NoopChatCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ChatCompletionRequest, []byte) ChatCompletionSpan {
-	return NoopChatCompletionSpan{}
+	return nil
 }
-
-// NoopChatCompletionSpan is a ChatCompletionSpan that doesn't do anything.
-type NoopChatCompletionSpan struct{}
-
-func (NoopChatCompletionSpan) RecordChunk() {}
-
-func (NoopChatCompletionSpan) EndSpan(int, []byte) {}

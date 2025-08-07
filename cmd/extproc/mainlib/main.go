@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -196,7 +196,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
 		}
-		if err := maybeShutdown(shutdownCtx, tracerProvider); err != nil {
+		if err := maybeTracerProviderShutdown(shutdownCtx, tracerProvider); err != nil {
 			l.Error("Failed to shutdown tracer provider gracefully", "error", err)
 		}
 	}()
@@ -262,13 +262,18 @@ func startMetricsServer(lis net.Listener, logger *slog.Logger) (*http.Server, me
 	return server, meter
 }
 
-// noopTextMapPropagator is a no-op implementation of TextMapPropagator.
+// noopTextMapPropagator is a no-op implementation of [propagation.TextMapPropagator].
 type noopTextMapPropagator struct{}
 
+// Inject implements [propagation.TextMapPropagator.Inject].
 func (noopTextMapPropagator) Inject(context.Context, propagation.TextMapCarrier) {}
+
+// Extract implements [propagation.TextMapPropagator.Extract].
 func (noopTextMapPropagator) Extract(ctx context.Context, _ propagation.TextMapCarrier) context.Context {
 	return ctx
 }
+
+// Fields implements [propagation.TextMapPropagator.Fields] and returns an empty slice.
 func (noopTextMapPropagator) Fields() []string { return nil }
 
 // configureTracing configures OpenTelemetry tracing based on environment
@@ -276,7 +281,7 @@ func (noopTextMapPropagator) Fields() []string { return nil }
 //
 // When tracing is disabled, returns a noop.TracerProvider provider and no-op
 // propagation.TextMapPropagator.
-func configureTracing(ctx context.Context) (trace.TracerProvider, propagation.TextMapPropagator, error) {
+func configureTracing(ctx context.Context) (oteltrace.TracerProvider, propagation.TextMapPropagator, error) {
 	// Check if tracing is explicitly disabled via environment variable.
 	if os.Getenv("OTEL_SDK_DISABLED") == "true" || os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
 		return noop.TracerProvider{}, noopTextMapPropagator{}, nil
@@ -299,7 +304,7 @@ func configureTracing(ctx context.Context) (trace.TracerProvider, propagation.Te
 	return tp, propagator, nil
 }
 
-func maybeShutdown(ctx context.Context, tracerProvider trace.TracerProvider) error {
+func maybeTracerProviderShutdown(ctx context.Context, tracerProvider oteltrace.TracerProvider) error {
 	if tp, ok := tracerProvider.(*sdktrace.TracerProvider); ok {
 		return tp.Shutdown(ctx)
 	}
