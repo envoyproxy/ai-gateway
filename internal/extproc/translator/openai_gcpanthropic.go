@@ -575,6 +575,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	}
 	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVersion)
 
+	fmt.Printf("DEBUG OpenAI->GCP: Final body: %s\n", string(body))
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
 	return
 }

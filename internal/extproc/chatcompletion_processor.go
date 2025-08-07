@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/filterapi/x"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -134,8 +135,9 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	var body *openai.ChatCompletionRequest
 	var err error
 
-	if c.config.schema.Name == filterapi.APISchemaOpenAI {
-		// Parse as OpenAI format
+	switch c.config.schema.Name {
+	case filterapi.APISchemaOpenAI:
+		// Parse as OpenAI format.
 		model, body, err = parseOpenAIChatCompletionBody(rawBody)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse OpenAI request body: %w", err)
@@ -155,15 +157,15 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 			// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
 			// setting this option to false means that clients are trying to escape that rule.
 		}
-	} else if c.config.schema.Name == filterapi.APISchemaAnthropic {
-		// Parse as Anthropic format to extract model name
+	case filterapi.APISchemaAnthropic:
+		// Parse as Anthropic format to extract model name.
 		model, err = parseAnthropicModelName(rawBody)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Anthropic request body: %w", err)
 		}
-		// For Anthropic input, we don't need to parse into OpenAI struct
+		// For Anthropic input, we don't need to parse into OpenAI struct.
 		body = nil
-	} else {
+	default:
 		return nil, fmt.Errorf("unsupported input schema: %s", c.config.schema.Name)
 func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
@@ -242,7 +244,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.ChatCompletionMetrics
+	metrics x.ChatCompletionMetrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
 	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
@@ -251,11 +253,12 @@ type chatCompletionProcessorUpstreamFilter struct {
 
 // selectTranslator selects the translator based on the input and output schemas.
 func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
-	// Select translator based on input schema (config) and output schema (backend)
+	// Select translator based on input schema (config) and output schema (backend).
 	inputSchema := c.config.schema.Name
 
-	if inputSchema == filterapi.APISchemaOpenAI {
-		// OpenAI input → various outputs
+	switch inputSchema {
+	case filterapi.APISchemaOpenAI:
+		// OpenAI input → various outputs.
 		switch out.Name {
 		case filterapi.APISchemaOpenAI:
 			c.translator = translator.NewChatCompletionOpenAIToOpenAITranslator(out.Version, c.modelNameOverride)
@@ -270,23 +273,19 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 		default:
 			return fmt.Errorf("unsupported API schema: input=OpenAI, output=%s", out.Name)
 		}
-	} else if inputSchema == filterapi.APISchemaAnthropic {
-		// Anthropic input → various outputs
+	case filterapi.APISchemaAnthropic:
+		// Anthropic input → various outputs.
 		switch out.Name {
 		case filterapi.APISchemaAnthropic:
-			// TODO: Implement Anthropic → Anthropic passthrough translator
-			return fmt.Errorf("Anthropic → Anthropic translator not implemented yet")
+			// TODO: Implement Anthropic → Anthropic passthrough translator.
+			return fmt.Errorf("anthropic → anthropic translator not implemented yet")
 		case filterapi.APISchemaGCPAnthropic:
-			// For Anthropic → GCP Anthropic, use a simple passthrough translator
+			// For Anthropic → GCP Anthropic, use a simple passthrough translator.
 			c.translator = translator.NewAnthropicToGCPAnthropicTranslator(c.modelNameOverride)
-		case filterapi.APISchemaAWSBedrock:
-			// For Anthropic → AWS Bedrock, use InvokeModel API with minimal translation
-			slog.Error("DEBUG: Creating AnthropicToAWSInvokeModelTranslator", "model", c.modelNameOverride)
-			c.translator = translator.NewAnthropicToAWSInvokeModelTranslator(c.modelNameOverride)
 		default:
 			return fmt.Errorf("unsupported API schema: input=Anthropic, output=%s", out.Name)
 		}
-	} else {
+	default:
 		return fmt.Errorf("unsupported input API schema: %s", inputSchema)
 	}
 	return nil
@@ -501,12 +500,12 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 
-	// Determine if this is a streaming request
+	// Determine if this is a streaming request.
 	if c.originalRequestBody != nil {
-		// For OpenAI requests, use the parsed struct
+		// For OpenAI requests, use the parsed struct.
 		c.stream = c.originalRequestBody.Stream
 	} else {
-		// For Anthropic requests, parse the raw body to check for stream field
+		// For Anthropic requests, parse the raw body to check for stream field.
 		c.stream = isStreamingRequest(c.originalRequestBodyRaw)
 	}
 	if isEndpointPicker {

@@ -64,17 +64,18 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 			require.NotNil(t, headerMutation)
 			require.NotNil(t, bodyMutation)
 
-			// Check path header contains expected model
+			// Check path header contains expected model.
 			pathHeader := headerMutation.SetHeaders[0]
 			require.Equal(t, ":path", pathHeader.Header.Key)
 			expectedPath := "publishers/anthropic/models/" + tt.expectedInPath + ":rawPredict"
 			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
 
-			// Check body contains expected model
+			// Check that model field is removed from body (since it's in the path).
 			var modifiedReq map[string]interface{}
 			err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedModel, modifiedReq["model"])
+			_, hasModel := modifiedReq["model"]
+			assert.False(t, hasModel, "model field should be removed from request body")
 		})
 	}
 }
@@ -126,7 +127,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_AnthropicVersionField(t *
 			require.NoError(t, err)
 			require.NotNil(t, bodyMutation)
 
-			// Check anthropic_version in body
+			// Check anthropic_version in body.
 			var modifiedReq map[string]interface{}
 			err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
 			require.NoError(t, err)
@@ -186,7 +187,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 
-			// Check path contains expected specifier
+			// Check path contains expected specifier.
 			pathHeader := headerMutation.SetHeaders[0]
 			expectedPath := "publishers/anthropic/models/claude-3-sonnet-20240229:" + tt.expectedSpecifier
 			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
@@ -197,7 +198,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("")
 
-	// Test that all fields are passed through unchanged (except model and anthropic_version)
+	// Test that all fields are passed through unchanged (except model and anthropic_version).
 	reqBody := map[string]interface{}{
 		"model": "claude-3-sonnet-20240229",
 		"messages": []map[string]interface{}{
@@ -226,7 +227,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 		},
 		"tool_choice": map[string]interface{}{"type": "auto"},
 		"metadata":    map[string]interface{}{"user_id": "test123"},
-		// Custom fields should also pass through
+		// Custom fields should also pass through.
 		"custom_field":   "custom_value",
 		"another_custom": 123,
 	}
@@ -242,40 +243,40 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
 	require.NoError(t, err)
 
-	// Verify all fields are preserved (note: JSON unmarshalling converts types)
-	// Messages should be preserved
+	// Messages should be preserved.
 	assert.Len(t, modifiedReq["messages"], 3)
 
-	// Numeric fields get converted to float64 by JSON unmarshalling
+	// Numeric fields get converted to float64 by JSON unmarshalling.
 	assert.Equal(t, float64(1000), modifiedReq["max_tokens"])
 	assert.Equal(t, 0.7, modifiedReq["temperature"])
 	assert.Equal(t, 0.95, modifiedReq["top_p"])
 	assert.Equal(t, float64(40), modifiedReq["top_k"])
 	assert.Equal(t, float64(123), modifiedReq["another_custom"])
 
-	// Arrays become []interface{} by JSON unmarshalling
+	// Arrays become []interface{} by JSON unmarshalling.
 	stopSeq, ok := modifiedReq["stop_sequences"].([]interface{})
 	assert.True(t, ok)
 	assert.Len(t, stopSeq, 2)
 	assert.Equal(t, "Human:", stopSeq[0])
 	assert.Equal(t, "Assistant:", stopSeq[1])
 
-	// Boolean values are preserved
+	// Boolean values are preserved.
 	assert.Equal(t, false, modifiedReq["stream"])
 
-	// String values are preserved
+	// String values are preserved.
 	assert.Equal(t, reqBody["system"], modifiedReq["system"])
 	assert.Equal(t, reqBody["custom_field"], modifiedReq["custom_field"])
 
-	// Complex objects should be preserved as maps
+	// Complex objects should be preserved as maps.
 	assert.NotNil(t, modifiedReq["tools"])
 	assert.NotNil(t, modifiedReq["tool_choice"])
 	assert.NotNil(t, modifiedReq["metadata"])
 
-	// Verify model is present (may be overridden)
-	assert.NotEmpty(t, modifiedReq["model"])
+	// Verify model field is removed from body (it's in the path instead).
+	_, hasModel := modifiedReq["model"]
+	assert.False(t, hasModel, "model field should be removed from request body")
 
-	// Verify anthropic_version is added
+	// Verify anthropic_version is added.
 	assert.Equal(t, anthropicVertex.DefaultVersion, modifiedReq["anthropic_version"])
 }
 
@@ -284,7 +285,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelFallback(t *testing.
 
 	reqBody := map[string]interface{}{
 		"messages": []map[string]interface{}{{"role": "user", "content": "Test"}},
-		// No model field
+		// No model field.
 	}
 
 	rawBody, err := json.Marshal(reqBody)
@@ -294,7 +295,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelFallback(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, headerMutation)
 
-	// Should use default fallback model in path
+	// Should use default fallback model in path.
 	pathHeader := headerMutation.SetHeaders[0]
 	expectedPath := "publishers/anthropic/models/claude-3-5-sonnet-20241022:rawPredict"
 	assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
@@ -306,7 +307,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_InvalidJSON(t *testing.T)
 	invalidJSON := []byte(`{"invalid": json"}`)
 
 	_, _, err := translator.RequestBody(invalidJSON, nil, false)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to unmarshal Anthropic request")
 }
 
@@ -334,7 +335,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			headerMutation, err := translator.ResponseHeaders(tt.headers)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Nil(t, headerMutation, "ResponseHeaders should return nil for passthrough")
 		})
 	}
@@ -405,7 +406,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_TokenUsageExtraction(t *
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Marshal response body
+			// Marshal response body.
 			respBody, err := json.Marshal(tt.responseBody)
 			require.NoError(t, err)
 
@@ -415,22 +416,22 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_TokenUsageExtraction(t *
 			headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream)
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedTokenUsage, tokenUsage)
 
 			if tt.endOfStream {
-				// For end of stream, should have mutations
+				// For end of stream, should have mutations.
 				assert.NotNil(t, headerMutation)
 				assert.NotNil(t, bodyMutation)
 
-				// Body should be passed through unchanged
+				// Body should be passed through unchanged.
 				assert.Equal(t, respBody, bodyMutation.GetBody())
 
-				// Content-Length header should be set
+				// Content-Length header should be set.
 				contentLengthSet := false
 				for _, header := range headerMutation.SetHeaders {
 					if header.Header.Key == "content-length" {
@@ -440,7 +441,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_TokenUsageExtraction(t *
 				}
 				assert.True(t, contentLengthSet, "Content-Length header should be set")
 			} else {
-				// For non-end of stream, should return nil mutations
+				// For non-end of stream, should return nil mutations.
 				assert.Nil(t, headerMutation)
 				assert.Nil(t, bodyMutation)
 			}
@@ -457,37 +458,37 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_InvalidJSON(t *testing.T
 
 	headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, true)
 
-	// Should not error, but should pass through as-is with empty token usage
-	assert.NoError(t, err)
+	// Should not error, but should pass through as-is with empty token usage.
+	require.NoError(t, err)
 	assert.NotNil(t, bodyMutation)
-	assert.Equal(t, invalidJSON, bodyMutation.GetBody())
+	assert.JSONEq(t, string(invalidJSON), string(bodyMutation.GetBody()))
 	assert.Equal(t, LLMTokenUsage{}, tokenUsage)
-	assert.Nil(t, headerMutation) // No content-length header for invalid JSON
+	assert.Nil(t, headerMutation) // No content-length header for invalid JSON.
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ReadError(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("")
 
-	// Create a reader that will fail
+	// Create a reader that will fail.
 	errorReader := &errorReader{}
 	respHeaders := map[string]string{"content-type": "application/json"}
 
 	_, _, _, err := translator.ResponseBody(respHeaders, errorReader, true)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read response body")
 }
 
-// errorReader implements io.Reader but always returns an error
+// errorReader implements io.Reader but always returns an error.
 type errorReader struct{}
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, io.ErrUnexpectedEOF
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("")
 
-	// Test response with zero token usage
+	// Test response with zero token usage.
 	respBody := anthropic.Message{
 		ID:      "msg_zero",
 		Type:    "message",
@@ -507,7 +508,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	respHeaders := map[string]string{"content-type": "application/json"}
 
 	_, _, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, true)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	expectedUsage := LLMTokenUsage{
 		InputTokens:  0,

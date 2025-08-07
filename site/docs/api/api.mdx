@@ -660,6 +660,11 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaGCPAnthropic is the schema followed by Anthropic models hosted on GCP's Vertex AI platform.<br />This is majorly the Anthropic API with some GCP specific parameters as described in below URL.<br />https://docs.anthropic.com/en/api/claude-on-vertex-ai<br />"
 /><ApiField
+  name="GCPAnthropicToNative"
+  type="enum"
+  required="false"
+  description="APISchemaGCPAnthropicToNative represents GCP Anthropic with native Anthropic output format.<br />Used for Claude models hosted on Google Cloud Vertex AI that should return native Anthropic format.<br />"
+/><ApiField
   name="Anthropic"
   type="enum"
   required="false"
