@@ -345,7 +345,6 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		// Get the response body with endOfStream = true.
 		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
@@ -368,7 +367,6 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 			}
 		}
 
-		// Now, assert against the parsed Go struct, which is immune to field order.
 		require.NotEmpty(t, finalToolCallChunk.Choices, "Final chunk should have choices")
 		require.NotNil(t, finalToolCallChunk.Choices[0].Delta.ToolCalls, "Final chunk should have tool calls")
 
@@ -376,6 +374,84 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		require.Equal(t, "tool_abc", *finalToolCall.ID)
 		require.Equal(t, "get_weather", finalToolCall.Function.Name)
 		require.JSONEq(t, `{"location": "SF"}`, finalToolCall.Function.Arguments)
+	})
+	t.Run("handles  thinking and tool use stream", func(t *testing.T) {
+		sseStream := `
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "usage": {"input_tokens": 50, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "name": "web_searcher"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "text": "Searching for information..."}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_abc123", "name": "get_weather", "input": {"location": "San Francisco, CA"}}}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 35}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm.GetBody())
+
+		var contentDeltas []string
+		var foundToolCallWithArgs bool
+		var finalFinishReason openai.ChatCompletionChoicesFinishReason
+
+		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			choice := chunk.Choices[0]
+			if choice.Delta != nil {
+				if choice.Delta.Content != nil {
+					contentDeltas = append(contentDeltas, *choice.Delta.Content)
+				}
+				if len(choice.Delta.ToolCalls) > 0 {
+					toolCall := choice.Delta.ToolCalls[0]
+					// Check if this is the tool chunk that contains the arguments.
+					if toolCall.Function.Arguments != "" {
+						expectedArgs := `{"location":"San Francisco, CA"}`
+						assert.JSONEq(t, expectedArgs, toolCall.Function.Arguments, "Tool call arguments do not match")
+						assert.Equal(t, "get_weather", toolCall.Function.Name)
+						assert.Equal(t, "toolu_abc123", *toolCall.ID)
+						foundToolCallWithArgs = true
+					}
+				}
+			}
+			if choice.FinishReason != "" {
+				finalFinishReason = choice.FinishReason
+			}
+		}
+
+		fullContent := strings.Join(contentDeltas, "")
+		assert.Contains(t, fullContent, "Searching for information...")
+		require.True(t, foundToolCallWithArgs, "Did not find a tool call chunk with arguments to assert against")
+		assert.Equal(t, openai.ChatCompletionChoicesFinishReasonToolCalls, finalFinishReason, "Final finish reason should be 'tool_calls'")
 	})
 }
 
@@ -495,22 +571,6 @@ data: {"type": "message_stop"}
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		require.Contains(t, string(bm.GetBody()), `"finish_reason":"length"`)
-	})
-
-	t.Run("handles thinking event", func(t *testing.T) {
-		sseStream := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta"}}
-
-event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}
-
-`
-		bm, _, err := runStreamTest(t, sseStream, false)
-		require.NoError(t, err)
-		require.Empty(t, bm.GetBody(), "thinking events should be ignored and produce an empty chunk")
 	})
 
 	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {

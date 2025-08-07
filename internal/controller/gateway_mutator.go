@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -108,6 +110,19 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	}
 
 	podspec := &pod.Spec
+
+	// Check if the config secret is already created. If not, let's skip the mutation for this pod to avoid blocking the Envoy pod creation.
+	// The config secret will be eventually created by the controller, and that will trigger the mutation for new pods since the Gateway controller
+	// will update the pod annotation in the deployment/daemonset template once it creates the config secret.
+	_, err = g.kube.CoreV1().Secrets(pod.Namespace).Get(ctx,
+		FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace), metav1.GetOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		g.logger.Info("filter config secret not found, skipping mutation",
+			"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to get filter config secret: %w", err)
+	}
 
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)

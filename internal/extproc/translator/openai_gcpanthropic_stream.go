@@ -14,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -22,6 +23,7 @@ var (
 	sseEventPrefix = []byte("event:")
 	sseDataPrefix  = []byte("data: ")
 	sseDoneMessage = []byte("[DONE]")
+	emptyStrPtr    = ptr.To("")
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -196,10 +198,21 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.ToolUse]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.ServerToolUse]()) {
 			toolIdx := int(event.Index)
+			var argsJSON string
+			// Check if the input field is provided directly in the start event.
+			if event.ContentBlock.Input != nil {
+				argsBytes, err := json.Marshal(event.ContentBlock.Input)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal tool use input: %w", err)
+				}
+				argsJSON = string(argsBytes)
+			}
+
+			// Store the complete input JSON in our state.
 			p.activeToolCalls[toolIdx] = &streamingToolCall{
 				id:        event.ContentBlock.ID,
 				name:      event.ContentBlock.Name,
-				inputJSON: "",
+				inputJSON: argsJSON,
 			}
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
@@ -209,12 +222,20 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 						Type:  openai.ChatCompletionMessageToolCallTypeFunction,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name: event.ContentBlock.Name,
+							// Include the arguments if they are available.
+							Arguments: argsJSON,
 						},
 					},
 				},
 			}
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
-		} else if event.ContentBlock.Type == string(constant.ValueOf[constant.Thinking]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.RedactedThinking]()) {
+		}
+		if event.ContentBlock.Type == string(constant.ValueOf[constant.Thinking]()) {
+			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: emptyStrPtr}
+			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+		}
+
+		if event.ContentBlock.Type == string(constant.ValueOf[constant.RedactedThinking]()) {
 			// This is a latency-hiding event, ignore it.
 			return nil, nil
 		}
@@ -238,7 +259,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal content_block_delta: %w", err)
 		}
 		switch event.Delta.Type {
-		case string(constant.ValueOf[constant.TextDelta]()):
+		case string(constant.ValueOf[constant.TextDelta]()), string(constant.ValueOf[constant.ThinkingDelta]()):
+			// Treat thinking_delta just like a text_delta.
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: &event.Delta.Text}
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		case string(constant.ValueOf[constant.InputJSONDelta]()):
@@ -259,9 +281,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			}
 			tool.inputJSON += event.Delta.PartialJSON
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
-		case string(constant.ValueOf[constant.ThinkingDelta]()):
-			// This is a latency-hiding event, ignore it.
-			return nil, nil
 		}
 
 	case string(constant.ValueOf[constant.ContentBlockStop]()):

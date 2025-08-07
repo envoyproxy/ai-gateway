@@ -53,7 +53,7 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, "/var/run/translate.sock", stderrLogger)
+	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -168,7 +168,6 @@ func translateCustomResourceObjects(
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
-	extProcUDSPath string,
 	logger *slog.Logger,
 ) (
 	fakeClient client.Client,
@@ -210,7 +209,7 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		extProcUDSPath, "docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
 			return "aigw-translate"
 		},
 	)

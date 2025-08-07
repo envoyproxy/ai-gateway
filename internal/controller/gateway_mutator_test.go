@@ -79,6 +79,20 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			Containers: []corev1.Container{{Name: "envoy"}},
 		},
 	}
+	// At this point, the config secret does not exist, so the pod should not be mutated.
 	err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
 	require.NoError(t, err)
+	require.Len(t, pod.Spec.Containers, 1)
+
+	// Create the config secret and mutate the pod again.
+	_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+				gwName, gwNamespace,
+			), Namespace: "test-namespace"},
+		}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, pod.Spec.Containers, 2)
 }

@@ -31,6 +31,7 @@ concurrency:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   unittest:
@@ -71,6 +72,15 @@ jobs:
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
         run: make test-coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5.4.3
+        with:
+          fail_ci_if_error: true
+          files: ./out/go-test-coverage.out
+          name: codecov-envoy-ai-gateway
+          verbose: true
+          # https://github.com/codecov/codecov-action/issues/1594#issuecomment-2394913029
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   test_crdcel:
     name: CRD CEL Validation Test

@@ -224,7 +224,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		}
 	}
 
-	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.udsPath, runCtx.stderrLogger)
+	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error translating: %w", err)
 	}
