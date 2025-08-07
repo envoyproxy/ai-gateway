@@ -8,7 +8,6 @@ package rotators
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -248,6 +247,8 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
 func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+	// This step does not pass the token via the auth header.
+	// The empty string implies that the auth header will be skipped.
 	roundTripper, err := NewBearerAuthRoundTripper("")
 	if err != nil {
 		return nil, fmt.Errorf("error creating HTTP transport for STS token exchange: %w", err)
@@ -316,18 +317,7 @@ func getSharedTransportWithProxy() (*http.Transport, error) {
 		}
 
 		// Same as http.DefaultTransport, but with proxy support.
-		sharedTransport = &http.Transport{
-			Proxy: http.ProxyURL(gcpProxyURL),
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
+		sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 	})
 
 	if err != nil {
