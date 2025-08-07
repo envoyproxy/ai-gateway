@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,23 +20,19 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
-	"github.com/envoyproxy/ai-gateway/filterapi/x"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // MessagesProcessorFactory returns a factory for the Anthropic /v1/messages endpoint.
 //
-// Configuration: Accepts OpenAI schema config for infrastructure compatibility.
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(ccm x.ChatCompletionMetrics) ProcessorFactory {
+func MessagesProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
-		// Accept OpenAI schema config for infrastructure compatibility.
-		if config.schema.Name != filterapi.APISchemaOpenAI {
-			return nil, fmt.Errorf("unsupported API schema for messages endpoint: %s", config.schema.Name)
-		}
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &messagesProcessorRouterFilter{
@@ -62,6 +59,7 @@ type messagesProcessorRouterFilter struct {
 	logger                 *slog.Logger
 	config                 *processorConfig
 	requestHeaders         map[string]string
+	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
 	upstreamFilterCount    int
 }
@@ -74,12 +72,13 @@ func (c *messagesProcessorRouterFilter) ProcessRequestHeaders(_ context.Context,
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *messagesProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	// Parse Anthropic request - natural validation.
-	model, err := parseAnthropicModelName(rawBody)
+	model, body, err := parseAnthropicMessagesBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("/v1/messages endpoint requires Anthropic format: %w", err)
 	}
 
 	c.requestHeaders[c.config.modelNameHeaderKey] = model
+	c.originalRequestBody = body
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
@@ -140,11 +139,12 @@ type messagesProcessorUpstreamFilter struct {
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
+	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
 	translator             translator.OpenAIChatCompletionTranslator
 	onRetry                bool
 	stream                 bool
-	metrics                x.ChatCompletionMetrics
+	metrics                metrics.ChatCompletionMetrics
 	costs                  translator.LLMTokenUsage
 }
 
@@ -342,11 +342,12 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
+	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 
-	// Determine if this is a streaming request by parsing the Anthropic request.
-	c.stream = isStreamingRequest(c.originalRequestBodyRaw)
+	// Determine if this is a streaming request from the parsed body.
+	c.stream = rp.originalRequestBody.Stream
 	if isEndpointPicker {
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
@@ -367,4 +368,18 @@ func (c *messagesProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata
 	}
 	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
 	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
+}
+
+// parseAnthropicMessagesBody parses the Anthropic Messages API request body.
+func parseAnthropicMessagesBody(body *extprocv3.HttpBody) (modelName string, req *anthropic.MessagesRequest, err error) {
+	var anthropicReq anthropic.MessagesRequest
+	if err := json.Unmarshal(body.Body, &anthropicReq); err != nil {
+		return "", nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
+	}
+
+	if anthropicReq.Model == "" {
+		return "", nil, fmt.Errorf("model field is required in Anthropic request")
+	}
+
+	return anthropicReq.Model, &anthropicReq, nil
 }
