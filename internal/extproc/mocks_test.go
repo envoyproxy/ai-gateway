@@ -284,6 +284,11 @@ func (m mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reade
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
 }
 
+// ResponseError implements [translator.OpenAIEmbeddingTranslator].
+func (m mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+	return nil, nil, nil
+}
+
 // mockEmbeddingsMetrics implements [x.EmbeddingsMetrics] for testing.
 type mockEmbeddingsMetrics struct {
 	requestStart        time.Time
