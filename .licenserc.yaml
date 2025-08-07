@@ -29,6 +29,7 @@ header:
     - '.codespell.*'
     - .editorconfig
     - .golangci.yml
+    - .testcoverage.yml
     - '.yamllint*'
     - LICENSE
     - CODEOWNERS
