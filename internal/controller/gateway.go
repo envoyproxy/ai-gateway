@@ -46,7 +46,7 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	udsPath, extProcImage string, standAlone bool, uuidFn func() string,
+	extProcImage string, standAlone bool, uuidFn func() string,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -56,7 +56,6 @@ func NewGatewayController(
 		client:       client,
 		kube:         kube,
 		logger:       logger,
-		udsPath:      udsPath,
 		extProcImage: extProcImage,
 		standAlone:   standAlone,
 		uuidFn:       uf,
@@ -68,7 +67,6 @@ type GatewayController struct {
 	client       client.Client
 	kube         kubernetes.Interface
 	logger       logr.Logger
-	udsPath      string
 	extProcImage string // The image of the external processor sidecar container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
