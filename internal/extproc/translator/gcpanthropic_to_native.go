@@ -41,16 +41,12 @@ func (a *gcpAnthropicToNativeTranslator) RequestBody(raw []byte, _ *openai.ChatC
 		return nil, nil, fmt.Errorf("failed to unmarshal Anthropic request: %w", err)
 	}
 
-	fmt.Printf("DEBUG [GCPAnthropicToNative]: Original request body: %s\n", string(raw))
-
 	// Apply model name override if configured.
 	if a.modelNameOverride != "" {
-		fmt.Printf("DEBUG [GCPAnthropicToNative]: Applying model override: %s\n", a.modelNameOverride)
 		anthropicReq["model"] = a.modelNameOverride
 	}
 
 	modelName := anthropicReq["model"].(string)
-	fmt.Printf("DEBUG [GCPAnthropicToNative]: Extracted model name: %s\n", modelName)
 
 	// Remove model field from request body since it is specified in the URL path.
 	delete(anthropicReq, "model")
@@ -65,8 +61,6 @@ func (a *gcpAnthropicToNativeTranslator) RequestBody(raw []byte, _ *openai.ChatC
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal modified request: %w", err)
 	}
-
-	fmt.Printf("DEBUG [GCPAnthropicToNative]: Final request body: %s\n", string(body))
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"

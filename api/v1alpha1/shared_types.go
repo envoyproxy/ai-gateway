@@ -15,7 +15,7 @@ package v1alpha1
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;GCPAnthropicToNative;Anthropic
+	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -57,14 +57,11 @@ const (
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en
 	APISchemaGCPVertexAI APISchema = "GCPVertexAI"
-	// APISchemaGCPAnthropic is the schema followed by Anthropic models hosted on GCP's Vertex AI platform.
-	// This is majorly the Anthropic API with some GCP specific parameters as described in below URL.
+	// APISchemaGCPAnthropic is the schema for Anthropic models hosted on GCP's Vertex AI platform.
+	// Returns native Anthropic format responses for seamless integration.
 	//
 	// https://docs.anthropic.com/en/api/claude-on-vertex-ai
 	APISchemaGCPAnthropic APISchema = "GCPAnthropic"
-	// APISchemaGCPAnthropicToNative represents GCP Anthropic with native Anthropic output format.
-	// Used for Claude models hosted on Google Cloud Vertex AI that should return native Anthropic format.
-	APISchemaGCPAnthropicToNative APISchema = "GCPAnthropicToNative"
 	// APISchemaAnthropic is the native Anthropic API schema.
 	//
 	// https://docs.anthropic.com/en/api/messages

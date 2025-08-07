@@ -150,18 +150,18 @@ type messagesProcessorUpstreamFilter struct {
 
 // selectTranslator selects the translator based on the output schema.
 func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
-	// Messages processor only supports Anthropic-preserving translators.
+	// Messages processor only supports Anthropic-native translators.
 	switch out.Name {
+	case filterapi.APISchemaAnthropic:
+		// Native Anthropic → Native Anthropic (direct passthrough).
+		// TODO: Implement native Anthropic passthrough translator.
+		return fmt.Errorf("native Anthropic → Anthropic passthrough translator not implemented yet")
 	case filterapi.APISchemaGCPAnthropic:
-		// Anthropic → GCP Anthropic (preserves Anthropic format).
-		c.translator = translator.NewAnthropicToGCPAnthropicTranslator(c.modelNameOverride)
-		return nil
-	case filterapi.APISchemaGCPAnthropicToNative:
 		// Anthropic → GCP Anthropic → Native Anthropic (ensures native Anthropic output).
 		c.translator = translator.NewGCPAnthropicToNativeAnthropicTranslator(c.modelNameOverride)
 		return nil
 	default:
-		return fmt.Errorf("/v1/messages endpoint only supports backends that preserve Anthropic format (GCPAnthropic, GCPAnthropicToNative). Backend %s uses different model format", out.Name)
+		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic). Backend %s uses different model format", out.Name)
 	}
 }
 
