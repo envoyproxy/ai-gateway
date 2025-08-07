@@ -379,16 +379,22 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		sseStream := `
 event: message_start
 data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "usage": {"input_tokens": 50, "output_tokens": 1}}}
+
 event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "name": "web_searcher"}}
+
 event: content_block_delta
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "text": "Searching for information..."}}
+
 event: content_block_stop
 data: {"type": "content_block_stop", "index": 0}
+
 event: content_block_start
 data: {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_abc123", "name": "get_weather", "input": {"location": "San Francisco, CA"}}}
+
 event: message_delta
 data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 35}}
+
 event: message_stop
 data: {"type": "message_stop"}
 `
