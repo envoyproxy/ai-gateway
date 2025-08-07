@@ -134,6 +134,11 @@ type ConverseInput struct {
 	// is not in the model response, it is ignored by Converse.
 	AdditionalModelResponseFieldPaths []*string `json:"additionalModelResponseFieldPaths,omitempty"`
 
+	// Additional inference parameters that the model supports, beyond the base set of inference parameters
+	// that Converse and ConverseStream support in the inferenceConfig field.
+	// For more information, see https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters.html.
+	AdditionalModelRequestFields map[string]interface{} `json:"additionalModelRequestFieldPaths,omitempty"`
+
 	// Configuration information for a guardrail that you want to use in the request.
 	GuardrailConfig *GuardrailConfiguration `json:"guardrailConfig,omitempty"`
 
