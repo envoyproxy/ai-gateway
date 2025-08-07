@@ -1,6 +1,6 @@
 # This is the configuration file for https://github.com/vladopajic/go-test-coverage
 
-profile: coverage.xml
+profile: ./out/go-test-coverage.out
 local-prefix: "github.com/envoyproxy/ai-gateway/"
 
 threshold:

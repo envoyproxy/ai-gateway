@@ -7,7 +7,6 @@ out/
 *for_tests.yaml
 .vscode
 .makerc
-coverage.xml
 
 # This is the placeholder for the access log file during extproc tests.
 ACCESS_LOG_PATH
