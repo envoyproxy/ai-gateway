@@ -23,6 +23,7 @@ var (
 	sseEventPrefix = []byte("event:")
 	sseDataPrefix  = []byte("data: ")
 	sseDoneMessage = []byte("[DONE]")
+	emptyStrPtr    = ptr.To("")
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -230,7 +231,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		}
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.Thinking]()) {
-			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: ptr.To("")}
+			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: emptyStrPtr}
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		}
 
