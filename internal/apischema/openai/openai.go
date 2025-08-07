@@ -442,12 +442,14 @@ type ChatCompletionMessageToolCallFunctionParam struct {
 }
 
 type ChatCompletionMessageToolCallParam struct {
+	// Add this Index field. It is required for streaming.
+	Index *int `json:"index,omitempty"`
 	// The ID of the tool call.
-	ID string `json:"id"`
+	ID *string `json:"id"`
 	// The function that the model called.
 	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
 	// The type of the tool. Currently, only `function` is supported.
-	Type ChatCompletionMessageToolCallType `json:"type"`
+	Type ChatCompletionMessageToolCallType `json:"type,omitempty"`
 }
 
 type ChatCompletionResponseFormatType string
@@ -1006,7 +1008,7 @@ type ChatCompletionResponseChunkChoice struct {
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
 	Content   *string                              `json:"content,omitempty"`
-	Role      string                               `json:"role"`
+	Role      string                               `json:"role,omitempty"`
 	ToolCalls []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 }
 

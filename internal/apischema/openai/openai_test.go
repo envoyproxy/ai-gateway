@@ -951,7 +951,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 				Role: "assistant",
 				ToolCalls: []ChatCompletionMessageToolCallParam{
 					{
-						ID:   "tooluse_QklrEHKjRu6Oc4BQUfy7ZQ",
+						ID:   ptr.To("tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"),
 						Type: "function",
 						Function: ChatCompletionMessageToolCallFunctionParam{
 							Name:      "cosine",

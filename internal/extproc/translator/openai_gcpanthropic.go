@@ -9,7 +9,6 @@ import (
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
@@ -33,8 +33,6 @@ const (
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
-var errStreamingNotSupported = errors.New("streaming is not yet supported for GCP Anthropic translation")
-
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
 func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
@@ -47,6 +45,7 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride string
+	streamParser      *anthropicStreamParser
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -364,7 +363,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 			return
 		}
 		toolUse := anthropic.ToolUseBlockParam{
-			ID:    toolCall.ID,
+			ID:    *toolCall.ID,
 			Type:  "tool_use",
 			Name:  toolCall.Function.Name,
 			Input: input,
@@ -555,21 +554,19 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	// TODO: add stream support.
-
-	// GCP VERTEX PATH.
-	specifier := "rawPredict"
-	if openAIReq.Stream {
-		// TODO: specifier = "streamRawPredict" - use this when implementing streaming.
-		err = errStreamingNotSupported
-		return
-	}
-
 	modelName := openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
 		modelName = o.modelNameOverride
 	}
+
+	// GCP VERTEX PATH.
+	specifier := "rawPredict"
+	if openAIReq.Stream {
+		specifier = "streamRawPredict"
+		o.streamParser = newAnthropicStreamParser(modelName)
+	}
+
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
@@ -648,7 +645,7 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
 	}
 	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-		ID:   block.ID,
+		ID:   &block.ID,
 		Type: openai.ChatCompletionMessageToolCallTypeFunction,
 		Function: openai.ChatCompletionMessageToolCallFunctionParam{
 			Name:      block.Name,
@@ -660,19 +657,29 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 }
 
 // ResponseHeaders implements [Translator.ResponseHeaders].
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(headers map[string]string) (
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
-	// TODO: Implement if needed.
-	_ = headers
-	return nil, nil
+	if o.streamParser != nil {
+		// For streaming responses, set content-type to text/event-stream to match OpenAI API.
+		headerMutation = &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{
+				{Header: &corev3.HeaderValue{Key: contentTypeHeaderName, Value: eventStreamContentType}},
+			},
+		}
+	}
+	return
 }
 
 // ResponseBody implements [Translator.ResponseBody] for GCP Anthropic.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	_ = endOfStream
+	// If a stream parser was initialized, this is a streaming request.
+	if o.streamParser != nil {
+		return o.streamParser.Process(body, endOfStream)
+	}
+
 	if statusStr, ok := respHeaders[statusHeaderName]; ok {
 		var status int
 		// Use the outer 'err' to catch parsing errors.

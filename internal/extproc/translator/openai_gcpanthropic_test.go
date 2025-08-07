@@ -141,7 +141,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, thirdMsg, gjson.GetBytes(body, "messages.0.content.0.text").String())
 	})
 
-	t.Run("Streaming Request Error", func(t *testing.T) {
+	t.Run("Streaming Request Path", func(t *testing.T) {
 		streamReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
@@ -149,9 +149,15 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Stream:    true,
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, _, err := translator.RequestBody(nil, streamReq, false)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), errStreamingNotSupported.Error())
+		hm, _, err := translator.RequestBody(nil, streamReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+
+		// Check that the :path header uses the streamRawPredict specifier.
+		pathHeader := hm.SetHeaders
+		require.Equal(t, ":path", pathHeader[0].Header.Key)
+		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
+		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
 	})
 
 	t.Run("Invalid Temperature (above bound)", func(t *testing.T) {
@@ -266,7 +272,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 							Content: ptr.To("Ok, I will call the tool."),
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
-									ID:   "toolu_01",
+									ID:   ptr.To("toolu_01"),
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 									Function: openai.ChatCompletionMessageToolCallFunctionParam{
 										Name:      "get_weather",
@@ -351,7 +357,7 @@ func TestMessageTranslation(t *testing.T) {
 					Value: openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
-								ID:       testTool,
+								ID:       ptr.To(testTool),
 								Type:     openai.ChatCompletionMessageToolCallTypeFunction,
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":"NYC"}`},
 							},
@@ -472,7 +478,7 @@ func TestMessageTranslation(t *testing.T) {
 					Value: openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
-								ID:       testTool,
+								ID:       ptr.To(testTool),
 								Type:     openai.ChatCompletionMessageToolCallTypeFunction,
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":`},
 							},

@@ -58,7 +58,7 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 						Content: openai.StringOrAssistantRoleContentUnion{Value: "This is a assistant message"},
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
-								ID: "tool_call_1",
+								ID: ptr.To("tool_call_1"),
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
 									Name:      "example_tool",
 									Arguments: "{\"param1\":\"value1\"}",
@@ -233,7 +233,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				Role: openai.ChatMessageRoleAssistant,
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
-						ID: "call_123",
+						ID: ptr.To("call_123"),
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name:      "get_weather",
 							Arguments: `{"location":"New York","unit":"celsius"}`,
@@ -263,7 +263,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				Role: openai.ChatMessageRoleAssistant,
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
-						ID: "call_789",
+						ID: ptr.To("call_789"),
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name:      "get_weather",
 							Arguments: `{"location":"New York","unit":"celsius"}`,
@@ -271,7 +271,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 						Type: openai.ChatCompletionMessageToolCallTypeFunction,
 					},
 					{
-						ID: "call_abc",
+						ID: ptr.To("call_abc"),
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name:      "get_time",
 							Arguments: `{"timezone":"EST"}`,
@@ -301,7 +301,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				Role: openai.ChatMessageRoleAssistant,
 				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 					{
-						ID: "call_def",
+						ID: ptr.To("call_def"),
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
 							Name:      "get_weather",
 							Arguments: `{"location":"New York"`, // Invalid JSON.

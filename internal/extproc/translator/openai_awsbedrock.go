@@ -264,7 +264,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			&awsbedrock.ContentBlock{
 				ToolUse: &awsbedrock.ToolUseBlock{
 					Name:      toolCall.Function.Name,
-					ToolUseID: toolCall.ID,
+					ToolUseID: *toolCall.ID,
 					Input:     input,
 				},
 			})
@@ -476,7 +476,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 		return nil
 	}
 	return &openai.ChatCompletionMessageToolCallParam{
-		ID: toolUse.ToolUseID,
+		ID: &toolUse.ToolUseID,
 		Function: openai.ChatCompletionMessageToolCallFunctionParam{
 			Name:      toolUse.Name,
 			Arguments: string(arguments),
@@ -717,7 +717,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 					Role: o.role,
 					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 						{
-							ID: event.Start.ToolUse.ToolUseID,
+							ID: &event.Start.ToolUse.ToolUseID,
 							Function: openai.ChatCompletionMessageToolCallFunctionParam{
 								Name: event.Start.ToolUse.Name,
 							},

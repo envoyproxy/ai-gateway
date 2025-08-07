@@ -364,6 +364,117 @@ data: [DONE]
 `,
 		},
 		{
+			name:           "gcp-anthropicai - /v1/chat/completions - streaming",
+			backend:        "gcp-anthropicai",
+			path:           "/v1/chat/completions",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
+			expRequestBody: `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expHost:        "gcp-region-aiplatform.googleapis.com",
+			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
+			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "The sky appears blue"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text":" due to Rayleigh scattering."}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 12}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"The sky appears blue","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"completion_tokens":12,"prompt_tokens":15,"total_tokens":27}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:         "gcp-anthropicai - /v1/chat/completions - streaming tool use",
+			backend:      "gcp-anthropicai",
+			path:         "/v1/chat/completions",
+			method:       http.MethodPost,
+			responseType: "sse",
+			requestBody: `{
+		"model": "claude-3-sonnet",
+		"max_tokens": 1024,
+		"messages": [{"role": "user", "content": "What is the weather in Boston?"}],
+		"stream": true,
+		"tools": [{
+			"type": "function",
+			"function": {
+				"name": "get_weather",
+				"description": "Get the current weather in a given location",
+				"parameters": {
+					"type": "object",
+					"properties": {
+						"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}
+					},
+					"required": ["location"]
+				}
+			}
+		}]
+	}`,
+			expHost:        "gcp-region-aiplatform.googleapis.com",
+			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
+			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 50}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_abc123", "name": "get_weather", "input": {}}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"location\":\"Bosto"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "n, MA\"}"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 20}}
+
+event: message_stop
+data: {"type": "message_stop"}`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"completion_tokens":20,"prompt_tokens":50,"total_tokens":70}}
+
+data: [DONE]
+
+`,
+		},
+		{
 			name:            "openai - /v1/chat/completions - error response",
 			backend:         "openai",
 			path:            "/v1/chat/completions",
