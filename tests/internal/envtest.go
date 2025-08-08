@@ -67,10 +67,12 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 func requireThirdPartyCRDDownloaded(t *testing.T) string {
 	const path = "3rd_party_crds_for_tests.yaml"
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		f, err := os.Create(path)
+		var f *os.File
+		f, err = os.Create(path)
 		defer func() {
 			_ = f.Close()
 		}()
+		require.NoError(t, err, "Failed to create file for third-party CRD")
 
 		helm := exec.Command(
 			"go", "tool", "helm", "show", "crds", "oci://docker.io/envoyproxy/gateway-helm",
