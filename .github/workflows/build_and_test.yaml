@@ -197,8 +197,8 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0-rc.2
-            envoy_gateway_version: v1.5.0-rc.2
+          - name: v1.5.0
+            envoy_gateway_version: v1.5.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
