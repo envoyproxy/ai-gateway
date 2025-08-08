@@ -20,7 +20,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -126,15 +125,6 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to get filter config secret: %w", err)
-	}
-
-	gw := &gwapiv1.Gateway{}
-	err = g.c.Get(ctx, client.ObjectKey{
-		Name:      gatewayName,
-		Namespace: gatewayNamespace,
-	}, gw)
-	if err != nil {
-		return fmt.Errorf("failed to get Gateway %s/%s: %w", gatewayNamespace, gatewayName, err)
 	}
 
 	// Now we construct the AI Gateway managed containers and volumes.
