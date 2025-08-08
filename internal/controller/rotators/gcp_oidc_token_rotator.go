@@ -90,7 +90,7 @@ type gcpOIDCTokenRotator struct {
 // sharedTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
 var (
-	sharedTransport *http.Transport
+	sharedTransport http.RoundTripper
 	initError       error
 )
 
@@ -99,7 +99,7 @@ func init() {
 	if err != nil {
 		initError = fmt.Errorf("error getting GCP proxy URL: %w", err)
 		// transport without proxy url.
-		sharedTransport = &http.Transport{}
+		sharedTransport = http.DefaultTransport
 	} else {
 		sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 	}
@@ -320,7 +320,7 @@ var _ http.RoundTripper = &bearerAuthRoundTripper{}
 
 // bearerAuthRoundTripper is an HTTP RoundTripper that adds a Bearer token to the Authorization header.
 type bearerAuthRoundTripper struct {
-	base  *http.Transport
+	base  http.RoundTripper
 	token string
 }
 

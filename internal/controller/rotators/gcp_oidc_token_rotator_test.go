@@ -945,9 +945,9 @@ func TestBearerAuthRoundTripper_RoundTrip(t *testing.T) {
 
 			// Execute the request through the round tripper.
 			resp, err := roundTripper.RoundTrip(req)
+			defer resp.Body.Close()
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
 		})
 	}
 }
