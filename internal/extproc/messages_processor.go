@@ -141,7 +141,7 @@ type messagesProcessorUpstreamFilter struct {
 	handler                backendauth.Handler
 	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
-	translator             translator.OpenAIChatCompletionTranslator
+	translator             translator.AnthropicMessagesTranslator
 	onRetry                bool
 	stream                 bool
 	metrics                metrics.ChatCompletionMetrics
@@ -157,8 +157,9 @@ func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.Version
 		// TODO: Implement native Anthropic passthrough translator.
 		return fmt.Errorf("native Anthropic → Anthropic passthrough translator not implemented yet")
 	case filterapi.APISchemaGCPAnthropic:
-		// Anthropic → GCP Anthropic → Native Anthropic (ensures native Anthropic output).
-		c.translator = translator.NewGCPAnthropicToNativeAnthropicTranslator(c.modelNameOverride)
+		// Anthropic → GCP Anthropic (request direction translator).
+		// Uses backend config version (GCP Vertex AI requires specific versions like "vertex-2023-10-16").
+		c.translator = translator.NewAnthropicToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
 		return nil
 	default:
 		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic). Backend %s uses different model format", out.Name)
@@ -179,7 +180,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
 	forceBodyMutation := c.onRetry
-	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, nil, forceBodyMutation)
+	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
