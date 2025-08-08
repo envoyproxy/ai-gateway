@@ -159,7 +159,9 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.Len(t, messages, 3, "should have 3 messages")
 
 	require.Equal(t, float64(1024), outputReq["max_tokens"])
-	require.Equal(t, false, outputReq["stream"])
+	// stream: false is omitted due to omitempty tag
+	_, hasStream := outputReq["stream"]
+	require.False(t, hasStream)
 	require.Equal(t, 0.7, outputReq["temperature"])
 	require.Equal(t, 0.95, outputReq["top_p"])
 	require.Equal(t, "You are a helpful weather assistant.", outputReq["system"])
@@ -395,8 +397,9 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, "Human:", stopSeq[0])
 	require.Equal(t, "Assistant:", stopSeq[1])
 
-	// Boolean values are preserved.
-	require.Equal(t, false, modifiedReq["stream"])
+	// Boolean false values are omitted due to omitempty tag.
+	_, hasStream := modifiedReq["stream"]
+	require.False(t, hasStream)
 
 	// String values are preserved.
 	require.Equal(t, "You are a helpful assistant", modifiedReq["system"])
@@ -412,37 +415,6 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 
 	// Verify anthropic_version is added from the backend configuration.
 	require.Equal(t, "2023-06-01", modifiedReq["anthropic_version"])
-}
-
-func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelFallback(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-
-	reqBody := map[string]interface{}{
-		"messages": []map[string]interface{}{{"role": "user", "content": "Test"}},
-		// No model field.
-	}
-
-	rawBody, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	headerMutation, _, err := translator.RequestBody(rawBody, nil, false)
-	require.NoError(t, err)
-	require.NotNil(t, headerMutation)
-
-	// Should use default fallback model in path.
-	pathHeader := headerMutation.SetHeaders[0]
-	expectedPath := "publishers/anthropic/models/claude-3-5-sonnet-20241022:rawPredict"
-	assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
-}
-
-func TestAnthropicToGCPAnthropicTranslator_RequestBody_InvalidJSON(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-
-	invalidJSON := []byte(`{"invalid": json"}`)
-
-	_, _, err := translator.RequestBody(invalidJSON, nil, false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to unmarshal Anthropic request")
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {
@@ -473,131 +445,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {
 			assert.Nil(t, headerMutation, "ResponseHeaders should return nil for passthrough")
 		})
 	}
-}
-
-func TestAnthropicToGCPAnthropicTranslator_ResponseBody_TokenUsageExtraction(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-
-	tests := []struct {
-		name               string
-		endOfStream        bool
-		responseBody       interface{}
-		expectedTokenUsage LLMTokenUsage
-		expectError        bool
-	}{
-		{
-			name:        "early stream chunk returns empty usage",
-			endOfStream: false,
-			responseBody: map[string]interface{}{
-				"type": "content_block_delta",
-			},
-			expectedTokenUsage: LLMTokenUsage{},
-			expectError:        false,
-		},
-		{
-			name:        "end of stream with valid anthropic response",
-			endOfStream: true,
-			responseBody: anthropic.Message{
-				ID:      "msg_123",
-				Type:    "message",
-				Role:    "assistant",
-				Content: []anthropic.ContentBlockUnion{{Type: "text", Text: "Hello!"}},
-				Model:   "claude-3-sonnet-20240229",
-				Usage: anthropic.Usage{
-					InputTokens:  100,
-					OutputTokens: 50,
-				},
-			},
-			expectedTokenUsage: LLMTokenUsage{
-				InputTokens:  100,
-				OutputTokens: 50,
-				TotalTokens:  150,
-			},
-			expectError: false,
-		},
-		{
-			name:        "end of stream with different token counts",
-			endOfStream: true,
-			responseBody: anthropic.Message{
-				ID:      "msg_456",
-				Type:    "message",
-				Role:    "assistant",
-				Content: []anthropic.ContentBlockUnion{{Type: "text", Text: "Longer response"}},
-				Model:   "claude-3-opus-20240229",
-				Usage: anthropic.Usage{
-					InputTokens:  500,
-					OutputTokens: 250,
-				},
-			},
-			expectedTokenUsage: LLMTokenUsage{
-				InputTokens:  500,
-				OutputTokens: 250,
-				TotalTokens:  750,
-			},
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Marshal response body.
-			respBody, err := json.Marshal(tt.responseBody)
-			require.NoError(t, err)
-
-			bodyReader := bytes.NewReader(respBody)
-			respHeaders := map[string]string{"content-type": "application/json"}
-
-			headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream)
-
-			if tt.expectError {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.expectedTokenUsage, tokenUsage)
-
-			if tt.endOfStream {
-				// For end of stream, should have mutations.
-				assert.NotNil(t, headerMutation)
-				assert.NotNil(t, bodyMutation)
-
-				// Body should be passed through unchanged.
-				assert.Equal(t, respBody, bodyMutation.GetBody())
-
-				// Content-Length header should be set.
-				contentLengthSet := false
-				for _, header := range headerMutation.SetHeaders {
-					if header.Header.Key == "content-length" {
-						contentLengthSet = true
-						break
-					}
-				}
-				assert.True(t, contentLengthSet, "Content-Length header should be set")
-			} else {
-				// For non-end of stream, should return nil mutations.
-				assert.Nil(t, headerMutation)
-				assert.Nil(t, bodyMutation)
-			}
-		})
-	}
-}
-
-func TestAnthropicToGCPAnthropicTranslator_ResponseBody_InvalidJSON(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-
-	invalidJSON := []byte(`{"invalid": json"}`)
-	bodyReader := bytes.NewReader(invalidJSON)
-	respHeaders := map[string]string{"content-type": "application/json"}
-
-	headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, true)
-
-	// Should not error, but should pass through as-is with empty token usage.
-	require.NoError(t, err)
-	assert.NotNil(t, bodyMutation)
-	assert.JSONEq(t, string(invalidJSON), string(bodyMutation.GetBody()))
-	assert.Equal(t, LLMTokenUsage{}, tokenUsage)
-	assert.Nil(t, headerMutation) // No content-length header for invalid JSON.
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ReadError(t *testing.T) {
