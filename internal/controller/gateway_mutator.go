@@ -37,11 +37,12 @@ type gatewayMutator struct {
 	extProcLogLevel            string
 	udsPath                    string
 	metricsRequestHeaderLabels string
+	openAIPrefix               string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string,
-	udsPath string, metricsRequestHeaderLabels string,
+	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
+	udsPath, metricsRequestHeaderLabels, openAIPrefix string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
@@ -52,6 +53,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		logger:                     logger,
 		udsPath:                    udsPath,
 		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
+		openAIPrefix:               openAIPrefix,
 	}
 }
 
@@ -82,6 +84,7 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMe
 		"-extProcAddr", "unix://" + g.udsPath,
 		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
+		"-openAIPrefix", g.openAIPrefix,
 	}
 
 	// Add metrics header label mapping if configured.
@@ -168,13 +171,6 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		filterConfigMountPath = "/etc/filter-config"
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
-	args := g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort)
-	if openAIPrefix, ok := gw.Annotations[aigv1a1.AIGatewayOpenAIPrefixAnnotationKey]; ok {
-		// If the OpenAI prefix annotation is set, we explicitly pass it to the extproc container.
-		// Otherwise, it will default to "/v1" in the extproc code.
-		args = append(args, "-openAIPrefix", openAIPrefix)
-	}
-
 	udsMountPath := filepath.Dir(g.udsPath)
 	podspec.Containers = append(podspec.Containers, corev1.Container{
 		Name:            extProcContainerName,
@@ -183,7 +179,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
-		Args: args,
+		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,

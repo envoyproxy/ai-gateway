@@ -51,10 +51,8 @@ type extProcFlags struct {
 	metricsPort                int        // HTTP port for the metrics server.
 	healthPort                 int        // HTTP port for the health check server.
 	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-
 	// openAIPrefix is the OpenAI API prefix to be used for the external processor.
 	openAIPrefix string
-	// TODO: add more prefix config when we add support for more input schemas. E.g. Anthropic https://github.com/envoyproxy/ai-gateway/issues/847
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -91,7 +89,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.openAIPrefix,
 		"openAIPrefix",
 		"/v1",
-		"OpenAI API prefix to be used for the external processor. This is used to route requests to the correct handler. "+
+		"OpenAI endpoint prefix to be used for the external processor. This is used to route requests to the correct handler. "+
 			"Defaults to /v1, which is the standard OpenAI API prefix.",
 	)
 
