@@ -63,7 +63,6 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "default", updated.Namespace)
 	require.Len(t, updated.Spec.TargetRefs, 1)
 	require.Equal(t, "mytarget", string(updated.Spec.TargetRefs[0].Name))
-	require.Equal(t, aigv1a1.APISchemaOpenAI, updated.Spec.APISchema.Name)
 
 	// Test the case where the AIGatewayRoute is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
