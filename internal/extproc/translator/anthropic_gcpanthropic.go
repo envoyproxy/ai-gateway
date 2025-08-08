@@ -38,39 +38,15 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 	// Extract model name for GCP endpoint from the parsed request.
 	modelName := body.Model
 
-	// Build the request body from the parsed struct (we don't need raw bytes!)
-	anthropicReq := map[string]interface{}{
-		"messages": body.Messages,
+	// Convert the struct to a map for manipulation.
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Add optional fields if present.
-	anthropicReq["stream"] = body.Stream
-	if body.MaxTokens > 0 {
-		anthropicReq["max_tokens"] = body.MaxTokens
-	}
-	if body.Temperature != nil {
-		anthropicReq["temperature"] = *body.Temperature
-	}
-	if body.TopP != nil {
-		anthropicReq["top_p"] = *body.TopP
-	}
-	if body.TopK != nil {
-		anthropicReq["top_k"] = *body.TopK
-	}
-	if len(body.StopSequences) > 0 {
-		anthropicReq["stop_sequences"] = body.StopSequences
-	}
-	if body.System != nil && body.System != "" {
-		anthropicReq["system"] = body.System
-	}
-	if len(body.Tools) > 0 {
-		anthropicReq["tools"] = body.Tools
-	}
-	if body.ToolChoice != nil {
-		anthropicReq["tool_choice"] = body.ToolChoice
-	}
-	if body.Metadata != nil {
-		anthropicReq["metadata"] = body.Metadata
+	var anthropicReq map[string]interface{}
+	if unmarshalErr := json.Unmarshal(bodyBytes, &anthropicReq); unmarshalErr != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal request body: %w", unmarshalErr)
 	}
 
 	// Apply model name override if configured.
@@ -78,7 +54,8 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 		modelName = a.modelNameOverride
 	}
 
-	// Note: We don't add the model field to anthropicReq since GCP doesn't want it in the body.
+	// Remove the model field since GCP doesn't want it in the body.
+	delete(anthropicReq, "model")
 
 	// Add GCP-specific anthropic_version field (required by GCP Vertex AI).
 	// Uses backend config version (e.g., "vertex-2023-10-16" for GCP Vertex AI).
