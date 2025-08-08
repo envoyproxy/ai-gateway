@@ -97,12 +97,10 @@ var (
 func init() {
 	gcpProxyURL, err := getGCPProxyURL()
 	if err != nil {
-		initError = fmt.Errorf("error getting GCP proxy URL: %w", err)
-		// transport without proxy url.
-		sharedTransport = http.DefaultTransport
-	} else {
-		sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+		panic(fmt.Errorf("error getting GCP proxy URL: %w", err))
 	}
+
+	sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 }
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
