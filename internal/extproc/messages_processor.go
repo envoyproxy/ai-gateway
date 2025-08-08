@@ -152,17 +152,13 @@ type messagesProcessorUpstreamFilter struct {
 func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	// Messages processor only supports Anthropic-native translators.
 	switch out.Name {
-	case filterapi.APISchemaAnthropic:
-		// Native Anthropic → Native Anthropic (direct passthrough).
-		// TODO: Implement native Anthropic passthrough translator.
-		return fmt.Errorf("native Anthropic → Anthropic passthrough translator not implemented yet")
 	case filterapi.APISchemaGCPAnthropic:
 		// Anthropic → GCP Anthropic (request direction translator).
 		// Uses backend config version (GCP Vertex AI requires specific versions like "vertex-2023-10-16").
 		c.translator = translator.NewAnthropicToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
 		return nil
 	default:
-		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic). Backend %s uses different model format", out.Name)
+		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (GCPAnthropic). Backend %s uses different model format", out.Name)
 	}
 }
 
@@ -293,7 +289,6 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		},
 	}
 
-	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
@@ -301,13 +296,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	// Update metrics with token usage.
 	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens, c.requestHeaders)
 	if c.stream {
-		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
-		// these metrics are defined as a difference between the two output events.
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, c.requestHeaders)
-
-		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
-		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
-		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
