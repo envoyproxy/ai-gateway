@@ -87,11 +87,10 @@ type gcpOIDCTokenRotator struct {
 	stsTokenFunc stsTokenGenerator
 }
 
-// sharedTransport is a shared HTTP transport used for GCP API calls.
+// sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
 var (
-	sharedTransport http.RoundTripper
-	initError       error
+	sharedGCPTransport http.RoundTripper
 )
 
 func init() {
@@ -100,7 +99,7 @@ func init() {
 		panic(fmt.Errorf("error getting GCP proxy URL: %w", err))
 	}
 
-	sharedTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+	sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 }
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
@@ -112,9 +111,6 @@ func NewGCPOIDCTokenRotator(
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
-	if initError != nil {
-		logger.Error(initError, "Error during initializing gcp token rotator")
-	}
 
 	if bsp.Spec.GCPCredentials == nil {
 		return nil, fmt.Errorf("GCP credentials are not configured in BackendSecurityPolicy %s/%s", bsp.Namespace, bsp.Name)
@@ -324,7 +320,7 @@ type bearerAuthRoundTripper struct {
 
 func newBearerAuthRoundTripper(token string) (http.RoundTripper, error) {
 	return &bearerAuthRoundTripper{
-		base:  sharedTransport,
+		base:  sharedGCPTransport,
 		token: token,
 	}, nil
 }
