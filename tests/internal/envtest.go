@@ -76,7 +76,7 @@ func requireThirdPartyCRDDownloaded(t *testing.T) string {
 
 		helm := exec.Command(
 			"go", "tool", "helm", "show", "crds", "oci://docker.io/envoyproxy/gateway-helm",
-			"--version", "1.5.0-rc.2",
+			"--version", "1.5.0",
 		)
 		helm.Stdout = f
 		helm.Stderr = os.Stderr
