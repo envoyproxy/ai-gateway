@@ -7,6 +7,7 @@ package translator
 
 import (
 	"fmt"
+	"github.com/tidwall/sjson"
 	"io"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -124,4 +125,11 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
+}
+
+// SJSONOptions are the options used for sjson operations in the translator.
+// This is also used outside the package to share the same options for consistency.
+var SJSONOptions = &sjson.Options{
+	Optimistic:     true,
+	ReplaceInPlace: true,
 }
