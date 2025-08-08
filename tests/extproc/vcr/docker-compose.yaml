@@ -9,7 +9,7 @@ volumes:
 
 services:
   extproc-build:
-    image: golang:1.24.5
+    image: golang:1.24.6
     container_name: extproc-build
     working_dir: /workspace
     volumes:
@@ -18,7 +18,7 @@ services:
     command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc"]
 
   extproc:
-    image: debian:bookworm-slim
+    image: debian:trixie-slim
     container_name: extproc
     depends_on:
       extproc-build:
@@ -37,7 +37,7 @@ services:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-      OLLAMA_HOST: localhost:11434  # instead of IP 127.0.0.1
+      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
     env_file:
       - ../../../.env.ollama
     entrypoint: sh
@@ -46,7 +46,7 @@ services:
       - "localhost:host-gateway"
 
   envoy:
-    image: envoyproxy/envoy:v1.34.3
+    image: envoyproxy/envoy:v1.35.0
     container_name: envoy
     depends_on:
       extproc:

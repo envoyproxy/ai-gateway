@@ -1,0 +1,23 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Use glibc-based image with pre-compiled wheels for psutil
+FROM python:3.13-slim
+
+RUN python -m pip install --upgrade pip
+
+RUN pip install openai \
+    opentelemetry-sdk \
+    opentelemetry-exporter-otlp-proto-http \
+    opentelemetry-distro \
+    opentelemetry-instrumentation-httpx \
+    openinference-instrumentation-openai
+
+# OpenInference only uses spans, not metrics or logs
+ENV OTEL_METRICS_EXPORTER=none
+ENV OTEL_LOGS_EXPORTER=none
+
+ENTRYPOINT ["sh", "-c"]
+CMD ["opentelemetry-instrument openai api chat.completions.create -t 0 -m ${CHAT_MODEL} --message user 'Answer in up to 3 words: Which ocean contains Bouvet Island?'"]

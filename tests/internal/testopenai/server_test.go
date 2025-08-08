@@ -7,7 +7,6 @@ package testopenai
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"os"
@@ -24,7 +23,7 @@ func TestServer_ExistingCassette(t *testing.T) {
 	defer server.Close()
 
 	// Make the same request as in chat-basic cassette.
-	req, err := NewRequest(context.Background(), server.URL(), CassetteChatBasic)
+	req, err := NewRequest(t.Context(), server.URL(), CassetteChatBasic)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)

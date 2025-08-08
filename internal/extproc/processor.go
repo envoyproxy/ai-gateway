@@ -15,6 +15,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 )
 
 // processorConfig is the configuration for the processor.
@@ -26,6 +27,7 @@ type processorConfig struct {
 	requestCosts       []processorConfigRequestCost
 	declaredModels     []filterapi.Model
 	backends           map[string]*processorConfigBackend
+	tracer             tracing.ChatCompletionTracer
 }
 
 type processorConfigBackend struct {

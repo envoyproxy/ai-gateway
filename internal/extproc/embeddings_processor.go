@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -252,6 +253,26 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		isGzip = true
 	default:
 		br = bytes.NewReader(body.Body)
+	}
+
+	// Assume all responses have a valid status code header.
+	if code, _ := strconv.Atoi(e.responseHeaders[":status"]); !isGoodStatusCode(code) {
+		var headerMutation *extprocv3.HeaderMutation
+		var bodyMutation *extprocv3.BodyMutation
+		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, br)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response error: %w", err)
+		}
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						BodyMutation:   bodyMutation,
+					},
+				},
+			},
+		}, nil
 	}
 
 	headerMutation, bodyMutation, tokenUsage, err := e.translator.ResponseBody(e.responseHeaders, br, body.EndOfStream)

@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -540,7 +539,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	return params, nil
 }
 
-// RequestBody implements [Translator.RequestBody] for GCP.
+// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
@@ -580,7 +579,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	return
 }
 
-// ResponseError implements [Translator.ResponseError].
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
@@ -656,7 +655,7 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 	return toolCalls, nil
 }
 
-// ResponseHeaders implements [Translator.ResponseHeaders].
+// ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
@@ -671,28 +670,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 	return
 }
 
-// ResponseBody implements [Translator.ResponseBody] for GCP Anthropic.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Anthropic.
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.
 	if o.streamParser != nil {
 		return o.streamParser.Process(body, endOfStream)
-	}
-
-	if statusStr, ok := respHeaders[statusHeaderName]; ok {
-		var status int
-		// Use the outer 'err' to catch parsing errors.
-		if status, err = strconv.Atoi(statusStr); err == nil {
-			if !isGoodStatusCode(status) {
-				// Let ResponseError handle the translation. It returns its own internal error status.
-				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
-				return headerMutation, bodyMutation, LLMTokenUsage{}, err
-			}
-		} else {
-			// Fail if the status code isn't a valid integer.
-			return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to parse status code '%s': %w", statusStr, err)
-		}
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}

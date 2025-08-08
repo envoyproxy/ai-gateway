@@ -6,11 +6,11 @@
 package vcr
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,11 +19,9 @@ import (
 )
 
 func TestOtelOpenAIChatCompletions(t *testing.T) {
-	t.Skip("otel not implemented yet")
 	env := setupOtelTestEnvironment(t)
 
 	listenerPort := env.EnvoyListenerPort()
-	spanCh := env.spanCh
 
 	wasBadGateway := false
 	for _, cassette := range testopenai.ChatCassettes() {
@@ -35,12 +33,6 @@ func TestOtelOpenAIChatCompletions(t *testing.T) {
 		require.NoError(t, err)
 
 		t.Run(cassette.String(), func(t *testing.T) {
-			// Clear span channel.
-			select {
-			case <-spanCh:
-			default:
-			}
-
 			// Send request.
 			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), cassette)
 			require.NoError(t, err)
@@ -58,16 +50,32 @@ func TestOtelOpenAIChatCompletions(t *testing.T) {
 			_, err = io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			// Wait for span with timeout.
-			select {
-			case resourceSpans := <-spanCh:
-				require.NotEmpty(t, resourceSpans.ScopeSpans, "expected at least one span")
-				actualSpan := resourceSpans.ScopeSpans[0].Spans[0]
-
-				testopeninference.RequireSpanEqual(t, expected, actualSpan)
-			case <-time.After(otlpTimeout):
-				t.Fatal("timeout waiting for span")
-			}
+			span := env.collector.TakeSpan()
+			testopeninference.RequireSpanEqual(t, expected, span)
 		})
 	}
+}
+
+// TestOtelOpenAIChatCompletions_propagation tests that the LLM span continues
+// the trace in headers.
+func TestOtelOpenAIChatCompletions_propagation(t *testing.T) {
+	env := setupOtelTestEnvironment(t)
+	listenerPort := env.EnvoyListenerPort()
+
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	require.NoError(t, err)
+	traceID := "12345678901234567890123456789012"
+	req.Header.Add("traceparent", "00-"+traceID+"-1234567890123456-01")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	span := env.collector.TakeSpan()
+	require.NotNil(t, span)
+	actualTraceID := hex.EncodeToString(span.TraceId)
+	require.Equal(t, traceID, actualTraceID)
 }

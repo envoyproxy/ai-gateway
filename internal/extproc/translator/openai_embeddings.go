@@ -80,18 +80,9 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 }
 
 // ResponseBody implements [OpenAIEmbeddingTranslator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if v, ok := respHeaders[statusHeaderName]; ok {
-		if v, err := strconv.Atoi(v); err == nil {
-			if !isGoodStatusCode(v) {
-				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
-				return headerMutation, bodyMutation, LLMTokenUsage{}, err
-			}
-		}
-	}
-
 	var resp openai.EmbeddingResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)

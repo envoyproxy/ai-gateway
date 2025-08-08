@@ -12,15 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsGoodStatusCode(t *testing.T) {
-	for _, s := range []int{200, 201, 299} {
-		require.True(t, isGoodStatusCode(s))
-	}
-	for _, s := range []int{100, 300, 400, 500} {
-		require.False(t, isGoodStatusCode(s))
-	}
-}
-
 func TestSetContentLength(t *testing.T) {
 	hm := &extprocv3.HeaderMutation{}
 	setContentLength(hm, nil)

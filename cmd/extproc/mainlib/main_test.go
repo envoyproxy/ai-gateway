@@ -22,12 +22,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -365,4 +369,129 @@ backends:
 	// block until the context is canceled or an error occurs.
 	err := <-errCh
 	require.NoError(t, err)
+}
+
+func TestConfigureTracing_DisabledByEnv(t *testing.T) {
+	tests := []struct {
+		name         string
+		sdkDisabled  string
+		otlpEndpoint string
+	}{
+		{
+			name:         "OTEL_SDK_DISABLED true",
+			sdkDisabled:  "true",
+			otlpEndpoint: "http://localhost:4318", // Should be ignored.
+		},
+		{
+			name:         "OTEL_EXPORTER_OTLP_ENDPOINT unset",
+			sdkDisabled:  "",
+			otlpEndpoint: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_SDK_DISABLED", tt.sdkDisabled)
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tt.otlpEndpoint)
+
+			provider, propagator, err := configureTracing(t.Context())
+			require.NoError(t, err)
+			require.IsType(t, noop.TracerProvider{}, provider)
+			require.IsType(t, noopTextMapPropagator{}, propagator)
+		})
+	}
+}
+
+// TestConfigureTracing_TracesSampler tests that the OTEL_TRACES_SAMPLER env
+// variable works.
+// See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_sampler
+func TestConfigureTracing_TracesSampler(t *testing.T) {
+	// Just test 2 samplers to prove the SDK is wired up correctly.
+	tests := []struct {
+		sampler       string
+		expectSampled bool
+	}{
+		{"always_on", true},
+		{"always_off", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.sampler, func(t *testing.T) {
+			t.Setenv("OTEL_TRACES_SAMPLER", tt.sampler)
+			collector, tracer, _ := configureTracingForTest(t)
+
+			// Create a span and check if it's sampled.
+			_, span := tracer.Start(t.Context(), "test-span")
+			if tt.expectSampled {
+				require.True(t, span.IsRecording())
+			} else {
+				require.False(t, span.IsRecording())
+			}
+			span.End()
+
+			// Now, verify the actual ENV were honored.
+			v1Span := collector.TakeSpan()
+			if tt.expectSampled {
+				require.NotNil(t, v1Span)
+			} else {
+				require.Nil(t, v1Span)
+			}
+		})
+	}
+}
+
+// TestConfigureTracing_OtelPropagators tests that the OTEL_PROPAGATORS env
+// variable works.
+// See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
+func TestConfigureTracing_OtelPropagators(t *testing.T) {
+	// Just test 2 propagators to prove the SDK is wired up correctly.
+	tests := []struct {
+		propagator    string
+		expectHeaders func(string, string) map[string]string
+	}{
+		{
+			propagator: "b3",
+			expectHeaders: func(traceID, spanID string) map[string]string {
+				return map[string]string{"b3": traceID + "-" + spanID + "-1"}
+			},
+		},
+		{
+			propagator: "tracecontext",
+			expectHeaders: func(traceID, spanID string) map[string]string {
+				return map[string]string{"traceparent": "00-" + traceID + "-" + spanID + "-01"}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.propagator, func(t *testing.T) {
+			t.Setenv("OTEL_PROPAGATORS", tt.propagator)
+			_, tracer, propagator := configureTracingForTest(t)
+
+			// Create and inject the span.
+			ctx, span := tracer.Start(t.Context(), "test-span")
+			headers := make(map[string]string)
+			propagator.Inject(ctx, propagation.MapCarrier(headers))
+			span.End()
+
+			// Ensure the propagation format is honored.
+			traceID := span.SpanContext().TraceID().String()
+			spanID := span.SpanContext().SpanID().String()
+			require.Equal(t, tt.expectHeaders(traceID, spanID), headers)
+		})
+	}
+}
+
+func configureTracingForTest(t *testing.T) (*testotel.OTLPCollector, trace.Tracer, propagation.TextMapPropagator) {
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	provider, propagator, err := configureTracing(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = maybeTracerProviderShutdown(context.Background(), provider)
+	})
+
+	return collector, provider.Tracer("test-tracer"), propagator
 }

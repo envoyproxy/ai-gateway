@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -39,7 +38,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	role string
 }
 
-// RequestBody implements [Translator.RequestBody].
+// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
@@ -426,7 +425,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	return nil
 }
 
-// ResponseHeaders implements [Translator.ResponseHeaders].
+// ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
@@ -485,7 +484,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 	}
 }
 
-// ResponseError implements [Translator.ResponseError]
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
 // Translate AWS Bedrock exceptions to OpenAI error type.
 // The error type is stored in the "x-amzn-errortype" HTTP header for AWS error responses.
 // If AWS Bedrock connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
@@ -532,19 +531,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 }
 
-// ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if statusStr, ok := respHeaders[statusHeaderName]; ok {
-		var status int
-		if status, err = strconv.Atoi(statusStr); err == nil {
-			if !isGoodStatusCode(status) {
-				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
-				return headerMutation, bodyMutation, LLMTokenUsage{}, err
-			}
-		}
-	}
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
 		var buf []byte

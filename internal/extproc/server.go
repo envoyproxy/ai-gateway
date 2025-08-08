@@ -29,6 +29,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
+	tracer                        tracing.ChatCompletionTracer
 	config                        *processorConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
@@ -46,9 +48,10 @@ type Server struct {
 }
 
 // NewServer creates a new external processor server.
-func NewServer(logger *slog.Logger) (*Server, error) {
+func NewServer(logger *slog.Logger, tracer tracing.ChatCompletionTracer) (*Server, error) {
 	srv := &Server{
 		logger:                   logger,
+		tracer:                   tracer,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 	}
@@ -92,6 +95,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		metadataNamespace:  config.MetadataNamespace,
 		requestCosts:       costs,
 		declaredModels:     config.Models,
+		tracer:             s.tracer,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
