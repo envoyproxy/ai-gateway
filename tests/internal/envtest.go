@@ -86,11 +86,12 @@ func requireThirdPartyCRDDownloaded(t *testing.T, path, url string) string {
 		var crd *http.Response
 		crd, err = http.DefaultClient.Get(url)
 		require.NoError(t, err)
-		var body *os.File
-		body, err = os.Create(path)
 		defer func() {
 			_ = crd.Body.Close()
 		}()
+		require.Equal(t, http.StatusOK, crd.StatusCode)
+		var body *os.File
+		body, err = os.Create(path)
 		require.NoError(t, err)
 		_, err = body.ReadFrom(crd.Body)
 		require.NoError(t, err)
