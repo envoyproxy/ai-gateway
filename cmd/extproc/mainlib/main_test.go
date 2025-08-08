@@ -37,46 +37,52 @@ import (
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("ok extProcFlags", func(t *testing.T) {
 		for _, tc := range []struct {
-			name       string
-			args       []string
-			configPath string
-			addr       string
-			logLevel   slog.Level
+			name         string
+			args         []string
+			configPath   string
+			addr         string
+			openAIPRefix string
+			logLevel     slog.Level
 		}{
 			{
-				name:       "minimal extProcFlags",
-				args:       []string{"-configPath", "/path/to/config.yaml"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
+				name:         "minimal extProcFlags",
+				args:         []string{"-configPath", "/path/to/config.yaml"},
+				configPath:   "/path/to/config.yaml",
+				addr:         ":1063",
+				openAIPRefix: "/v1",
+				logLevel:     slog.LevelInfo,
 			},
 			{
-				name:       "custom addr",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
-				configPath: "/path/to/config.yaml",
-				addr:       "unix:///tmp/ext_proc.sock",
-				logLevel:   slog.LevelInfo,
+				name:         "custom addr",
+				args:         []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
+				configPath:   "/path/to/config.yaml",
+				addr:         "unix:///tmp/ext_proc.sock",
+				openAIPRefix: "/v1",
+				logLevel:     slog.LevelInfo,
 			},
 			{
-				name:       "log level debug",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				logLevel:   slog.LevelDebug,
+				name:         "log level debug",
+				args:         []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
+				configPath:   "/path/to/config.yaml",
+				addr:         ":1063",
+				openAIPRefix: "/v1",
+				logLevel:     slog.LevelDebug,
 			},
 			{
-				name:       "log level warn",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				logLevel:   slog.LevelWarn,
+				name:         "log level warn",
+				args:         []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
+				configPath:   "/path/to/config.yaml",
+				addr:         ":1063",
+				openAIPRefix: "/v1",
+				logLevel:     slog.LevelWarn,
 			},
 			{
-				name:       "log level error",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				logLevel:   slog.LevelError,
+				name:         "log level error",
+				args:         []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
+				configPath:   "/path/to/config.yaml",
+				addr:         ":1063",
+				openAIPRefix: "/v1",
+				logLevel:     slog.LevelError,
 			},
 			{
 				name: "all extProcFlags",
@@ -84,11 +90,12 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-configPath", "/path/to/config.yaml",
 					"-extProcAddr", "unix:///tmp/ext_proc.sock",
 					"-logLevel", "debug",
-					"-openAIAPIPrefix", "/foo/bar/v1",
+					"-openAIPrefix", "/foo/bar/v1",
 				},
-				configPath: "/path/to/config.yaml",
-				addr:       "unix:///tmp/ext_proc.sock",
-				logLevel:   slog.LevelDebug,
+				configPath:   "/path/to/config.yaml",
+				addr:         "unix:///tmp/ext_proc.sock",
+				openAIPRefix: "/foo/bar/v1",
+				logLevel:     slog.LevelDebug,
 			},
 			{
 				name: "with header mapping",
@@ -96,9 +103,10 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-configPath", "/path/to/config.yaml",
 					"-metricsRequestHeaderLabels", "x-team-id:team_id,x-user-id:user_id",
 				},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
+				configPath:   "/path/to/config.yaml",
+				openAIPRefix: "/v1",
+				addr:         ":1063",
+				logLevel:     slog.LevelInfo,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
