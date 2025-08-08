@@ -84,6 +84,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-configPath", "/path/to/config.yaml",
 					"-extProcAddr", "unix:///tmp/ext_proc.sock",
 					"-logLevel", "debug",
+					"-openAIAPIPrefix", "/foo/bar/v1",
 				},
 				configPath: "/path/to/config.yaml",
 				addr:       "unix:///tmp/ext_proc.sock",

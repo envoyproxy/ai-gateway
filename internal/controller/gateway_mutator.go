@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -124,6 +125,15 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
+	gw := &gwapiv1.Gateway{}
+	err = g.c.Get(ctx, client.ObjectKey{
+		Name:      gatewayName,
+		Namespace: gatewayNamespace,
+	}, gw)
+	if err != nil {
+		return fmt.Errorf("failed to get Gateway %s/%s: %w", gatewayNamespace, gatewayName, err)
+	}
+
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
 	filterConfigVolumeName := mutationNamePrefix + filterConfigSecretName
@@ -158,6 +168,13 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		filterConfigMountPath = "/etc/filter-config"
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
+	args := g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort)
+	if openAIPrefix, ok := gw.Annotations[aigv1a1.AIGatewayOpenAIPrefixAnnotationKey]; ok {
+		// If the OpenAI prefix annotation is set, we explicitly pass it to the extproc container.
+		// Otherwise, it will default to "/v1" in the extproc code.
+		args = append(args, "-openAIPrefix", openAIPrefix)
+	}
+
 	udsMountPath := filepath.Dir(g.udsPath)
 	podspec.Containers = append(podspec.Containers, corev1.Container{
 		Name:            extProcContainerName,
@@ -166,7 +183,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
-		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
+		Args: args,
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,

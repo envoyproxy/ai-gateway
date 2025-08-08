@@ -122,4 +122,10 @@ const (
 const (
 	// AIGatewayFilterMetadataNamespace is the namespace for the ai-gateway filter metadata.
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
+	// AIGatewayOpenAIPrefixAnnotationKey is the annotation key for the OpenAI API prefix.
+	// This annotation can be added to Gateway objects to specify the OpenAI API version prefix
+	// to be used for the OpenAI API endpoints. If this is not present, the prefix defaults to "v1"
+	// which is the standard OpenAI API version prefix. The value must start with a slash ("/").
+	// E.g. "/foo/bar/openai" will make OpenAI SDK work with the base_url set to "https://api.mygateway.com/foo/bar/openai".
+	AIGatewayOpenAIPrefixAnnotationKey = "aigateway.envoyproxy.io/openai-prefix"
 )
