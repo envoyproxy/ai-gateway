@@ -25,13 +25,6 @@ const (
 	awsBedrockBackendError = "AWSBedrockBackendError"
 )
 
-// isGoodStatusCode checks if the HTTP status code of the upstream response is successful.
-// The 2xx - Successful: The request is received by upstream and processed successfully.
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Status#successful_responses
-func isGoodStatusCode(code int) bool {
-	return code >= 200 && code < 300
-}
-
 // OpenAIChatCompletionTranslator translates the request and response messages between the client and the backend API schemas
 // for /v1/chat/completion endpoint of OpenAI.
 //
@@ -66,6 +59,11 @@ type OpenAIChatCompletionTranslator interface {
 		tokenUsage LLMTokenUsage,
 		err error,
 	)
+
+	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
+	// 	- `respHeaders` is the response headers.
+	// 	- `body` is the response body that contains the error message.
+	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
 
 func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
@@ -111,6 +109,11 @@ type OpenAIEmbeddingTranslator interface {
 		tokenUsage LLMTokenUsage,
 		err error,
 	)
+
+	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
+	// 	- `respHeaders` is the response headers.
+	// 	- `body` is the response body that contains the error message.
+	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
 
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.

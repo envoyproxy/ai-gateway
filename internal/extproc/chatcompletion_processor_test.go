@@ -295,6 +295,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 					},
 				},
 			},
+			responseHeaders:   map[string]string{":status": "200"},
 			backendName:       "some_backend",
 			modelNameOverride: "ai_gateway_llm",
 		}

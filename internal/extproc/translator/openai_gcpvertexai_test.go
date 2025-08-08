@@ -712,7 +712,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
 
 	headerMut, bodyMut, tokenUsage, err := translator.handleStreamingResponse(
-		map[string]string{},
 		bytes.NewReader([]byte(gcpChunk)),
 		false,
 	)
@@ -737,7 +736,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *t
 
 	// Test end of stream marker.
 	_, bodyMut, _, err := translator.handleStreamingResponse(
-		map[string]string{},
 		bytes.NewReader([]byte("")),
 		true,
 	)

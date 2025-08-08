@@ -336,6 +336,26 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		br = bytes.NewReader(body.Body)
 	}
 
+	// Assume all responses have a valid status code header.
+	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
+		var headerMutation *extprocv3.HeaderMutation
+		var bodyMutation *extprocv3.BodyMutation
+		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response error: %w", err)
+		}
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						BodyMutation:   bodyMutation,
+					},
+				},
+			},
+		}, nil
+	}
+
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
