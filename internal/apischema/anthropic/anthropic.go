@@ -49,30 +49,3 @@ type MessagesRequest struct {
 	// Metadata for the request.
 	Metadata interface{} `json:"metadata,omitempty"`
 }
-
-// MessagesResponse represents a response from the Anthropic Messages API.
-type MessagesResponse struct {
-	// ID is the unique identifier for this message.
-	ID string `json:"id"`
-
-	// Type is always "message".
-	Type string `json:"type"`
-
-	// Role is always "assistant".
-	Role string `json:"role"`
-
-	// Content contains the response content.
-	Content []anthropic.ContentBlockUnion `json:"content"`
-
-	// Model is the model that generated this response.
-	Model string `json:"model"`
-
-	// StopReason indicates why the model stopped generating.
-	StopReason *string `json:"stop_reason"`
-
-	// StopSequence is the stop sequence that triggered the stop (if any).
-	StopSequence *string `json:"stop_sequence"`
-
-	// Usage contains token usage information.
-	Usage *anthropic.MessageDeltaUsage `json:"usage"`
-}
