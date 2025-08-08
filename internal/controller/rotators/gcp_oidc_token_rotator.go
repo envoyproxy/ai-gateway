@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"golang.org/x/oauth2"
 	"google.golang.org/api/impersonate"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sts/v1"
@@ -86,6 +85,21 @@ type gcpOIDCTokenRotator struct {
 
 	saTokenFunc  serviceAccountTokenGenerator
 	stsTokenFunc stsTokenGenerator
+}
+
+// sharedGCPTransport is a shared HTTP transport used for GCP API calls.
+// It is initialized with the GCP proxy URL if provided in the environment variable.
+var (
+	sharedGCPTransport http.RoundTripper
+)
+
+func init() {
+	gcpProxyURL, err := getGCPProxyURL()
+	if err != nil {
+		panic(fmt.Errorf("error getting GCP proxy URL: %w", err))
+	}
+
+	sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 }
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
@@ -247,15 +261,19 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
 func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
-	proxyOpt, err := getGCPProxyClientOption()
+	// This step does not pass the token via the auth header.
+	// The empty string implies that the auth header will be skipped.
+	roundTripper, err := newBearerAuthRoundTripper("")
 	if err != nil {
-		return nil, fmt.Errorf("error getting GCP proxy client option: %w", err)
-	}
-	if proxyOpt != nil {
-		opts = append(opts, proxyOpt)
+		return nil, fmt.Errorf("error creating HTTP transport for STS token exchange: %w", err)
 	}
 
-	opts = append(opts, option.WithoutAuthentication())
+	// Create an HTTP client with a custom RoundTripper that adds the Bearer token Authorization header.
+	httpClient := &http.Client{
+		Transport: roundTripper,
+	}
+	// Prepend the HTTP client option so test options can override it.
+	opts = append([]option.ClientOption{option.WithHTTPClient(httpClient)}, opts...)
 
 	// Create an STS client.
 	stsService, err := sts.NewService(ctx, opts...)
@@ -291,6 +309,31 @@ func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv
 	}, nil
 }
 
+// bearerAuthRoundTripper implements [http.RoundTripper].
+var _ http.RoundTripper = &bearerAuthRoundTripper{}
+
+// bearerAuthRoundTripper is an HTTP RoundTripper that adds a Bearer token to the Authorization header.
+type bearerAuthRoundTripper struct {
+	base  http.RoundTripper
+	token string
+}
+
+func newBearerAuthRoundTripper(token string) (http.RoundTripper, error) {
+	return &bearerAuthRoundTripper{
+		base:  sharedGCPTransport,
+		token: token,
+	}, nil
+}
+
+// RoundTrip implements [RoundTripper.RoundTrip].
+func (rt *bearerAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	if rt.token != "" {
+		req2.Header.Set("Authorization", "Bearer "+rt.token)
+	}
+	return rt.base.RoundTrip(req2)
+}
+
 var _ serviceAccountTokenGenerator = impersonateServiceAccount
 
 // impersonateServiceAccount returns a GCP service account access token or an error if impersonation fails.
@@ -313,17 +356,16 @@ func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig ai
 	}
 
 	// Use the STS token as the source token for impersonation.
-	opts = append(opts, option.WithTokenSource(oauth2.StaticTokenSource(&oauth2.Token{AccessToken: stsToken, TokenType: "Bearer"})))
-
-	// If a proxy URL is set, add it as a client option.
-	proxyOpt, err := getGCPProxyClientOption()
+	// Create an HTTP client with a custom RoundTripper that adds the Bearer token Authorization header.
+	roundTripper, err := newBearerAuthRoundTripper(stsToken)
 	if err != nil {
-		return nil, fmt.Errorf("error getting GCP proxy client option: %w", err)
+		return nil, fmt.Errorf("error creating BearerAuthRoundTripper: %w", err)
 	}
-
-	if proxyOpt != nil {
-		opts = append(opts, proxyOpt)
+	httpClient := &http.Client{
+		Transport: roundTripper,
 	}
+	// Prepend the HTTP client option so test options can override it.
+	opts = append([]option.ClientOption{option.WithHTTPClient(httpClient)}, opts...)
 
 	// Create a token source that will provide tokens with the permissions of the impersonated service account.
 	ts, err := impersonate.CredentialsTokenSource(ctx, config, opts...)
@@ -342,7 +384,7 @@ func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig ai
 	}, nil
 }
 
-// populateAzureAccessToken updates the secret with the Azure access token.
+// populateInSecret updates the secret with the GCP access token.
 func populateInSecret(secret *corev1.Secret, gcpAuth filterapi.GCPAuth, expiryTime time.Time) {
 	updateExpirationSecretAnnotation(secret, expiryTime)
 	secret.Data = map[string][]byte{
@@ -352,7 +394,7 @@ func populateInSecret(secret *corev1.Secret, gcpAuth filterapi.GCPAuth, expiryTi
 	}
 }
 
-func getGCPProxyClientOption() (option.ClientOption, error) {
+func getGCPProxyURL() (*url.URL, error) {
 	proxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
 	if proxyURL == "" {
 		return nil, nil
@@ -362,9 +404,5 @@ func getGCPProxyClientOption() (option.ClientOption, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid proxy URL: %w", err)
 	}
-	transport := &http.Transport{
-		Proxy: http.ProxyURL(parsedURL),
-	}
-	httpClient := &http.Client{Transport: transport}
-	return option.WithHTTPClient(httpClient), nil
+	return parsedURL, nil
 }
