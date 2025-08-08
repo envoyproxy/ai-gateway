@@ -529,7 +529,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="schema"
   type="[VersionedAPISchema](#versionedapischema)"
   required="false"
-  description="APISchema specifies the API schema of the input that the target Gateway(s) will receive.<br />Based on this schema, the ai-gateway will perform the necessary transformation to the<br />output schema specified in the selected AIServiceBackend during the routing process.<br />Currently, the only supported schema is OpenAI as the input schema.<br />Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0."
+  description="APISchema specifies the API schema of the input that the target Gateway(s) will receive.<br />Based on this schema, the ai-gateway will perform the necessary transformation to the<br />output schema specified in the selected AIServiceBackend during the routing process.<br />Currently, the supported schemas are OpenAI and Anthropic as input schemas.<br />Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0."
 /><ApiField
   name="rules"
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
