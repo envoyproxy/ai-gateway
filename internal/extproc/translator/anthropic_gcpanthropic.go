@@ -11,51 +11,84 @@ import (
 	"io"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 )
 
 // NewAnthropicToGCPAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
 // This is essentially a passthrough translator with GCP-specific modifications.
-func NewAnthropicToGCPAnthropicTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) AnthropicMessagesTranslator {
 	return &anthropicToGCPAnthropicTranslator{
+		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
 	}
 }
 
 type anthropicToGCPAnthropicTranslator struct {
+	apiVersion        string
 	modelNameOverride string
 }
 
-// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
+// RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
 // This handles the transformation from native Anthropic format to GCP Anthropic format.
-func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, _ *openai.ChatCompletionRequest, _ bool) (
+func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	// Parse the incoming Anthropic request.
-	var anthropicReq map[string]interface{}
-	if err = json.Unmarshal(raw, &anthropicReq); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal Anthropic request: %w", err)
+	// Extract model name for GCP endpoint from the parsed request.
+	modelName := body.Model
+
+	// Build the request body from the parsed struct (we don't need raw bytes!)
+	anthropicReq := map[string]interface{}{
+		"messages": body.Messages,
+	}
+
+	// Add optional fields if present.
+	anthropicReq["stream"] = body.Stream
+	if body.MaxTokens > 0 {
+		anthropicReq["max_tokens"] = body.MaxTokens
+	}
+	if body.Temperature != nil {
+		anthropicReq["temperature"] = *body.Temperature
+	}
+	if body.TopP != nil {
+		anthropicReq["top_p"] = *body.TopP
+	}
+	if body.TopK != nil {
+		anthropicReq["top_k"] = *body.TopK
+	}
+	if len(body.StopSequences) > 0 {
+		anthropicReq["stop_sequences"] = body.StopSequences
+	}
+	if body.System != nil && body.System != "" {
+		anthropicReq["system"] = body.System
+	}
+	if len(body.Tools) > 0 {
+		anthropicReq["tools"] = body.Tools
+	}
+	if body.ToolChoice != nil {
+		anthropicReq["tool_choice"] = body.ToolChoice
+	}
+	if body.Metadata != nil {
+		anthropicReq["metadata"] = body.Metadata
 	}
 
 	// Apply model name override if configured.
 	if a.modelNameOverride != "" {
-		anthropicReq["model"] = a.modelNameOverride
+		modelName = a.modelNameOverride
 	}
 
-	modelName := anthropicReq["model"].(string)
+	// Note: We don't add the model field to anthropicReq since GCP doesn't want it in the body.
 
-	delete(anthropicReq, "model")
-
-	// Add GCP-specific anthropic_version field if not present.
-	if _, exists := anthropicReq[anthropicVersionKey]; !exists {
-		anthropicReq[anthropicVersionKey] = anthropicVertex.DefaultVersion
+	// Add GCP-specific anthropic_version field (required by GCP Vertex AI).
+	// Uses backend config version (e.g., "vertex-2023-10-16" for GCP Vertex AI).
+	if a.apiVersion == "" {
+		return nil, nil, fmt.Errorf("anthropic_version is required for GCP Vertex AI but not provided in backend configuration")
 	}
+	anthropicReq[anthropicVersionKey] = a.apiVersion
 
 	// Marshal the modified request.
-	body, err := json.Marshal(anthropicReq)
+	mutatedBody, err := json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal modified request: %w", err)
 	}
@@ -67,11 +100,11 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, _ *openai.Ch
 	}
 
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
-	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
+	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, mutatedBody)
 	return
 }
 
-// ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders] for Anthropic to GCP Anthropic.
+// ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders] for Anthropic to GCP Anthropic.
 func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
@@ -79,7 +112,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string)
 	return nil, nil
 }
 
-// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for Anthropic to GCP Anthropic.
+// ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to GCP Anthropic.
 // This is essentially a passthrough since both use the same Anthropic response format.
 func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
@@ -90,11 +123,27 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// For streaming chunks, pass through unchanged.
+	// For streaming chunks, try to extract token usage from message_delta events.
 	if !endOfStream {
+		// Try to parse as a message_delta event to extract usage.
+		var eventData map[string]interface{}
+		if unmarshalErr := json.Unmarshal(bodyBytes, &eventData); unmarshalErr == nil {
+			if eventType, ok := eventData["type"].(string); ok && eventType == "message_delta" {
+				if usageData, ok := eventData["usage"].(map[string]interface{}); ok {
+					// Extract token usage from the message_delta event.
+					if outputTokens, ok := usageData["output_tokens"].(float64); ok {
+						tokenUsage = LLMTokenUsage{
+							OutputTokens: uint32(outputTokens), //nolint:gosec
+							TotalTokens:  uint32(outputTokens), //nolint:gosec // Only output tokens available in streaming
+						}
+					}
+				}
+			}
+		}
+
 		return nil, &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, LLMTokenUsage{}, nil
+		}, tokenUsage, nil
 	}
 
 	// Parse the Anthropic response to extract token usage.
