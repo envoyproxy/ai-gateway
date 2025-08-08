@@ -33,10 +33,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
 		{
-			name:   "non_openai_schema.yaml",
-			expErr: `spec.schema: Invalid value: "object": failed rule: self.name == 'OpenAI'`,
-		},
-		{
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},

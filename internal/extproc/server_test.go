@@ -27,10 +27,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
-	s, err := NewServer(slog.Default())
+	s, err := NewServer(slog.Default(), tracing.NoopChatCompletionTracer{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	s.config = &processorConfig{}
@@ -340,7 +341,7 @@ func TestServer_setBackend(t *testing.T) {
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {
-	s, err := NewServer(slog.Default())
+	s, err := NewServer(slog.Default(), tracing.NoopChatCompletionTracer{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
 

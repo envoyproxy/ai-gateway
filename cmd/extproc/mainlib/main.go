@@ -22,9 +22,15 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/propagators/autoprop"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -32,6 +38,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -153,7 +160,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
-	server, err := extproc.NewServer(l)
+	// Configure tracer.
+	tracerProvider, propagator, err := configureTracing(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to configure tracer: %w", err)
+	}
+	tracer := tracing.NewChatCompletionTracer(tracerProvider, propagator)
+
+	server, err := extproc.NewServer(l, tracer)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
@@ -181,6 +195,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
+		}
+		if err := maybeTracerProviderShutdown(shutdownCtx, tracerProvider); err != nil {
+			l.Error("Failed to shutdown tracer provider gracefully", "error", err)
 		}
 	}()
 
@@ -243,6 +260,55 @@ func startMetricsServer(lis net.Listener, logger *slog.Logger) (*http.Server, me
 	}()
 
 	return server, meter
+}
+
+// noopTextMapPropagator is a no-op implementation of [propagation.TextMapPropagator].
+type noopTextMapPropagator struct{}
+
+// Inject implements [propagation.TextMapPropagator.Inject].
+func (noopTextMapPropagator) Inject(context.Context, propagation.TextMapCarrier) {}
+
+// Extract implements [propagation.TextMapPropagator.Extract].
+func (noopTextMapPropagator) Extract(ctx context.Context, _ propagation.TextMapCarrier) context.Context {
+	return ctx
+}
+
+// Fields implements [propagation.TextMapPropagator.Fields] and returns an empty slice.
+func (noopTextMapPropagator) Fields() []string { return nil }
+
+// configureTracing configures OpenTelemetry tracing based on environment
+// variables. Returns the tracer provider and propagator.
+//
+// When tracing is disabled, returns a noop.TracerProvider provider and no-op
+// propagation.TextMapPropagator.
+func configureTracing(ctx context.Context) (oteltrace.TracerProvider, propagation.TextMapPropagator, error) {
+	// Check if tracing is explicitly disabled via environment variable.
+	if os.Getenv("OTEL_SDK_DISABLED") == "true" || os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+		return noop.TracerProvider{}, noopTextMapPropagator{}, nil
+	}
+
+	// Create OTLP trace exporter using environment variables.
+	exporter, err := otlptracehttp.New(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
+	}
+
+	// The SDK automatically configures the batch processor from environment
+	// variables like OTEL_BSP_SCHEDULE_DELAY, OTEL_BSP_MAX_QUEUE_SIZE, etc.
+	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+
+	// Use autoprop to honor the OTEL_PROPAGATORS environment variable.
+	// Defaults to "tracecontext,baggage" and can include b3, b3multi, etc.
+	propagator := autoprop.NewTextMapPropagator()
+
+	return tp, propagator, nil
+}
+
+func maybeTracerProviderShutdown(ctx context.Context, tracerProvider oteltrace.TracerProvider) error {
+	if tp, ok := tracerProvider.(*sdktrace.TracerProvider); ok {
+		return tp.Shutdown(ctx)
+	}
+	return nil
 }
 
 // startHealthCheckServer is a proxy for the gRPC health check server.

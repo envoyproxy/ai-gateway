@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -33,7 +32,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 }
 
-// RequestBody implements [Translator.RequestBody] for GCP Gemini.
+// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
@@ -68,7 +67,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	return headerMutation, bodyMutation, nil
 }
 
-// ResponseHeaders implements [Translator.ResponseHeaders].
+// ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
@@ -83,24 +82,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[st
 	return
 }
 
-// ResponseBody implements [Translator.ResponseBody] for GCP Gemini.
+// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Gemini.
 // This method translates a GCP Gemini API response to the OpenAI ChatCompletion format.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if statusStr, ok := respHeaders[statusHeaderName]; ok {
-		var status int
-		if status, err = strconv.Atoi(statusStr); err == nil {
-			if !isGoodStatusCode(status) {
-				// TODO: Parse GCP error response and convert to OpenAI error format.
-				// For now, just return error response as-is.
-				return nil, nil, LLMTokenUsage{}, err
-			}
-		}
-	}
-
 	if o.stream {
-		return o.handleStreamingResponse(respHeaders, body, endOfStream)
+		return o.handleStreamingResponse(body, endOfStream)
 	}
 
 	// Non-streaming logic.
@@ -138,7 +126,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(respHeaders
 }
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(_ map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	// Parse GCP streaming chunks from buffered body and current input.
@@ -314,4 +302,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	}
 
 	return openaiResp, nil
+}
+
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError] for GCP Vertex AI.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(map[string]string, io.Reader) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+) {
+	// TODO: add support for converting GCP Vertex AI error responses to OpenAI error format.
+	return nil, nil, nil
 }

@@ -1,0 +1,69 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+
+volumes:
+  aigw-target:  # Stores the binary between aigw-build and aigw
+  envoy-cache:  # Stores downloaded Envoy versions
+
+services:
+  aigw-build:
+    image: golang:1.24.6
+    container_name: aigw-build
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+      - aigw-target:/workspace/out
+    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
+
+  ollama-pull:
+    image: alpine/ollama
+    container_name: ollama-pull
+    environment:
+      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+    env_file:
+      - ../../.env.ollama
+    entrypoint: sh
+    command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
+    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+      - "localhost:host-gateway"
+
+  aigw:
+    image: debian:trixie-slim
+    container_name: aigw
+    depends_on:
+      aigw-build:
+        condition: service_completed_successfully
+      ollama-pull:
+        condition: service_completed_successfully
+    ports:
+      - "1975:1975"
+    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - aigw-target:/app
+      - ./testdata/ai-gateway-ollama-docker.yaml:/app/config.yaml:ro
+      - envoy-cache:/tmp/envoy-gateway
+    working_dir: /app
+    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
+
+  openai-client:
+    image: golang:1.24.5
+    container_name: openai-client
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    depends_on:
+      aigw:
+        condition: service_started
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/chat/completions \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]}"

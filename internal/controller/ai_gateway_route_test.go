@@ -47,7 +47,6 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	// Make sure the finalizer is added.
 	require.NoError(t, err)
 	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
-	current.Spec.APISchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")}
 	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
 	}
@@ -64,7 +63,6 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "default", updated.Namespace)
 	require.Len(t, updated.Spec.TargetRefs, 1)
 	require.Equal(t, "mytarget", string(updated.Spec.TargetRefs[0].Name))
-	require.Equal(t, aigv1a1.APISchemaOpenAI, updated.Spec.APISchema.Name)
 
 	// Test the case where the AIGatewayRoute is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
@@ -83,7 +81,6 @@ func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	route := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "errorroute", Namespace: "default"},
 		Spec: aigv1a1.AIGatewayRouteSpec{
-			APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v1")},
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
@@ -149,7 +146,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
 					},
 				},
-				APISchema: aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")},
 			},
 		}
 		err := fakeClient.Create(t.Context(), route, &client.CreateOptions{})

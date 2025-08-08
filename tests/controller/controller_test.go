@@ -111,7 +111,6 @@ func TestStartControllers(t *testing.T) {
 				Spec: aigv1a1.AIGatewayRouteSpec{
 					TargetRefs: targetRefs,
 					ParentRefs: parentRefs,
-					APISchema:  defaultSchema,
 					Rules: []aigv1a1.AIGatewayRouteRule{
 						{
 							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
@@ -250,7 +249,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 	origin := &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
 		Spec: aigv1a1.AIGatewayRouteSpec{
-			APISchema: defaultSchema,
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 				{
 					LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
@@ -569,7 +567,6 @@ func TestAIServiceBackendController(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: aiServiceBackendNamespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				APISchema: defaultSchema,
 				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 					{
 						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
@@ -588,7 +585,6 @@ func TestAIServiceBackendController(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute2", Namespace: aiServiceBackendNamespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				APISchema: defaultSchema,
 				TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 					{
 						LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
