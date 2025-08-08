@@ -32,11 +32,6 @@ spec:
           This serves as a way to define a "unified" AI API for a Gateway which allows downstream
           clients to use a single schema API to interact with multiple AI backends.
 
-          The schema field is used to determine the structure of the requests that the Gateway will
-          receive. And then the Gateway will route the traffic to the appropriate AIServiceBackend based
-          on the output schema of the AIServiceBackend while doing the other necessary jobs like
-          upstream authentication, rate limit, etc.
-
           Envoy AI Gateway will generate the following k8s resources corresponding to the AIGatewayRoute:
 
             - HTTPRoute of the Gateway API as a top-level resource to bind all backends.
@@ -701,6 +696,8 @@ spec:
                   output schema specified in the selected AIServiceBackend during the routing process.
 
                   Currently, the only supported schema is OpenAI as the input schema.
+
+                  Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0.
                 properties:
                   name:
                     description: Name is the name of the API schema of the AIGatewayRoute
@@ -732,8 +729,6 @@ spec:
                 required:
                 - name
                 type: object
-                x-kubernetes-validations:
-                - rule: self.name == 'OpenAI'
               targetRefs:
                 description: |-
                   TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
@@ -793,7 +788,6 @@ spec:
                 type: array
             required:
             - rules
-            - schema
             type: object
             x-kubernetes-validations:
             - message: targetRefs is deprecated, use parentRefs only
