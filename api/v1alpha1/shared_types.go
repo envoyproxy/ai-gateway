@@ -62,10 +62,6 @@ const (
 	//
 	// https://docs.anthropic.com/en/api/claude-on-vertex-ai
 	APISchemaGCPAnthropic APISchema = "GCPAnthropic"
-	// APISchemaAnthropic is the native Anthropic API schema.
-	//
-	// https://docs.anthropic.com/en/api/messages
-	APISchemaAnthropic APISchema = "Anthropic"
 )
 
 const (

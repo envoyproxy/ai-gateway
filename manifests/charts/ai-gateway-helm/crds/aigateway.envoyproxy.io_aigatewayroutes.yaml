@@ -706,7 +706,6 @@ spec:
                     - AzureOpenAI
                     - GCPVertexAI
                     - GCPAnthropic
-                    - GCPAnthropicToNative
                     - Anthropic
                     type: string
                   version:
