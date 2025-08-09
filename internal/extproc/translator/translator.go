@@ -13,6 +13,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
@@ -115,6 +116,42 @@ type OpenAIEmbeddingTranslator interface {
 	// 	- `respHeaders` is the response headers.
 	// 	- `body` is the response body that contains the error message.
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+}
+
+// AnthropicMessagesTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/messages endpoint of Anthropic.
+//
+// This is created per request and is not thread-safe.
+type AnthropicMessagesTranslator interface {
+	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
+	// 	- `body` is the request body parsed into the [anthropicschema.MessagesRequest].
+	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- `headers` is the response headers.
+	//	- This returns `headerMutation` that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
+	// 	- `body` is the response body either chunk or the entire body, depending on the context.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		err error,
+	)
 }
 
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.
