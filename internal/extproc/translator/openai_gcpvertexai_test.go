@@ -8,6 +8,7 @@ package translator
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -964,6 +965,145 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 			if diff := cmp.Diff(tc.wantBuffered, translator.bufferedBody); diff != "" {
 				t.Errorf("buffered body mismatch (-want +got):\n%s", diff)
 			}
+		})
+	}
+}
+
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseError(t *testing.T) {
+	tests := []struct {
+		name           string
+		headers        map[string]string
+		body           string
+		expectedErrMsg string
+		wantError      openai.Error
+		description    string
+	}{
+		{
+			name: "JSON error response with complete GCP error structure",
+			headers: map[string]string{
+				statusHeaderName: "400",
+			},
+			body: `{
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}`,
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type: "INVALID_ARGUMENT",
+					Message: `Error: Invalid JSON payload received. Unknown name "fake": Cannot find field.
+Details: [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field."
+          }
+        ]
+      }
+    ]`,
+					Code: ptr.To("400"),
+				},
+			},
+		},
+		{
+			name: "Plain text error response",
+			headers: map[string]string{
+				statusHeaderName: "503",
+			},
+			body: "Service temporarily unavailable",
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: "Service temporarily unavailable",
+					Code:    ptr.To("503"),
+				},
+			},
+		},
+		{
+			name: "Invalid JSON in error response",
+			headers: map[string]string{
+				statusHeaderName: "400",
+			},
+			body: `{"error": invalid json}`,
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: `{"error": invalid json}`,
+					Code:    ptr.To("400"),
+				},
+			},
+		},
+		{
+			name: "Empty body handling",
+			headers: map[string]string{
+				statusHeaderName: "500",
+			},
+			body:        "", // Empty body to simulate no content.
+			description: "Should handle empty body gracefully.",
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: "",
+					Code:    ptr.To("500"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+			body := strings.NewReader(tt.body)
+
+			headerMutation, bodyMutation, err := translator.ResponseError(tt.headers, body)
+
+			if tt.expectedErrMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErrMsg)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.description != "" {
+				require.NoError(t, err, tt.description)
+			}
+			require.NotNil(t, bodyMutation)
+			require.NotNil(t, headerMutation)
+
+			// Verify that the body mutation contains a valid OpenAI error response.
+			var openaiError openai.Error
+			bodyBytes := bodyMutation.GetBody()
+			err = json.Unmarshal(bodyBytes, &openaiError)
+			require.NoError(t, err)
+
+			if diff := cmp.Diff(tt.wantError, openaiError); diff != "" {
+				t.Errorf("OpenAI error mismatch (-want +got):\n%s", diff)
+			}
+
+			// Verify header mutation contains content-length header.
+			foundContentLength := slices.ContainsFunc(
+				headerMutation.SetHeaders,
+				func(header *corev3.HeaderValueOption) bool { return header.Header.Key == httpHeaderKeyContentLength },
+			)
+			assert.True(t, foundContentLength, "content-length header should be set")
 		})
 	}
 }
