@@ -304,7 +304,7 @@ metadata:
 spec:
   schema:
     name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: inference-pool-with-aigwroute
       kind: Gateway
       group: gateway.networking.k8s.io

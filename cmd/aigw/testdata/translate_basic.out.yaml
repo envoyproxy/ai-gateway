@@ -79,7 +79,8 @@ metadata:
 spec:
   parentRefs:
     - name: envoy-ai-gateway-basic
-      namespace: default
+      group: gateway.networking.k8s.io
+      kind: Gateway
   rules:
     - backendRefs:
         - group: gateway.envoyproxy.io
