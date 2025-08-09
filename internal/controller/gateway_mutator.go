@@ -36,11 +36,12 @@ type gatewayMutator struct {
 	extProcLogLevel            string
 	udsPath                    string
 	metricsRequestHeaderLabels string
+	openAIPrefix               string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string,
-	udsPath string, metricsRequestHeaderLabels string,
+	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
+	udsPath, metricsRequestHeaderLabels, openAIPrefix string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
@@ -51,6 +52,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		logger:                     logger,
 		udsPath:                    udsPath,
 		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
+		openAIPrefix:               openAIPrefix,
 	}
 }
 
@@ -81,6 +83,7 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMe
 		"-extProcAddr", "unix://" + g.udsPath,
 		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
+		"-openAIPrefix", g.openAIPrefix,
 	}
 
 	// Add metrics header label mapping if configured.

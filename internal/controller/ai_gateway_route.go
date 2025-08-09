@@ -56,18 +56,22 @@ type AIGatewayRouteController struct {
 	logger logr.Logger
 	// gatewayEventChan is a channel to send events to the gateway controller.
 	gatewayEventChan chan event.GenericEvent
+	// rootPrefix is the prefix for the root path of the AI Gateway.
+	rootPrefix string
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
 	gatewayEventChan chan event.GenericEvent,
+	rootPrefix string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
 		client:           client,
 		kube:             kube,
 		logger:           logger,
 		gatewayEventChan: gatewayEventChan,
+		rootPrefix:       rootPrefix,
 	}
 }
 
@@ -267,7 +271,10 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		}
 		var matches []gwapiv1.HTTPRouteMatch
 		for j := range rule.Matches {
-			matches = append(matches, gwapiv1.HTTPRouteMatch{Headers: rule.Matches[j].Headers})
+			matches = append(matches, gwapiv1.HTTPRouteMatch{
+				Headers: rule.Matches[j].Headers,
+				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
+			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
@@ -279,7 +286,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	rules = append(rules, gwapiv1.HTTPRouteRule{
 		Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
-		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
+		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix}}},
 		Filters: []gwapiv1.HTTPRouteFilter{{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
 			ExtensionRef: &gwapiv1.LocalObjectReference{

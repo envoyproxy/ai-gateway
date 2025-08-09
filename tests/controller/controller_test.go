@@ -52,6 +52,7 @@ func TestStartControllers(t *testing.T) {
 		ExtProcImage:           "envoyproxy/ai-gateway-extproc:foo",
 		EnableLeaderElection:   false,
 		DisableMutatingWebhook: true,
+		RootPrefix:             "/root-prefix",
 	}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
@@ -186,7 +187,7 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default backend.
+				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default rule.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
 				require.Equal(t, "x-ai-eg-model", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
@@ -198,6 +199,12 @@ func TestStartControllers(t *testing.T) {
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
 					require.Equal(t, fmt.Sprintf("ai-eg-host-rewrite-%s", route), string(rule.Filters[0].ExtensionRef.Name))
 				}
+				// Check all rules have root-prefix as the path.
+				for _, rule := range httpRoute.Spec.Rules {
+					p := rule.Matches[0].Path
+					require.NotNil(t, p)
+					require.Equal(t, "/root-prefix", *p.Value)
+				}
 				return true
 			}, 30*time.Second, 200*time.Millisecond)
 		})
@@ -208,7 +215,7 @@ func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), eventCh.Ch)
+	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), eventCh.Ch, "/foobar/")
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)

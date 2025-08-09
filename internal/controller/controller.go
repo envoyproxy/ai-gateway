@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -71,6 +72,10 @@ type Options struct {
 	DisableMutatingWebhook bool
 	// MetricsRequestHeaderLabels is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 	MetricsRequestHeaderLabels string
+	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
+	RootPrefix string
+	// OpenAIEndpointsPrefix is the prefix for OpenAI endpoints that follow after the root prefix.
+	OpenAIPrefix string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -98,7 +103,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	aiGatewayRouteEventChan := make(chan event.GenericEvent, 100)
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
-		gatewayEventChan,
+		gatewayEventChan, options.RootPrefix,
 	)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
@@ -179,6 +184,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
+			path.Join(options.RootPrefix, options.OpenAIPrefix),
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
