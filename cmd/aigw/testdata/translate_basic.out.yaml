@@ -96,6 +96,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: gpt-4o-mini
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - backendRefs:
@@ -113,6 +115,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: llama3-2-1b-instruct-v1
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - backendRefs:
@@ -130,6 +134,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: some-cool-self-hosted-model
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - matches:
