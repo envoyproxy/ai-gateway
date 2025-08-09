@@ -137,7 +137,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
 		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
-		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, translator.SJSONOptions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set stream_options: %w", err)
 		}

@@ -11,6 +11,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -124,4 +125,11 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
+}
+
+// SJSONOptions are the options used for sjson operations in the translator.
+// This is also used outside the package to share the same options for consistency.
+var SJSONOptions = &sjson.Options{
+	Optimistic:     true,
+	ReplaceInPlace: true,
 }

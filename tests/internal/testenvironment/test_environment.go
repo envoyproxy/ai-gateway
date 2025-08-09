@@ -40,6 +40,7 @@ func (e *TestEnvironment) LogOutput(t *testing.T) {
 	t.Logf("=== Envoy Stdout ===\n%s", e.envoyStdout.String())
 	t.Logf("=== Envoy Stderr ===\n%s", e.envoyStderr.String())
 	t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", e.extprocOut.String())
+	t.Logf("=== Upstream Output ===\n%s", e.upstreamOut.String())
 	// TODO: dump extproc and envoy metrics.
 }
 
