@@ -8,6 +8,8 @@ package e2e
 import (
 	"encoding/base64"
 	"fmt"
+	openaigo "github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 
 	"io"
 	"net/http"
@@ -15,8 +17,6 @@ import (
 	"testing"
 	"time"
 
-	openaigo "github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
@@ -120,6 +120,53 @@ func TestWithTestUpstream(t *testing.T) {
 		}
 	})
 
+	// To make the non-llm-route work reliable, the controller must delete the old EnvoyExtensionProxy from v0.2.x.
+	// That happens during the reconciliation loop of AIGatewayRoute, so let's trigger it by updating the AIGatewayRoute.
+	// Sometimes this won't be necessary depending on the kubectl apply timing, but this ensures no flaky tests.
+	//
+	// TODO: delete this after 0.3.0 release since this is for backward compatibility testing.
+	kubectl(t.Context(),
+		"patch", "aigatewayroute", "translation-testupstream",
+		"-n", "default",
+		"--type=json",
+		"-p", `[{"op": "replace", "path": "/spec/rules/0/matches/0/headers/0/value", "value": "some-cool-model-2"}]`,
+	)
+
+	t.Run("non-llm-route", func(t *testing.T) {
+		// We should be able to make requests to /non-llm routes as well.
+		//
+		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404
+		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
+		require.Eventually(t, func() bool {
+			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
+			defer fwd.kill()
+
+			req, err := http.NewRequest(http.MethodGet, fwd.address()+"/non-llm-route", strings.NewReader("somebody"))
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("error: %v", err)
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Logf("error reading response body: %v", err)
+				return false
+			}
+			if resp.StatusCode != 200 {
+				t.Logf("unexpected status code: %d (expected 200), body: %s", resp.StatusCode, body)
+				return false
+			}
+			if string(body) != `{"message":"This is a non-LLM endpoint response"}` {
+				t.Logf("unexpected response body: %s", body)
+				return false
+			}
+			return true
+		}, 10*time.Second, 1*time.Second)
+	})
+
 	// https://github.com/envoyproxy/ai-gateway/pull/1026
 	t.Run("stream non blocking", func(t *testing.T) {
 		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
@@ -186,53 +233,6 @@ func TestWithTestUpstream(t *testing.T) {
 		}
 		require.NoError(t, stream.Err())
 		require.True(t, asserted)
-	})
-
-	// To make the non-llm-route work reliable, the controller must delete the old EnvoyExtensionProxy from v0.2.x.
-	// That happens during the reconciliation loop of AIGatewayRoute, so let's trigger it by updating the AIGatewayRoute.
-	// Sometimes this won't be necessary depending on the kubectl apply timing, but this ensures no flaky tests.
-	//
-	// TODO: delete this after 0.3.0 release since this is for backward compatibility testing.
-	kubectl(t.Context(),
-		"patch", "aigatewayroute", "translation-testupstream",
-		"-n", "default",
-		"--type=json",
-		"-p", `[{"op": "replace", "path": "/spec/rules/0/matches/0/headers/0/value", "value": "some-cool-model-2"}]`,
-	)
-
-	t.Run("non-llm-route", func(t *testing.T) {
-		// We should be able to make requests to /non-llm routes as well.
-		//
-		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404
-		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
-		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
-
-			req, err := http.NewRequest(http.MethodGet, fwd.address()+"/non-llm-route", strings.NewReader("somebody"))
-			require.NoError(t, err)
-
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Logf("error: %v", err)
-				return false
-			}
-			defer func() { _ = resp.Body.Close() }()
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Logf("error reading response body: %v", err)
-				return false
-			}
-			if resp.StatusCode != 200 {
-				t.Logf("unexpected status code: %d (expected 200), body: %s", resp.StatusCode, body)
-				return false
-			}
-			if string(body) != `{"message":"This is a non-LLM endpoint response"}` {
-				t.Logf("unexpected response body: %s", body)
-				return false
-			}
-			return true
-		}, 10*time.Second, 1*time.Second)
 	})
 
 }
