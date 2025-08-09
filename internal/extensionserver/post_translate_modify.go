@@ -561,8 +561,9 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 						ResponseBodyMode:    extprocv3.ProcessingMode_BUFFERED,
 						ResponseTrailerMode: extprocv3.ProcessingMode_SKIP,
 					},
-					MessageTimeout:   durationpb.New(10 * time.Second),
-					FailureModeAllow: false,
+					MessageTimeout:    durationpb.New(10 * time.Second),
+					FailureModeAllow:  false,
+					AllowModeOverride: true,
 				})},
 			}
 
