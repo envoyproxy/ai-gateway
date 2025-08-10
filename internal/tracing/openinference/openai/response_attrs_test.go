@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package openinference
+package openai
 
 import (
 	"testing"
@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 var (
@@ -19,7 +20,7 @@ var (
 		ID:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: openai.JSONUNIXTime(time.Unix(1234567890, 0)),
-		Model:   "gpt-4",
+		Model:   openai.ModelGPT41Nano,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Index: 0,
 			Message: openai.ChatCompletionResponseChoiceMessage{
@@ -38,7 +39,7 @@ var (
 
 	toolsResp = &openai.ChatCompletionResponse{
 		ID:    "chatcmpl-123",
-		Model: "gpt-4",
+		Model: openai.ModelGPT41Nano,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Index: 0,
 			Message: openai.ChatCompletionResponseChoiceMessage{
@@ -105,55 +106,55 @@ func TestBuildResponseAttributes(t *testing.T) {
 			name: "successful response",
 			resp: basicResp,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(LLMModelName, "gpt-4"),
-				attribute.String(OutputMimeType, MimeTypeJSON),
-				attribute.String(OutputMessageAttribute(0, MessageRole), "assistant"),
-				attribute.String(OutputMessageAttribute(0, MessageContent), "Hello! How can I help you today?"),
-				attribute.Int(LLMTokenCountPrompt, 20),
-				attribute.Int(LLMTokenCountCompletion, 10),
-				attribute.Int(LLMTokenCountTotal, 30),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I help you today?"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 20),
+				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
 			},
 		},
 		{
 			name: "response with tool calls",
 			resp: toolsResp,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(LLMModelName, "gpt-4"),
-				attribute.String(OutputMimeType, MimeTypeJSON),
-				attribute.String(OutputMessageAttribute(0, MessageRole), "assistant"),
-				attribute.String(OutputMessageAttribute(0, MessageContent), "I can help you with that."),
-				attribute.String(OutputMessageToolCallAttribute(0, 0, ToolCallID), "call_123"),
-				attribute.String(OutputMessageToolCallAttribute(0, 0, ToolCallFunctionName), "get_weather"),
-				attribute.String(OutputMessageToolCallAttribute(0, 0, ToolCallFunctionArguments), `{"location":"NYC"}`),
-				attribute.Int(LLMTokenCountPrompt, 10),
-				attribute.Int(LLMTokenCountCompletion, 20),
-				attribute.Int(LLMTokenCountTotal, 30),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "I can help you with that."),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "call_123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "get_weather"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"location":"NYC"}`),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
 			},
 		},
 		{
 			name: "response with detailed usage",
 			resp: detailedResp,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(LLMModelName, "gpt-4.1-nano-2025-04-14"),
-				attribute.String(OutputMimeType, MimeTypeJSON),
-				attribute.String(OutputMessageAttribute(0, MessageRole), "assistant"),
-				attribute.String(OutputMessageAttribute(0, MessageContent), "Hello! How can I assist you today?"),
-				attribute.Int(LLMTokenCountPrompt, 9),
-				attribute.Int(LLMTokenCountPromptAudio, 0),
-				attribute.Int(LLMTokenCountPromptCacheHit, 0),
-				attribute.Int(LLMTokenCountCompletion, 9),
-				attribute.Int(LLMTokenCountCompletionAudio, 0),
-				attribute.Int(LLMTokenCountCompletionReasoning, 0),
-				attribute.Int(LLMTokenCountTotal, 18),
+				attribute.String(openinference.LLMModelName, "gpt-4.1-nano-2025-04-14"),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I assist you today?"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 9),
+				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountCompletion, 9),
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
+				attribute.Int(openinference.LLMTokenCountTotal, 18),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			attrs := buildResponseAttributes(tt.resp)
+			attrs := buildResponseAttributes(tt.resp, openinference.NewTraceConfig())
 
-			requireAttributesEqual(t, tt.expectedAttrs, attrs)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
 		})
 	}
 }

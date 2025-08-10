@@ -28,16 +28,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	"github.com/envoyproxy/ai-gateway/internal/tracing"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &chatCompletionProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.ChatCompletionTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil
@@ -75,6 +76,8 @@ type chatCompletionProcessorRouterFilter struct {
 	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
 	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
+	// tracer is the tracer used for requests.
+	tracer tracing.ChatCompletionTracer
 	// span is the tracing span for this request, created in ProcessRequestBody.
 	span tracing.ChatCompletionSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
@@ -163,7 +166,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
 	}
-	c.span = c.config.tracer.StartSpanAndInjectHeaders(
+	c.span = c.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		c.requestHeaders,
 		headerMutation,

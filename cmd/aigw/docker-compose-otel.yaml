@@ -8,6 +8,7 @@ volumes:
   envoy-cache:  # Stores downloaded Envoy versions
 
 services:
+  # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
   aigw-build:
     image: golang:1.24.6
     container_name: aigw-build
@@ -17,6 +18,9 @@ services:
       - aigw-target:/workspace/out
     command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
 
+  # phoenix is an OpenTelemetry compatible LLM eval system which accepts trace
+  # spans and has special handling for OpenInference LLM semantic conventions.
+  # See https://arize.com/docs/phoenix
   phoenix:
     image: arizephoenix/phoenix:latest
     container_name: phoenix
@@ -25,6 +29,7 @@ services:
     environment:
       PHOENIX_ENABLE_AUTH: "false"
 
+  # ollama-pull pulls the models defined in .env.ollama, to avoid 404s.
   ollama-pull:
     image: alpine/ollama
     container_name: ollama-pull
@@ -37,6 +42,7 @@ services:
     extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
+  # aigw is the Envoy AI Gateway CLI a.k.a standlane mode.
   aigw:
     image: debian:trixie-slim
     container_name: aigw
@@ -48,8 +54,15 @@ services:
       ollama-pull:
         condition: service_completed_successfully
     environment:
+      # Below sets the OTLP collector to Phoenix, using a shorter span delay.
+      # See https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_BSP_SCHEDULE_DELAY=100
+      # Below are default values for span redaction in OpenInference.
+      # See https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+      - OPENINFERENCE_HIDE_INPUTS=false
+      - OPENINFERENCE_HIDE_OUTPUTS=false
     ports:
       - "1975:1975"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
@@ -61,6 +74,10 @@ services:
     working_dir: /app
     command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
 
+  # openai-client is the standard OpenAI client (`openai` in pip), instrumented
+  # with the following OpenTelemetry instrumentation libraries:
+  # - openinference-instrumentation-python (LLM chat completion spans)
+  # - opentelemetry-instrumentation-httpx (HTTP client spans and trace headers)
   openai-client:
     build:
       context: ../../tests/internal/testopeninference

@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package openinference
+package openai
 
 import (
 	"testing"
@@ -32,11 +32,11 @@ data: [DONE]
 		},
 		{
 			name: "minimal response without optional fields",
-			input: `data: {"id":"123","object":"chat.completion.chunk","created":456,"model":"gpt-4","choices":[{"delta":{"content":"Hi"}}]}
+			input: `data: {"id":"123","object":"chat.completion.chunk","created":456,"model":"gpt-4.1-nano","choices":[{"delta":{"content":"Hi"}}]}
 
 data: [DONE]
 `,
-			expected: `{"id":"123","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hi"}}],"created":456,"model":"gpt-4","object":"chat.completion.chunk"}`,
+			expected: `{"id":"123","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hi"}}],"created":456,"model":"gpt-4.1-nano","object":"chat.completion.chunk"}`,
 		},
 		{
 			name: "response with usage details",

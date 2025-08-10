@@ -7,14 +7,16 @@ package tracing
 
 import (
 	"go.opentelemetry.io/otel/trace"
+
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // Ensure chatCompletionSpan implements ChatCompletionSpan.
-var _ ChatCompletionSpan = (*chatCompletionSpan)(nil)
+var _ tracing.ChatCompletionSpan = (*chatCompletionSpan)(nil)
 
 type chatCompletionSpan struct {
 	span     trace.Span
-	recorder ChatCompletionRecorder
+	recorder tracing.ChatCompletionRecorder
 	chunkIdx int
 }
 

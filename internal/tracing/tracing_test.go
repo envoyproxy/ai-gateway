@@ -1,0 +1,324 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
+package tracing
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"testing"
+
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/contrib/propagators/autoprop"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
+	"github.com/envoyproxy/ai-gateway/tests/testotel"
+)
+
+func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
+	tests := []struct {
+		name         string
+		sdkDisabled  string
+		otlpEndpoint string
+	}{
+		{
+			name:         "OTEL_SDK_DISABLED true",
+			sdkDisabled:  "true",
+			otlpEndpoint: "http://localhost:4318", // Should be ignored.
+		},
+		{
+			name:         "OTEL_EXPORTER_OTLP_ENDPOINT unset",
+			sdkDisabled:  "",
+			otlpEndpoint: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_SDK_DISABLED", tt.sdkDisabled)
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tt.otlpEndpoint)
+
+			result, err := NewTracingFromEnv(t.Context())
+			require.NoError(t, err)
+			require.IsType(t, tracing.NoopTracing{}, result)
+		})
+	}
+}
+
+// TestNewTracingFromEnv_TracesSampler tests that the OTEL_TRACES_SAMPLER env
+// variable works.
+// See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_sampler
+func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
+	// Just test 2 samplers to prove the SDK is wired up correctly.
+	tests := []struct {
+		sampler       string
+		expectSampled bool
+	}{
+		{"always_on", true},
+		{"always_off", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.sampler, func(t *testing.T) {
+			t.Setenv("OTEL_TRACES_SAMPLER", tt.sampler)
+			collector, tracing := newTracingFromEnvForTest(t)
+			tracer := tracing.ChatCompletionTracer()
+
+			// Create a test request to start a span.
+			req := &openai.ChatCompletionRequest{
+				Model: openai.ModelGPT41Nano,
+			}
+			span := tracer.StartSpanAndInjectHeaders(t.Context(), nil, &extprocv3.HeaderMutation{}, req, nil)
+			if tt.expectSampled {
+				require.NotNil(t, span, "expected span to be sampled")
+				span.EndSpan(200, nil)
+			} else {
+				require.Nil(t, span, "expected span to not be sampled")
+			}
+
+			// Now, verify the actual ENV were honored.
+			v1Span := collector.TakeSpan()
+			if tt.expectSampled {
+				require.NotNil(t, v1Span)
+			} else {
+				require.Nil(t, v1Span)
+			}
+		})
+	}
+}
+
+// TestNewTracingFromEnv_OtelPropagators tests that the OTEL_PROPAGATORS env
+// variable works.
+// See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
+func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
+	// Just test 2 propagators to prove the SDK is wired up correctly.
+	tests := []struct {
+		propagator         string
+		expectHeaderKey    string
+		expectHeaderFormat func(string, string) string
+	}{
+		{
+			propagator:         "b3",
+			expectHeaderKey:    "b3",
+			expectHeaderFormat: func(traceID, spanID string) string { return traceID + "-" + spanID + "-1" },
+		},
+		{
+			propagator:         "tracecontext",
+			expectHeaderKey:    "traceparent",
+			expectHeaderFormat: func(traceID, spanID string) string { return "00-" + traceID + "-" + spanID + "-01" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.propagator, func(t *testing.T) {
+			t.Setenv("OTEL_PROPAGATORS", tt.propagator)
+			collector, tracing := newTracingFromEnvForTest(t)
+			tracer := tracing.ChatCompletionTracer()
+
+			// Create a test request and headers for injection.
+			req := &openai.ChatCompletionRequest{
+				Model: openai.ModelGPT41Nano,
+			}
+			headerMutation := &extprocv3.HeaderMutation{}
+
+			// Start span and inject headers.
+			span := tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
+			require.NotNil(t, span)
+			span.EndSpan(200, nil)
+
+			// Check that the expected header was injected.
+			require.Len(t, headerMutation.SetHeaders, 1, "expected exactly one header to be set")
+			header := headerMutation.SetHeaders[0].Header
+			require.Equal(t, tt.expectHeaderKey, header.Key)
+
+			// Get the span to check trace/span IDs.
+			v1Span := collector.TakeSpan()
+			require.NotNil(t, v1Span)
+
+			// Convert IDs to hex strings.
+			traceIDStr := fmt.Sprintf("%032x", v1Span.TraceId)
+			spanIDStr := fmt.Sprintf("%016x", v1Span.SpanId)
+
+			// Verify the header value format.
+			expectedValue := tt.expectHeaderFormat(traceIDStr, spanIDStr)
+			require.Equal(t, expectedValue, string(header.RawValue))
+		})
+	}
+}
+
+// TestNewTracingFromEnv_OpenInferenceRedaction tests that the OpenInference
+// environment variables (OPENINFERENCE_HIDE_INPUTS and OPENINFERENCE_HIDE_OUTPUTS)
+// work correctly to redact sensitive data from spans, following the OpenInference
+// configuration specification.
+func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
+	tests := []struct {
+		name        string
+		hideInputs  bool
+		hideOutputs bool
+	}{
+		{
+			name:        "no redaction",
+			hideInputs:  false,
+			hideOutputs: false,
+		},
+		{
+			name:        "hide inputs only",
+			hideInputs:  true,
+			hideOutputs: false,
+		},
+		{
+			name:        "hide outputs only",
+			hideInputs:  false,
+			hideOutputs: true,
+		},
+		{
+			name:        "hide inputs and outputs",
+			hideInputs:  true,
+			hideOutputs: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(openinference.EnvHideInputs, strconv.FormatBool(tt.hideInputs))
+			t.Setenv(openinference.EnvHideOutputs, strconv.FormatBool(tt.hideOutputs))
+
+			collector, tracing := newTracingFromEnvForTest(t)
+			tracer := tracing.ChatCompletionTracer()
+
+			// Create a test request with sensitive data.
+			req := &openai.ChatCompletionRequest{
+				Model: openai.ModelGPT41Nano,
+				Messages: []openai.ChatCompletionMessageParamUnion{{
+					Type: openai.ChatMessageRoleUser,
+					Value: openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello, sensitive data!"},
+						Role:    openai.ChatMessageRoleUser,
+					},
+				}},
+			}
+			reqBody := []byte(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello, sensitive data!"}]}`)
+			respBody := []byte(`{"choices":[{"message":{"role":"assistant","content":"Response with sensitive data"}}]}`)
+
+			// Start a span and record request/response.
+			span := tracer.StartSpanAndInjectHeaders(
+				t.Context(),
+				map[string]string{},
+				&extprocv3.HeaderMutation{},
+				req,
+				reqBody,
+			)
+			require.NotNil(t, span)
+			span.EndSpan(200, respBody)
+
+			// Check the recorded span.
+			v1Span := collector.TakeSpan()
+			require.NotNil(t, v1Span)
+
+			// Check if inputs/outputs are redacted as expected.
+			attrs := make(map[string]string)
+			for _, kv := range v1Span.Attributes {
+				attrs[kv.Key] = kv.Value.GetStringValue()
+			}
+
+			// Check input redaction.
+			if tt.hideInputs {
+				require.Equal(t, openinference.RedactedValue, attrs[openinference.InputValue])
+				_, hasInputMessage := attrs[openinference.InputMessageAttribute(0, openinference.MessageContent)]
+				require.False(t, hasInputMessage)
+			} else {
+				require.Contains(t, attrs[openinference.InputValue], "Hello, sensitive data!")
+				require.Contains(t, attrs[openinference.InputValue], attrs[openinference.InputMessageAttribute(0, openinference.MessageContent)])
+			}
+
+			// Check output redaction.
+			if tt.hideOutputs {
+				require.Equal(t, openinference.RedactedValue, attrs[openinference.OutputValue])
+				_, hasOutputMessage := attrs[openinference.OutputMessageAttribute(0, openinference.MessageContent)]
+				require.False(t, hasOutputMessage)
+			} else {
+				require.Contains(t, attrs[openinference.OutputValue], "Response with sensitive data")
+				require.Contains(t, attrs[openinference.OutputValue], attrs[openinference.OutputMessageAttribute(0, openinference.MessageContent)])
+			}
+		})
+	}
+}
+
+func newTracingFromEnvForTest(t *testing.T) (*testotel.OTLPCollector, tracing.Tracing) {
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	result, err := NewTracingFromEnv(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = result.Shutdown(context.Background())
+	})
+
+	return collector, result
+}
+
+func TestNewTracing(t *testing.T) {
+	t.Run("with noop tracer", func(t *testing.T) {
+		config := &tracing.TracingConfig{
+			Tracer:                 noop.Tracer{},
+			Propagator:             autoprop.NewTextMapPropagator(),
+			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
+		}
+
+		result := NewTracing(config)
+		require.IsType(t, tracing.NoopTracing{}, result)
+	})
+
+	t.Run("with real tracer", func(t *testing.T) {
+		tp := trace.NewTracerProvider()
+		t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+		config := &tracing.TracingConfig{
+			Tracer:                 tp.Tracer("test"),
+			Propagator:             autoprop.NewTextMapPropagator(),
+			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
+		}
+
+		result := NewTracing(config)
+		require.IsType(t, &tracingImpl{}, result)
+
+		// Test that ChatCompletionTracer returns the expected tracer.
+		tracer := result.ChatCompletionTracer()
+		require.NotNil(t, tracer)
+
+		// Test that Shutdown returns nil when tp wasn't created internally.
+		err := result.Shutdown(t.Context())
+		require.NoError(t, err)
+	})
+}
+
+func TestNoopShutdown(t *testing.T) {
+	ns := noopShutdown{}
+	err := ns.Shutdown(t.Context())
+	require.NoError(t, err)
+}
+
+func TestNewTracingFromEnv_ValidEndpoint(t *testing.T) {
+	// Test with a valid endpoint that will create a working exporter.
+	collector := testotel.StartOTLPCollector()
+	defer collector.Close()
+	collector.SetEnv(t.Setenv)
+
+	result, err := NewTracingFromEnv(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Cleanup.
+	err = result.Shutdown(t.Context())
+	require.NoError(t, err)
+}
