@@ -90,9 +90,9 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.StringVar(&flags.anthropicPrefix,
 		"anthropicPrefix",
-		"/v1",
+		"/anthropic/v1",
 		"Anthropic endpoint prefix to be used for the external processor. This is used to route requests to the correct handler. "+
-			"Defaults to /v1, which is the standard Anthropic API prefix.",
+			"Defaults to /anthropic/v1, which provides clear separation from OpenAI endpoints.",
 	)
 
 	if err := fs.Parse(args); err != nil {
