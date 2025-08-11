@@ -51,9 +51,9 @@ spec:
         - name: translation-testupstream-another-cool-model-backend
     - matches:
         - headers:
-            - type: RegularExpression
+            - type: Exact
               name: x-ai-eg-model
-              value: .*
+              value: whatever-model
       backendRefs:
         - name: translation-testupstream-cool-model-backend
 ---
