@@ -96,7 +96,7 @@ func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool
 		panic(err)
 	}
 
-	if inferenceExtension {
+	if !inferenceExtension {
 		if err := initPrometheus(ctx); err != nil {
 			cancel()
 			panic(err)
