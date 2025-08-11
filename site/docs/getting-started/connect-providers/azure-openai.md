@@ -114,7 +114,7 @@ metadata:
 spec:
   schema:
     name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway
       group: gateway.networking.k8s.io

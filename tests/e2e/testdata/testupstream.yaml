@@ -42,7 +42,6 @@ spec:
               value: some-cool-model
       backendRefs:
         - name: translation-testupstream-cool-model-backend
-          weight: 100
     - matches:
         - headers:
             - type: Exact
@@ -50,7 +49,13 @@ spec:
               value: another-cool-model
       backendRefs:
         - name: translation-testupstream-another-cool-model-backend
-          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: whatever-model
+      backendRefs:
+        - name: translation-testupstream-cool-model-backend
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

@@ -3,13 +3,13 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package openinference provides OpenInference semantic conventions for standard
-// OpenTelemetry spans following the OpenInference specification.
+// Package openinference provides OpenInference semantic conventions for
+// OpenTelemetry tracing.
 package openinference
 
 import "fmt"
 
-// OpenInference Span Kind constants
+// OpenInference Span Kind constants.
 //
 // These constants define the type of operation represented by a span.
 // Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md
@@ -21,9 +21,9 @@ const (
 	SpanKindLLM = "LLM"
 )
 
-// LLM Operation constants
+// LLM Operation constants.
 //
-// These constants define attributes for Large Language Model operations
+// These constants define attributes for Large Language Model operations.
 // following OpenInference semantic conventions.
 // Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#llm-spans
 const (
@@ -43,7 +43,7 @@ const (
 	LLMSystemOpenAI = "openai"
 )
 
-// Input/Output constants
+// Input/Output constants.
 //
 // These constants define attributes for capturing input and output data.
 // Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#inputoutput
@@ -64,9 +64,9 @@ const (
 	MimeTypeJSON = "application/json"
 )
 
-// LLM Message constants
+// LLM Message constants.
 //
-// These constants define attributes for LLM input and output messages using
+// These constants define attributes for LLM input and output messages using.
 // flattened attribute format. Messages are indexed starting from 0.
 // Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#llm-spans
 const (
@@ -85,7 +85,7 @@ const (
 	MessageContent = "message.content"
 )
 
-// Token Count constants
+// Token Count constants.
 //
 // These constants define attributes for token usage tracking.
 // Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#llm-spans
@@ -131,7 +131,7 @@ const (
 // performance monitoring.
 // Reference: OpenInference specification and Python OpenAI instrumentation.
 const (
-	// LLMTokenCountPromptCacheHit represents the number of prompt tokens successfully
+	// LLMTokenCountPromptCacheHit represents the number of prompt tokens successfully.
 	// retrieved from cache (cache hits). This enables tracking of cache efficiency
 	// and cost savings from cached prompts.
 	LLMTokenCountPromptCacheHit = "llm.token_count.prompt_details.cache_read" // #nosec G101
@@ -145,7 +145,7 @@ const (
 	// the computational cost of complex reasoning tasks.
 	LLMTokenCountCompletionReasoning = "llm.token_count.completion_details.reasoning" // #nosec G101
 
-	// LLMTokenCountCompletionAudio represents the number of audio tokens in the
+	// LLMTokenCountCompletionAudio represents the number of audio tokens in the.
 	// completion. Used for models that generate audio output.
 	LLMTokenCountCompletionAudio = "llm.token_count.completion_details.audio" // #nosec G101
 )

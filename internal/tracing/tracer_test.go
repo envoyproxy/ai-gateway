@@ -6,6 +6,7 @@
 package tracing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (
@@ -98,9 +100,7 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			recorder := testChatCompletionRecorder{}
-			streamRecorder := testChatCompletionStreamRecorder{}
-			tracer := newChatCompletionTracer(tp, autoprop.NewTextMapPropagator(), recorder, streamRecorder)
+			tracer := newChatCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
 
 			headerMutation := &extprocv3.HeaderMutation{}
 			reqBody, err := json.Marshal(tt.req)
@@ -147,13 +147,13 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 }
 
 func TestNewChatCompletionTracer_Noop(t *testing.T) {
-	// Use noop tracer provider.
-	noopTP := noop.TracerProvider{}
+	// Use noop tracer.
+	noopTracer := noop.Tracer{}
 
-	tracer := newChatCompletionTracer(noopTP, autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, testChatCompletionRecorder{})
+	tracer := newChatCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
 
 	// Verify it returns NoopTracer.
-	require.IsType(t, NoopChatCompletionTracer{}, tracer)
+	require.IsType(t, tracing.NoopChatCompletionTracer{}, tracer)
 
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}
@@ -171,6 +171,34 @@ func TestNewChatCompletionTracer_Noop(t *testing.T) {
 
 	// Verify no headers were injected.
 	require.Empty(t, headerMutation.SetHeaders)
+}
+
+func TestTracer_UnsampledSpan(t *testing.T) {
+	// Use always_off sampler to ensure spans are not sampled.
+	tracerProvider := trace.NewTracerProvider(
+		trace.WithSampler(trace.NeverSample()),
+	)
+	t.Cleanup(func() { _ = tracerProvider.Shutdown(context.Background()) })
+
+	tracer := newChatCompletionTracer(tracerProvider.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
+
+	// Start a span that won't be sampled.
+	headers := map[string]string{}
+	headerMutation := &extprocv3.HeaderMutation{}
+	req := &openai.ChatCompletionRequest{Model: "test"}
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		req,
+		[]byte("{}"),
+	)
+
+	// Span should be nil when not sampled.
+	require.Nil(t, span)
+
+	// Headers should still be injected for trace propagation.
+	require.NotEmpty(t, headerMutation.SetHeaders)
 }
 
 func TestHeaderMutationCarrier(t *testing.T) {
@@ -210,13 +238,13 @@ func TestHeaderMutationCarrier(t *testing.T) {
 	})
 }
 
-var _ ChatCompletionRecorder = testChatCompletionRecorder{}
+var _ tracing.ChatCompletionRecorder = testChatCompletionRecorder{}
 
 type testChatCompletionRecorder struct{}
 
 func (testChatCompletionRecorder) StartParams(req *openai.ChatCompletionRequest, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
 	if req.Stream {
-		return "invalid", startOpts
+		return fmt.Sprintf("stream len: %d", len(body)), startOpts
 	}
 	return fmt.Sprintf("non-stream len: %d", len(body)), startOpts
 }
@@ -226,25 +254,11 @@ func (testChatCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai
 	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordChunk(oteltrace.Span, int) {
+func (testChatCompletionRecorder) RecordChunk(span oteltrace.Span, chunkIdx int) {
+	span.AddEvent(fmt.Sprintf("chunk.%d", chunkIdx))
 }
 
 func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(attribute.Int("statusCode", statusCode))
 	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
-}
-
-var _ ChatCompletionRecorder = testChatCompletionStreamRecorder{}
-
-type testChatCompletionStreamRecorder struct{ testChatCompletionRecorder }
-
-func (testChatCompletionStreamRecorder) StartParams(req *openai.ChatCompletionRequest, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
-	if !req.Stream {
-		return "invalid", startOpts
-	}
-	return fmt.Sprintf("stream len: %d", len(body)), startOpts
-}
-
-func (testChatCompletionStreamRecorder) RecordChunk(span oteltrace.Span, chunkIdx int) {
-	span.AddEvent(fmt.Sprintf("chunk.%d", chunkIdx))
 }
