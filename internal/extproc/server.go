@@ -115,6 +115,12 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		pathHeader = originalPathHeader
 	}
 	path := requestHeaders[pathHeader]
+
+	// Strip query parameters for processor lookup
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)

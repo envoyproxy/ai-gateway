@@ -184,7 +184,6 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.openAIPrefix, "/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
 	server.Register(path.Join(flags.openAIPrefix, "/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.anthropicPrefix, "/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.anthropicPrefix, "/messages?beta=true"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
