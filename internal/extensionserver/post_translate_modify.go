@@ -699,3 +699,31 @@ var afterExtProcFilterPrefixes = []string{
 	egv1a1.EnvoyFilterCompressor.String(),
 	egv1a1.EnvoyFilterRouter.String(),
 }
+
+// findListenerRouteConfigs extracts route configuration names from the listener's filter chains.
+func findListenerRouteConfigs(listener *listenerv3.Listener) []string {
+	var names []string
+	// First, get the filter chains from the listener.
+	for _, filterChain := range listener.FilterChains {
+		httpConManager, _, err := findHCM(filterChain)
+		if err != nil {
+			continue // Skip this filter chain if it doesn't have an HTTP connection manager.
+		}
+		rds := httpConManager.GetRds()
+		if rds == nil {
+			continue // Skip if no route discovery service is configured.
+		}
+		if rds.RouteConfigName != "" {
+			names = append(names, rds.RouteConfigName)
+		}
+	}
+	httpConManager, _, err := findHCM(listener.DefaultFilterChain)
+	if err != nil {
+		return names // Return names collected so far, even if default filter chain has no HCM.
+	}
+	rds := httpConManager.GetRds()
+	if rds == nil {
+		return names // Return names collected so far, even if no RDS in default filter chain.
+	}
+	return append(names, rds.RouteConfigName) // Add default filter chain's route config name.
+}
