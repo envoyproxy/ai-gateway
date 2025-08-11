@@ -47,6 +47,8 @@ type extProcFlags struct {
 	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 	// openAIPrefix is the OpenAI API prefix to be used for the external processor.
 	openAIPrefix string
+	// anthropicPrefix is the Anthropic API prefix to be used for the external processor.
+	anthropicPrefix string
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -85,6 +87,12 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"/v1",
 		"OpenAI endpoint prefix to be used for the external processor. This is used to route requests to the correct handler. "+
 			"Defaults to /v1, which is the standard OpenAI API prefix.",
+	)
+	fs.StringVar(&flags.anthropicPrefix,
+		"anthropicPrefix",
+		"/v1",
+		"Anthropic endpoint prefix to be used for the external processor. This is used to route requests to the correct handler. "+
+			"Defaults to /v1, which is the standard Anthropic API prefix.",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -175,7 +183,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.openAIPrefix, "/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.openAIPrefix, "/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
 	server.Register(path.Join(flags.openAIPrefix, "/models"), extproc.NewModelsProcessor)
-	server.Register("/v1/messages", extproc.MessagesProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.anthropicPrefix, "/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.anthropicPrefix, "/messages?beta=true"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
