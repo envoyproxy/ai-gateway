@@ -20,6 +20,22 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
+const (
+	gcpVertexAIBackendError = "GCPVertexAIBackendError"
+)
+
+// gcpVertexAIError represents the structure of GCP Vertex AI error responses.
+type gcpVertexAIError struct {
+	Error gcpVertexAIErrorDetails `json:"error"`
+}
+
+type gcpVertexAIErrorDetails struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Status  string          `json:"status"`
+	Details json.RawMessage `json:"details"`
+}
+
 // NewChatCompletionOpenAIToGCPVertexAITranslator implements [Factory] for OpenAI to GCP Gemini translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Gemini API format.
 func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
@@ -304,10 +320,48 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	return openaiResp, nil
 }
 
-// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError] for GCP Vertex AI.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(map[string]string, io.Reader) (
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
+// Translate GCP Vertex AI exceptions to OpenAI error type.
+// GCP error responses typically contain JSON with error details or plain text error messages.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	// TODO: add support for converting GCP Vertex AI error responses to OpenAI error format.
-	return nil, nil, nil
+	var buf []byte
+	buf, err = io.ReadAll(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+	}
+
+	// Assume all responses have a valid status code header.
+	statusCode := respHeaders[statusHeaderName]
+
+	openaiError := openai.Error{
+		Type: "error",
+		Error: openai.ErrorType{
+			Type: gcpVertexAIBackendError,
+			Code: &statusCode,
+		},
+	}
+
+	var gcpError gcpVertexAIError
+	// Try to parse as GCP error response structure.
+	if err = json.Unmarshal(buf, &gcpError); err == nil {
+		errMsg := gcpError.Error.Message
+		if len(gcpError.Error.Details) > 0 {
+			// If details are present and not null, append them to the error message.
+			errMsg = fmt.Sprintf("Error: %s\nDetails: %s", errMsg, string(gcpError.Error.Details))
+		}
+		openaiError.Error.Type = gcpError.Error.Status
+		openaiError.Error.Message = errMsg
+	} else {
+		// If not JSON, read the raw body as the error message.
+		openaiError.Error.Message = string(buf)
+	}
+
+	errBdy, err := json.Marshal(openaiError)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+	}
+	headerMutation, bodyMutation = buildRequestMutations("", errBdy)
+	return headerMutation, bodyMutation, nil
 }
