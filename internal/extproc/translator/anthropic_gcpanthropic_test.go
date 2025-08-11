@@ -53,10 +53,10 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", tt.override)
 
-			// Create the request struct directly like OpenAI tests.
+			// Create the request using map structure.
 			originalReq := &anthropicschema.MessagesRequest{
-				Model: tt.inputModel,
-				Messages: []anthropic.MessageParam{
+				"model": tt.inputModel,
+				"messages": []anthropic.MessageParam{
 					{
 						Role: anthropic.MessageParamRoleUser,
 						Content: []anthropic.ContentBlockParamUnion{
@@ -90,10 +90,10 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
 
-	// Create a comprehensive MessagesRequest with all possible fields.
+	// Create a comprehensive MessagesRequest with all possible fields using map structure.
 	originalReq := &anthropicschema.MessagesRequest{
-		Model: "claude-3-opus-20240229",
-		Messages: []anthropic.MessageParam{
+		"model": "claude-3-opus-20240229",
+		"messages": []anthropic.MessageParam{
 			{
 				Role: anthropic.MessageParamRoleUser,
 				Content: []anthropic.ContentBlockParamUnion{
@@ -113,13 +113,13 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 				},
 			},
 		},
-		MaxTokens:     1024,
-		Stream:        false,
-		Temperature:   func() *float64 { v := 0.7; return &v }(),
-		TopP:          func() *float64 { v := 0.95; return &v }(),
-		StopSequences: []string{"Human:", "Assistant:"},
-		System:        "You are a helpful weather assistant.",
-		Tools: []anthropic.ToolParam{
+		"max_tokens":     1024,
+		"stream":         false,
+		"temperature":    func() *float64 { v := 0.7; return &v }(),
+		"top_p":          func() *float64 { v := 0.95; return &v }(),
+		"stop_sequences": []string{"Human:", "Assistant:"},
+		"system":         "You are a helpful weather assistant.",
+		"tools": []anthropic.ToolParam{
 			{
 				Name:        "get_weather",
 				Description: anthropic.String("Get current weather information"),
@@ -135,7 +135,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 				},
 			},
 		},
-		ToolChoice: anthropic.ToolChoiceUnionParam{
+		"tool_choice": anthropic.ToolChoiceUnionParam{
 			OfAuto: &anthropic.ToolChoiceAutoParam{},
 		},
 	}
@@ -159,9 +159,8 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.Len(t, messages, 3, "should have 3 messages")
 
 	require.Equal(t, float64(1024), outputReq["max_tokens"])
-	// stream: false is omitted due to omitempty tag
-	_, hasStream := outputReq["stream"]
-	require.False(t, hasStream)
+	// stream: false is now included in the map
+	require.Equal(t, false, outputReq["stream"])
 	require.Equal(t, 0.7, outputReq["temperature"])
 	require.Equal(t, 0.95, outputReq["top_p"])
 	require.Equal(t, "You are a helpful weather assistant.", outputReq["system"])
@@ -219,8 +218,8 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 			translator := NewAnthropicToGCPAnthropicTranslator(tt.backendVersion, "")
 
 			originalReq := &anthropicschema.MessagesRequest{
-				Model: "claude-3-sonnet-20240229",
-				Messages: []anthropic.MessageParam{
+				"model": "claude-3-sonnet-20240229",
+				"messages": []anthropic.MessageParam{
 					{
 						Role: anthropic.MessageParamRoleUser,
 						Content: []anthropic.ContentBlockParamUnion{
@@ -228,7 +227,7 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 						},
 					},
 				},
-				MaxTokens: 100,
+				"max_tokens": 100,
 			}
 
 			_, bodyMutation, err := translator.RequestBody(nil, originalReq, false)
@@ -294,8 +293,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			}
 
 			parsedReq := &anthropicschema.MessagesRequest{
-				Model: "claude-3-sonnet-20240229",
-				Messages: []anthropic.MessageParam{
+				"model": "claude-3-sonnet-20240229",
+				"messages": []anthropic.MessageParam{
 					{
 						Role: anthropic.MessageParamRoleUser,
 						Content: []anthropic.ContentBlockParamUnion{
@@ -306,7 +305,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			}
 			if tt.stream != nil {
 				if streamVal, ok := tt.stream.(bool); ok {
-					parsedReq.Stream = streamVal
+					(*parsedReq)["stream"] = streamVal
 				}
 			}
 
@@ -329,8 +328,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	topP := 0.95
 	topK := 40
 	parsedReq := &anthropicschema.MessagesRequest{
-		Model: "claude-3-sonnet-20240229",
-		Messages: []anthropic.MessageParam{
+		"model": "claude-3-sonnet-20240229",
+		"messages": []anthropic.MessageParam{
 			{
 				Role: anthropic.MessageParamRoleUser,
 				Content: []anthropic.ContentBlockParamUnion{
@@ -350,14 +349,14 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 				},
 			},
 		},
-		MaxTokens:     1000,
-		Temperature:   &temp,
-		TopP:          &topP,
-		TopK:          &topK,
-		StopSequences: []string{"Human:", "Assistant:"},
-		Stream:        false,
-		System:        "You are a helpful assistant",
-		Tools: []anthropic.ToolParam{
+		"max_tokens":     1000,
+		"temperature":    &temp,
+		"top_p":          &topP,
+		"top_k":          &topK,
+		"stop_sequences": []string{"Human:", "Assistant:"},
+		"stream":         false,
+		"system":         "You are a helpful assistant",
+		"tools": []anthropic.ToolParam{
 			{
 				Name:        "get_weather",
 				Description: anthropic.String("Get weather info"),
@@ -369,8 +368,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 				},
 			},
 		},
-		ToolChoice: map[string]interface{}{"type": "auto"},
-		Metadata:   map[string]interface{}{"user_id": "test123"},
+		"tool_choice": map[string]interface{}{"type": "auto"},
+		"metadata":    map[string]interface{}{"user_id": "test123"},
 	}
 
 	_, bodyMutation, err := translator.RequestBody(nil, parsedReq, false)
@@ -397,9 +396,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, "Human:", stopSeq[0])
 	require.Equal(t, "Assistant:", stopSeq[1])
 
-	// Boolean false values are omitted due to omitempty tag.
-	_, hasStream := modifiedReq["stream"]
-	require.False(t, hasStream)
+	// Boolean false values are now included in the map.
+	require.Equal(t, false, modifiedReq["stream"])
 
 	// String values are preserved.
 	require.Equal(t, "You are a helpful assistant", modifiedReq["system"])

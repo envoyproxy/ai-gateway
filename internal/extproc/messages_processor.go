@@ -7,11 +7,9 @@ package extproc
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -25,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // MessagesProcessorFactory returns a factory for the Anthropic /v1/messages endpoint.
@@ -32,7 +31,7 @@ import (
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
 func MessagesProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &messagesProcessorRouterFilter{
@@ -135,7 +134,6 @@ type messagesProcessorUpstreamFilter struct {
 	config                 *processorConfig
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
-	responseEncoding       string
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
@@ -224,9 +222,6 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Con
 	}()
 
 	c.responseHeaders = headersToMap(headers)
-	if enc := c.responseHeaders["content-encoding"]; enc != "" {
-		c.responseEncoding = enc
-	}
 	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -248,34 +243,13 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	defer func() {
 		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
 	}()
-	var br io.Reader
-	var isGzip bool
-	switch c.responseEncoding {
-	case "gzip":
-		br, err = gzip.NewReader(bytes.NewReader(body.Body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
-		}
-		isGzip = true
-	default:
-		br = bytes.NewReader(body.Body)
-	}
+
+	// Simple passthrough: just pass the body as-is without any complex handling.
+	br := bytes.NewReader(body.Body)
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
-	}
-	if bodyMutation != nil && isGzip {
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
-		// TODO: this is a hotfix, we should update this to recompress since its in the header
-		// If the response was gzipped, ensure we remove the content-encoding header.
-		//
-		// This is only needed when the transformation is actually modifying the body. When the backend
-		// is in OpenAI format (and it's the first try before any retry), the response body is not modified,
-		// so we don't need to remove the header in that case.
-		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -337,7 +311,7 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 	c.onRetry = rp.upstreamFilterCount > 1
 
 	// Determine if this is a streaming request from the parsed body.
-	c.stream = rp.originalRequestBody.Stream
+	c.stream = rp.originalRequestBody.GetStream()
 	if isEndpointPicker {
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
@@ -367,9 +341,10 @@ func parseAnthropicMessagesBody(body *extprocv3.HttpBody) (modelName string, req
 		return "", nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
 	}
 
-	if anthropicReq.Model == "" {
+	model := anthropicReq.GetModel()
+	if model == "" {
 		return "", nil, fmt.Errorf("model field is required in Anthropic request")
 	}
 
-	return anthropicReq.Model, &anthropicReq, nil
+	return model, &anthropicReq, nil
 }
