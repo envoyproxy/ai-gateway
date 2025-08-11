@@ -41,15 +41,10 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 	// Extract model name for GCP endpoint from the parsed request.
 	modelName := body.GetModel()
 
-	// Convert the struct to a map for manipulation.
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	var anthropicReq map[string]interface{}
-	if unmarshalErr := json.Unmarshal(bodyBytes, &anthropicReq); unmarshalErr != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal request body: %w", unmarshalErr)
+	// Work directly with the map since MessagesRequest is already map[string]interface{}.
+	anthropicReq := make(map[string]interface{})
+	for k, v := range *body {
+		anthropicReq[k] = v
 	}
 
 	// Apply model name override if configured.
