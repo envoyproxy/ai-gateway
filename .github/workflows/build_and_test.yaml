@@ -222,6 +222,38 @@ jobs:
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
         run: make test-e2e
 
+  test_e2e_inference_extension:
+    name: E2E Test for Inference Extensions (Envoy Gateway ${{ matrix.name }})
+    # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
+    # virtualization is not supported on macOS runners.
+    # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
+    # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: latest
+            envoy_gateway_version: v0.0.0-latest
+          - name: v1.5.0
+            envoy_gateway_version: v1.5.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - run: make test-e2e-inference-extension
+
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'

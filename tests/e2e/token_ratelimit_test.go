@@ -20,6 +20,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -29,21 +30,21 @@ const userIDMetricsLabel = "user_id"
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	const modelName = "rate-limit-funky-model"
 	makeRequest := func(userID string, input, output, total int, expStatus int) {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-		defer fwd.kill()
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+		defer fwd.Kill()
 
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
 		const fakeResponseBodyTemplate = `{"choices":[{"message":{"content":"This is a test.","role":"assistant"}}],"stopReason":null,"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d}}`
 		fakeResponseBody := fmt.Sprintf(fakeResponseBodyTemplate, input, output, total)
 
-		req, err := http.NewRequest(http.MethodPut, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		req, err := http.NewRequest(http.MethodPut, fwd.Address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
 		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
 		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
@@ -104,10 +105,10 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	makeRequest(userID, 0, 0, 0, 429)
 
 	require.Eventually(t, func() bool {
-		fwd := requireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
-		defer fwd.kill()
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
+		defer fwd.Kill()
 		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, user_id)`
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.address(), url.QueryEscape(query)), nil)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.Address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

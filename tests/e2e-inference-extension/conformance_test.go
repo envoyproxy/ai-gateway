@@ -13,11 +13,13 @@ import (
 	gie "sigs.k8s.io/gateway-api-inference-extension/conformance"
 	v1 "sigs.k8s.io/gateway-api/conformance/apis/v1"
 	"sigs.k8s.io/gateway-api/conformance/utils/config"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
 func TestGatewayAPIInferenceExtension(t *testing.T) {
 	const manifest = "testdata/inference-extension-conformance.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
 	options := gie.DefaultOptions(t)
 	options.ReportOutputPath = "./inference-extension-conformance-test-report.yaml"
