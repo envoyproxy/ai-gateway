@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {
@@ -34,7 +35,7 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 			CreatedAt: now,
 		},
 	}}
-	p, err := NewModelsProcessor(cfg, nil, slog.Default(), false)
+	p, err := NewModelsProcessor(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 	require.NoError(t, err)
 	res, err := p.ProcessRequestHeaders(t.Context(), &corev3.HeaderMap{
 		Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}},

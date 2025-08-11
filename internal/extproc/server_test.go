@@ -27,17 +27,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/tracing"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
-	s, err := NewServer(slog.Default(), tracing.NoopChatCompletionTracer{})
+	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	s.config = &processorConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) { return m, nil })
+	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+		return m, nil
+	})
 
 	return s, m.(*mockProcessor)
 }
@@ -341,16 +343,16 @@ func TestServer_setBackend(t *testing.T) {
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {
-	s, err := NewServer(slog.Default(), tracing.NoopChatCompletionTracer{})
+	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
 	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
+	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
+	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},

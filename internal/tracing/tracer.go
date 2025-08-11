@@ -15,55 +15,38 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-// NewChatCompletionTracer creates OpenTelemetry tracing with the provided
-// tracer and propagator. When tracerProvider is a noop.TracerProvider, this
-// returns NoopChatCompletionTracer.
-func NewChatCompletionTracer(tracerProvider trace.TracerProvider, propagator propagation.TextMapPropagator) ChatCompletionTracer {
-	// Currently, we only support OpenInference format for chat completions.
-	return newChatCompletionTracer(tracerProvider, propagator, openinference.ChatCompletionRecorder{}, openinference.ChatCompletionStreamingRecorder{})
-}
+// Ensure chatCompletionTracer implements ChatCompletionTracer.
+var _ tracing.ChatCompletionTracer = (*chatCompletionTracer)(nil)
 
-func newChatCompletionTracer(tracerProvider trace.TracerProvider, propagator propagation.TextMapPropagator, recorder, streamRecorder ChatCompletionRecorder) ChatCompletionTracer {
+func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ChatCompletionRecorder) tracing.ChatCompletionTracer {
 	// Check if the tracer is a no-op by checking its type.
-	if _, ok := tracerProvider.(noop.TracerProvider); ok {
-		return NoopChatCompletionTracer{}
+	if _, ok := tracer.(noop.Tracer); ok {
+		return tracing.NoopChatCompletionTracer{}
 	}
 	return &chatCompletionTracer{
-		recorder:       recorder,
-		streamRecorder: streamRecorder,
-		otelTracer:     tracerProvider.Tracer("envoyproxy/ai-gateway"),
-		propagator:     propagator,
+		tracer:     tracer,
+		propagator: propagator,
+		recorder:   recorder,
 	}
 }
 
-// Ensure chatCompletionTracer implements ChatCompletionTracer.
-var _ ChatCompletionTracer = (*chatCompletionTracer)(nil)
-
 type chatCompletionTracer struct {
-	otelTracer     trace.Tracer
-	recorder       ChatCompletionRecorder
-	streamRecorder ChatCompletionRecorder
-	propagator     propagation.TextMapPropagator
+	tracer     trace.Tracer
+	recorder   tracing.ChatCompletionRecorder
+	propagator propagation.TextMapPropagator
 }
 
 // StartSpanAndInjectHeaders implements ChatCompletionTracer.StartSpanAndInjectHeaders.
-func (t *chatCompletionTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.ChatCompletionRequest, body []byte) ChatCompletionSpan {
-	var recorder ChatCompletionRecorder
-	if req.Stream {
-		recorder = t.streamRecorder
-	} else {
-		recorder = t.recorder
-	}
-
+func (t *chatCompletionTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.ChatCompletionRequest, body []byte) tracing.ChatCompletionSpan {
 	// Extract trace context from incoming headers.
 	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
 
 	// Start the span with options appropriate for the semantic convention.
-	spanName, opts := recorder.StartParams(req, body)
-	newCtx, span := t.otelTracer.Start(parentCtx, spanName, opts...)
+	spanName, opts := t.recorder.StartParams(req, body)
+	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
 
 	// Always inject trace context into the header mutation if provided.
 	// This ensures trace propagation works even for unsampled spans.
@@ -72,8 +55,8 @@ func (t *chatCompletionTracer) StartSpanAndInjectHeaders(ctx context.Context, he
 	// Only record request attributes if span is recording (sampled).
 	// This avoids expensive body processing for unsampled spans.
 	if span.IsRecording() {
-		recorder.RecordRequest(span, req, body)
-		return &chatCompletionSpan{span: span, recorder: recorder}
+		t.recorder.RecordRequest(span, req, body)
+		return &chatCompletionSpan{span: span, recorder: t.recorder}
 	}
 
 	return nil

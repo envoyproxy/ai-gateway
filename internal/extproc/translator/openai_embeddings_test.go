@@ -39,6 +39,13 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			onRetry: true,
 			expPath: "/v1/embeddings",
 		},
+		{
+			name:              "model_name_override",
+			modelNameOverride: "custom-embedding-model",
+			onRetry:           true,
+			expPath:           "/v1/embeddings",
+			expBodyContains:   `"model":"custom-embedding-model"`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", tc.modelNameOverride)

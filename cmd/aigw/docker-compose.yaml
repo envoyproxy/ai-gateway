@@ -9,6 +9,7 @@ volumes:
   envoy-cache:  # Stores downloaded Envoy versions
 
 services:
+  # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
   aigw-build:
     image: golang:1.24.6
     container_name: aigw-build
@@ -18,6 +19,7 @@ services:
       - aigw-target:/workspace/out
     command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
 
+  # ollama-pull pulls the models defined in .env.ollama, to avoid 404s.
   ollama-pull:
     image: alpine/ollama
     container_name: ollama-pull
@@ -30,6 +32,7 @@ services:
     extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
+  # aigw is the Envoy AI Gateway CLI a.k.a standalone mode.
   aigw:
     image: debian:trixie-slim
     container_name: aigw
@@ -49,6 +52,7 @@ services:
     working_dir: /app
     command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
 
+  # openai-client is a simple curl-based test client for sending requests to aigw.
   openai-client:
     image: golang:1.24.5
     container_name: openai-client

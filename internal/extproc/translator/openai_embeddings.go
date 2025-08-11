@@ -32,20 +32,16 @@ type openAIToOpenAITranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.EmbeddingRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, _ *openai.EmbeddingRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
-			Optimistic:     true,
-			ReplaceInPlace: true,
-		})
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
-		newBody = out
 	}
 
 	// Always set the path header to the embeddings endpoint so that the request is routed correctly.
@@ -58,8 +54,8 @@ func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.
 		},
 	}
 
-	if onRetry {
-		newBody = raw
+	if onRetry && len(newBody) == 0 {
+		newBody = original
 	}
 
 	if len(newBody) > 0 {

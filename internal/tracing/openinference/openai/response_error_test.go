@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package openinference
+package openai
 
 import (
 	"testing"
@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
@@ -160,7 +161,7 @@ func TestRecordResponseError(t *testing.T) {
 				recordResponseError(span, tt.statusCode, tt.body)
 				return false // Recording of error shouldn't end the span.
 			})
-			requireEventsEqual(t, tt.expectedEvents, actualSpan.Events)
+			openinference.RequireEventsEqual(t, tt.expectedEvents, actualSpan.Events)
 			require.Equal(t, codes.Error, actualSpan.Status.Code)
 			require.Equal(t, tt.expectedDescription, actualSpan.Status.Description)
 		})

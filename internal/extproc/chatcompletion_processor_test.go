@@ -23,20 +23,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/tracing"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), false)
+		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), true)
+		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, routeFilter)
@@ -88,11 +88,8 @@ func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]s
 
 func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
-		tracer := tracing.NoopChatCompletionTracer{}
 		p := &chatCompletionProcessorRouterFilter{
-			config: &processorConfig{
-				tracer: tracer,
-			},
+			tracer: tracing.NoopChatCompletionTracer{},
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
@@ -101,14 +98,11 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		const modelKey = "x-ai-gateway-model-key"
-		tracer := tracing.NoopChatCompletionTracer{}
 		p := &chatCompletionProcessorRouterFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: modelKey,
-				tracer:             tracer,
-			},
+			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
 			logger:         slog.Default(),
+			tracer:         tracing.NoopChatCompletionTracer{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
 		require.NoError(t, err)
@@ -132,12 +126,10 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		mockTracerInstance := &mockTracer{returnedSpan: mockSpanInstance}
 
 		p := &chatCompletionProcessorRouterFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: modelKey,
-				tracer:             mockTracerInstance,
-			},
+			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
 			logger:         slog.Default(),
+			tracer:         mockTracerInstance,
 		}
 
 		// Test with streaming request.
@@ -167,12 +159,12 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			p := &chatCompletionProcessorRouterFilter{
 				config: &processorConfig{
 					modelNameHeaderKey: modelKey,
-					tracer:             tracing.NoopChatCompletionTracer{},
 					// Ensure that the stream_options.include_usage be forced to true.
 					requestCosts: []processorConfigRequestCost{{}},
 				},
 				requestHeaders: headers,
 				logger:         slog.Default(),
+				tracer:         tracing.NoopChatCompletionTracer{},
 			}
 			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
 			require.NoError(t, err)

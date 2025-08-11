@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package openinference
+package openai
 
 import (
 	"testing"
@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 var (
@@ -26,6 +27,13 @@ var (
 		}},
 	}
 	basicReqBody = mustJSON(basicReq)
+
+	streamingReq = func() *openai.ChatCompletionRequest {
+		streamingReq := *basicReq
+		streamingReq.Stream = true
+		return &streamingReq
+	}()
+	streamingReqBody = mustJSON(streamingReq)
 
 	// Multimodal request with text and image.
 	multimodalReq = &openai.ChatCompletionRequest{
@@ -251,6 +259,7 @@ func TestBuildRequestAttributes(t *testing.T) {
 		name          string
 		req           *openai.ChatCompletionRequest
 		reqBody       string
+		config        *openinference.TraceConfig
 		expectedAttrs []attribute.KeyValue
 	}{
 		{
@@ -258,14 +267,14 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     basicReq,
 			reqBody: string(basicReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(basicReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(0, MessageContent), "Hello!"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(basicReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
 		},
 		{
@@ -273,17 +282,17 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     multimodalReq,
 			reqBody: string(multimodalReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(multimodalReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageContentAttribute(0, 0, "text"), "What is in this image?"),
-				attribute.String(InputMessageContentAttribute(0, 0, "type"), "text"),
-				attribute.String(InputMessageContentAttribute(0, 1, "image.image.url"), "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"),
-				attribute.String(InputMessageContentAttribute(0, 1, "type"), "image"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(multimodalReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is in this image?"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "image.image.url"), "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "image"),
 			},
 		},
 		{
@@ -291,14 +300,14 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     toolsReq,
 			reqBody: string(toolsReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(toolsReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano","tool_choice":"auto"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(0, MessageContent), "What is the weather like in Boston today?"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(toolsReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","tool_choice":"auto"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "What is the weather like in Boston today?"),
 				attribute.String("llm.tools.0.tool.json_schema", `{"type":"function","function":{"name":"get_current_weather","description":"Get the current weather in a given location","parameters":{"properties":{"location":{"description":"The city and state, e.g. San Francisco, CA","type":"string"},"unit":{"enum":["celsius","fahrenheit"],"type":"string"}},"required":["location"],"type":"object"}}}`),
 			},
 		},
@@ -307,15 +316,15 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     audioReq,
 			reqBody: string(audioReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, "gpt-4o-audio-preview"),
-				attribute.String(InputValue, string(audioReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4o-audio-preview"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageContentAttribute(0, 0, "text"), "Answer in up to 5 words: What do you hear in this audio?"),
-				attribute.String(InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-4o-audio-preview"),
+				attribute.String(openinference.InputValue, string(audioReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4o-audio-preview"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "Answer in up to 5 words: What do you hear in this audio?"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
 				// Audio content is skipped to match Python OpenInference behavior.
 			},
 		},
@@ -324,14 +333,14 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     jsonModeReq,
 			reqBody: string(jsonModeReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(jsonModeReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano","response_format":{"type":"json_object"}}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(0, MessageContent), "Generate a JSON object with three properties: name, age, and city."),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(jsonModeReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","response_format":{"type":"json_object"}}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Generate a JSON object with three properties: name, age, and city."),
 			},
 		},
 		{
@@ -339,16 +348,16 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     systemMessageReq,
 			reqBody: string(systemMessageReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(systemMessageReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleSystem),
-				attribute.String(InputMessageAttribute(0, MessageContent), "You are a helpful assistant."),
-				attribute.String(InputMessageAttribute(1, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(1, MessageContent), "Hello!"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(systemMessageReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleSystem),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "You are a helpful assistant."),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageContent), "Hello!"),
 			},
 		},
 		{
@@ -356,14 +365,14 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     emptyToolsReq,
 			reqBody: string(emptyToolsReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(emptyToolsReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(0, MessageContent), "Hello!"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(emptyToolsReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
 		},
 		{
@@ -371,18 +380,18 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     toolMessageReq,
 			reqBody: string(toolMessageReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(toolMessageReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageAttribute(0, MessageContent), "What's the weather?"),
-				attribute.String(InputMessageAttribute(1, MessageRole), openai.ChatMessageRoleAssistant),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(toolMessageReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "What's the weather?"),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleAssistant),
 				// Assistant message with nil content is skipped.
-				attribute.String(InputMessageAttribute(2, MessageRole), openai.ChatMessageRoleTool),
-				attribute.String(InputMessageAttribute(2, MessageContent), "Sunny, 72°F"),
+				attribute.String(openinference.InputMessageAttribute(2, openinference.MessageRole), openai.ChatMessageRoleTool),
+				attribute.String(openinference.InputMessageAttribute(2, openinference.MessageContent), "Sunny, 72°F"),
 			},
 		},
 		{
@@ -390,15 +399,15 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     emptyImageURLReq,
 			reqBody: string(emptyImageURLReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(emptyImageURLReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
-				attribute.String(InputMessageContentAttribute(0, 0, "text"), "What is this?"),
-				attribute.String(InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(emptyImageURLReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is this?"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
 				// Image with empty URL is skipped..
 			},
 		},
@@ -407,23 +416,84 @@ func TestBuildRequestAttributes(t *testing.T) {
 			req:     emptyContentReq,
 			reqBody: string(emptyContentReqBody),
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(SpanKind, SpanKindLLM),
-				attribute.String(LLMSystem, LLMSystemOpenAI),
-				attribute.String(LLMModelName, openai.ModelGPT41Nano),
-				attribute.String(InputValue, string(emptyContentReqBody)),
-				attribute.String(InputMimeType, MimeTypeJSON),
-				attribute.String(LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
-				attribute.String(InputMessageAttribute(0, MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(emptyContentReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				// Empty content is skipped..
+			},
+		},
+		{
+			name:    "multimodal request with text redaction",
+			req:     multimodalReq,
+			reqBody: string(multimodalReqBody),
+			config: &openinference.TraceConfig{
+				HideInputs:  true,
+				HideOutputs: false,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, openinference.RedactedValue),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				// Messages are not included when HideInputs is true.
+			},
+		},
+		{
+			name:    "multimodal request with HideInputText",
+			req:     multimodalReq,
+			reqBody: string(multimodalReqBody),
+			config: &openinference.TraceConfig{
+				HideInputText: true,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(multimodalReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "image.image.url"), "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "image"),
+			},
+		},
+		{
+			name:    "system message with HideInputText",
+			req:     systemMessageReq,
+			reqBody: string(systemMessageReqBody),
+			config: &openinference.TraceConfig{
+				HideInputText: true,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.InputValue, string(systemMessageReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleSystem),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleUser),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageContent), openinference.RedactedValue),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			attrs := buildRequestAttributes(tt.req, tt.reqBody)
+			if tt.config == nil {
+				tt.config = openinference.NewTraceConfig()
+			}
+			attrs := buildRequestAttributes(tt.req, tt.reqBody, tt.config)
 
-			requireAttributesEqual(t, tt.expectedAttrs, attrs)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
 		})
 	}
 }
@@ -640,6 +710,42 @@ func TestExtractMessageContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractMessageContent(tt.msg)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsBase64URL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected bool
+	}{
+		{
+			name:     "base64 image",
+			url:      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA",
+			expected: true,
+		},
+		{
+			name:     "not a base64 image URL",
+			url:      "https://example.com/image.png",
+			expected: false,
+		},
+		{
+			name:     "base64 but not an image",
+			url:      "data:text/plain;base64,SGVsbG8gV29ybGQh",
+			expected: false,
+		},
+		{
+			name:     "image but not base64",
+			url:      "data:image/png,89504E470D0A1A0A",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isBase64URL(tt.url)
 			require.Equal(t, tt.expected, result)
 		})
 	}

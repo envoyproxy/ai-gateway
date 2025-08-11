@@ -36,7 +36,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	if req.Stream {
@@ -45,14 +45,10 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
-			Optimistic:     true,
-			ReplaceInPlace: true,
-		})
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
-		newBody = out
 	}
 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
@@ -65,8 +61,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		},
 	}
 
-	if forceBodyMutation {
-		newBody = raw
+	if forceBodyMutation && len(newBody) == 0 {
+		newBody = original
 	}
 
 	if len(newBody) > 0 {

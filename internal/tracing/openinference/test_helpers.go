@@ -15,9 +15,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-// requireAttributesEqual compensates for Go not having a reliable JSON field
+// RequireAttributesEqual compensates for Go not having a reliable JSON field
 // marshaling order.
-func requireAttributesEqual(t *testing.T, expected, actual []attribute.KeyValue) {
+func RequireAttributesEqual(t *testing.T, expected, actual []attribute.KeyValue) {
 	expectedMap := make(map[attribute.Key]attribute.Value, len(expected))
 	for _, attr := range expected {
 		if _, exists := expectedMap[attr.Key]; exists {
@@ -50,9 +50,9 @@ func requireAttributesEqual(t *testing.T, expected, actual []attribute.KeyValue)
 
 var errorCodePattern = regexp.MustCompile(`^Error code: \d+ - `)
 
-// requireEventsEqual compensates for Go not having a reliable JSON field
+// RequireEventsEqual compensates for Go not having a reliable JSON field
 // marshaling order.
-func requireEventsEqual(t *testing.T, expected, actual []trace.Event) {
+func RequireEventsEqual(t *testing.T, expected, actual []trace.Event) {
 	require.Len(t, actual, len(expected), "number of events differ")
 
 	for i := range expected {
