@@ -3,7 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This should fail validation: only InferencePool from inference.networking.x-k8s.io group is supported
+# This should fail validation: only InferencePool from inference.networking.k8s.io group is supported
 
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute

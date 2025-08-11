@@ -47,9 +47,9 @@ This creates a simulated vLLM deployment with multiple replicas that can handle 
 
 > **Note**: This deployment creates the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the HTTPRoute configuration below.
 
-## Step 3: Create InferenceModel
+## Step 3: Create InferenceObjective
 
-Create an InferenceModel resource to define the model configuration:
+Create an InferenceObjective resource to define the model configuration:
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
@@ -107,7 +107,7 @@ spec:
       namespace: default
   rules:
     - backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
           namespace: default

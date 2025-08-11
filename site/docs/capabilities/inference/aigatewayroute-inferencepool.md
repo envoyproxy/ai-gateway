@@ -41,7 +41,7 @@ Deploy sample inference backends and related resources:
 # Deploy vLLM simulation backend
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
 
-# Deploy InferenceModel
+# Deploy InferenceObjective
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
 
 # Deploy InferencePool resources
@@ -101,7 +101,7 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: mistral
@@ -113,8 +113,8 @@ spec:
   extensionRef:
     name: mistral-epp
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+apiVersion: inference.networking.k8s.io/v1
+kind: InferenceObjective
 metadata:
   name: mistral
   namespace: default
@@ -316,7 +316,7 @@ spec:
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
     # Route for Mistral model via InferencePool
@@ -326,7 +326,7 @@ spec:
               name: x-ai-eg-model
               value: mistral:latest
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: mistral
     # Route for traditional backend (non-InferencePool)
