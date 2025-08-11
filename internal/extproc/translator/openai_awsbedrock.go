@@ -83,14 +83,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	}
 
 	// Handle Anthropic vendor fields if present.
-	// TODO: do i need anthropic beta field? https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
-	if openAIReq.AnthropicVendorFields != nil {
-		if openAIReq.AnthropicVendorFields.Thinking != nil {
-			if bedrockReq.AdditionalModelRequestFields == nil {
-				bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
-			}
-			bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.AnthropicVendorFields.Thinking
+	if openAIReq.AnthropicVendorFields != nil && openAIReq.Thinking != nil {
+		if bedrockReq.AdditionalModelRequestFields == nil {
+			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
 		}
+		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.Thinking
 	}
 
 	// Convert Chat Completion messages.
