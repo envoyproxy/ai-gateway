@@ -348,14 +348,13 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
 func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) {
-	listenerNameToRouteName := make(map[string]string)
+	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
 		if strings.HasPrefix(listener.Name, "envoy-gateway") {
 			continue
 		}
-		routeConfigName := findListenerRouteConfig(listener)
-		listenerNameToRouteName[listener.Name] = routeConfigName
+		listenerNameToRouteNames[listener.Name] = findListenerRouteConfigs(listener)
 		listenerNameToListener[listener.Name] = listener
 	}
 
@@ -378,18 +377,20 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 
 	// listenerToInferencePools builds a matrix of listeners and the inference pools they use.
 	listenerToInferencePools := make(map[string][]*gwaiev1a2.InferencePool)
-	for listener, routeCfgName := range listenerNameToRouteName {
-		if routeNameToRoute[routeCfgName] == nil {
-			continue
-		}
-		if routeNameToVHRouteNameToInferencePool[routeCfgName] == nil {
-			continue
-		}
-		for _, pool := range routeNameToVHRouteNameToInferencePool[routeCfgName] {
-			if listenerToInferencePools[listener] == nil {
-				listenerToInferencePools[listener] = make([]*gwaiev1a2.InferencePool, 0)
+	for listener, routeCfgNames := range listenerNameToRouteNames {
+		for _, name := range routeCfgNames {
+			if routeNameToRoute[name] == nil {
+				continue
 			}
-			listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
+			if routeNameToVHRouteNameToInferencePool[name] == nil {
+				continue
+			}
+			for _, pool := range routeNameToVHRouteNameToInferencePool[name] {
+				if listenerToInferencePools[listener] == nil {
+					listenerToInferencePools[listener] = make([]*gwaiev1a2.InferencePool, 0)
+				}
+				listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
+			}
 		}
 	}
 
@@ -397,23 +398,27 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	for listener, pools := range listenerToInferencePools {
 		s.log.Info("patching listener with inference pool filters", "listener", listener)
 		s.patchListenerWithInferencePoolFilters(listenerNameToListener[listener], pools)
-		routeCfgName := listenerNameToRouteName[listener]
-		routeCfg := routeNameToRoute[routeCfgName]
-		if routeCfg == nil {
-			continue
-		}
-		for _, vh := range routeCfg.VirtualHosts {
-			s.log.Info("patching virtual host with inference pool filters", "listener", listener, "virtual_host", vh.Name)
-			s.patchVirtualHostWithInferencePool(vh, pools)
+		routeCfgNames := listenerNameToRouteNames[listener]
+		for _, routeCfgName := range routeCfgNames {
+			routeCfg := routeNameToRoute[routeCfgName]
+			if routeCfg == nil {
+				continue
+			}
+			for _, vh := range routeCfg.VirtualHosts {
+				s.log.Info("patching virtual host with inference pool filters", "listener", listener, "virtual_host", vh.Name)
+				s.patchVirtualHostWithInferencePool(vh, pools)
+			}
 		}
 	}
 
 	for _, ln := range listeners {
-		for _, chain := range ln.GetFilterChains() {
-			s.insertRouterLevelAIGatewayExtProc(ln, chain, routeNameToRoute)
-		}
-		if ln.DefaultFilterChain != nil {
-			s.insertRouterLevelAIGatewayExtProc(ln, ln.DefaultFilterChain, routeNameToRoute)
+		for _, name := range listenerNameToRouteNames[ln.Name] {
+			routeCfg := routeNameToRoute[name]
+			if routeCfg == nil {
+				s.log.Info("skipping patching of non-existent route config", "route_config", name)
+				continue
+			}
+			s.insertRouterLevelAIGatewayExtProc(ln, routeCfg)
 		}
 	}
 }
@@ -500,22 +505,7 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 	}
 }
 
-func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, chain *listenerv3.FilterChain, routes map[string]*routev3.RouteConfiguration) {
-	hcm, _, err := findHCM(chain)
-	if err != nil {
-		s.log.Error(err, "failed to find HCM in listener", "listener", listener.Name)
-		return
-	}
-	routeName := hcm.GetRds()
-	if routeName == nil {
-		return
-	}
-	routeConfig, ok := routes[routeName.RouteConfigName]
-	if !ok {
-		s.log.Error(nil, "route configuration not found for listener", "listener", listener.Name, "route_config_name", routeName.RouteConfigName)
-		return
-	}
-
+func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, routeConfig *routev3.RouteConfiguration) {
 	relevantListener := false
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
