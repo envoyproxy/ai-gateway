@@ -101,7 +101,6 @@ spec:
         maxInterval: 10s
       timeout: 30s
     retryOn:
-      
       httpStatusCodes:
         - 500
       triggers:
