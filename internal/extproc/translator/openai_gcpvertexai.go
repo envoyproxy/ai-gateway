@@ -24,12 +24,12 @@ const (
 	gcpVertexAIBackendError = "GCPVertexAIBackendError"
 )
 
-// GCPVertexAIError represents the structure of GCP Vertex AI error responses.
-type GCPVertexAIError struct {
-	Error GCPErrorDetails `json:"error"`
+// gcpVertexAIError represents the structure of GCP Vertex AI error responses.
+type gcpVertexAIError struct {
+	Error gcpVertexAIErrorDetails `json:"error"`
 }
 
-type GCPErrorDetails struct {
+type gcpVertexAIErrorDetails struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Status  string          `json:"status"`
@@ -343,7 +343,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		},
 	}
 
-	var gcpError GCPVertexAIError
+	var gcpError gcpVertexAIError
 	// Try to parse as GCP error response structure.
 	if err = json.Unmarshal(buf, &gcpError); err == nil {
 		errMsg := gcpError.Error.Message
