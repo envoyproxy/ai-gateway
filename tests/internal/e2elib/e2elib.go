@@ -7,6 +7,7 @@ package e2elib
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,21 +23,15 @@ import (
 )
 
 const (
-	EnvoyGatewayNamespace          = "envoy-gateway-system"
+	// EnvoyGatewayNamespace is the namespace where the Envoy Gateway is installed.
+	EnvoyGatewayNamespace = "envoy-gateway-system"
+	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
 
-	kindClusterName  = "envoy-ai-gateway"
-	kindLogDir       = "./logs"
-	metallbVersion   = "v0.13.10"
-	egDefaultVersion = "v0.0.0-latest"
+	kindClusterName = "envoy-ai-gateway"
+	kindLogDir      = "./logs"
+	metallbVersion  = "v0.13.10"
 )
-
-var egVersion = func() string {
-	if v, ok := os.LookupEnv("EG_VERSION"); ok {
-		return v
-	}
-	return egDefaultVersion
-}()
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
 // can be set to "true" to preserve the logs and the kind cluster even if the tests pass.
@@ -53,6 +48,11 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
+// TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
+// and installs the AI Gateway. It can be called with additional flags for the AI Gateway Helm chart.
+//
+// When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
+// Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
 func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 
@@ -372,6 +372,7 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
 func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) {
+	egVersion := cmp.Or(os.Getenv("EG_VERSION"), "v0.0.0-latest")
 	initLog("Installing Envoy Gateway")
 	start := time.Now()
 	defer func() {
