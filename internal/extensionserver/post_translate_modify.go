@@ -408,11 +408,12 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 		}
 	}
 
-	for ln, rn := range listenerNameToRouteName {
-		listener := listenerNameToListener[ln]
-		routeConfig := routeNameToRoute[rn]
-		if routeConfig != nil {
-			s.insertRouterLevelAIGatewayExtProc(listener, routeConfig)
+	for _, ln := range listeners {
+		for _, chain := range ln.GetFilterChains() {
+			s.insertRouterLevelAIGatewayExtProc(ln, chain, routeNameToRoute)
+		}
+		if ln.DefaultFilterChain != nil {
+			s.insertRouterLevelAIGatewayExtProc(ln, ln.DefaultFilterChain, routeNameToRoute)
 		}
 	}
 }
@@ -499,7 +500,22 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 	}
 }
 
-func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, routeConfig *routev3.RouteConfiguration) {
+func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, chain *listenerv3.FilterChain, routes map[string]*routev3.RouteConfiguration) {
+	hcm, _, err := findHCM(chain)
+	if err != nil {
+		s.log.Error(err, "failed to find HCM in listener", "listener", listener.Name)
+		return
+	}
+	routeName := hcm.GetRds()
+	if routeName == nil {
+		return
+	}
+	routeConfig, ok := routes[routeName.RouteConfigName]
+	if !ok {
+		s.log.Error(nil, "route configuration not found for listener", "listener", listener.Name, "route_config_name", routeName.RouteConfigName)
+		return
+	}
+
 	relevantListener := false
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
