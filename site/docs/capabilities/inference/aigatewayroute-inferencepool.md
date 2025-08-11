@@ -302,8 +302,6 @@ metadata:
   name: inference-pool-with-aigwroute
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: inference-pool-with-aigwroute
       kind: Gateway

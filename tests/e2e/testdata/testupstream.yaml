@@ -28,8 +28,6 @@ metadata:
   name: translation-testupstream
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: translation-testupstream
       kind: Gateway

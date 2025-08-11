@@ -9,8 +9,6 @@ metadata:
   name: llmcosts
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: some-gateway
       kind: Gateway
