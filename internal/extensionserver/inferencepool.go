@@ -358,7 +358,7 @@ func searchInferencePoolInFilterChain(pool *gwaiev1a2.InferencePool, chain []*ht
 	return nil, -1, nil
 }
 
-// Tries to find the route config name in the provided listener.
+// findListenerRouteConfigs extracts route configuration names from the listener's filter chains.
 func findListenerRouteConfigs(listener *listenerv3.Listener) []string {
 	var names []string
 	// First, get the filter chains from the listener.
