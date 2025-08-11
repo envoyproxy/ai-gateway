@@ -9,7 +9,7 @@ replace sigs.k8s.io/gateway-api-inference-extension v0.4.0 => sigs.k8s.io/gatewa
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0
-	github.com/alecthomas/kong v1.12.0
+	github.com/alecthomas/kong v1.12.1
 	github.com/anthropics/anthropic-sdk-go v1.5.0
 	github.com/aws/aws-sdk-go-v2 v1.37.2
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11
