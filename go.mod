@@ -10,9 +10,9 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0
 	github.com/alecthomas/kong v1.12.1
-	github.com/anthropics/anthropic-sdk-go v1.5.0
+	github.com/anthropics/anthropic-sdk-go v1.8.0
 	github.com/aws/aws-sdk-go-v2 v1.37.2
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.0
 	github.com/aws/aws-sdk-go-v2/config v1.30.3
 	github.com/aws/aws-sdk-go-v2/service/sts v1.36.0
 	github.com/coreos/go-oidc/v3 v3.15.0
@@ -24,7 +24,7 @@ require (
 	github.com/google/cel-go v0.26.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/openai/openai-go v1.10.1
+	github.com/openai/openai-go v1.12.0
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.38.0
@@ -47,7 +47,7 @@ require (
 	google.golang.org/api v0.242.0
 	google.golang.org/genai v1.19.0
 	google.golang.org/grpc v1.74.2
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.7
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.4
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.3
