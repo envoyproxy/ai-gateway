@@ -1113,11 +1113,41 @@ type Embedding struct {
 	// Object: The object type, which is always "embedding".
 	Object string `json:"object"`
 
-	// Embedding: The embedding vector, which is a list of floats. The length of vector depends on the model as listed in the embedding guide.
-	Embedding []float64 `json:"embedding"`
+	// Embedding: The embedding vector, which can be a list of floats or a string.
+	// The length of vector depends on the model as listed in the embedding guide.
+	Embedding EmbeddingUnion `json:"embedding"`
 
 	// Index: The index of the embedding in the list of embeddings.
 	Index int `json:"index"`
+}
+
+// EmbeddingUnion is a union type that can handle both []float64 and string formats.
+type EmbeddingUnion struct {
+	Value interface{}
+}
+
+// UnmarshalJSON implements json.Unmarshaler to handle both []float64 and string formats.
+func (e *EmbeddingUnion) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as []float64 first.
+	var floats []float64
+	if err := json.Unmarshal(data, &floats); err == nil {
+		e.Value = floats
+		return nil
+	}
+
+	// Try to unmarshal as string.
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		e.Value = str
+		return nil
+	}
+
+	return errors.New("embedding must be either []float64 or string")
+}
+
+// MarshalJSON implements json.Marshaler.
+func (e EmbeddingUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.Value)
 }
 
 // EmbeddingUsage represents the usage information for an embeddings request.
