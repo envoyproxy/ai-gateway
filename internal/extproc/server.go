@@ -116,7 +116,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	}
 	path := requestHeaders[pathHeader]
 
-	// Strip query parameters for processor lookup
+	// Strip query parameters for processor lookup.
 	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
 		path = path[:queryIndex]
 	}
