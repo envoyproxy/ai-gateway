@@ -49,7 +49,7 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: mistral
@@ -61,8 +61,8 @@ spec:
   extensionRef:
     name: mistral-epp
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+apiVersion: inference.networking.k8s.io/v1
+kind: InferenceObjective
 metadata:
   name: mistral
   namespace: default
@@ -70,7 +70,7 @@ spec:
   modelName: mistral:latest
   criticality: Critical
   poolRef:
-    # Bind the InferenceModel to the InferencePool.
+    # Bind the InferenceObjective to the InferencePool.
     name: mistral
 ---
 apiVersion: v1
@@ -158,7 +158,7 @@ metadata:
   namespace: default
 data:
   default-plugins.yaml: |
-    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    apiVersion: inference.networking.k8s.io/v1alpha1
     kind: EndpointPickerConfig
     plugins:
     - type: low-queue-filter
@@ -208,7 +208,7 @@ data:
       - pluginRef: low-latency-filter
       - pluginRef: random-picker
   plugins-v2.yaml: |
-    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    apiVersion: inference.networking.k8s.io/v1alpha1
     kind: EndpointPickerConfig
     plugins:
     - type: queue-scorer
@@ -238,10 +238,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: pod-read
 rules:
-  - apiGroups: ["inference.networking.x-k8s.io"]
+  - apiGroups: ["inference.networking.k8s.io"]
     resources: ["inferencepools"]
     verbs: ["get", "watch", "list"]
-  - apiGroups: ["inference.networking.x-k8s.io"]
+  - apiGroups: ["inference.networking.k8s.io"]
     resources: ["inferencemodels"]
     verbs: ["get", "watch", "list"]
   - apiGroups: [""]

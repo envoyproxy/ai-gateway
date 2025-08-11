@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 // TestInferencePoolIntegration tests the InferencePool integration with AI Gateway.
@@ -174,14 +174,14 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, add
 }
 
 // getInferencePoolStatus retrieves the status of an InferencePool resource.
-func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1a2.InferencePoolStatus, error) {
+func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1.InferencePoolStatus, error) {
 	cmd := exec.CommandContext(ctx, "kubectl", "get", "inferencepool", name, "-n", namespace, "-o", "json")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get InferencePool %s/%s: %w", namespace, name, err)
 	}
 
-	var inferencePool gwaiev1a2.InferencePool
+	var inferencePool gwaiev1.InferencePool
 	if err := json.Unmarshal(out, &inferencePool); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal InferencePool: %w", err)
 	}
@@ -205,7 +205,7 @@ func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName,
 		}
 
 		// Find the parent status for the expected Gateway.
-		var foundParent *gwaiev1a2.PoolStatus
+		var foundParent *gwaiev1.PoolStatus
 		for i := range status.Parents {
 			parent := &status.Parents[i]
 			if string(parent.GatewayRef.Name) == expectedGatewayName {

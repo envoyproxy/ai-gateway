@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
@@ -46,7 +46,7 @@ func init() {
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
-	utilruntime.Must(gwaiev1a2.Install(Scheme))
+	utilruntime.Must(gwaiev1.Install(Scheme))
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
@@ -141,7 +141,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err != nil {
 		return fmt.Errorf("failed to create CRD client for inference extension: %w", err)
 	}
-	const inferencePoolCRD = "inferencepools.inference.networking.x-k8s.io"
+	const inferencePoolCRD = "inferencepools.inference.networking.k8s.io"
 	if _, crdErr := crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, inferencePoolCRD, metav1.GetOptions{}); crdErr != nil {
 		if apierrors.IsNotFound(crdErr) {
 			logger.Info("InferencePool CRD not found, skipping InferencePool controller. " +
@@ -153,7 +153,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		// CRD exists, create the controller.
 		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
 			WithName("inference-pool"))
-		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1.InferencePool{}).
 			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
 			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
 			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).

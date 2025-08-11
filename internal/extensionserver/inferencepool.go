@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -48,11 +48,11 @@ const (
 	defaultEndpointPickerPort = 9002
 )
 
-func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.ExtensionResource) []*gwaiev1a2.InferencePool {
+func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.ExtensionResource) []*gwaiev1.InferencePool {
 	// Parse InferencePool resources from BackendExtensionResources.
 	// BackendExtensionResources contains unstructured Kubernetes resources that were
 	// referenced in the AIGatewayRoute's BackendRefs with non-empty Group and Kind fields.
-	var inferencePools []*gwaiev1a2.InferencePool
+	var inferencePools []*gwaiev1.InferencePool
 	for _, resource := range extensionResources {
 		// Unmarshal the unstructured bytes to get the Kubernetes resource.
 		// The resource is stored as JSON bytes in the extension context.
@@ -64,11 +64,11 @@ func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.E
 
 		// Check if this is an InferencePool resource from the Gateway API Inference Extension.
 		// We only process InferencePool resources; other extension resources are ignored.
-		if unstructuredObj.GetAPIVersion() == "inference.networking.x-k8s.io/v1alpha2" &&
+		if unstructuredObj.GetAPIVersion() == "inference.networking.k8s.io/v1" &&
 			unstructuredObj.GetKind() == "InferencePool" {
 			// Convert unstructured object to strongly-typed InferencePool.
 			// This allows us to access the InferencePool's spec fields safely.
-			var pool gwaiev1a2.InferencePool
+			var pool gwaiev1.InferencePool
 			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &pool); err != nil {
 				s.log.Error(err, "failed to convert unstructured to InferencePool",
 					"name", unstructuredObj.GetName(), "namespace", unstructuredObj.GetNamespace())
@@ -82,7 +82,7 @@ func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.E
 }
 
 // getInferencePoolByMetadata returns the InferencePool from the cluster metadata.
-func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1a2.InferencePool {
+func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 	var metadata string
 	if meta != nil && meta.FilterMetadata != nil {
 		m, ok := meta.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
@@ -105,17 +105,17 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1a2.InferencePool 
 	if err != nil {
 		return nil
 	}
-	return &gwaiev1a2.InferencePool{
+	return &gwaiev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
-		Spec: gwaiev1a2.InferencePoolSpec{
-			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1a2.Extension{
-					ExtensionReference: gwaiev1a2.ExtensionReference{
-						Name:       gwaiev1a2.ObjectName(serviceName),
-						PortNumber: ptr.To(gwaiev1a2.PortNumber(port)),
+		Spec: gwaiev1.InferencePoolSpec{
+			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
+				ExtensionRef: &gwaiev1.Extension{
+					ExtensionReference: gwaiev1.ExtensionReference{
+						Name:       gwaiev1.ObjectName(serviceName),
+						PortNumber: ptr.To(gwaiev1.PortNumber(port)),
 					},
 				},
 			},
@@ -125,19 +125,19 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1a2.InferencePool 
 
 // buildMetadataForInferencePool adds InferencePool metadata to the cluster for reference by other components.
 // encoded as a string in the format: "namespace/name/serviceName/port".
-func buildEPPMetadataForCluster(cluster *clusterv3.Cluster, inferencePool *gwaiev1a2.InferencePool) {
+func buildEPPMetadataForCluster(cluster *clusterv3.Cluster, inferencePool *gwaiev1.InferencePool) {
 	// Initialize cluster metadata structure if not present.
 	buildEPPMetadata(cluster.Metadata, inferencePool)
 }
 
 // buildMetadataForInferencePool adds InferencePool metadata to the route for reference by other components.
-func buildEPPMetadataForRoute(route *routev3.Route, inferencePool *gwaiev1a2.InferencePool) {
+func buildEPPMetadataForRoute(route *routev3.Route, inferencePool *gwaiev1.InferencePool) {
 	// Initialize route metadata structure if not present.
 	buildEPPMetadata(route.Metadata, inferencePool)
 }
 
 // buildEPPMetadata adds InferencePool metadata to the given metadata structure.
-func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1a2.InferencePool) {
+func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1.InferencePool) {
 	// Initialize cluster metadata structure if not present.
 	if metadata == nil {
 		metadata = &corev3.Metadata{}
@@ -183,7 +183,7 @@ func buildClustersForInferencePoolEndpointPickers(clusters []*clusterv3.Cluster)
 
 // buildExtProcClusterForInferencePoolEndpointPicker builds and returns a "STRICT_DNS" cluster
 // for connecting to the InferencePool's endpoint picker service.
-func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1a2.InferencePool) *clusterv3.Cluster {
+func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1.InferencePool) *clusterv3.Cluster {
 	if pool == nil {
 		panic("InferencePool cannot be nil")
 	}
@@ -258,7 +258,7 @@ func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1a2.Inference
 }
 
 // buildInferencePoolHTTPFilter returns a HTTP filter for InferencePool.
-func buildInferencePoolHTTPFilter(pool *gwaiev1a2.InferencePool) *httpconnectionmanagerv3.HttpFilter {
+func buildInferencePoolHTTPFilter(pool *gwaiev1.InferencePool) *httpconnectionmanagerv3.HttpFilter {
 	poolFilter := buildHTTPFilterForInferencePool(pool)
 	return &httpconnectionmanagerv3.HttpFilter{
 		Name:       httpFilterNameForInferencePool(pool),
@@ -267,7 +267,7 @@ func buildInferencePoolHTTPFilter(pool *gwaiev1a2.InferencePool) *httpconnection
 }
 
 // buildHTTPFilterForInferencePool returns the HTTP filter for the given InferencePool.
-func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.ExternalProcessor {
+func buildHTTPFilterForInferencePool(pool *gwaiev1.InferencePool) *extprocv3.ExternalProcessor {
 	return &extprocv3.ExternalProcessor{
 		GrpcService: &corev3.GrpcService{
 			TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
@@ -291,21 +291,21 @@ func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.E
 }
 
 // authorityForInferencePool formats the gRPC authority based on the given InferencePool.
-func authorityForInferencePool(pool *gwaiev1a2.InferencePool) string {
+func authorityForInferencePool(pool *gwaiev1.InferencePool) string {
 	ns := pool.GetNamespace()
 	svc := pool.Spec.ExtensionRef.Name
 	return fmt.Sprintf("%s.%s.svc:%d", svc, ns, portForInferencePool(pool))
 }
 
 // dnsNameForInferencePool formats the DNS name based on the given InferencePool.
-func dnsNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
+func dnsNameForInferencePool(pool *gwaiev1.InferencePool) string {
 	ns := pool.GetNamespace()
 	svc := pool.Spec.ExtensionRef.Name
 	return fmt.Sprintf("%s.%s.svc", svc, ns)
 }
 
 // portForInferencePool returns the port number for the given InferencePool.
-func portForInferencePool(pool *gwaiev1a2.InferencePool) uint32 {
+func portForInferencePool(pool *gwaiev1.InferencePool) uint32 {
 	if p := pool.Spec.ExtensionRef.PortNumber; p == nil {
 		return defaultEndpointPickerPort
 	}
@@ -318,12 +318,12 @@ func portForInferencePool(pool *gwaiev1a2.InferencePool) uint32 {
 }
 
 // clusterNameForInferencePool returns the name of the ext_proc cluster for the given InferencePool.
-func clusterNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
+func clusterNameForInferencePool(pool *gwaiev1.InferencePool) string {
 	return fmt.Sprintf("envoy.clusters.endpointpicker_%s_%s_ext_proc", pool.GetName(), pool.GetNamespace())
 }
 
 // httpFilterNameForInferencePool returns the name of the ext_proc cluster for the given InferencePool.
-func httpFilterNameForInferencePool(pool *gwaiev1a2.InferencePool) string {
+func httpFilterNameForInferencePool(pool *gwaiev1.InferencePool) string {
 	return fmt.Sprintf("envoy.filters.http.ext_proc/endpointpicker/%s_%s_ext_proc", pool.GetName(), pool.GetNamespace())
 }
 
@@ -345,7 +345,7 @@ func findHCM(filterChain *listenerv3.FilterChain) (*httpconnectionmanagerv3.Http
 }
 
 // Tries to find the inference pool ext proc filter in the provided chain.
-func searchInferencePoolInFilterChain(pool *gwaiev1a2.InferencePool, chain []*httpconnectionmanagerv3.HttpFilter) (*extprocv3.ExternalProcessor, int, error) {
+func searchInferencePoolInFilterChain(pool *gwaiev1.InferencePool, chain []*httpconnectionmanagerv3.HttpFilter) (*extprocv3.ExternalProcessor, int, error) {
 	for i, filter := range chain {
 		if filter.Name == httpFilterNameForInferencePool(pool) {
 			ep := new(extprocv3.ExternalProcessor)
