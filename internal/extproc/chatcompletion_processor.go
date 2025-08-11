@@ -129,43 +129,6 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Co
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	var model string
-	var body *openai.ChatCompletionRequest
-	var err error
-
-	switch c.config.schema.Name {
-	case filterapi.APISchemaOpenAI:
-		// Parse as OpenAI format.
-		model, body, err = parseOpenAIChatCompletionBody(rawBody)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse OpenAI request body: %w", err)
-		}
-		if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
-			// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
-			// to avoid the bypassing of the token usage calculation.
-			body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
-			// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
-			// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
-			rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
-			if err != nil {
-				return nil, fmt.Errorf("failed to set stream_options: %w", err)
-			}
-			c.forcedStreamOptionIncludeUsage = true
-			// TODO: alternatively, we could just return 403 or 400 error here. That makes sense since configuring the
-			// request cost metrics means that the gateway provisioners want to track the token usage for the request vs
-			// setting this option to false means that clients are trying to escape that rule.
-		}
-	case filterapi.APISchemaAnthropic:
-		// Parse as Anthropic format to extract model name.
-		model, err = parseAnthropicModelName(rawBody)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse Anthropic request body: %w", err)
-		}
-		// For Anthropic input, we don't need to parse into OpenAI struct.
-		body = nil
-	default:
-		return nil, fmt.Errorf("unsupported input schema: %s", c.config.schema.Name)
 func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
