@@ -82,7 +82,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		bedrockReq.InferenceConfig.StopSequences = stopSequence
 	}
 
-	// Handle Anthropic vendor fields if present.
+	// Handle Anthropic vendor fields if present. Currently only supports thinking fields.
 	if openAIReq.AnthropicVendorFields != nil && openAIReq.Thinking != nil {
 		if bedrockReq.AdditionalModelRequestFields == nil {
 			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
