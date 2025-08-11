@@ -36,7 +36,7 @@ type anthropicToGCPAnthropicTranslator struct {
 func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	log.Println("🔄 hit GCP translator")
+	log.Println("hit GCP translator")
 
 	// Extract model name for GCP endpoint from the parsed request.
 	modelName := body.GetModel()
@@ -90,7 +90,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(headers map[string]s
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	if status, ok := headers[":status"]; ok {
-		log.Printf("📊 response status: %s", status)
+		log.Printf("response status: %s", status)
 	}
 
 	// For Anthropic to GCP Anthropic, no header transformation is needed.
@@ -102,19 +102,16 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(headers map[string]s
 func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	log.Printf("📥 hit translator - processing response body (endOfStream: %v)", endOfStream)
+	log.Printf("hit translator - processing response body (endOfStream: %v)", endOfStream)
 
 	// Read the response body for both streaming and non-streaming.
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
-		log.Printf("❌ failed to read response body: %v", err)
+		log.Printf("failed to read response body: %v", err)
 		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	log.Printf("📦 response body size: %d bytes", len(bodyBytes))
-	if len(bodyBytes) > 0 && len(bodyBytes) < 500 {
-		log.Printf("📄 response body preview: %s", string(bodyBytes))
-	}
+	log.Printf("response body size: %d bytes", len(bodyBytes))
 
 	// For streaming chunks, try to extract token usage from message_delta events.
 	if !endOfStream {
@@ -162,6 +159,6 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
 	}
 
-	log.Println("✅ response translation completed")
+	log.Println("response translation completed")
 	return headerMutation, bodyMutation, tokenUsage, nil
 }
