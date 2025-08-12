@@ -357,19 +357,18 @@ func TestAIGatewayRouteController(t *testing.T) {
 	})
 
 	t.Run("check finalizer and status", func(t *testing.T) {
-		require.Eventually(t, func() bool {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			var r aigv1a1.AIGatewayRoute
 			err := c.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "default"}, &r)
-			require.NoError(t, err)
+			assert.NoError(ct, err)
 			// Check if the finalizer is set.
 			if len(r.Finalizers) == 0 || r.Finalizers[0] != "aigateway.envoyproxy.io/finalizer" {
 				t.Logf("expected finalizer not found: %v", r.Finalizers)
-				return false
+				assert.FailNow(ct, "expected finalizer not found", "expected finalizer not found: %v", r.Finalizers)
+				return
 			}
-			if len(r.Status.Conditions) != 1 {
-				return false
-			}
-			return r.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+			assert.Len(ct, r.Status.Conditions, 1)
+			assert.Equal(ct, aigv1a1.ConditionTypeAccepted, r.Status.Conditions[0].Type)
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 

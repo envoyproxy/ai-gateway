@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -127,14 +128,13 @@ func StartTestEnvironment(t *testing.T,
 	})
 
 	// Sanity-check all connections to ensure everything is up.
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := env.checkAllConnections(t)
 		if err != nil {
 			t.Logf("Error checking connections: %v", err)
-			return false
 		}
 		t.Log("All services are up and running")
-		return true
+		assert.NoError(c, err)
 	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
 	return env
 }
