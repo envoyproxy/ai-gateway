@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
@@ -106,35 +107,37 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	t.Log("Checking extProc container for OTEL environment variables")
 
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
-	getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
-		"-n", e2elib.EnvoyGatewayNamespace,
-		"-l", egSelector,
-		"-o", "jsonpath={.items[0].metadata.name}")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-l", egSelector,
+			"-o", "jsonpath={.items[0].metadata.name}")
 
-	podNameBytes, err := getPodsCmd.Output()
-	require.NoError(t, err)
-	podName := string(podNameBytes)
-	require.NotEmpty(t, podName)
+		podNameBytes, err := getPodsCmd.Output()
+		require.NoError(c, err)
+		podName := string(podNameBytes)
+		require.NotEmpty(c, podName)
 
-	// Get the pod description to check env vars.
-	describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
-		"-n", e2elib.EnvoyGatewayNamespace,
-		"-o", "jsonpath={.spec.containers[?(@.name=='ai-gateway-extproc')].env}")
+		// Get the pod description to check env vars.
+		describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.containers[?(@.name=='ai-gateway-extproc')].env}")
 
-	describeOutput := &bytes.Buffer{}
-	describeCmd.Stdout = describeOutput
-	describeCmd.Stderr = describeOutput
+		describeOutput := &bytes.Buffer{}
+		describeCmd.Stdout = describeOutput
+		describeCmd.Stderr = describeOutput
 
-	err = describeCmd.Run()
-	require.NoError(t, err)
+		err = describeCmd.Run()
+		require.NoError(c, err)
 
-	envVars := describeOutput.String()
+		envVars := describeOutput.String()
 
-	// Verify that our OTEL env vars are present in the pod spec.
-	require.Contains(t, envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`,
-		"Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
-	require.Contains(t, envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`,
-		"Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
+		// Verify that our OTEL env vars are present in the pod spec.
+		require.Contains(c, envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`,
+			"Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
+		require.Contains(c, envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`,
+			"Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
+	}, 1*time.Minute, 1*time.Second)
 
 	t.Log("OTEL environment variables successfully verified in extProc container")
 }
