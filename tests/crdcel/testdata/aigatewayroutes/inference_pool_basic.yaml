@@ -12,8 +12,6 @@ metadata:
 spec:
   parentRefs:
   - name: gateway
-  schema:
-    name: OpenAI
   rules:
   - matches:
     - path:

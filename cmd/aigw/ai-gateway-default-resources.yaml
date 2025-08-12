@@ -81,8 +81,6 @@ metadata:
   name: aigw-run
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: aigw-run
       kind: Gateway

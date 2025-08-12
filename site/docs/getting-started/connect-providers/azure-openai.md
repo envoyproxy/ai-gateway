@@ -112,8 +112,6 @@ metadata:
   name: envoy-ai-gateway-basic-azure
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway
