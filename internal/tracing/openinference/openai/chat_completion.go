@@ -70,7 +70,7 @@ func (r *ChatCompletionRecorder) RecordResponseChunk(span trace.Span, chunk *ope
 	attrs = buildResponseAttributesForChunk(chunk, r.traceConfig)
 
 	// TODO: what to do with the "output" attribute for streaming? Accumulate it? Right now the last chunk
-	// will overwrite the previous ones.
+	// 	will overwrite the previous ones.
 	bodyString := openinference.RedactedValue
 	if !r.traceConfig.HideOutputs {
 		marshaled, err := json.Marshal(chunk)

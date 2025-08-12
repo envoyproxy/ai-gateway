@@ -111,6 +111,9 @@ func buildResponseAttributesForChunk(chunk *openai.ChatCompletionResponseChunk, 
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := chunk.Usage
+	if u == nil {
+		return attrs // No usage data available, return early.
+	}
 	if pt := u.PromptTokens; pt > 0 {
 		attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPrompt, pt))
 		if td := chunk.Usage.PromptTokensDetails; td != nil {
