@@ -73,6 +73,8 @@ type Options struct {
 	MetricsRequestHeaderLabels string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
+	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
+	ExtProcExtraEnvVars string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -182,6 +184,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
 			options.RootPrefix,
+			options.ExtProcExtraEnvVars,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
@@ -259,7 +262,12 @@ func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
 	}
 	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
+		namespace := aiGatewayRoute.Namespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
 	}
 	return ret
 }

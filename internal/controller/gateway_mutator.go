@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -37,12 +38,22 @@ type gatewayMutator struct {
 	udsPath                    string
 	metricsRequestHeaderLabels string
 	rootPrefix                 string
+	extProcExtraEnvVars        []corev1.EnvVar
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderLabels, rootPrefix string,
+	udsPath, metricsRequestHeaderLabels, rootPrefix, extProcExtraEnvVars string,
 ) *gatewayMutator {
+	var parsedEnvVars []corev1.EnvVar
+	if extProcExtraEnvVars != "" {
+		var err error
+		parsedEnvVars, err = ParseExtraEnvVars(extProcExtraEnvVars)
+		if err != nil {
+			logger.Error(err, "failed to parse extProc extra env vars, skipping",
+				"envVars", extProcExtraEnvVars)
+		}
+	}
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
 		kube:                       kube,
@@ -53,6 +64,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		udsPath:                    udsPath,
 		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
 		rootPrefix:                 rootPrefix,
+		extProcExtraEnvVars:        parsedEnvVars,
 	}
 }
 
@@ -98,6 +110,42 @@ const (
 	mutationNamePrefix   = "ai-gateway-"
 	extProcContainerName = mutationNamePrefix + "extproc"
 )
+
+// ParseExtraEnvVars parses semicolon-separated key=value pairs into a list of
+// environment variables. The input delimiter is a semicolon (';') to allow
+// values to contain commas without escaping.
+// Example: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp".
+func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	pairs := strings.Split(s, ";")
+	result := make([]corev1.EnvVar, 0, len(pairs))
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue // Skip empty pairs from trailing semicolons.
+		}
+
+		key, value, found := strings.Cut(pair, "=")
+		if !found {
+			return nil, fmt.Errorf("invalid env var pair at position %d: %q (expected format: KEY=value)", i+1, pair)
+		}
+
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("empty env var name at position %d: %q", i+1, pair)
+		}
+		result = append(result, corev1.EnvVar{Name: key, Value: value})
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+
+	return result, nil
+}
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
 	var routes aigv1a1.AIGatewayRouteList
@@ -155,6 +203,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			resources = *fc.ExternalProcessor.Resources
 		}
 	}
+	envVars := g.extProcExtraEnvVars
 	const (
 		extProcMetricsPort    = 1064
 		extProcHealthPort     = 1065
@@ -170,6 +219,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
 		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
+		Env:  envVars,
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,

@@ -24,6 +24,16 @@ extProc:
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
+  ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: OTEL_SERVICE_NAME
+  ##     value: "ai-gateway-extproc"
+  ##   - name: OTEL_TRACES_EXPORTER
+  ##     value: "otlp"
+  ##
+  extraEnvVars: []
+
 controller:
   logLevel: info
   nameOverride: ""
@@ -59,6 +69,7 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_STS_PROXY_URL
@@ -70,6 +81,15 @@ controller:
   #  - key: AI_GATEWAY_GCP_AUTH_PROXY_URL
   #    value: some-proxy-placeholder
   podEnv: {}
+
+  ## @param controller.extraEnvVars Array with extra environment variables to add to controller containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: FOO
+  ##     value: "bar"
+  ##
+  extraEnvVars: []
+
   # Example of volumes
   #  - mountPath: /placeholder/path
   #    name: volume-name

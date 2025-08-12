@@ -6,8 +6,10 @@
 package tracing
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"testing"
 
@@ -24,32 +26,122 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
-func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
+// TestNewTracingFromEnv_DefaultServiceName tests that the service name
+// defaults to "ai-gateway" when OTEL_SERVICE_NAME is not set.
+func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 	tests := []struct {
-		name         string
-		sdkDisabled  string
-		otlpEndpoint string
+		name              string
+		env               map[string]string
+		expectServiceName string
 	}{
 		{
-			name:         "OTEL_SDK_DISABLED true",
-			sdkDisabled:  "true",
-			otlpEndpoint: "http://localhost:4318", // Should be ignored.
+			name: "default service name when OTEL_SERVICE_NAME not set",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER": "console",
+			},
+			expectServiceName: "ai-gateway",
 		},
 		{
-			name:         "OTEL_EXPORTER_OTLP_ENDPOINT unset",
-			sdkDisabled:  "",
-			otlpEndpoint: "",
+			name: "OTEL_SERVICE_NAME overrides default",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER": "console",
+				"OTEL_SERVICE_NAME":    "custom-service",
+			},
+			expectServiceName: "custom-service",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("OTEL_SDK_DISABLED", tt.sdkDisabled)
-			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tt.otlpEndpoint)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
 
-			result, err := NewTracingFromEnv(t.Context())
+			var stdout bytes.Buffer
+			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				_ = result.Shutdown(t.Context())
+			})
+
+			// Start a span to trigger output.
+			span := startCompletionsSpan(t, result, nil)
+			require.NotNil(t, span)
+			span.EndSpan(200, nil)
+
+			// Check that the service name appears in the console output.
+			output := stdout.String()
+			require.Contains(t, output, `"service.name"`)
+			require.Contains(t, output, tt.expectServiceName)
+		})
+	}
+}
+
+func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+	}{
+		{
+			name: "OTEL_SDK_DISABLED true",
+			env: map[string]string{
+				"OTEL_SDK_DISABLED":           "true",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318", // Should be ignored.
+			},
+		},
+		{
+			name: "OTEL_TRACES_EXPORTER none",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER":        "none",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318", // Should be ignored.
+			},
+		},
+		{
+			name: "OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_TRACES_EXPORTER both unset",
+			env:  map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			result, err := NewTracingFromEnv(t.Context(), io.Discard)
 			require.NoError(t, err)
 			require.IsType(t, tracing.NoopTracing{}, result)
+		})
+	}
+}
+
+// TestNewTracingFromEnv_Exporter tests that the OTEL_TRACES_EXPORTER env
+// variable works.
+// See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_exporter
+func TestNewTracingFromEnv_Exporter(t *testing.T) {
+	// Just test 2 exporters to prove the SDK is wired up correctly.
+	for _, exporter := range []string{"console", "otlp"} {
+		t.Run(exporter, func(t *testing.T) {
+			t.Setenv("OTEL_TRACES_EXPORTER", exporter)
+
+			var stdout bytes.Buffer
+			collector, tracing := newTracingFromEnvForTest(t, &stdout)
+
+			// Create a test request to start a span.
+			span := startCompletionsSpan(t, tracing, nil)
+			require.NotNil(t, span, "expected span to be sampled")
+			span.EndSpan(200, nil)
+
+			// Now, verify the actual ENV were honored.
+			v1Span := collector.TakeSpan()
+			switch exporter {
+			case "otlp":
+				require.NotNil(t, v1Span)
+				require.Empty(t, stdout)
+			case "console":
+				require.Nil(t, v1Span)
+				require.Contains(t, stdout.String(), "TraceID")
+			}
 		})
 	}
 }
@@ -70,14 +162,9 @@ func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.sampler, func(t *testing.T) {
 			t.Setenv("OTEL_TRACES_SAMPLER", tt.sampler)
-			collector, tracing := newTracingFromEnvForTest(t)
-			tracer := tracing.ChatCompletionTracer()
+			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
-			// Create a test request to start a span.
-			req := &openai.ChatCompletionRequest{
-				Model: openai.ModelGPT41Nano,
-			}
-			span := tracer.StartSpanAndInjectHeaders(t.Context(), nil, &extprocv3.HeaderMutation{}, req, nil)
+			span := startCompletionsSpan(t, tracing, nil)
 			if tt.expectSampled {
 				require.NotNil(t, span, "expected span to be sampled")
 				span.EndSpan(200, nil)
@@ -121,17 +208,13 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.propagator, func(t *testing.T) {
 			t.Setenv("OTEL_PROPAGATORS", tt.propagator)
-			collector, tracing := newTracingFromEnvForTest(t)
-			tracer := tracing.ChatCompletionTracer()
+			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
-			// Create a test request and headers for injection.
-			req := &openai.ChatCompletionRequest{
-				Model: openai.ModelGPT41Nano,
-			}
+			// Create headers for injection.
 			headerMutation := &extprocv3.HeaderMutation{}
 
 			// Start span and inject headers.
-			span := tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
+			span := startCompletionsSpan(t, tracing, headerMutation)
 			require.NotNil(t, span)
 			span.EndSpan(200, nil)
 
@@ -192,7 +275,7 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 			t.Setenv(openinference.EnvHideInputs, strconv.FormatBool(tt.hideInputs))
 			t.Setenv(openinference.EnvHideOutputs, strconv.FormatBool(tt.hideOutputs))
 
-			collector, tracing := newTracingFromEnvForTest(t)
+			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 			tracer := tracing.ChatCompletionTracer()
 
 			// Create a test request with sensitive data.
@@ -253,12 +336,12 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 	}
 }
 
-func newTracingFromEnvForTest(t *testing.T) (*testotel.OTLPCollector, tracing.Tracing) {
+func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCollector, tracing.Tracing) {
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 	collector.SetEnv(t.Setenv)
 
-	result, err := NewTracingFromEnv(t.Context())
+	result, err := NewTracingFromEnv(t.Context(), stdout)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = result.Shutdown(context.Background())
@@ -308,17 +391,13 @@ func TestNoopShutdown(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNewTracingFromEnv_ValidEndpoint(t *testing.T) {
-	// Test with a valid endpoint that will create a working exporter.
-	collector := testotel.StartOTLPCollector()
-	defer collector.Close()
-	collector.SetEnv(t.Setenv)
-
-	result, err := NewTracingFromEnv(t.Context())
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Cleanup.
-	err = result.Shutdown(t.Context())
-	require.NoError(t, err)
+// startCompletionsSpan is a test helper that creates a span with a basic request.
+// If headerMutation is nil, a new empty HeaderMutation will be created.
+func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation *extprocv3.HeaderMutation) tracing.ChatCompletionSpan {
+	if headerMutation == nil {
+		headerMutation = &extprocv3.HeaderMutation{}
+	}
+	tracer := tracing.ChatCompletionTracer()
+	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT41Nano}
+	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
 }

@@ -44,6 +44,7 @@ type flags struct {
 	caBundleName               string
 	metricsRequestHeaderLabels string
 	rootPrefix                 string
+	extProcExtraEnvVars        string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -121,6 +122,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"/",
 		`The root prefix for all supported endpoints. Default is "/"`,
 	)
+	extProcExtraEnvVars := fs.String(
+		"extProcExtraEnvVars",
+		"",
+		"Semicolon-separated key=value pairs for extra environment variables in extProc container. Format: OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -152,6 +158,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	// Validate extProc extra env vars if provided.
+	if *extProcExtraEnvVars != "" {
+		_, err := controller.ParseExtraEnvVars(*extProcExtraEnvVars)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid extProc extra env vars: %w", err)
+		}
+	}
+
 	return flags{
 		extProcLogLevel:            *extProcLogLevelPtr,
 		extProcImage:               *extProcImagePtr,
@@ -165,6 +179,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		caBundleName:               *caBundleName,
 		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 		rootPrefix:                 *rootPrefix,
+		extProcExtraEnvVars:        *extProcExtraEnvVars,
 	}, nil
 }
 
@@ -239,6 +254,7 @@ func main() {
 		UDSPath:                    extProcUDSPath,
 		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 		RootPrefix:                 flags.rootPrefix,
+		ExtProcExtraEnvVars:        flags.extProcExtraEnvVars,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
