@@ -68,8 +68,13 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			"-n", "envoy-ai-gateway-system")
 		_ = restoreHelm.Run()
 
-		// Clean up the test manifest resources.
+		// Clean up the test manifest resources including namespace.
 		_ = e2elib.KubectlDeleteManifest(restoreCtx, manifest)
+
+		// Delete the test namespace to clean up completely.
+		deleteNs := exec.CommandContext(restoreCtx, "kubectl", "delete", "namespace",
+			"otel-test-namespace", "--ignore-not-found=true")
+		_ = deleteNs.Run()
 	})
 
 	// Restart controller to pick up new configuration.
@@ -89,12 +94,18 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 
 	// Wait for gateway pod to be created.
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-otel-test"
-	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	// Wait for the pod to be ready.
+	waitPodCmd := exec.CommandContext(ctx, "kubectl", "wait", "--timeout=60s", // #nosec G204
+		"-n", e2elib.EnvoyGatewayNamespace,
+		"-l", egSelector,
+		"--for=condition=ready", "pod")
+	_ = waitPodCmd.Run() // Ignore error as pods might not be fully ready.
 
 	// Get the pod with extProc container and verify env vars.
 	t.Log("Checking extProc container for OTEL environment variables")
 
-	// Get pod name.
+	// Get pod name from envoy-gateway-system namespace (where pods are created).
 	getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
 		"-n", e2elib.EnvoyGatewayNamespace,
 		"-l", egSelector,

@@ -265,7 +265,12 @@ func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
 	}
 	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
-		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, aiGatewayRoute.Namespace))
+		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
+		namespace := aiGatewayRoute.Namespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
 	}
 	return ret
 }

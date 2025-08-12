@@ -4,6 +4,11 @@
 # the root of the repo.
 
 # Minimal test manifest for OpenTelemetry tracing with console exporter
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-test-namespace
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -15,7 +20,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: envoy-ai-gateway-otel-test
-  namespace: envoy-gateway-system
+  namespace: otel-test-namespace
 spec:
   gatewayClassName: envoy-ai-gateway-otel-test
   listeners:
@@ -30,7 +35,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: otel-test-backend
-  namespace: envoy-ai-gateway-system
+  namespace: otel-test-namespace
 spec:
   ports:
     - name: http
@@ -44,7 +49,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-test-backend
-  namespace: envoy-ai-gateway-system
+  namespace: otel-test-namespace
 spec:
   replicas: 1
   selector:
@@ -63,10 +68,23 @@ spec:
             - containerPort: 11434
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: otel-test-backend
+  namespace: otel-test-namespace
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: otel-test-backend
+    port: 11434
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
   name: otel-console-tracing
-  namespace: envoy-ai-gateway-system
+  namespace: otel-test-namespace
 spec:
   parentRefs:
     - name: envoy-ai-gateway-otel-test

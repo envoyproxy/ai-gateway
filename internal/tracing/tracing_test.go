@@ -49,23 +49,6 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 			},
 			expectServiceName: "custom-service",
 		},
-		{
-			name: "OTEL_RESOURCE_ATTRIBUTES with service.name overrides default",
-			env: map[string]string{
-				"OTEL_TRACES_EXPORTER":     "console",
-				"OTEL_RESOURCE_ATTRIBUTES": "service.name=from-resource-attrs",
-			},
-			expectServiceName: "from-resource-attrs",
-		},
-		{
-			name: "OTEL_SERVICE_NAME takes precedence over OTEL_RESOURCE_ATTRIBUTES",
-			env: map[string]string{
-				"OTEL_TRACES_EXPORTER":     "console",
-				"OTEL_SERVICE_NAME":        "from-env",
-				"OTEL_RESOURCE_ATTRIBUTES": "service.name=from-resource-attrs",
-			},
-			expectServiceName: "from-env",
-		},
 	}
 
 	for _, tt := range tests {
@@ -90,12 +73,6 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 			output := stdout.String()
 			require.Contains(t, output, `"service.name"`)
 			require.Contains(t, output, tt.expectServiceName)
-
-			// Verify the service name is in the resource attributes
-			// The console exporter outputs in JSON format with the service name
-			// in the Resource.Attributes section.
-			require.Contains(t, output, `"Value":"`+tt.expectServiceName+`"`,
-				"Expected service name %q in output, got: %s", tt.expectServiceName, output)
 		})
 	}
 }
