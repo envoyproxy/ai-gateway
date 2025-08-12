@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"path"
 	"path/filepath"
 
 	"github.com/go-logr/logr"
@@ -84,7 +83,7 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMe
 		"-extProcAddr", "unix://" + g.udsPath,
 		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
-		"-openAIPrefix", path.Join(g.rootPrefix, "/v1"),
+		"-rootPrefix", g.rootPrefix,
 	}
 
 	// Add metrics header label mapping if configured.
