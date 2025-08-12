@@ -8,6 +8,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -38,7 +39,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	t.Log("Upgrading AI Gateway with OTEL_TRACES_EXPORTER=console")
 
 	// Upgrade the existing "ai-eg" release with new env vars.
-	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "ai-eg",
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "ai-eg", "--force",
 		helmChartPath,
 		"--set", "controller.metricsRequestHeaderLabels=x-user-id:user_id", // Keep existing setting.
 		"--set", "extProc.extraEnvVars[0].name=OTEL_TRACES_EXPORTER",
@@ -47,15 +48,9 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		"--set", "extProc.extraEnvVars[1].value=ai-gateway-e2e-test",
 		"-n", "envoy-ai-gateway-system")
 
-	helmOutput := &bytes.Buffer{}
-	helm.Stdout = helmOutput
-	helm.Stderr = helmOutput
-
-	err := helm.Run()
-	if err != nil {
-		t.Logf("Helm output: %s", helmOutput.String())
-	}
-	require.NoError(t, err, "Failed to upgrade AI Gateway with OTEL env vars")
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	require.NoError(t, helm.Run(), "Failed to upgrade AI Gateway with OTEL env vars")
 
 	// Setup cleanup to restore original configuration after test.
 	t.Cleanup(func() {
@@ -64,7 +59,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		defer cancel()
 
 		// Re-install AI Gateway with default settings.
-		restoreHelm := exec.CommandContext(restoreCtx, "go", "tool", "helm", "upgrade", "ai-eg",
+		restoreHelm := exec.CommandContext(restoreCtx, "go", "tool", "helm", "upgrade", "ai-eg", "--force",
 			helmChartPath,
 			"-n", "envoy-ai-gateway-system")
 		_ = restoreHelm.Run()
@@ -81,7 +76,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Restart controller to pick up new configuration.
 	restartCmd := exec.CommandContext(ctx, "kubectl", "rollout", "restart",
 		"deployment/ai-gateway-controller", "-n", "envoy-ai-gateway-system")
-	err = restartCmd.Run()
+	err := restartCmd.Run()
 	require.NoError(t, err)
 
 	// Wait for deployment to be ready.
@@ -93,21 +88,12 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Apply the test manifest which will trigger pod creation.
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
-	// Wait for gateway pod to be created.
-	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-otel-test"
-
-	// Wait for the pod to be ready.
-	waitPodCmd := exec.CommandContext(ctx, "kubectl", "wait", "--timeout=60s", // #nosec G204
-		"-n", e2elib.EnvoyGatewayNamespace,
-		"-l", egSelector,
-		"--for=condition=ready", "pod")
-	_ = waitPodCmd.Run() // Ignore error as pods might not be fully ready.
-
 	// Get the pod with extProc container and verify env vars.
 	t.Log("Checking extProc container for OTEL environment variables")
 
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-otel-test"
 		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
 			"-n", e2elib.EnvoyGatewayNamespace,
 			"-l", egSelector,
@@ -118,6 +104,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		require.NoError(c, err)
 		podName := string(podNameBytes)
 		require.NotEmpty(c, podName)
+		t.Logf("Found pod: %s", podName)
 
 		// Get the pod description to check env vars.
 		describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
@@ -132,6 +119,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		require.NoError(c, err)
 
 		envVars := describeOutput.String()
+		t.Logf("Environment variables in extProc container: %s", envVars)
 
 		// Verify that our OTEL env vars are present in the pod spec.
 		require.Contains(c, envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`,
