@@ -13,6 +13,7 @@ import (
 	"path"
 	"strconv"
 
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
@@ -116,7 +117,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]st
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ChatCompletionSpan) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if o.stream {
@@ -126,11 +127,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 				return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 			}
 			o.buffered = append(o.buffered, buf...)
-			tokenUsage = o.extractUsageFromBufferEvent()
+			tokenUsage = o.extractUsageFromBufferEvent(span)
 		}
 		return
 	}
-	var resp openai.ChatCompletionResponse
+	resp := &openai.ChatCompletionResponse{}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
@@ -139,6 +140,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		OutputTokens: uint32(resp.Usage.CompletionTokens), //nolint:gosec
 		TotalTokens:  uint32(resp.Usage.TotalTokens),      //nolint:gosec
 	}
+	if span != nil {
+		span.RecordResponse(resp)
+	}
 	return
 }
 
@@ -146,7 +150,7 @@ var dataPrefix = []byte("data: ")
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // Once the usage is extracted, it returns the number of tokens used, and bufferingDone is set to true.
-func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent() (tokenUsage LLMTokenUsage) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage LLMTokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
@@ -157,8 +161,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 		if !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}
-		var event openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), &event); err != nil {
+		event := &openai.ChatCompletionResponseChunk{}
+		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
 			continue
 		}
 		if usage := event.Usage; usage != nil {
@@ -170,6 +174,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent()
 			o.bufferingDone = true
 			o.buffered = nil
 			return
+		}
+		if span != nil {
+			span.RecordResponseChunk(event)
 		}
 	}
 }

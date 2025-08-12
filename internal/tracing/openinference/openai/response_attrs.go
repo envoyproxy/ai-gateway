@@ -71,3 +71,7 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 	}
 	return attrs
 }
+
+func buildResponseAttributesForChunk(chunk *openai.ChatCompletionResponseChunk, config *openinference.TraceConfig) []attribute.KeyValue {
+	panic("TODO")
+}

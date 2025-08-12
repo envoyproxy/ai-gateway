@@ -17,6 +17,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
@@ -671,12 +672,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Anthropic.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.
 	if o.streamParser != nil {
-		return o.streamParser.Process(body, endOfStream)
+		return o.streamParser.Process(body, endOfStream, span)
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
@@ -685,7 +686,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	openAIResp := openai.ChatCompletionResponse{
+	openAIResp := &openai.ChatCompletionResponse{
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
@@ -738,6 +739,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
-
+	if span != nil {
+		span.RecordResponse(openAIResp)
+	}
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 }

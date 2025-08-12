@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
@@ -54,7 +55,7 @@ type OpenAIChatCompletionTranslator interface {
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,

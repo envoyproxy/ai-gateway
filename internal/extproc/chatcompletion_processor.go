@@ -104,27 +104,6 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Co
 	} else {
 		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
 	}
-	if c.span == nil {
-		return
-	}
-
-	var statusCode int
-	if upstream, ok := c.upstreamFilter.(*chatCompletionProcessorUpstreamFilter); ok {
-		if statusInt, _ := strconv.Atoi(upstream.responseHeaders[":status"]); statusInt > 0 {
-			statusCode = statusInt
-		}
-	}
-
-	// Record chunk timing for streaming responses.
-	if c.originalRequestBody.Stream {
-		c.span.RecordChunk()
-	}
-
-	// End the span when response processing is complete.
-	if body.EndOfStream {
-		c.span.EndSpan(statusCode, body.Body)
-	}
-
 	return
 }
 
@@ -211,6 +190,8 @@ type chatCompletionProcessorUpstreamFilter struct {
 	stream bool
 	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
 	forcedStreamOptionIncludeUsage bool
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.ChatCompletionSpan
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -347,6 +328,13 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		if c.span != nil {
+			b := bodyMutation.GetBody()
+			if b == nil {
+				b = body.Body
+			}
+			c.span.EndSpanOnError(code, b)
+		}
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -359,7 +347,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream, c.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -416,6 +404,9 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		resp.DynamicMetadata = metadata
 	}
 
+	if body.EndOfStream && c.span != nil {
+		c.span.EndSpan()
+	}
 	return resp, nil
 }
 
@@ -448,6 +439,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	}
 	rp.upstreamFilter = c
 	c.forcedStreamOptionIncludeUsage = rp.forcedStreamOptionIncludeUsage
+	c.span = rp.span
 	return
 }
 

@@ -8,7 +8,6 @@
 package openai
 
 import (
-	"bytes"
 	"encoding/json"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -61,42 +60,51 @@ func (r *ChatCompletionRecorder) RecordRequest(span trace.Span, chatReq *openai.
 	span.SetAttributes(buildRequestAttributes(chatReq, string(body), r.traceConfig)...)
 }
 
-// RecordChunk implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordChunk(span trace.Span, chunkIdx int) {
+// RecordResponseChunk implements the same method as defined in tracing.ChatCompletionRecorder.
+func (r *ChatCompletionRecorder) RecordResponseChunk(span trace.Span, chunk *openai.ChatCompletionResponseChunk, chunkIdx int) {
 	if chunkIdx == 0 {
 		span.AddEvent("First Token Stream Event")
 	}
+	// Set output attributes.
+	var attrs []attribute.KeyValue
+	attrs = buildResponseAttributesForChunk(chunk, r.traceConfig)
+
+	// TODO: what to do with the "output" attribute for streaming? Accumulate it? Right now the last chunk
+	// will overwrite the previous ones.
+	bodyString := openinference.RedactedValue
+	if !r.traceConfig.HideOutputs {
+		marshaled, err := json.Marshal(chunk)
+		if err == nil {
+			bodyString = string(marshaled)
+		}
+	}
+	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
+	span.SetAttributes(attrs...)
+}
+
+// RecordResponseOnError implements the same method as defined in tracing.ChatCompletionRecorder.
+func (r *ChatCompletionRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
+	recordResponseError(span, statusCode, string(body))
 }
 
 // RecordResponse implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, statusCode int, body []byte) {
-	if statusCode < 200 || statusCode >= 300 {
-		recordResponseError(span, statusCode, string(body))
-		return
-	}
-
-	// Only convert if the body looks like SSE data (contains "data: " prefix).
-	if bytes.Contains(body, []byte("data: ")) {
-		// Convert SSE to a single completion response.
-		if jsonBody, convErr := convertSSEToJSON(body); convErr == nil && len(jsonBody) > 0 {
-			body = jsonBody
-		}
-	}
-
+func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
-	// Attempt to parse response for additional attributes.
-	var resp openai.ChatCompletionResponse
-	if err := json.Unmarshal(body, &resp); err == nil {
-		attrs = buildResponseAttributes(&resp, r.traceConfig)
-	}
+	attrs = buildResponseAttributes(resp, r.traceConfig)
 
-	bodyString := string(body) // Use the potentially converted body.
-	if r.traceConfig.HideOutputs {
-		bodyString = openinference.RedactedValue
+	bodyString := openinference.RedactedValue
+	if !r.traceConfig.HideOutputs {
+		marshaled, err := json.Marshal(resp)
+		if err == nil {
+			bodyString = string(marshaled)
+		}
 	}
 	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
-
 	span.SetAttributes(attrs...)
+}
+
+// RecordResponseOnOK implements the same method as defined in tracing.ChatCompletionRecorder.
+func (r *ChatCompletionRecorder) RecordResponseOnOK(span trace.Span) {
 	span.SetStatus(codes.Ok, "")
 }
