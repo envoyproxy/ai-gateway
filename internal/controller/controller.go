@@ -182,7 +182,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
-			path.Join(options.RootPrefix),
+			options.RootPrefix,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
