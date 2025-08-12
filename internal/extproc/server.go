@@ -102,6 +102,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 // Register a new processor for the given request path.
 func (s *Server) Register(path string, newProcessor ProcessorFactory) {
+	s.logger.Info("Registering processor", slog.String("path", path))
 	s.processorFactories[path] = newProcessor
 }
 
