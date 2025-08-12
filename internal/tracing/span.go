@@ -34,6 +34,7 @@ func (s *chatCompletionSpan) RecordResponse(resp *openai.ChatCompletionResponse)
 
 // EndSpan invokes [tracing.ChatCompletionRecorder.RecordResponse].
 func (s *chatCompletionSpan) EndSpan() {
+	s.recorder.RecordResponseOnOK(s.span)
 	s.span.End()
 }
 
