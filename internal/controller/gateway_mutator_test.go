@@ -150,3 +150,103 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars,
 	)
 }
+
+func TestParseExtraEnvVars(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		want      []corev1.EnvVar
+		wantError string
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "single env var",
+			input: "OTEL_SERVICE_NAME=ai-gateway",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_SERVICE_NAME", Value: "ai-gateway"},
+			},
+		},
+		{
+			name:  "multiple env vars",
+			input: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_SERVICE_NAME", Value: "ai-gateway"},
+				{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
+			},
+		},
+		{
+			name:  "env var with comma in value",
+			input: "OTEL_RESOURCE_ATTRIBUTES=service.name=gateway,service.version=1.0",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "service.name=gateway,service.version=1.0"},
+			},
+		},
+		{
+			name:  "multiple env vars with commas",
+			input: "OTEL_RESOURCE_ATTRIBUTES=service.name=gateway,service.version=1.0;OTEL_TRACES_EXPORTER=otlp",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "service.name=gateway,service.version=1.0"},
+				{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
+			},
+		},
+		{
+			name:  "env var with equals in value",
+			input: "CONFIG=key1=value1",
+			want: []corev1.EnvVar{
+				{Name: "CONFIG", Value: "key1=value1"},
+			},
+		},
+		{
+			name:  "trailing semicolon",
+			input: "OTEL_SERVICE_NAME=ai-gateway;",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_SERVICE_NAME", Value: "ai-gateway"},
+			},
+		},
+		{
+			name:  "spaces around values",
+			input: " OTEL_SERVICE_NAME = ai-gateway ; OTEL_TRACES_EXPORTER = otlp ",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_SERVICE_NAME", Value: " ai-gateway"},
+				{Name: "OTEL_TRACES_EXPORTER", Value: " otlp"},
+			},
+		},
+		{
+			name:  "only semicolons",
+			input: ";;;",
+			want:  nil,
+		},
+		{
+			name:      "missing equals",
+			input:     "OTEL_SERVICE_NAME",
+			wantError: "invalid env var pair at position 1: \"OTEL_SERVICE_NAME\" (expected format: KEY=value)",
+		},
+		{
+			name:      "empty key",
+			input:     "=value",
+			wantError: "empty env var name at position 1: \"=value\"",
+		},
+		{
+			name:      "mixed valid and invalid",
+			input:     "VALID=value;INVALID;ANOTHER=value",
+			wantError: "invalid env var pair at position 2: \"INVALID\" (expected format: KEY=value)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseExtraEnvVars(tt.input)
+			if tt.wantError != "" {
+				require.Error(t, err)
+				require.Equal(t, tt.wantError, err.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}

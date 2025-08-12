@@ -77,6 +77,7 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_STS_PROXY_URL

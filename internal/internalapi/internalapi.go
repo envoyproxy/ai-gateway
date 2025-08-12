@@ -10,8 +10,6 @@ package internalapi
 import (
 	"fmt"
 	"strings"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -79,42 +77,6 @@ func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 		}
 
 		result[header] = label
-	}
-
-	return result, nil
-}
-
-// ParseExtraEnvVars parses semicolon-separated key=value pairs into a list of
-// environment variables. The input delimiter is a semicolon (';') to allow
-// values to contain commas without escaping.
-// Example: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp".
-func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	pairs := strings.Split(s, ";")
-	result := make([]corev1.EnvVar, 0, len(pairs))
-	for i, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue // Skip empty pairs from trailing semicolons
-		}
-
-		key, value, found := strings.Cut(pair, "=")
-		if !found {
-			return nil, fmt.Errorf("invalid env var pair at position %d: %q (expected format: KEY=value)", i+1, pair)
-		}
-
-		key = strings.TrimSpace(key)
-		if key == "" {
-			return nil, fmt.Errorf("empty env var name at position %d: %q", i+1, pair)
-		}
-		result = append(result, corev1.EnvVar{Name: key, Value: value})
-	}
-
-	if len(result) == 0 {
-		return nil, nil
 	}
 
 	return result, nil

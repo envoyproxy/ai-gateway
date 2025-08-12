@@ -1,0 +1,77 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Minimal test manifest for OpenTelemetry tracing with console exporter
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway-otel-test
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-otel-test
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: envoy-ai-gateway-otel-test
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-test-backend
+  namespace: envoy-ai-gateway-system
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 11434
+      targetPort: 11434
+  selector:
+    app: otel-test-backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-test-backend
+  namespace: envoy-ai-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-test-backend
+  template:
+    metadata:
+      labels:
+        app: otel-test-backend
+    spec:
+      containers:
+        - name: backend
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 11434
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: otel-console-tracing
+  namespace: envoy-ai-gateway-system
+spec:
+  parentRefs:
+  - name: envoy-ai-gateway-otel-test
+    kind: Gateway
+    group: gateway.networking.k8s.io
+  rules:
+  - backendRefs:
+    - name: otel-test-backend

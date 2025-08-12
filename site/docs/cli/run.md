@@ -13,7 +13,7 @@ Since the project is primarily focused on the Kubernetes environment, this comma
 Not only does it help in testing the configuration, but it is also useful in a local development environment of the provider-agnostic AI applications.
 
 :::warning
-Currently, `aigw run` only properly works on Linux. macOS support is pending due to the Envoy v1.34+ binary not available for macOS yet. That will be resolved with https://github.com/Homebrew/homebrew-core/pull/223051.
+Currently, `aigw run` supports Linux and macOS.
 :::
 
 ## Default Proxy
@@ -114,3 +114,42 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
 ### Note
 
 * The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/observability/metrics.md).
+
+## OpenTelemetry
+
+Envoy AI Gateway's router joins and records distributed traces when supplied
+with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
+
+Requests to the OpenAI Chat Completions endpoint are recorded as Spans which
+include typical timing and request details. In addition, there are GenAI
+attributes representing the LLM call including full request and response
+details, defined by the [OpenInference semantic conventions][openinference].
+
+OpenInference attributes default to include full chat completion request and
+response data. This can be toggled with configuration, but when enabled allows
+systems like [Arize Phoenix][phoenix] to perform LLM evaluations of production
+requests captured in OpenTelemetry spans.
+
+### OpenTelemetry configuration
+
+`aigw run` supports OpenTelemetry tracing via environment variables:
+
+- **[OTEL SDK][otel-env]**: OTLP exporter configuration that controls span
+  export such as:
+    - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
+    - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
+
+- **[OpenInference][openinference-config]**: Control sensitive data redaction,
+  such as:
+    - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
+    - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+
+See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example
+configuration.
+
+---
+[openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
+[phoenix]: https://docs.arize.com/phoenix
+[otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
+[openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+[docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml
