@@ -1260,6 +1260,49 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 		},
+		{
+			name: "response with reasoning content",
+			input: awsbedrock.ConverseResponse{
+				StopReason: ptr.To(awsbedrock.StopReasonEndTurn),
+				Output: &awsbedrock.ConverseOutput{
+					Message: awsbedrock.Message{
+						Role: awsbedrock.ConversationRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "This is the model's thought process.",
+									},
+								},
+							},
+							{
+								Text: ptr.To("This is the final answer."),
+							},
+						},
+					},
+				},
+			},
+			output: openai.ChatCompletionResponse{
+				Object: "chat.completion",
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+						Message: openai.ChatCompletionResponseChoiceMessage{
+							Role:    awsbedrock.ConversationRoleAssistant,
+							Content: ptr.To("This is the final answer."),
+							ExtraFields: map[string]interface{}{
+								"reasoningContent": &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "This is the model's thought process.",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1281,18 +1324,20 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
 			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
 
-			var openAIResp openai.ChatCompletionResponse
-			err = json.Unmarshal(newBody, &openAIResp)
+			// Marshal the expected output struct to a JSON string.
+			// This will correctly use the custom MarshalJSON for the message field.
+			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
+
+			// Compare the actual JSON output from the translator with the expected JSON.
+			// JSONEq semantically compares JSON, ignoring whitespace and field order.
+			require.JSONEq(t, string(expectedBody), string(newBody))
 			require.Equal(t,
 				LLMTokenUsage{
 					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
 					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
 					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
 				}, usedToken)
-			if !cmp.Equal(openAIResp, tt.output) {
-				t.Errorf("ConvertOpenAIToBedrock(), diff(got, expected) = %s\n", cmp.Diff(openAIResp, tt.output))
-			}
 		})
 	}
 }
