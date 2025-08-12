@@ -380,8 +380,7 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			indexes := aiGatewayRouteToAttachedGatewayIndexFunc(tt.route)
-			require.ElementsMatch(t, tt.expectedIndexes, indexes,
-				"Index keys should match expected values")
+			require.ElementsMatch(t, tt.expectedIndexes, indexes)
 		})
 	}
 }
