@@ -43,8 +43,6 @@ metadata:
   name: envoy-ai-gateway-basic
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway

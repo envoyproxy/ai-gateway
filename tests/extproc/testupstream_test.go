@@ -558,7 +558,7 @@ data: [DONE]
 			responseStatus:  "400",
 			expStatus:       http.StatusBadRequest,
 			responseBody:    `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
-			expResponseBody: `{"error":{"code":400,"message":"Invalid request: missing required field","status":"INVALID_ARGUMENT"}}`,
+			expResponseBody: `{"type":"error","error":{"type":"INVALID_ARGUMENT","code":"400","message":"Invalid request: missing required field"}}`,
 		},
 		{
 			name:            "gcp-anthropicai - /v1/chat/completions - error response",

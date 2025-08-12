@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -328,4 +330,38 @@ func Test_shouldAIGatewayExtProcBeInserted(t *testing.T) {
 		result := shouldAIGatewayExtProcBeInserted(tt.filters)
 		require.Equal(t, tt.expected, result)
 	}
+}
+
+func Test_findListenerRouteConfigs(t *testing.T) {
+	newHCM := func(name string) *httpconnectionmanagerv3.HttpConnectionManager {
+		return &httpconnectionmanagerv3.HttpConnectionManager{
+			RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
+				Rds: &httpconnectionmanagerv3.Rds{RouteConfigName: name},
+			},
+		}
+	}
+	l := &listenerv3.Listener{
+		DefaultFilterChain: &listenerv3.FilterChain{
+			Filters: []*listenerv3.Filter{
+				{
+					Name:       wellknown.HTTPConnectionManager,
+					ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(newHCM("foo"))},
+				},
+			},
+		},
+		FilterChains: []*listenerv3.FilterChain{
+			{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(newHCM("bar"))},
+					},
+				},
+			},
+			// Non-HCM filter chain.
+			{Filters: []*listenerv3.Filter{}},
+		},
+	}
+	names := findListenerRouteConfigs(l)
+	require.ElementsMatch(t, []string{"foo", "bar"}, names)
 }

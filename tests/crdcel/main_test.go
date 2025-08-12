@@ -33,10 +33,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
 		{
-			name:   "unknown_schema.yaml",
-			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
-		},
-		{
 			name:   "target_refs_with_parent_refs.yaml",
 			expErr: `spec: Invalid value: "object": targetRefs is deprecated, use parentRefs only`,
 		},

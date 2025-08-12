@@ -198,11 +198,6 @@ kind: AIGatewayRoute
 metadata:
   name: multi-provider-route
 spec:
-  # Client-facing API schema
-  schema:
-    name: OpenAI
-    version: v1
-
   # Gateway to attach to
   parentRefs:
     - name: my-gateway
@@ -307,9 +302,6 @@ kind: AIGatewayRoute
 metadata:
   name: openai-route
 spec:
-  schema:
-    name: OpenAI
-    version: v1
   parentRefs:
     - name: my-gateway
       kind: Gateway
@@ -329,9 +321,6 @@ kind: AIGatewayRoute
 metadata:
   name: multi-provider-fallback
 spec:
-  schema:
-    name: OpenAI
-    version: v1
   parentRefs:
     - name: my-gateway
       kind: Gateway
@@ -357,9 +346,6 @@ kind: AIGatewayRoute
 metadata:
   name: model-specific-routing
 spec:
-  schema:
-    name: OpenAI
-    version: v1
   parentRefs:
     - name: my-gateway
       kind: Gateway
@@ -398,9 +384,6 @@ kind: AIGatewayRoute
 metadata:
   name: model-metadata
 spec:
-  schema:
-    name: OpenAI
-    version: v1
   parentRefs:
     - name: my-gateway
       kind: Gateway
