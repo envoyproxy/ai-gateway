@@ -9,8 +9,10 @@
 endpointConfig:
   # The prefix for all the routes served by the AI Gateway. Defaulting to "/". All the generated routes will have this prefix.
   #
-  # By with that default "/", the AI Gateway will assume that the downstream client's OpenAI SDK will talk to the Gateway using the base_url
+  # With the default "/", the AI Gateway will assume that the downstream client's OpenAI SDK will talk to the Gateway using the base_url
   # set to "http://<gateway-hostname>/v1" which has the default "/v1" prefix in the base_url.
+  #
+  # This can be used for providing a separation between AIGatewayRoutes and normal HTTPRoutes when the top level "/v1/" is not desired.
   rootPrefix: "/"
 
 extProc:
