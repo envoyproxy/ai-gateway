@@ -13,11 +13,11 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (

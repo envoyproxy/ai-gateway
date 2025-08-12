@@ -618,7 +618,7 @@ data: [DONE]
 				modelNameOverride: tc.modelNameOverride,
 				stream:            tc.stream,
 			}
-			headerMut, bodyMut, tokenUsage, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream)
+			headerMut, bodyMut, tokenUsage, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream, nil)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
@@ -715,6 +715,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	headerMut, bodyMut, tokenUsage, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpChunk)),
 		false,
+		nil,
 	)
 
 	require.Nil(t, headerMut)
@@ -739,6 +740,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *t
 	_, bodyMut, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte("")),
 		true,
+		nil,
 	)
 
 	require.NoError(t, err)

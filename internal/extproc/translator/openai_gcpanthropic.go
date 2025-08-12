@@ -17,13 +17,13 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai

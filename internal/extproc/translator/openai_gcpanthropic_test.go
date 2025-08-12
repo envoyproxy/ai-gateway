@@ -264,7 +264,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid json body", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true)
+		_, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal body")
 	})
@@ -341,7 +341,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
 			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true)
+			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
 			require.NotNil(t, hm)

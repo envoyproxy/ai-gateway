@@ -6,9 +6,9 @@
 package tracing
 
 import (
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
