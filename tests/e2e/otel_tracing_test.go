@@ -113,7 +113,8 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			"-l", egSelector,
 			"-o", "jsonpath={.items[0].metadata.name}")
 
-		podNameBytes, err := getPodsCmd.Output()
+		var podNameBytes []byte
+		podNameBytes, err = getPodsCmd.Output()
 		require.NoError(c, err)
 		podName := string(podNameBytes)
 		require.NotEmpty(c, podName)
@@ -137,6 +138,13 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			"Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
 		require.Contains(c, envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`,
 			"Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
+
+		// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
+		deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"--ignore-not-found=true")
+		err = deletePodsCmd.Run()
+		require.NoError(c, err, "Failed to delete pod to ensure recreation with new env vars")
 	}, 1*time.Minute, 1*time.Second)
 
 	t.Log("OTEL environment variables successfully verified in extProc container")
