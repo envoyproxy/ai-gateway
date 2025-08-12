@@ -163,7 +163,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
-	tracing, err := tracing.NewTracingFromEnv(ctx)
+	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout)
 	if err != nil {
 		return err
 	}

@@ -45,6 +45,7 @@ type flags struct {
 	metricsRequestHeaderLabels string
 	rootPrefix                 string
 	openAIPrefix               string
+	extProcExtraEnvVars        string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -127,6 +128,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"/v1",
 		`The prefix for OpenAI endpoints following *after* the root prefix. Default is "/v1".`,
 	)
+	extProcExtraEnvVars := fs.String(
+		"extProcExtraEnvVars",
+		"",
+		"Semicolon-separated key=value pairs for extra environment variables in extProc container. Format: OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -158,6 +164,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	// Validate extProc extra env vars if provided.
+	if *extProcExtraEnvVars != "" {
+		_, err := internalapi.ParseExtraEnvVars(*extProcExtraEnvVars)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid extProc extra env vars: %w", err)
+		}
+	}
+
 	return flags{
 		extProcLogLevel:            *extProcLogLevelPtr,
 		extProcImage:               *extProcImagePtr,
@@ -172,6 +186,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 		rootPrefix:                 *rootPrefix,
 		openAIPrefix:               *openAIPrefix,
+		extProcExtraEnvVars:        *extProcExtraEnvVars,
 	}, nil
 }
 
@@ -247,6 +262,7 @@ func main() {
 		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 		RootPrefix:                 flags.rootPrefix,
 		OpenAIPrefix:               flags.openAIPrefix,
+		ExtProcExtraEnvVars:        flags.extProcExtraEnvVars,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

@@ -47,6 +47,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
+					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -55,6 +56,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.False(t, f.enableLeaderElection)
 				require.Equal(t, "debug", f.logLevel.String())
 				require.Equal(t, ":8080", f.extensionServerPort)
+				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.NoError(t, err)
 			})
 		}
@@ -80,6 +82,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid extProcImagePullPolicy",
 				flags:  []string{"--extProcImagePullPolicy=invalid"},
 				expErr: "invalid external processor pull policy: \"invalid\"",
+			},
+			{
+				name:   "invalid extProcExtraEnvVars - missing value",
+				flags:  []string{"--extProcExtraEnvVars=OTEL_SERVICE_NAME"},
+				expErr: "invalid extProc extra env vars",
+			},
+			{
+				name:   "invalid extProcExtraEnvVars - empty key",
+				flags:  []string{"--extProcExtraEnvVars==value"},
+				expErr: "invalid extProc extra env vars",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

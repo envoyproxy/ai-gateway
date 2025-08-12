@@ -49,6 +49,9 @@ spec:
             {{- if .Values.controller.metricsRequestHeaderLabels }}
             - --metricsRequestHeaderLabels={{ .Values.controller.metricsRequestHeaderLabels }}
             {{- end }}
+            {{- if .Values.extProc.extraEnvVars }}
+            - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
+            {{- end }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
@@ -72,6 +75,9 @@ spec:
             - name: {{ $key }}
               value: {{ $val }}
           {{- end }}
+          {{- end }}
+          {{- if .Values.controller.extraEnvVars }}
+          {{- toYaml .Values.controller.extraEnvVars | nindent 12 }}
           {{- end }}
           readinessProbe:
             grpc:

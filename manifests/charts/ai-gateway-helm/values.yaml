@@ -32,6 +32,16 @@ extProc:
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
+  ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: OTEL_SERVICE_NAME
+  ##     value: "ai-gateway-extproc"
+  ##   - name: OTEL_TRACES_EXPORTER
+  ##     value: "otlp"
+  ##
+  extraEnvVars: []
+
 controller:
   logLevel: info
   nameOverride: ""
@@ -78,6 +88,15 @@ controller:
   #  - key: AI_GATEWAY_GCP_AUTH_PROXY_URL
   #    value: some-proxy-placeholder
   podEnv: {}
+
+  ## @param controller.extraEnvVars Array with extra environment variables to add to controller containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: FOO
+  ##     value: "bar"
+  ##
+  extraEnvVars: []
+
   # Example of volumes
   #  - mountPath: /placeholder/path
   #    name: volume-name

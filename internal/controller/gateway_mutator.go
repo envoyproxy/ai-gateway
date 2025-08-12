@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // gatewayMutator implements [admission.CustomDefaulter].
@@ -37,11 +38,12 @@ type gatewayMutator struct {
 	udsPath                    string
 	metricsRequestHeaderLabels string
 	openAIPrefix               string
+	extProcExtraEnvVars        string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderLabels, openAIPrefix string,
+	udsPath, metricsRequestHeaderLabels, openAIPrefix, extProcExtraEnvVars string,
 ) *gatewayMutator {
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
@@ -53,6 +55,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		udsPath:                    udsPath,
 		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
 		openAIPrefix:               openAIPrefix,
+		extProcExtraEnvVars:        extProcExtraEnvVars,
 	}
 }
 
@@ -155,6 +158,16 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			resources = *fc.ExternalProcessor.Resources
 		}
 	}
+	var envVars []corev1.EnvVar
+	if g.extProcExtraEnvVars != "" {
+		parsedEnvVars, err := internalapi.ParseExtraEnvVars(g.extProcExtraEnvVars)
+		if err != nil {
+			g.logger.Error(err, "failed to parse extProc extra env vars, skipping",
+				"envVars", g.extProcExtraEnvVars)
+		} else {
+			envVars = parsedEnvVars
+		}
+	}
 	const (
 		extProcMetricsPort    = 1064
 		extProcHealthPort     = 1065
@@ -170,6 +183,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
 		},
 		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
+		Env:  envVars,
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,

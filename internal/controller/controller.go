@@ -76,6 +76,8 @@ type Options struct {
 	RootPrefix string
 	// OpenAIEndpointsPrefix is the prefix for OpenAI endpoints that follow after the root prefix.
 	OpenAIPrefix string
+	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
+	ExtProcExtraEnvVars string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -185,6 +187,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
 			path.Join(options.RootPrefix, options.OpenAIPrefix),
+			options.ExtProcExtraEnvVars,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
