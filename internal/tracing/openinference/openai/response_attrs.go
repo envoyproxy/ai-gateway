@@ -73,5 +73,64 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 }
 
 func buildResponseAttributesForChunk(chunk *openai.ChatCompletionResponseChunk, config *openinference.TraceConfig) []attribute.KeyValue {
-	panic("TODO")
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.LLMModelName, chunk.Model),
+	}
+
+	if !config.HideOutputs {
+		attrs = append(attrs, attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON))
+	}
+
+	// Note: compound match here is from Python OpenInference OpenAI config.py.
+	if !config.HideOutputs && !config.HideOutputMessages {
+		for i, choice := range chunk.Choices {
+			delta := choice.Delta
+			if delta == nil {
+				continue
+			}
+			attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageRole), delta.Role))
+			if *delta.Content != "" {
+				content := *delta.Content
+				if config.HideOutputText {
+					content = openinference.RedactedValue
+				}
+				attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageContent), content))
+			}
+
+			for j, toolCall := range delta.ToolCalls {
+				if toolCall.ID != nil {
+					attrs = append(attrs, attribute.String(openinference.OutputMessageToolCallAttribute(i, j, openinference.ToolCallID), *toolCall.ID))
+				}
+				attrs = append(attrs,
+					attribute.String(openinference.OutputMessageToolCallAttribute(i, j, openinference.ToolCallFunctionName), toolCall.Function.Name),
+					attribute.String(openinference.OutputMessageToolCallAttribute(i, j, openinference.ToolCallFunctionArguments), toolCall.Function.Arguments),
+				)
+			}
+		}
+	}
+
+	// Token counts are considered metadata and are still included even when output content is hidden.
+	u := chunk.Usage
+	if pt := u.PromptTokens; pt > 0 {
+		attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPrompt, pt))
+		if td := chunk.Usage.PromptTokensDetails; td != nil {
+			attrs = append(attrs,
+				attribute.Int(openinference.LLMTokenCountPromptAudio, td.AudioTokens),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, td.CachedTokens),
+			)
+		}
+	}
+	if ct := u.CompletionTokens; ct > 0 {
+		attrs = append(attrs, attribute.Int(openinference.LLMTokenCountCompletion, ct))
+		if td := chunk.Usage.CompletionTokensDetails; td != nil {
+			attrs = append(attrs,
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, td.AudioTokens),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, td.ReasoningTokens),
+			)
+		}
+	}
+	if tt := u.TotalTokens; tt > 0 {
+		attrs = append(attrs, attribute.Int(openinference.LLMTokenCountTotal, tt))
+	}
+	return attrs
 }
