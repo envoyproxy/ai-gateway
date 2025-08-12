@@ -44,7 +44,6 @@ type flags struct {
 	caBundleName               string
 	metricsRequestHeaderLabels string
 	rootPrefix                 string
-	openAIPrefix               string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -122,11 +121,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"/",
 		`The root prefix for all supported endpoints. Default is "/"`,
 	)
-	openAIPrefix := fs.String(
-		"openAIPrefix",
-		"/v1",
-		`The prefix for OpenAI endpoints following *after* the root prefix. Default is "/v1".`,
-	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -171,7 +165,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		caBundleName:               *caBundleName,
 		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 		rootPrefix:                 *rootPrefix,
-		openAIPrefix:               *openAIPrefix,
 	}, nil
 }
 
@@ -246,7 +239,6 @@ func main() {
 		UDSPath:                    extProcUDSPath,
 		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 		RootPrefix:                 flags.rootPrefix,
-		OpenAIPrefix:               flags.openAIPrefix,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

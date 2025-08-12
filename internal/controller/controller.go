@@ -74,8 +74,6 @@ type Options struct {
 	MetricsRequestHeaderLabels string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
-	// OpenAIEndpointsPrefix is the prefix for OpenAI endpoints that follow after the root prefix.
-	OpenAIPrefix string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -184,7 +182,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
-			path.Join(options.RootPrefix, options.OpenAIPrefix),
+			path.Join(options.RootPrefix),
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

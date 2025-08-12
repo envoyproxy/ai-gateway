@@ -56,7 +56,6 @@ spec:
             - --enableLeaderElection=true
             {{- end }}
             - --rootPrefix={{ .Values.endpointConfig.rootPrefix }}
-            - --openAIPrefix={{ .Values.endpointConfig.openAIPrefix }}
           livenessProbe:
             grpc:
               port: 1063
