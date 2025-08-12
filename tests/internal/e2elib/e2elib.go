@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -530,16 +531,17 @@ func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	// Wait for the Envoy Gateway pod containing the extproc container.
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		cmd := Kubectl(t.Context(), "get", "pod", "-n", EnvoyGatewayNamespace,
 			"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
 		cmd.Stdout = nil // To ensure that we can capture the output by Output().
 		out, err := cmd.Output()
 		if err != nil {
 			t.Logf("error: %v", err)
-			return false
+			assert.Fail(c, "kubectl command failed", "error: %v", err)
+			return
 		}
-		return strings.Contains(string(out), "ai-gateway-extproc")
+		assert.Contains(c, string(out), "ai-gateway-extproc")
 	}, 2*time.Minute, 1*time.Second)
 
 	RequireWaitForPodReady(t, selector)
@@ -549,10 +551,10 @@ func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 func RequireWaitForPodReady(t *testing.T, selector string) {
 	// This repeats the wait subcommand in order to be able to wait for the
 	// resources not created yet.
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		cmd := Kubectl(t.Context(), "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
 			"pods", "--for=condition=Ready", "-l", selector)
-		return cmd.Run() == nil
+		assert.NoError(c, cmd.Run())
 	}, 3*time.Minute, 5*time.Second)
 }
 
@@ -560,14 +562,12 @@ func RequireWaitForPodReady(t *testing.T, selector string) {
 func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) PortForwarder {
 	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		res, err := http.Get(f.Address())
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
+		if !assert.NoError(c, err) {
+			return
 		}
 		_ = res.Body.Close()
-		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
 	return f
 }

@@ -12,12 +12,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -93,9 +91,9 @@ func TestStartConfigWatcher(t *testing.T) {
 	}, 1*time.Second, tickInterval)
 
 	// Verify the buffer contains the default config loading.
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "config file does not exist; loading default config")
-	}, 1*time.Second, tickInterval, buf.String())
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Contains(c, buf.String(), "config file does not exist; loading default config")
+	}, 1*time.Second, tickInterval)
 
 	// Create the initial config file.
 	cfg := `
@@ -118,8 +116,8 @@ backends:
 	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Initial loading should have happened.
-	require.Eventually(t, func() bool {
-		return !cmp.Equal(rcv.getConfig(), defaultCfg)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, defaultCfg, rcv.getConfig())
 	}, 1*time.Second, tickInterval)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)
@@ -142,8 +140,8 @@ backends:
 	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	// Verify the config has been updated.
-	require.Eventually(t, func() bool {
-		return !cmp.Equal(rcv.getConfig(), firstCfg)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, firstCfg, rcv.getConfig())
 	}, 1*time.Second, tickInterval)
 	secondCfg := rcv.getConfig()
 	require.NotNil(t, secondCfg)
