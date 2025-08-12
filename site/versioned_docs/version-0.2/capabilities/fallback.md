@@ -25,8 +25,6 @@ metadata:
   name: provider-fallback
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: provider-fallback
       kind: Gateway

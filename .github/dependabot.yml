@@ -22,5 +22,9 @@ updates:
       golang.org:
         patterns:
           - "golang.org/*"
+      react:
+        patterns:
+          - "react"
+          - "react-*"
     ignore:
       - dependency-name: "github.com/envoyproxy/gateway"

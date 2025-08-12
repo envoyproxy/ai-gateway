@@ -116,9 +116,7 @@ metadata:
   name: envoy-ai-gateway-basic-aws
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway
       group: gateway.networking.k8s.io

@@ -21,19 +21,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestEmbeddings_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), false)
+		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), true)
+		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorUpstreamFilter{}, routeFilter)
@@ -125,8 +126,9 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		mm := &mockEmbeddingsMetrics{}
 		mt := &mockEmbeddingTranslator{t: t}
 		p := &embeddingsProcessorUpstreamFilter{
-			translator: mt,
-			metrics:    mm,
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
@@ -170,6 +172,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			},
 			backendName:       "some_backend",
 			modelNameOverride: "some_model",
+			responseHeaders:   map[string]string{":status": "200"},
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
@@ -193,6 +196,26 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			GetStructValue().Fields["backend_name"].GetStringValue())
 		require.Equal(t, "some_model", md.Fields["ai_gateway_llm_ns"].
 			GetStructValue().Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("error/streaming", func(t *testing.T) {
+		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
+		mm := &mockEmbeddingsMetrics{}
+		mt := &mockEmbeddingTranslator{t: t, expResponseBody: inBody}
+		p := &embeddingsProcessorUpstreamFilter{
+			translator:        mt,
+			logger:            slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			metrics:           mm,
+			config:            &processorConfig{},
+			backendName:       "some_backend",
+			modelNameOverride: "some_model",
+			responseHeaders:   map[string]string{":status": "500"},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		require.NotNil(t, commonRes)
+		require.True(t, mt.responseErrorCalled)
 	})
 }
 
@@ -222,7 +245,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		someBody := embeddingBodyFromModel(t, "some-model")
 		var body openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &body))
-		tr := mockEmbeddingTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
+		tr := &mockEmbeddingTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config: &processorConfig{
@@ -251,7 +274,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 
 		var expBody openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
-		mt := mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
+		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &processorConfig{modelNameHeaderKey: modelKey},

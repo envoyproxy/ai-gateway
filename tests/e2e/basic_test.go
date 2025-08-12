@@ -17,19 +17,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
 // TestExamplesBasic tests the basic example in examples/basic directory.
 func Test_Examples_Basic(t *testing.T) {
 	const manifestDir = "../../examples/basic"
 	const manifest = manifestDir + "/basic.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	testUpstreamCase := examplesBasicTestCase{name: "testupsream", modelName: "some-cool-self-hosted-model"}
-	testUpstreamCase.run(t, egNamespace, egSelector)
+	testUpstreamCase.run(t, egSelector)
 
 	// This requires the following environment variables to be set:
 	//   - TEST_AWS_ACCESS_KEY_ID
@@ -43,12 +44,12 @@ func Test_Examples_Basic(t *testing.T) {
 		// Replace the placeholders with the actual credentials and apply the manifests.
 		openAIManifest, err := os.ReadFile(manifestDir + "/openai.yaml")
 		require.NoError(t, err)
-		require.NoError(t, kubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(openAIManifest), "OPENAI_API_KEY", cc.OpenAIAPIKey)))
+		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(openAIManifest), "OPENAI_API_KEY", cc.OpenAIAPIKey)))
 		awsManifest, err := os.ReadFile(manifestDir + "/aws.yaml")
 		require.NoError(t, err)
 		awsManifestReplaced := strings.ReplaceAll(string(awsManifest), "AWS_ACCESS_KEY_ID", cc.AWSAccessKeyID)
 		awsManifestReplaced = strings.ReplaceAll(awsManifestReplaced, "AWS_SECRET_ACCESS_KEY", cc.AWSSecretAccessKey)
-		require.NoError(t, kubectlApplyManifestStdin(t.Context(), awsManifestReplaced))
+		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), awsManifestReplaced))
 
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
@@ -56,7 +57,7 @@ func Test_Examples_Basic(t *testing.T) {
 			{name: "openai", modelName: "gpt-4o-mini", skip: !cc.OpenAIValid},
 			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: !cc.AWSValid},
 		} {
-			tc.run(t, egNamespace, egSelector)
+			tc.run(t, egSelector)
 		}
 	})
 }
@@ -67,19 +68,19 @@ type examplesBasicTestCase struct {
 	skip      bool
 }
 
-func (tc examplesBasicTestCase) run(t *testing.T, egNamespace, egSelector string) {
+func (tc examplesBasicTestCase) run(t *testing.T, egSelector string) {
 	t.Run(tc.name, func(t *testing.T) {
 		if tc.skip {
 			t.Skip("skipped due to missing credentials")
 		}
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 
-			client := openai.NewClient(option.WithBaseURL(fwd.address() + "/v1/"))
+			client := openai.NewClient(option.WithBaseURL(fwd.Address() + "/v1/"))
 
 			chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 				Messages: []openai.ChatCompletionMessageParamUnion{

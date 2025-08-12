@@ -81,9 +81,7 @@ metadata:
   name: aigw-run
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: aigw-run
       kind: Gateway
       group: gateway.networking.k8s.io

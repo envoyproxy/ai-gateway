@@ -6,7 +6,6 @@
 package testopenai
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,8 +15,10 @@ import (
 )
 
 func TestNewRequest(t *testing.T) {
-	// Start test OpenAI server.
-	server := newTestServer(t)
+	// Use the real cassettes directory when writing as this test is the
+	// documented way to backfill cassettes.
+	server, err := NewServer(io.Discard, 0)
+	require.NoError(t, err)
 	defer server.Close()
 
 	baseURL := server.URL()
@@ -100,7 +101,7 @@ func TestNewRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.cassetteName.String(), func(t *testing.T) {
 			// Create request using NewRequest.
-			req, err := NewRequest(context.Background(), baseURL, tc.cassetteName)
+			req, err := NewRequest(t.Context(), baseURL, tc.cassetteName)
 			require.NoError(t, err, "NewRequest should succeed for known cassette")
 
 			// Verify the request is properly formed.
@@ -119,7 +120,7 @@ func TestNewRequest(t *testing.T) {
 			require.JSONEq(t, string(expectedJSON), string(body), "Request body should match expected for %s", tc.cassetteName)
 
 			// Actually send the request to verify it works with the fake server.
-			req, err = NewRequest(context.Background(), baseURL, tc.cassetteName) // Recreate since we consumed the body.
+			req, err = NewRequest(t.Context(), baseURL, tc.cassetteName) // Recreate since we consumed the body.
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -138,7 +139,7 @@ func TestNewRequest(t *testing.T) {
 
 	// Test error case - unknown cassette.
 	t.Run("unknown-cassette", func(t *testing.T) {
-		_, err := NewRequest(context.Background(), baseURL, Cassette(999))
+		_, err := NewRequest(t.Context(), baseURL, Cassette(999))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown cassette name")
 	})

@@ -252,36 +252,43 @@ var _ metrics.ChatCompletionMetrics = &mockChatCompletionMetrics{}
 
 // mockEmbeddingTranslator implements [translator.OpenAIEmbeddingTranslator] for testing.
 type mockEmbeddingTranslator struct {
-	t                 *testing.T
-	expHeaders        map[string]string
-	expRequestBody    *openai.EmbeddingRequest
-	expResponseBody   *extprocv3.HttpBody
-	retHeaderMutation *extprocv3.HeaderMutation
-	retBodyMutation   *extprocv3.BodyMutation
-	retUsedToken      translator.LLMTokenUsage
-	retErr            error
+	t                   *testing.T
+	expHeaders          map[string]string
+	expRequestBody      *openai.EmbeddingRequest
+	expResponseBody     *extprocv3.HttpBody
+	retHeaderMutation   *extprocv3.HeaderMutation
+	retBodyMutation     *extprocv3.BodyMutation
+	retUsedToken        translator.LLMTokenUsage
+	responseErrorCalled bool
+	retErr              error
 }
 
 // RequestBody implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) RequestBody(_ []byte, body *openai.EmbeddingRequest, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+func (m *mockEmbeddingTranslator) RequestBody(_ []byte, body *openai.EmbeddingRequest, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // ResponseHeaders implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (m *mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
 	require.Equal(m.t, m.expHeaders, headers)
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseBody implements [translator.OpenAIEmbeddingTranslator].
-func (m mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
+}
+
+// ResponseError implements [translator.OpenAIEmbeddingTranslator].
+func (m *mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error) {
+	m.responseErrorCalled = true
+	return nil, nil, nil
 }
 
 // mockEmbeddingsMetrics implements [x.EmbeddingsMetrics] for testing.

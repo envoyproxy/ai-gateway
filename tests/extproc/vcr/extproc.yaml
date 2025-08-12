@@ -4,9 +4,6 @@
 # the root of the repo.
 
 metadataNamespace: ai_gateway_llm_ns
-schema:
-  name: OpenAI
-  version: v1
 modelNameHeaderKey: x-model-name
 backends:
   - name: openai

@@ -79,7 +79,8 @@ metadata:
 spec:
   parentRefs:
     - name: envoy-ai-gateway-basic
-      namespace: default
+      group: gateway.networking.k8s.io
+      kind: Gateway
   rules:
     - backendRefs:
         - group: gateway.envoyproxy.io
@@ -96,6 +97,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: gpt-4o-mini
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - backendRefs:
@@ -113,6 +116,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: llama3-2-1b-instruct-v1
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - backendRefs:
@@ -130,6 +135,8 @@ spec:
             - name: x-ai-eg-model
               type: Exact
               value: some-cool-self-hosted-model
+          path:
+            value: "/"
       timeouts:
         request: 60s
     - matches:

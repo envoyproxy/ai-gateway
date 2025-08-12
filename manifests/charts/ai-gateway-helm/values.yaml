@@ -5,6 +5,24 @@
 
 # Default values for ai-gateway-helm.
 
+# Global configuration for the endpoints supported by the AI Gateway.
+#
+# By default, the AI Gateway will assume that the downstream client's OpenAI SDK will talk to the Gateway using the base_url
+# set to "http://<gateway-hostname>/v1" which has the default "/v1" prefix in the base_url.
+#
+# By using this configuration, you can change the prefix for the OpenAI endpoints as well as the future non-OpenAI endpoints.
+# For example, when you can configure the rootPrefix to "/ai" and the openAIPrefix to "/openai/v1" which will result in the
+# OpenAI endpoints being served at "http://<gateway-hostname>/ai/openai/v1". This *will* become useful when you add support for
+# other input schemas like Anthropic, Google Gemini, etc. and you want to serve them under a different prefix to avoid conflicts.
+# Follow the issues https://github.com/envoyproxy/ai-gateway/issues/847 as well as https://github.com/envoyproxy/ai-gateway/issues/948 for detail.
+endpointConfig:
+  # The prefix for all the routes served by the AI Gateway. Defaulting to "/". All the generated routes will have this prefix.
+  rootPrefix: "/"
+  # The prefix for the OpenAI endpoints. Defaulting to "/v1". This comes **after** the rootPrefix. E.g. if the rootPrefix is "/ai" and the openAIPrefix is "/v1",
+  # the OpenAI endpoints will be served at "/ai/v1" which requires the base_url set to "http://<gateway-hostname>/ai/v1".
+  openAIPrefix: "/v1"
+  # TODO: addr more input schemas. E.g. Anthropic https://github.com/envoyproxy/ai-gateway/issues/847
+
 extProc:
   image:
     repository: docker.io/envoyproxy/ai-gateway-extproc
@@ -13,6 +31,16 @@ extProc:
   imagePullPolicy: IfNotPresent
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+
+  ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: OTEL_SERVICE_NAME
+  ##     value: "ai-gateway-extproc"
+  ##   - name: OTEL_TRACES_EXPORTER
+  ##     value: "otlp"
+  ##
+  extraEnvVars: []
 
 controller:
   logLevel: info
@@ -49,6 +77,7 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_STS_PROXY_URL
@@ -60,6 +89,15 @@ controller:
   #  - key: AI_GATEWAY_GCP_AUTH_PROXY_URL
   #    value: some-proxy-placeholder
   podEnv: {}
+
+  ## @param controller.extraEnvVars Array with extra environment variables to add to controller containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: FOO
+  ##     value: "bar"
+  ##
+  extraEnvVars: []
+
   # Example of volumes
   #  - mountPath: /placeholder/path
   #    name: volume-name

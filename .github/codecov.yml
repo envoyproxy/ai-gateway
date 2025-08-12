@@ -17,6 +17,7 @@ ignore:
   - "**/*.pb.go"
   - "**/zz_generated.*.go"
   - "tests/internal/envtest.go"
+  - "tests/internal/e2elib/**/*"
   - "tests/internal/testenvironment/**/*"
   - "tests/internal/testopeninference/openai_proxy.go"
   - "internal/testing/**/*"

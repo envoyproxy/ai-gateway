@@ -40,24 +40,42 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 		}
 	})
 	t.Run("model name override", func(t *testing.T) {
-		originalReq := &openai.ChatCompletionRequest{Model: "gpt-4o-mini", Stream: false}
-		var newReq openai.ChatCompletionRequest
-		rawReq, err := json.Marshal(originalReq)
+		for _, forcedMutation := range []bool{true, false} {
+			originalReq := &openai.ChatCompletionRequest{Model: "gpt-4o-mini", Stream: false}
+			rawReq, err := json.Marshal(originalReq)
+			require.NoError(t, err)
+			modelName := "gpt-4o-mini-2024-07-18" // Example model name override.
+			o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName, path: "/v1/chat/completions"}
+			hm, bm, err := o.RequestBody(rawReq, originalReq, forcedMutation)
+			require.NoError(t, err)
+			require.NotNil(t, bm)
+			var newReq openai.ChatCompletionRequest
+			err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
+			require.NoError(t, err)
+			require.Equal(t, modelName, newReq.Model)
+			require.NotNil(t, hm)
+			require.Len(t, hm.SetHeaders, 2)
+			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+			require.Equal(t, o.path, string(hm.SetHeaders[0].Header.RawValue))
+			require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
+			require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
+		}
+	})
+	t.Run("forced mutation", func(t *testing.T) {
+		originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: true}
+		original := []byte("whatever")
+		o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+		hm, bm, err := o.RequestBody(original, originalReq, true)
 		require.NoError(t, err)
-		modelName := "gpt-4o-mini-2024-07-18" // Example model name override.
-		o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName, path: "/v1/chat/completions"}
-		hm, bm, err := o.RequestBody(rawReq, originalReq, false)
-		require.NoError(t, err)
+		require.True(t, o.stream)
 		require.NotNil(t, bm)
-		err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
-		require.NoError(t, err)
-		require.Equal(t, modelName, newReq.Model)
 		require.NotNil(t, hm)
 		require.Len(t, hm.SetHeaders, 2)
 		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
 		require.Equal(t, o.path, string(hm.SetHeaders[0].Header.RawValue))
 		require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
 		require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
+		require.Len(t, bm.Mutation.(*extprocv3.BodyMutation_Body).Body, len(original))
 	})
 }
 

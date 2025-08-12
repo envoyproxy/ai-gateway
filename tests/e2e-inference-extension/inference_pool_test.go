@@ -19,20 +19,22 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
 // TestInferencePoolIntegration tests the InferencePool integration with AI Gateway.
 func TestInferencePoolIntegration(t *testing.T) {
 	// Apply the base test manifest.
 	const baseManifest = "../../examples/inference-pool/base.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), baseManifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), baseManifest))
 
 	// Test inferencePool with AIGatewayRoute.
 	const aiGWRouteManifest = "../../examples/inference-pool/aigwroute.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), aiGWRouteManifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), aiGWRouteManifest))
 
 	egSelector := "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-aigwroute"
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	// Verify InferencePool status is correctly set for the Gateway.
 	t.Run("verify_inference_pool_status", func(t *testing.T) {
@@ -93,15 +95,15 @@ func TestInferencePoolIntegration(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		_ = kubectlDeleteManifest(context.Background(), aiGWRouteManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), aiGWRouteManifest)
 	})
 
 	// Test inferencePool with HTTPRoute.
 	const httpRouteManifest = "../../examples/inference-pool/httproute.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), httpRouteManifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), httpRouteManifest))
 
 	egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-httproute"
-	requireWaitForPodReady(t, egSelector)
+	e2elib.RequireWaitForPodReady(t, egSelector)
 
 	// Verify InferencePool status is correctly set for the HTTPRoute Gateway.
 	t.Run("verify_inference_pool_status_httproute", func(t *testing.T) {
@@ -116,7 +118,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		_ = kubectlDeleteManifest(context.Background(), httpRouteManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), httpRouteManifest)
 	})
 }
 
@@ -130,8 +132,8 @@ func testInferenceGatewayConnectivityByModel(t *testing.T, egSelector, model str
 // testInferenceGatewayConnectivity tests that the InferenceGateway is working as expected and returns a expected status code.
 func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, additionalHeaders map[string]string, expectedStatusCode int) {
 	require.Eventually(t, func() bool {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-		defer fwd.kill()
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+		defer fwd.Kill()
 
 		// Set timeout context.
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -139,7 +141,7 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, add
 		// Create a request to the InferencePool backend with the correct model header.
 		requestBody := body
 		t.Logf("Request body: %s", requestBody)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
 		// Set required headers for InferencePool routing.
 		req.Header.Set("Content-Type", "application/json")

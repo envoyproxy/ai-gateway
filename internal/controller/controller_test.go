@@ -274,3 +274,113 @@ func (m *mockClient) Update(context.Context, client.Object, ...client.UpdateOpti
 	}
 	return nil
 }
+
+func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
+	tests := []struct {
+		name            string
+		route           *aigv1a1.AIGatewayRoute
+		expectedIndexes []string
+	}{
+		{
+			name: "parentRef cross-namespace reference",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ai-route",
+					Namespace: "envoy-ai-gateway-system",
+				},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name:      "my-gateway",
+							Namespace: ptr.To[gwapiv1a2.Namespace]("envoy-gateway-system"),
+							Kind:      ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{"my-gateway.envoy-gateway-system"},
+		},
+		{
+			name: "parentRef same namespace as route",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ai-route",
+					Namespace: "production",
+				},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name: "my-gateway",
+							Kind: ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{"my-gateway.production"},
+		},
+		{
+			name: "multiple parentRefs with mixed namespaces",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ai-route",
+					Namespace: "app-namespace",
+				},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name:      "gateway-1",
+							Namespace: ptr.To[gwapiv1a2.Namespace]("infra-namespace"),
+							Kind:      ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+						{
+							Name: "gateway-2",
+							Kind: ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{
+				"gateway-1.infra-namespace",
+				"gateway-2.app-namespace",
+			},
+		},
+		{
+			name: "targetRefs always use route namespace",
+			route: &aigv1a1.AIGatewayRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ai-route",
+					Namespace: "default",
+				},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+						{
+							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+								Group: gwapiv1a2.Group("gateway.networking.k8s.io"),
+								Kind:  gwapiv1a2.Kind("Gateway"),
+								Name:  "target-gateway",
+							},
+						},
+					},
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name:      "parent-gateway",
+							Namespace: ptr.To[gwapiv1a2.Namespace]("system"),
+							Kind:      ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{
+				"target-gateway.default",
+				"parent-gateway.system",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			indexes := aiGatewayRouteToAttachedGatewayIndexFunc(tt.route)
+			require.ElementsMatch(t, tt.expectedIndexes, indexes)
+		})
+	}
+}

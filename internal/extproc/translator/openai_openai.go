@@ -36,7 +36,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	if req.Stream {
@@ -45,14 +45,10 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
-			Optimistic:     true,
-			ReplaceInPlace: true,
-		})
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
-		newBody = out
 	}
 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
@@ -65,8 +61,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 		},
 	}
 
-	if forceBodyMutation {
-		newBody = raw
+	if forceBodyMutation && len(newBody) == 0 {
+		newBody = original
 	}
 
 	if len(newBody) > 0 {
@@ -81,7 +77,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *
 	return
 }
 
-// ResponseError implements [Translator.ResponseError]
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError]
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
@@ -114,23 +110,15 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map
 	return nil, nil, nil
 }
 
-// ResponseHeaders implements [Translator.ResponseHeaders].
+// ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
 	return nil, nil
 }
 
-// ResponseBody implements [Translator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
+// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if v, ok := respHeaders[statusHeaderName]; ok {
-		if v, err := strconv.Atoi(v); err == nil {
-			if !isGoodStatusCode(v) {
-				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
-				return headerMutation, bodyMutation, LLMTokenUsage{}, err
-			}
-		}
-	}
 	if o.stream {
 		if !o.bufferingDone {
 			buf, err := io.ReadAll(body)
