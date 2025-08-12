@@ -12,10 +12,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
@@ -92,7 +92,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	t.Log("Checking extProc container for OTEL environment variables")
 
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	require.Eventually(t, func() bool {
 		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-otel-test"
 		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
 			"-n", e2elib.EnvoyGatewayNamespace,
@@ -101,9 +101,15 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 
 		var podNameBytes []byte
 		podNameBytes, err = getPodsCmd.Output()
-		require.NoError(c, err)
+		if err != nil {
+			t.Logf("Failed to get pod name: %v", err)
+			return false // Retry if command fails.
+		}
 		podName := string(podNameBytes)
-		require.NotEmpty(c, podName)
+		if len(podName) == 0 {
+			t.Log("No pods found with the specified selector, retrying...")
+			return false // Retry if no pods found.
+		}
 		t.Logf("Found pod: %s", podName)
 
 		// Get the pod description to check env vars.
@@ -116,23 +122,35 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		describeCmd.Stderr = describeOutput
 
 		err = describeCmd.Run()
-		require.NoError(c, err)
+		if err != nil {
+			t.Logf("Failed to describe pod %s: %v", podName, err)
+			return false // Retry if command fails.
+		}
 
 		envVars := describeOutput.String()
 		t.Logf("Environment variables in extProc container: %s", envVars)
 
-		// Verify that our OTEL env vars are present in the pod spec.
-		require.Contains(c, envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`,
-			"Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
-		require.Contains(c, envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`,
-			"Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
+		defer func() {
+			// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
+			deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
+				"-n", e2elib.EnvoyGatewayNamespace,
+				"--ignore-not-found=true")
+			err = deletePodsCmd.Run()
+			if err != nil {
+				t.Logf("Failed to delete pod %s: %v", podName, err)
+			}
+		}()
 
-		// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
-		deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
-			"-n", e2elib.EnvoyGatewayNamespace,
-			"--ignore-not-found=true")
-		err = deletePodsCmd.Run()
-		require.NoError(c, err, "Failed to delete pod to ensure recreation with new env vars")
+		// Verify that our OTEL env vars are present in the pod spec.
+		if !strings.Contains(envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`) {
+			t.Log("Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
+			return false
+		}
+		if !strings.Contains(envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`) {
+			t.Log("Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
+			return false
+		}
+		return true
 	}, 1*time.Minute, 1*time.Second)
 
 	t.Log("OTEL environment variables successfully verified in extProc container")
