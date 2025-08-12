@@ -18,6 +18,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	corev1 "k8s.io/api/core/v1"
@@ -164,16 +165,16 @@ func TestStartControllers(t *testing.T) {
 
 	for _, backend := range []string{"backend1", "backend2", "backend3", "backend4"} {
 		t.Run("verify backend "+backend, func(t *testing.T) {
-			require.Eventually(t, func() bool {
+			require.EventuallyWithT(t, func(ct *assert.CollectT) {
 				var aiBackend aigv1a1.AIServiceBackend
 				err := c.Get(ctx, client.ObjectKey{Name: backend, Namespace: "default"}, &aiBackend)
 				if err != nil {
 					t.Logf("failed to get backend %s: %v", backend, err)
-					return false
+					assert.NoError(ct, err)
+					return
 				}
-				require.Equal(t, "default", aiBackend.Namespace)
-				require.Equal(t, backend, aiBackend.Name)
-				return true
+				assert.Equal(ct, "default", aiBackend.Namespace)
+				assert.Equal(ct, backend, aiBackend.Name)
 			}, 30*time.Second, 200*time.Millisecond)
 		})
 	}
@@ -309,31 +310,31 @@ func TestAIGatewayRouteController(t *testing.T) {
 			Name:      "ai-eg-host-rewrite-myroute",
 			Namespace: "default",
 		}
-		require.Eventually(t, func() bool {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			var f egv1a1.HTTPRouteFilter
 			err = c.Get(t.Context(), hostRewriteKey, &f)
 			if err != nil {
 				t.Logf("expected to get hostRewriteFilter %s, but got error: %v", hostRewriteKey.Name, err)
-				return false
+				assert.NoError(ct, err)
+				return
 			}
 			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
-			require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
-			return true
+			assert.True(ct, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
 		}, 10*time.Second, 200*time.Millisecond)
 		notFoundKey := client.ObjectKey{
 			Name:      "ai-eg-route-not-found-response-myroute",
 			Namespace: "default",
 		}
-		require.Eventually(t, func() bool {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			var f egv1a1.HTTPRouteFilter
 			err = c.Get(t.Context(), notFoundKey, &f)
 			if err != nil {
 				t.Logf("expected to get notFoundFilter %s, but got error: %v", notFoundKey.Name, err)
-				return false
+				assert.NoError(ct, err)
+				return
 			}
 			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
-			require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
-			return true
+			assert.True(ct, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
 		}, 10*time.Second, 200*time.Millisecond)
 	})
 
