@@ -164,6 +164,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	// Validate extProc extra env vars if provided.
+	if *extProcExtraEnvVars != "" {
+		_, err := controller.ParseExtraEnvVars(*extProcExtraEnvVars)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid extProc extra env vars: %w", err)
+		}
+	}
+
 	return flags{
 		extProcLogLevel:            *extProcLogLevelPtr,
 		extProcImage:               *extProcImagePtr,

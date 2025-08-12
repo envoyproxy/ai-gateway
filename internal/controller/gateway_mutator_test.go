@@ -239,7 +239,7 @@ func TestParseExtraEnvVars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseExtraEnvVars(tt.input)
+			got, err := ParseExtraEnvVars(tt.input)
 			if tt.wantError != "" {
 				require.Error(t, err)
 				require.Equal(t, tt.wantError, err.Error())

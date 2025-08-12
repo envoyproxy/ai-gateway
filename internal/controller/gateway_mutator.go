@@ -48,7 +48,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
 		var err error
-		parsedEnvVars, err = parseExtraEnvVars(extProcExtraEnvVars)
+		parsedEnvVars, err = ParseExtraEnvVars(extProcExtraEnvVars)
 		if err != nil {
 			logger.Error(err, "failed to parse extProc extra env vars, skipping",
 				"envVars", extProcExtraEnvVars)
@@ -111,11 +111,11 @@ const (
 	extProcContainerName = mutationNamePrefix + "extproc"
 )
 
-// parseExtraEnvVars parses semicolon-separated key=value pairs into a list of
+// ParseExtraEnvVars parses semicolon-separated key=value pairs into a list of
 // environment variables. The input delimiter is a semicolon (';') to allow
 // values to contain commas without escaping.
 // Example: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp".
-func parseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
+func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
 	if s == "" {
 		return nil, nil
 	}
