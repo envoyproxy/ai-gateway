@@ -165,6 +165,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
 			continue
 		}
+		if span != nil {
+			span.RecordResponseChunk(event)
+		}
 		if usage := event.Usage; usage != nil {
 			tokenUsage = LLMTokenUsage{
 				InputTokens:  uint32(usage.PromptTokens),     //nolint:gosec
@@ -174,9 +177,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 			o.bufferingDone = true
 			o.buffered = nil
 			return
-		}
-		if span != nil {
-			span.RecordResponseChunk(event)
 		}
 	}
 }
