@@ -91,7 +91,7 @@ func buildResponseAttributesForChunk(chunk *openai.ChatCompletionResponseChunk, 
 			// TODO: OutputMessageAttribute and OutputMessageToolCallAttribute should take the index of the chunk, otherwise
 			//  the latter chunk will overwrite the previous ones.
 			attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageRole), delta.Role))
-			if *delta.Content != "" {
+			if delta.Content != nil && *delta.Content != "" {
 				content := *delta.Content
 				if config.HideOutputText {
 					content = openinference.RedactedValue
