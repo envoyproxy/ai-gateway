@@ -12,7 +12,7 @@
     {
       "key": "input.value",
       "value": {
-        "stringValue": "{\"messages\": [{\"content\": \"Hello!\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"stream\": true}"
+        "stringValue": "{\"messages\": [{\"content\": \"In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations\", \"role\": \"user\"}], \"model\": \"gpt-4o-mini-search-preview\", \"stream\": true, \"web_search_options\": {\"search_context_size\": \"low\"}}"
       }
     },
     {
@@ -24,7 +24,7 @@
     {
       "key": "output.value",
       "value": {
-        "stringValue": "{\"choices\": [{\"message\": {\"content\": \"Hi there! How can I help today? I can answer questions, explain concepts, help with writing or brainstorming, code, plan something, and more. Tell me what you’d like to work on or a topic you’re curious about.\", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-C4HqHBe4xca0k0EzsCnf1t6V3YFXp\", \"created\": 1755137933, \"model\": \"gpt-5-nano-2025-08-07\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"obfuscation\": \"XQdNwPP14L3TH0\"}"
+        "stringValue": "{\"choices\": [{\"message\": {\"content\": \"The URL https://httpbin.org/base64/dGVzdA== returns the decoded string \\\"test\\\".  \", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-aa331686-f58a-449a-9105-aa37cd2def51\", \"created\": 1755137752, \"model\": \"gpt-4o-mini-search-preview-2025-03-11\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"system_fingerprint\": \"\", \"obfuscation\": \"kIxhMAeH0\"}"
       }
     },
     {
@@ -36,7 +36,7 @@
     {
       "key": "llm.invocation_parameters",
       "value": {
-        "stringValue": "{\"model\": \"gpt-5-nano\", \"stream\": true}"
+        "stringValue": "{\"model\": \"gpt-4o-mini-search-preview\", \"stream\": true, \"web_search_options\": {\"search_context_size\": \"low\"}}"
       }
     },
     {
@@ -48,13 +48,13 @@
     {
       "key": "llm.input_messages.0.message.content",
       "value": {
-        "stringValue": "Hello!"
+        "stringValue": "In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations"
       }
     },
     {
       "key": "llm.model_name",
       "value": {
-        "stringValue": "gpt-5-nano-2025-08-07"
+        "stringValue": "gpt-4o-mini-search-preview-2025-03-11"
       }
     },
     {
@@ -66,7 +66,7 @@
     {
       "key": "llm.output_messages.0.message.content",
       "value": {
-        "stringValue": "Hi there! How can I help today? I can answer questions, explain concepts, help with writing or brainstorming, code, plan something, and more. Tell me what you’d like to work on or a topic you’re curious about."
+        "stringValue": "The URL https://httpbin.org/base64/dGVzdA== returns the decoded string \"test\".  "
       }
     },
     {

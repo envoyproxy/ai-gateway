@@ -41,7 +41,7 @@ async def chat_completions(request: Request) -> Response:
 
         if streaming:
             async def stream_response():
-                stream = await client.chat.completions.create(**request_data, extra_headers=extra_headers, stream=True)
+                stream = await client.chat.completions.create(**request_data, extra_headers=extra_headers)
                 async for chunk in stream:
                     chunk_json = chunk.model_dump_json()
                     yield f"data: {chunk_json}\n\n"

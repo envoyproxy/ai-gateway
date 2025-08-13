@@ -37,10 +37,10 @@ func TestChatCompletionRecorder_WithConfig_HideInputs(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
 				// No InputMimeType when input is hidden.
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				// No input messages when HideInputs is true.
 			},
 		},
@@ -54,10 +54,10 @@ func TestChatCompletionRecorder_WithConfig_HideInputs(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				// No input messages when HideInputMessages is true.
 			},
 		},
@@ -71,10 +71,10 @@ func TestChatCompletionRecorder_WithConfig_HideInputs(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
 			},
@@ -89,7 +89,7 @@ func TestChatCompletionRecorder_WithConfig_HideInputs(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 				// No LLMInvocationParameters when hidden.
@@ -130,7 +130,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			statusCode: 200,
 			respBody:   basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				// No OutputMimeType when output is hidden.
 				// No output messages when HideOutputs is true.
 				// Token counts are still included as metadata.
@@ -149,7 +149,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			statusCode: 200,
 			respBody:   basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				// No output messages when HideOutputMessages is true.
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
@@ -167,7 +167,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			statusCode: 200,
 			respBody:   basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
@@ -198,7 +198,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 func TestChatCompletionRecorder_WithConfig_HideImages(t *testing.T) {
 	// Create a multimodal request with text and image.
 	multimodalReq := &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -239,10 +239,10 @@ func TestChatCompletionRecorder_WithConfig_HideImages(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(multimodalReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is in this image?"),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
@@ -257,10 +257,10 @@ func TestChatCompletionRecorder_WithConfig_HideImages(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(multimodalReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is in this image?"),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
@@ -287,7 +287,7 @@ func TestChatCompletionRecorder_WithConfig_HideImages(t *testing.T) {
 func TestChatCompletionRecorder_WithConfig_Base64ImageMaxLength(t *testing.T) {
 	// Create a request with a base64 image.
 	base64ImageReq := &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -324,10 +324,10 @@ func TestChatCompletionRecorder_WithConfig_Base64ImageMaxLength(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(base64ImageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "image.image.url"), openinference.RedactedValue),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "image"),
@@ -343,10 +343,10 @@ func TestChatCompletionRecorder_WithConfig_Base64ImageMaxLength(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(base64ImageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "image.image.url"), "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "image"),
@@ -380,7 +380,7 @@ func TestChatCompletionRecorder_WithConfig_NoJSONMarshalWhenHidden(t *testing.T)
 
 	// Create a request that would fail JSON marshaling if attempted.
 	invalidReq := &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -400,7 +400,7 @@ func TestChatCompletionRecorder_WithConfig_NoJSONMarshalWhenHidden(t *testing.T)
 	expectedAttrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-		attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+		attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 		attribute.String(openinference.InputValue, openinference.RedactedValue),
 		// No InputMimeType, no invocation params, no messages.
 	}
@@ -449,7 +449,7 @@ func TestChatCompletionRecorder_WithConfig_Streaming(t *testing.T) {
 
 	recorder := NewChatCompletionRecorder(config)
 
-	sseBody := []byte(`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1702000000,"model":"gpt-4.1-nano","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+	sseBody := []byte(`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1702000000,"model":"gpt-5-nano","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
 
 data: [DONE]`)
 
@@ -465,5 +465,5 @@ data: [DONE]`)
 	}
 	require.Equal(t, openinference.RedactedValue, attrs[openinference.OutputValue].AsString())
 	// Model name should still be present.
-	require.Equal(t, openai.ModelGPT41Nano, attrs[openinference.LLMModelName].AsString())
+	require.Equal(t, openai.ModelGPT5Nano, attrs[openinference.LLMModelName].AsString())
 }

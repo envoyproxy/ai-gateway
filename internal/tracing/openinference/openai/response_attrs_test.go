@@ -20,7 +20,7 @@ var (
 		ID:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: openai.JSONUNIXTime(time.Unix(1234567890, 0)),
-		Model:   openai.ModelGPT41Nano,
+		Model:   openai.ModelGPT5Nano,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Index: 0,
 			Message: openai.ChatCompletionResponseChoiceMessage{
@@ -39,7 +39,7 @@ var (
 
 	toolsResp = &openai.ChatCompletionResponse{
 		ID:    "chatcmpl-123",
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Index: 0,
 			Message: openai.ChatCompletionResponseChoiceMessage{
@@ -106,7 +106,7 @@ func TestBuildResponseAttributes(t *testing.T) {
 			name: "successful response",
 			resp: basicResp,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I help you today?"),
@@ -119,7 +119,7 @@ func TestBuildResponseAttributes(t *testing.T) {
 			name: "response with tool calls",
 			resp: toolsResp,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "I can help you with that."),

@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -54,11 +49,11 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496e6789a6e547-KUL
+                - 96ec9364fe22e4fe-JHB
             Content-Type:
                 - application/json; charset=utf-8
             Date:
-                - Fri, 25 Jul 2025 05:59:27 GMT
+                - Thu, 14 Aug 2025 01:11:00 GMT
             Server:
                 - cloudflare
             Strict-Transport-Security:
@@ -67,8 +62,10 @@ interactions:
                 - Origin
             X-Content-Type-Options:
                 - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "64"
             X-Request-Id:
-                - req_6ccd5b496ff64cad32ea80678ac0153e
+                - req_ae3c59cd7df34e978057035f370e04be
         status: 404 Not Found
         code: 404
-        duration: 1.076607417s
+        duration: 473.769042ms

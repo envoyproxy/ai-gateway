@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -11,29 +6,25 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 302
+        content_length: 182
         host: api.openai.com
         body: |-
             {
-              "max_tokens": 100,
+              "max_completion_tokens": 100,
               "messages": [
                 {
-                  "content": "You are a poetry assistant. Write a haiku when asked.",
+                  "content": "Hello, I'm a developer!",
                   "role": "developer"
-                },
-                {
-                  "content": "Write a haiku about OpenTelemetry tracing.",
-                  "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano",
-              "temperature": 0.8
+              "model": "gpt-5-nano",
+              "temperature": 1
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "230"
+                - "136"
             Content-Type:
                 - application/json
             User-Agent:
@@ -44,42 +35,41 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 896
+        content_length: 776
         body: |-
             {
               "choices": [
                 {
-                  "finish_reason": "stop",
+                  "finish_reason": "length",
                   "index": 0,
-                  "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "Signals flow like streams,  \nTracing whispers through the code,  \nInsights softly dawn.",
+                    "content": "",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753423222,
-              "id": "chatcmpl-Bx5leAxYQ3dJoFhNRPRmeW3MtYcfY",
-              "model": "gpt-4.1-nano-2025-04-14",
+              "created": 1755137737,
+              "id": "chatcmpl-C4Hn7cxHHDt210R3NWm4trTgiLkrA",
+              "model": "gpt-5-nano-2025-08-07",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": "fp_38343a2f8f",
+              "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 17,
+                "completion_tokens": 100,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
-                  "reasoning_tokens": 0,
+                  "reasoning_tokens": 100,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 33,
+                "prompt_tokens": 12,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 50
+                "total_tokens": 112
               }
             }
         headers:
@@ -90,13 +80,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496fc1de0fe547-KUL
+                - 96ecf2093a1d13f6-JHB
             Content-Type:
                 - application/json
             Date:
-                - Fri, 25 Jul 2025 06:00:22 GMT
+                - Thu, 14 Aug 2025 02:15:38 GMT
             Openai-Processing-Ms:
-                - "427"
+                - "1013"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -108,7 +98,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "430"
+                - "1113"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -116,13 +106,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199973"
+                - "199992"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
-                - 8ms
+                - 2ms
             X-Request-Id:
-                - req_57bff6acdada2c505d1cbfa64325bb06
+                - req_b9e28cc31d1b41368ca8bb084d7a95ef
         status: 200 OK
         code: 200
-        duration: 741.693833ms
+        duration: 1.703186542s

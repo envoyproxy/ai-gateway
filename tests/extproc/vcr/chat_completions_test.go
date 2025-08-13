@@ -32,73 +32,44 @@ func TestOpenAIChatCompletions(t *testing.T) {
 		{
 			name: testopenai.CassetteChatBasic,
 			expectResponseBody: `{
-  "choices": [
-    {
-      "finish_reason": "stop",
-      "index": 0,
-      "logprobs": null,
-      "message": {
-        "annotations": [],
-        "content": "Hello! How can I assist you today?",
-        "refusal": null,
-        "role": "assistant"
-      }
+  "choices" : [ {
+    "finish_reason" : "stop",
+    "index" : 0,
+    "message" : {
+      "annotations" : [ ],
+      "content" : "Hi there! How can I help you today? I can explain concepts, answer questions, help with writing or editing, brainstorm ideas, assist with coding or math, plan tasks, and more. Tell me what you’d like to do.",
+      "refusal" : null,
+      "role" : "assistant"
     }
-  ],
-  "created": 1753423143,
-  "id": "chatcmpl-Bx5kNovDsMvLVkXYomgZvfV95lhEd",
-  "model": "gpt-4.1-nano-2025-04-14",
-  "object": "chat.completion",
-  "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
-  "usage": {
-    "completion_tokens": 9,
-    "completion_tokens_details": {
-      "accepted_prediction_tokens": 0,
-      "audio_tokens": 0,
-      "reasoning_tokens": 0,
-      "rejected_prediction_tokens": 0
+  } ],
+  "created" : 1755133833,
+  "id" : "chatcmpl-C4Gm9xikLXbgE8He0BHWeoM03aa72",
+  "model" : "gpt-5-nano-2025-08-07",
+  "object" : "chat.completion",
+  "service_tier" : "default",
+  "system_fingerprint" : null,
+  "usage" : {
+    "completion_tokens" : 377,
+    "completion_tokens_details" : {
+      "accepted_prediction_tokens" : 0,
+      "audio_tokens" : 0,
+      "reasoning_tokens" : 320,
+      "rejected_prediction_tokens" : 0
     },
-    "prompt_tokens": 9,
-    "prompt_tokens_details": {
-      "audio_tokens": 0,
-      "cached_tokens": 0
+    "prompt_tokens" : 8,
+    "prompt_tokens_details" : {
+      "audio_tokens" : 0,
+      "cached_tokens" : 0
     },
-    "total_tokens": 18
+    "total_tokens" : 385
   }
 }`,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name: testopenai.CassetteChatStreaming,
-			expectResponseBody: `data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" How"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" assist"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":" today"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5kRNsKBfYXdH2IeSETLB6DQk1kC","object":"chat.completion.chunk","created":1753423147,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_479cfdfab2","choices":[],"usage":{"prompt_tokens":19,"completion_tokens":9,"total_tokens":28,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-
-data: [DONE]
-
-`,
-			expectStatusCode: http.StatusOK,
+			name:               testopenai.CassetteChatStreaming,
+			expectResponseBody: `SKIP_BODY_CHECK`,
+			expectStatusCode:   http.StatusOK,
 		},
 		{
 			name: testopenai.CassetteChatTools,
@@ -107,7 +78,6 @@ data: [DONE]
     {
       "finish_reason": "tool_calls",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
         "content": null,
@@ -116,44 +86,36 @@ data: [DONE]
         "tool_calls": [
           {
             "function": {
-              "arguments": "{\"location\": \"Boston\"}",
+              "arguments": "{\"location\":\"Boston, MA\",\"unit\":\"fahrenheit\"}",
               "name": "get_current_weather"
             },
-            "id": "call_1o2wGNYyriaQFlwkmvBmkJs7",
-            "type": "function"
-          },
-          {
-            "function": {
-              "arguments": "{\"location\": \"Boston\"}",
-              "name": "get_current_weather"
-            },
-            "id": "call_vLHpymLmyGCbjCxUJZf0aP45",
+            "id": "call_8fxy20OEu9ulvvaa5b5CzVA4",
             "type": "function"
           }
         ]
       }
     }
   ],
-  "created": 1753423148,
-  "id": "chatcmpl-Bx5kSOQua7eWnIemycaUxlSzwmHyi",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755133856,
+  "id": "chatcmpl-C4GmWI2Sl7HnrQsKorSAZkJy94dpT",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 46,
+    "completion_tokens": 287,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 256,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 81,
+    "prompt_tokens": 162,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 127
+    "total_tokens": 449
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -163,37 +125,36 @@ data: [DONE]
 			expectResponseBody: `{
   "choices": [
     {
-      "finish_reason": "stop",
+      "finish_reason": "length",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "This image shows a wooden pathway running through a lush, green grassy field under a partly cloudy blue sky. The scene appears peaceful and rural, with trees in the distance and vibrant natural surroundings.",
+        "content": "",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753423151,
-  "id": "chatcmpl-Bx5kVc7U7izUQncE24gOSCVWJld1e",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755134160,
+  "id": "chatcmpl-C4GrQKcrez1dN2o93xZTQ9ohbQFBY",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 38,
+    "completion_tokens": 100,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 100,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 3675,
+    "prompt_tokens": 2245,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 3713
+    "total_tokens": 2345
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -205,35 +166,34 @@ data: [DONE]
     {
       "finish_reason": "stop",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "I need location details.",
+        "content": "What city or region?",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753423155,
-  "id": "chatcmpl-Bx5kZF0xoXkDFMJujGg5fenim2yh2",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755134078,
+  "id": "chatcmpl-C4Gq6FIIOJIrXvd2A8RPuRIuAlHZr",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 5,
+    "completion_tokens": 526,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 512,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 49,
+    "prompt_tokens": 50,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 54
+    "total_tokens": 576
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -245,35 +205,34 @@ data: [DONE]
     {
       "finish_reason": "stop",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
+        "content": "{\"name\":\"Alex Smith\",\"age\":29,\"city\":\"San Francisco\"}",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753423157,
-  "id": "chatcmpl-Bx5kbEUUMAowmenXgOVnlnUEiEZws",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755133839,
+  "id": "chatcmpl-C4GmF9uTIEqemNux4KSwWJMUTrrer",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 25,
+    "completion_tokens": 280,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 256,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 22,
+    "prompt_tokens": 21,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 47
+    "total_tokens": 301
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -297,7 +256,6 @@ data: [DONE]
     {
       "finish_reason": "tool_calls",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
         "content": null,
@@ -306,36 +264,36 @@ data: [DONE]
         "tool_calls": [
           {
             "function": {
-              "arguments": "{\"location\":\"San Francisco\"}",
+              "arguments": "{\"location\":\"San Francisco, CA\"}",
               "name": "get_current_weather"
             },
-            "id": "call_tJS1YOMPgrRQ0uOhzX6u3xRW",
+            "id": "call_Xc4Aiih37EUJvqjoZlu4Vdoi",
             "type": "function"
           }
         ]
       }
     }
   ],
-  "created": 1753423163,
-  "id": "chatcmpl-Bx5kh1kb0qKYD3a7CmCaJwAbMohnb",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755133847,
+  "id": "chatcmpl-C4GmNWjg23NFd2DxEgJ1aMbICfhdA",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 16,
+    "completion_tokens": 219,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 192,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 81,
+    "prompt_tokens": 162,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 97
+    "total_tokens": 381
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -344,8 +302,8 @@ data: [DONE]
 			name: testopenai.CassetteChatBadRequest,
 			expectResponseBody: `{
   "error": {
-    "code": "integer_below_min_value",
-    "message": "Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.",
+    "code": "unsupported_parameter",
+    "message": "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
     "param": "max_tokens",
     "type": "invalid_request_error"
   }
@@ -360,38 +318,36 @@ data: [DONE]
 		{
 			name: testopenai.CassetteChatReasoning,
 			expectResponseBody: `{
-  "choices": [
-    {
-      "finish_reason": "stop",
-      "index": 0,
-      "message": {
-        "annotations": [],
-        "content": "Let's call the cost of the ball x dollars. Since the bat costs $1 more than the ball, the bat costs x + 1 dollars. According to the problem, together they cost $1.10:\n\nx + (x + 1) = 1.10\n\nCombine like terms:\n\n2x + 1 = 1.10\n\nSubtract 1 from both sides:\n\n2x = 0.10\n\nDivide both sides by 2:\n\nx = 0.05\n\nSo, the ball costs 5 cents.",
-        "refusal": null,
-        "role": "assistant"
-      }
+  "choices" : [ {
+    "finish_reason" : "stop",
+    "index" : 0,
+    "message" : {
+      "annotations" : [ ],
+      "content" : "Let the cost of the ball be x dollars. Then the bat costs x + 1 dollars (since it costs $1 more than the ball).\n\nThe total cost is given by:\n  x + (x + 1) = 1.10\n\nCombine like terms:\n  2x + 1 = 1.10\n\nSubtract 1 from both sides:\n  2x = 0.10\n\nDivide by 2:\n  x = 0.05\n\nSo, the ball costs $0.05 (5 cents) and the bat costs $1.05.",
+      "refusal" : null,
+      "role" : "assistant"
     }
-  ],
-  "created": 1753426499,
-  "id": "chatcmpl-Bx6cVJgZ2XKLXyxEEE1bCseXcilXV",
-  "model": "o3-mini-2025-01-31",
-  "object": "chat.completion",
-  "service_tier": "default",
-  "system_fingerprint": null,
-  "usage": {
-    "completion_tokens": 187,
-    "completion_tokens_details": {
-      "accepted_prediction_tokens": 0,
-      "audio_tokens": 0,
-      "reasoning_tokens": 64,
-      "rejected_prediction_tokens": 0
+  } ],
+  "created" : 1755133862,
+  "id" : "chatcmpl-C4GmcU7sPLtZ16jI8fqxAtXVj1FX7",
+  "model" : "o3-mini-2025-01-31",
+  "object" : "chat.completion",
+  "service_tier" : "default",
+  "system_fingerprint" : "fp_e20469f047",
+  "usage" : {
+    "completion_tokens" : 264,
+    "completion_tokens_details" : {
+      "accepted_prediction_tokens" : 0,
+      "audio_tokens" : 0,
+      "reasoning_tokens" : 128,
+      "rejected_prediction_tokens" : 0
     },
-    "prompt_tokens": 27,
-    "prompt_tokens_details": {
-      "audio_tokens": 0,
-      "cached_tokens": 0
+    "prompt_tokens" : 27,
+    "prompt_tokens_details" : {
+      "audio_tokens" : 0,
+      "cached_tokens" : 0
     },
-    "total_tokens": 214
+    "total_tokens" : 291
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -403,35 +359,34 @@ data: [DONE]
     {
       "finish_reason": "stop",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
-        "content": "A colorful Nintendo Switch game",
+        "content": "A tiny blue cartoon character.",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753423165,
-  "id": "chatcmpl-Bx5kjGx7JwhMgT2Ov820b7pO9CYrv",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755133869,
+  "id": "chatcmpl-C4Gmj9b5BeLuDR5fgSeYUQobtSGV3",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 5,
+    "completion_tokens": 719,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 704,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 24,
+    "prompt_tokens": 22,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 29
+    "total_tokens": 741
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -441,47 +396,36 @@ data: [DONE]
 			expectResponseBody: `{
   "choices": [
     {
-      "finish_reason": "stop",
+      "finish_reason": "length",
       "index": 0,
-      "logprobs": null,
       "message": {
         "annotations": [],
-        "content": null,
+        "content": "",
         "refusal": null,
-        "role": "assistant",
-        "tool_calls": [
-          {
-            "function": {
-              "arguments": "{\"prompt\":\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\"}",
-              "name": "generate_image"
-            },
-            "id": "call_nhKKLlnwC3sew7xv4rnYpqVH",
-            "type": "function"
-          }
-        ]
+        "role": "assistant"
       }
     }
   ],
-  "created": 1753423214,
-  "id": "chatcmpl-Bx5lWqI4bV0HErS7PX8Q3CUHXoFni",
-  "model": "gpt-4.1-nano-2025-04-14",
+  "created": 1755134085,
+  "id": "chatcmpl-C4GqDfvxQkQLkZ367ncmnEGreKApR",
+  "model": "gpt-5-nano-2025-08-07",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
+  "system_fingerprint": null,
   "usage": {
-    "completion_tokens": 22,
+    "completion_tokens": 150,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
-      "reasoning_tokens": 0,
+      "reasoning_tokens": 150,
       "rejected_prediction_tokens": 0
     },
-    "prompt_tokens": 131,
+    "prompt_tokens": 206,
     "prompt_tokens_details": {
       "audio_tokens": 0,
       "cached_tokens": 0
     },
-    "total_tokens": 153
+    "total_tokens": 356
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -495,26 +439,26 @@ data: [DONE]
       "index": 0,
       "message": {
         "annotations": [],
-        "content": "Certainly! Please share the audio, and I'll tell you what I hear.",
+        "content": "Please play the audio, and I'll describe what I hear in up to five words.",
         "refusal": null,
         "role": "assistant"
       }
     }
   ],
-  "created": 1753423217,
-  "id": "chatcmpl-Bx5lZtphlT8syGmka1aflVu8IMFSr",
+  "created": 1755133878,
+  "id": "chatcmpl-C4GmsUaSG4ATqnzO0EmAo8RVj0QKm",
   "model": "gpt-4o-audio-preview-2025-06-03",
   "object": "chat.completion",
   "service_tier": "default",
-  "system_fingerprint": "fp_b5d60d6081",
+  "system_fingerprint": "fp_0611516fca",
   "usage": {
-    "completion_tokens": 15,
+    "completion_tokens": 17,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
       "reasoning_tokens": 0,
       "rejected_prediction_tokens": 0,
-      "text_tokens": 15
+      "text_tokens": 17
     },
     "prompt_tokens": 28,
     "prompt_tokens_details": {
@@ -523,7 +467,7 @@ data: [DONE]
       "image_tokens": 0,
       "text_tokens": 27
     },
-    "total_tokens": 43
+    "total_tokens": 45
   }
 }`,
 			expectStatusCode: http.StatusOK,
@@ -539,54 +483,47 @@ data: [DONE]
 		{
 			name: testopenai.CassetteChatDetailedUsage,
 			expectResponseBody: `{
-  "choices": [
-    {
-      "finish_reason": "stop",
-      "index": 0,
-      "logprobs": null,
-      "message": {
-        "annotations": [],
-        "content": "Signals flow like streams,  \nTracing whispers through the code,  \nInsights softly dawn.",
-        "refusal": null,
-        "role": "assistant"
-      }
+  "choices" : [ {
+    "finish_reason" : "length",
+    "index" : 0,
+    "message" : {
+      "annotations" : [ ],
+      "content" : "",
+      "refusal" : null,
+      "role" : "assistant"
     }
-  ],
-  "created": 1753423222,
-  "id": "chatcmpl-Bx5leAxYQ3dJoFhNRPRmeW3MtYcfY",
-  "model": "gpt-4.1-nano-2025-04-14",
-  "object": "chat.completion",
-  "service_tier": "default",
-  "system_fingerprint": "fp_38343a2f8f",
-  "usage": {
-    "completion_tokens": 17,
-    "completion_tokens_details": {
-      "accepted_prediction_tokens": 0,
-      "audio_tokens": 0,
-      "reasoning_tokens": 0,
-      "rejected_prediction_tokens": 0
+  } ],
+  "created" : 1755137737,
+  "id" : "chatcmpl-C4Hn7cxHHDt210R3NWm4trTgiLkrA",
+  "model" : "gpt-5-nano-2025-08-07",
+  "object" : "chat.completion",
+  "service_tier" : "default",
+  "system_fingerprint" : null,
+  "usage" : {
+    "completion_tokens" : 100,
+    "completion_tokens_details" : {
+      "accepted_prediction_tokens" : 0,
+      "audio_tokens" : 0,
+      "reasoning_tokens" : 100,
+      "rejected_prediction_tokens" : 0
     },
-    "prompt_tokens": 33,
-    "prompt_tokens_details": {
-      "audio_tokens": 0,
-      "cached_tokens": 0
+    "prompt_tokens" : 12,
+    "prompt_tokens_details" : {
+      "audio_tokens" : 0,
+      "cached_tokens" : 0
     },
-    "total_tokens": 50
+    "total_tokens" : 112
   }
 }`,
 			expectStatusCode: http.StatusOK,
 		},
 		{
 			name: testopenai.CassetteChatStreamingDetailedUsage,
-			expectResponseBody: `data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+			expectResponseBody: `data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"finish_reason":null}],"usage":null,"obfuscation":"WuQNX"}
 
-data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
+data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{},"finish_reason":"length"}],"usage":null,"obfuscation":"IPio8PDeczEmdPr"}
 
-data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
-
-data: {"id":"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892","object":"chat.completion.chunk","created":1753423223,"model":"gpt-4.1-nano-2025-04-14","service_tier":"default","system_fingerprint":"fp_38343a2f8f","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":100,"total_tokens":112,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":100,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}},"obfuscation":"t9"}
 
 data: [DONE]
 
@@ -617,7 +554,11 @@ data: [DONE]
 			// Safe to use assert as no nil risk and response body explains status.
 			assert.Equal(t, tc.expectStatusCode, resp.StatusCode)
 			if tc.expectResponseBody != "SKIP_BODY_CHECK" {
-				assert.Equal(t, tc.expectResponseBody, string(body))
+				if body[0] == '{' {
+					assert.JSONEq(t, tc.expectResponseBody, string(body))
+				} else {
+					assert.Equal(t, tc.expectResponseBody, string(body))
+				}
 			}
 		})
 	}

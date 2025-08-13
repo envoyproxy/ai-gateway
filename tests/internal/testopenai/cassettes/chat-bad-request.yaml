@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -11,7 +6,7 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 148
+        content_length: 146
         host: api.openai.com
         body: |-
             {
@@ -22,14 +17,14 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano",
+              "model": "gpt-5-nano",
               "temperature": -0.5
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "102"
+                - "100"
             Content-Type:
                 - application/json
             User-Agent:
@@ -40,12 +35,12 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 233
+        content_length: 245
         body: |-
             {
               "error": {
-                "code": "integer_below_min_value",
-                "message": "Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.",
+                "code": "unsupported_parameter",
+                "message": "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
                 "param": "max_tokens",
                 "type": "invalid_request_error"
               }
@@ -58,13 +53,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496e593f27e547-KUL
+                - 96ec936ad937e4fe-JHB
             Content-Length:
-                - "233"
+                - "245"
             Content-Type:
                 - application/json
             Date:
-                - Fri, 25 Jul 2025 05:59:24 GMT
+                - Thu, 14 Aug 2025 01:11:01 GMT
             Openai-Processing-Ms:
                 - "17"
             Openai-Project:
@@ -78,7 +73,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "21"
+                - "36"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -86,13 +81,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199997"
+                - "199998"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 0s
             X-Request-Id:
-                - req_4f7574c8234da39db624e6c3a2d75dea
+                - req_13d9b359dc234adc87be3833cacab1c6
         status: 400 Bad Request
         code: 400
-        duration: 396.208625ms
+        duration: 342.058959ms

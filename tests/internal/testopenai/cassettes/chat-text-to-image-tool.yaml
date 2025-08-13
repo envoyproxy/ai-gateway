@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -11,11 +6,11 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 1120
+        content_length: 1129
         host: api.openai.com
         body: |-
             {
-              "max_tokens": 150,
+              "max_completion_tokens": 150,
               "messages": [
                 {
                   "content": "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.",
@@ -26,7 +21,7 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano",
+              "model": "gpt-5-nano",
               "tool_choice": {
                 "function": {
                   "name": "generate_image"
@@ -59,7 +54,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "811"
+                - "820"
             Content-Type:
                 - application/json
             User-Agent:
@@ -70,52 +65,41 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1164
+        content_length: 777
         body: |-
             {
               "choices": [
                 {
-                  "finish_reason": "stop",
+                  "finish_reason": "length",
                   "index": 0,
-                  "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": null,
+                    "content": "",
                     "refusal": null,
-                    "role": "assistant",
-                    "tool_calls": [
-                      {
-                        "function": {
-                          "arguments": "{\"prompt\":\"A simple, minimalist sketch-style drawing of a cute cat playing with a ball of yarn.\"}",
-                          "name": "generate_image"
-                        },
-                        "id": "call_nhKKLlnwC3sew7xv4rnYpqVH",
-                        "type": "function"
-                      }
-                    ]
+                    "role": "assistant"
                   }
                 }
               ],
-              "created": 1753423214,
-              "id": "chatcmpl-Bx5lWqI4bV0HErS7PX8Q3CUHXoFni",
-              "model": "gpt-4.1-nano-2025-04-14",
+              "created": 1755134085,
+              "id": "chatcmpl-C4GqDfvxQkQLkZ367ncmnEGreKApR",
+              "model": "gpt-5-nano-2025-08-07",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": "fp_38343a2f8f",
+              "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 22,
+                "completion_tokens": 150,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
-                  "reasoning_tokens": 0,
+                  "reasoning_tokens": 150,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 131,
+                "prompt_tokens": 206,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 153
+                "total_tokens": 356
               }
             }
         headers:
@@ -126,13 +110,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496f931fe2e547-KUL
+                - 96ec98de3d98d10e-KUL
             Content-Type:
                 - application/json
             Date:
-                - Fri, 25 Jul 2025 06:00:15 GMT
+                - Thu, 14 Aug 2025 01:14:46 GMT
             Openai-Processing-Ms:
-                - "418"
+                - "1087"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -144,7 +128,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "425"
+                - "1120"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -152,13 +136,13 @@ interactions:
             X-Ratelimit-Remaining-Requests:
                 - "499"
             X-Ratelimit-Remaining-Tokens:
-                - "199928"
+                - "199929"
             X-Ratelimit-Reset-Requests:
                 - 120ms
             X-Ratelimit-Reset-Tokens:
                 - 21ms
             X-Request-Id:
-                - req_688a526bfe1bc5abdd9ef8b550fd9ad0
+                - req_54dfc64c22874f29970a38ca6bb20f0e
         status: 200 OK
         code: 200
-        duration: 767.381875ms
+        duration: 1.444901917s

@@ -103,24 +103,14 @@ To record a new cassette, follow these steps:
    }
    ```
 
-3. **Add your new cassette to the test matrix** in [requests_test.go](requests_test.go):
-
-   ```go
-   // ... existing tests
-   {
-       cassetteName:   CassetteChatFeatureX,
-       expectedStatus: http.StatusOK,
-   },
-   ```
-
-4. **Run `TestNewRequest`** with your OpenAI API key set:
+3. **Run `TestNewRequest`** with your OpenAI API key set:
 
    ```bash
    cd internal/testopenai
    OPENAI_API_KEY=sk-.. go test -run TestNewRequest -v
    ```
 
-5. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
+4. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
 
 ## Flowchart of Request Handling
 

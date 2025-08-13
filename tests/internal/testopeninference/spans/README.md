@@ -15,6 +15,16 @@ This follows their [semantic conventions][openinference-semconv].
 - **status**: Success or error status
 - **events**: Exception events for error cases
 
+### Span Comparison
+
+When recording spans, volatile fields like `span_id`, `trace_id`, and
+timestamps are cleared. This allows idempotent recording when the OpenInference
+python instrumentation hasn't changed.
+
+When comparing with spans created by Envoy AI Gateway, attributes are compared
+leniently, allowing serialization differences between Python and Go. This is
+handled in [assertions.go](../assertions.go) `RequireSpanEqual`.
+
 ## Regenerating Spans
 
 Recording scenarios and instructions are provided in the

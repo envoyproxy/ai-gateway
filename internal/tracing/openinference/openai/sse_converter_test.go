@@ -56,6 +56,42 @@ data: [DONE]
 `,
 			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello \\u0048\\u0065\\u006c\\u006c\\u006f"}}],"created":123,"model":"test","object":"chat.completion.chunk"}`,
 		},
+		{
+			name: "response with annotations",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":"Check out"}}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"content":" httpbin.org"}}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"end_index":21,"start_index":10,"title":"httpbin.org","url":"https://httpbin.org"}}]},"finish_reason":"stop"}]}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Check out httpbin.org","role":"assistant","annotations":[{"type":"url_citation","url_citation":{"end_index":21,"start_index":10,"url":"https://httpbin.org","title":"httpbin.org"}}]}}],"created":123,"model":"test","object":"chat.completion.chunk"}`,
+		},
+		{
+			name: "response with obfuscation field preserves last value",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":"Hello"}}],"obfuscation":"abc123"}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"content":" world"}}],"obfuscation":"def456"}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{},"finish_reason":"stop"}],"obfuscation":"XQdNwPP14L3TH0"}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello world","role":"assistant"}}],"created":123,"model":"test","object":"chat.completion.chunk","obfuscation":"XQdNwPP14L3TH0"}`,
+		},
+		{
+			name: "response with finish_reason length",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":100,"total_tokens":105}}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant"}}],"created":123,"model":"test","object":"chat.completion.chunk","usage":{"completion_tokens":100,"prompt_tokens":5,"total_tokens":105}}`,
+		},
 	}
 
 	for _, tt := range tests {

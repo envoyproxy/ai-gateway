@@ -335,6 +335,29 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Stop: "stop",
 			},
 		},
+		{
+			name: "web search options",
+			in: []byte(`{
+				"model": "gpt-4o-mini-search-preview",
+				"messages": [{"role": "user", "content": "What's the latest news?"}],
+				"web_search_options": {"search_context_size": "low"}
+			}`),
+			out: &ChatCompletionRequest{
+				Model: "gpt-4o-mini-search-preview",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "What's the latest news?"},
+						},
+						Type: ChatMessageRoleUser,
+					},
+				},
+				WebSearchOptions: &WebSearchOptions{
+					SearchContextSize: WebSearchContextSizeLow,
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var chatCompletion ChatCompletionRequest
@@ -657,243 +680,312 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, *req.MaxTokens, *decoded.MaxTokens)
 }
 
-func TestChatCompletionResponseUsageDetails(t *testing.T) {
-	t.Run("with zero values omitted", func(t *testing.T) {
-		// Test that zero values are omitted.
-		usage := ChatCompletionResponseUsage{
-			CompletionTokens: 9,
-			PromptTokens:     19,
-			TotalTokens:      28,
-			CompletionTokensDetails: &CompletionTokensDetails{
-				AcceptedPredictionTokens: 0,
-				AudioTokens:              0,
-				ReasoningTokens:          0,
-				RejectedPredictionTokens: 0,
-			},
-			PromptTokensDetails: &PromptTokensDetails{
-				AudioTokens:  0,
-				CachedTokens: 0,
-			},
-		}
-
-		// Marshal to JSON.
-		jsonData, err := json.Marshal(usage)
-		require.NoError(t, err)
-
-		expected := `{"completion_tokens":9,"prompt_tokens":19,"total_tokens":28,"completion_tokens_details":{},"prompt_tokens_details":{}}`
-		require.JSONEq(t, expected, string(jsonData))
-	})
-
-	t.Run("with non-zero values", func(t *testing.T) {
-		// Test with actual non-zero values.
-		usage := ChatCompletionResponseUsage{
-			CompletionTokens: 11,
-			PromptTokens:     37,
-			TotalTokens:      48,
-			CompletionTokensDetails: &CompletionTokensDetails{
-				AcceptedPredictionTokens: 0,
-				AudioTokens:              256,
-				ReasoningTokens:          832,
-				RejectedPredictionTokens: 0,
-			},
-			PromptTokensDetails: &PromptTokensDetails{
-				AudioTokens:  8,
-				CachedTokens: 384,
-			},
-		}
-
-		// Marshal to JSON.
-		jsonData, err := json.Marshal(usage)
-		require.NoError(t, err)
-
-		expected := `{
-			"completion_tokens": 11,
-			"prompt_tokens": 37,
-			"total_tokens": 48,
-			"completion_tokens_details": {
-				"audio_tokens": 256,
-				"reasoning_tokens": 832
-			},
-			"prompt_tokens_details": {
-				"audio_tokens": 8,
-				"cached_tokens": 384
-			}
-		}`
-		require.JSONEq(t, expected, string(jsonData))
-
-		// Unmarshal and verify.
-		var decoded ChatCompletionResponseUsage
-		err = json.Unmarshal(jsonData, &decoded)
-		require.NoError(t, err)
-
-		require.Equal(t, usage.CompletionTokens, decoded.CompletionTokens)
-		require.Equal(t, usage.PromptTokens, decoded.PromptTokens)
-		require.Equal(t, usage.TotalTokens, decoded.TotalTokens)
-		require.NotNil(t, decoded.CompletionTokensDetails)
-		require.Equal(t, 256, decoded.CompletionTokensDetails.AudioTokens)
-		require.Equal(t, 832, decoded.CompletionTokensDetails.ReasoningTokens)
-		require.NotNil(t, decoded.PromptTokensDetails)
-		require.Equal(t, 8, decoded.PromptTokensDetails.AudioTokens)
-		require.Equal(t, 384, decoded.PromptTokensDetails.CachedTokens)
-	})
-}
-
-func TestChatCompletionResponseWithNewFields(t *testing.T) {
-	// Test the new fields added to ChatCompletionResponse.
-	resp := ChatCompletionResponse{
-		ID:                "chatcmpl-test123",
-		Created:           JSONUNIXTime(time.Now()),
-		Model:             "gpt-4.1-nano",
-		ServiceTier:       "default",
-		SystemFingerprint: "",
-		Object:            "chat.completion",
-		Choices: []ChatCompletionResponseChoice{
-			{
-				Index:        0,
-				FinishReason: ChatCompletionChoicesFinishReasonStop,
-				Message: ChatCompletionResponseChoiceMessage{
-					Role:    "assistant",
-					Content: ptr.To("Hello!"),
+func TestChatCompletionResponse(t *testing.T) {
+	testCases := []struct {
+		name     string
+		response ChatCompletionResponse
+		expected string
+	}{
+		{
+			name: "basic response with new fields",
+			response: ChatCompletionResponse{
+				ID:                "chatcmpl-test123",
+				Created:           JSONUNIXTime(time.Unix(1735689600, 0)),
+				Model:             "gpt-4.1-nano",
+				ServiceTier:       "default",
+				SystemFingerprint: "",
+				Object:            "chat.completion",
+				Choices: []ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: ChatCompletionChoicesFinishReasonStop,
+						Message: ChatCompletionResponseChoiceMessage{
+							Role:    "assistant",
+							Content: ptr.To("Hello!"),
+						},
+					},
+				},
+				Usage: ChatCompletionResponseUsage{
+					CompletionTokens: 1,
+					PromptTokens:     5,
+					TotalTokens:      6,
 				},
 			},
+			expected: `{
+				"id": "chatcmpl-test123",
+				"object": "chat.completion",
+				"created": 1735689600,
+				"model": "gpt-4.1-nano",
+				"service_tier": "default",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "Hello!"
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {
+					"prompt_tokens": 5,
+					"completion_tokens": 1,
+					"total_tokens": 6
+				}
+			}`,
 		},
-		Usage: ChatCompletionResponseUsage{
-			CompletionTokens: 1,
-			PromptTokens:     5,
-			TotalTokens:      6,
+		{
+			name: "response with web search annotations",
+			response: ChatCompletionResponse{
+				ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
+				Created: JSONUNIXTime(time.Unix(1755135425, 0)),
+				Model:   "gpt-4o-mini-search-preview-2025-03-11",
+				Object:  "chat.completion",
+				Choices: []ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: ChatCompletionChoicesFinishReasonStop,
+						Message: ChatCompletionResponseChoiceMessage{
+							Role:    "assistant",
+							Content: ptr.To("Check out httpbin.org"),
+							Annotations: []Annotation{
+								{
+									Type: "url_citation",
+									URLCitation: &URLCitation{
+										EndIndex:   21,
+										StartIndex: 10,
+										Title:      "httpbin.org",
+										URL:        "https://httpbin.org/?utm_source=openai",
+									},
+								},
+							},
+						},
+					},
+				},
+				Usage: ChatCompletionResponseUsage{
+					CompletionTokens: 192,
+					PromptTokens:     14,
+					TotalTokens:      206,
+				},
+			},
+			expected: `{
+				"id": "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
+				"object": "chat.completion",
+				"created": 1755135425,
+				"model": "gpt-4o-mini-search-preview-2025-03-11",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "Check out httpbin.org",
+						"annotations": [{
+							"type": "url_citation",
+							"url_citation": {
+								"end_index": 21,
+								"start_index": 10,
+								"title": "httpbin.org",
+								"url": "https://httpbin.org/?utm_source=openai"
+							}
+						}]
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {
+					"prompt_tokens": 14,
+					"completion_tokens": 192,
+					"total_tokens": 206
+				}
+			}`,
 		},
 	}
 
-	// Marshal to JSON.
-	jsonData, err := json.Marshal(resp)
-	require.NoError(t, err)
-
-	// Unmarshal back.
-	var decoded ChatCompletionResponse
-	err = json.Unmarshal(jsonData, &decoded)
-	require.NoError(t, err)
-
-	// Verify all fields.
-	require.Equal(t, resp.ID, decoded.ID)
-	require.Equal(t, time.Time(resp.Created).Unix(), time.Time(decoded.Created).Unix())
-	require.Equal(t, resp.Model, decoded.Model)
-	require.Equal(t, resp.ServiceTier, decoded.ServiceTier)
-	require.Equal(t, resp.SystemFingerprint, decoded.SystemFingerprint)
-	require.Equal(t, resp.Object, decoded.Object)
-}
-
-func TestChatCompletionRequestModalities(t *testing.T) {
-	// Test modalities field from OpenAI OpenAPI YAML examples.
-	t.Run("text and audio modalities", func(t *testing.T) {
-		jsonStr := `{
-			"model": "gpt-4o-audio-preview",
-			"messages": [{"role": "user", "content": "Hello!"}],
-			"modalities": ["text", "audio"]
-		}`
-
-		var req ChatCompletionRequest
-		err := json.Unmarshal([]byte(jsonStr), &req)
-		require.NoError(t, err)
-		require.Equal(t, "gpt-4o-audio-preview", req.Model)
-		require.Equal(t, []ChatCompletionModality{ChatCompletionModalityText, ChatCompletionModalityAudio}, req.Modalities)
-
-		// Marshal back and verify.
-		marshaled, err := json.Marshal(req)
-		require.NoError(t, err)
-		require.Contains(t, string(marshaled), `"modalities":["text","audio"]`)
-	})
-
-	t.Run("text only modality", func(t *testing.T) {
-		jsonStr := `{
-			"model": "gpt-4.1-nano",
-			"messages": [{"role": "user", "content": "Hi"}],
-			"modalities": ["text"]
-		}`
-
-		var req ChatCompletionRequest
-		err := json.Unmarshal([]byte(jsonStr), &req)
-		require.NoError(t, err)
-		require.Equal(t, []ChatCompletionModality{ChatCompletionModalityText}, req.Modalities)
-	})
-}
-
-func TestChatCompletionRequestAudio(t *testing.T) {
-	// Test audio parameters from OpenAI OpenAPI YAML examples.
-	t.Run("audio output parameters", func(t *testing.T) {
-		jsonStr := `{
-			"model": "gpt-4o-audio-preview",
-			"messages": [{"role": "user", "content": "Hello!"}],
-			"modalities": ["audio"],
-			"audio": {
-				"voice": "alloy",
-				"format": "wav"
-			}
-		}`
-
-		var req ChatCompletionRequest
-		err := json.Unmarshal([]byte(jsonStr), &req)
-		require.NoError(t, err)
-		require.NotNil(t, req.Audio)
-		require.Equal(t, ChatCompletionAudioVoiceAlloy, req.Audio.Voice)
-		require.Equal(t, ChatCompletionAudioFormatWav, req.Audio.Format)
-
-		// Marshal back and verify.
-		marshaled, err := json.Marshal(req)
-		require.NoError(t, err)
-		require.Contains(t, string(marshaled), `"audio":{"voice":"alloy","format":"wav"}`)
-	})
-
-	t.Run("all audio formats", func(t *testing.T) {
-		formats := []ChatCompletionAudioFormat{
-			ChatCompletionAudioFormatWav,
-			ChatCompletionAudioFormatAAC,
-			ChatCompletionAudioFormatMP3,
-			ChatCompletionAudioFormatFlac,
-			ChatCompletionAudioFormatOpus,
-			ChatCompletionAudioFormatPCM16,
-		}
-
-		for _, format := range formats {
-			audio := ChatCompletionAudioParam{
-				Voice:  ChatCompletionAudioVoiceNova,
-				Format: format,
-			}
-			data, err := json.Marshal(audio)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Marshal to JSON
+			jsonData, err := json.Marshal(tc.response)
 			require.NoError(t, err)
-			require.Contains(t, string(data), string(format))
-		}
-	})
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			// Unmarshal back and verify round-trip
+			var decoded ChatCompletionResponse
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.response.ID, decoded.ID)
+			require.Equal(t, tc.response.Model, decoded.Model)
+			require.Equal(t, time.Time(tc.response.Created).Unix(), time.Time(decoded.Created).Unix())
+		})
+	}
 }
 
-func TestPredictionContent(t *testing.T) {
-	// Test prediction content from OpenAI OpenAPI YAML examples.
-	t.Run("prediction with string content", func(t *testing.T) {
-		jsonStr := `{
-			"model": "gpt-4.1-nano",
-			"messages": [{"role": "user", "content": "Complete this: Hello"}],
-			"prediction": {
-				"type": "content",
-				"content": "Hello world!"
-			}
-		}`
+func TestChatCompletionRequest(t *testing.T) {
+	testCases := []struct {
+		name     string
+		jsonStr  string
+		expected *ChatCompletionRequest
+	}{
+		{
+			name: "text and audio modalities",
+			jsonStr: `{
+				"model": "gpt-4o-audio-preview",
+				"messages": [{"role": "user", "content": "Hello!"}],
+				"modalities": ["text", "audio"]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gpt-4o-audio-preview",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Type: ChatMessageRoleUser,
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello!"},
+						},
+					},
+				},
+				Modalities: []ChatCompletionModality{ChatCompletionModalityText, ChatCompletionModalityAudio},
+			},
+		},
+		{
+			name: "text only modality",
+			jsonStr: `{
+				"model": "gpt-4.1-nano",
+				"messages": [{"role": "user", "content": "Hi"}],
+				"modalities": ["text"]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gpt-4.1-nano",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Type: ChatMessageRoleUser,
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hi"},
+						},
+					},
+				},
+				Modalities: []ChatCompletionModality{ChatCompletionModalityText},
+			},
+		},
+		{
+			name: "audio output parameters",
+			jsonStr: `{
+				"model": "gpt-4o-audio-preview",
+				"messages": [{"role": "user", "content": "Hello!"}],
+				"modalities": ["audio"],
+				"audio": {
+					"voice": "alloy",
+					"format": "wav"
+				}
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gpt-4o-audio-preview",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Type: ChatMessageRoleUser,
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello!"},
+						},
+					},
+				},
+				Modalities: []ChatCompletionModality{ChatCompletionModalityAudio},
+				Audio: &ChatCompletionAudioParam{
+					Voice:  ChatCompletionAudioVoiceAlloy,
+					Format: ChatCompletionAudioFormatWav,
+				},
+			},
+		},
+		{
+			name: "prediction with string content",
+			jsonStr: `{
+				"model": "gpt-4.1-nano",
+				"messages": [{"role": "user", "content": "Complete this: Hello"}],
+				"prediction": {
+					"type": "content",
+					"content": "Hello world!"
+				}
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gpt-4.1-nano",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Type: ChatMessageRoleUser,
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Complete this: Hello"},
+						},
+					},
+				},
+				PredictionContent: &PredictionContent{
+					Type:    PredictionContentTypeContent,
+					Content: StringOrArray{Value: "Hello world!"},
+				},
+			},
+		},
+		{
+			name: "web search options",
+			jsonStr: `{
+				"model": "gpt-4o-mini-search-preview",
+				"messages": [{"role": "user", "content": "What's the latest news?"}],
+				"web_search_options": {"search_context_size": "low"}
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gpt-4o-mini-search-preview",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						Type: ChatMessageRoleUser,
+						Value: ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "What's the latest news?"},
+						},
+					},
+				},
+				WebSearchOptions: &WebSearchOptions{
+					SearchContextSize: WebSearchContextSizeLow,
+				},
+			},
+		},
+	}
 
-		var req ChatCompletionRequest
-		err := json.Unmarshal([]byte(jsonStr), &req)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var req ChatCompletionRequest
+			err := json.Unmarshal([]byte(tc.jsonStr), &req)
+			require.NoError(t, err)
+			require.Equal(t, *tc.expected, req)
+
+			// Marshal back and verify it round-trips
+			marshaled, err := json.Marshal(req)
+			require.NoError(t, err)
+			var req2 ChatCompletionRequest
+			err = json.Unmarshal(marshaled, &req2)
+			require.NoError(t, err)
+			require.Equal(t, req, req2)
+		})
+	}
+}
+
+func TestChatCompletionAudioFormats(t *testing.T) {
+	formats := []ChatCompletionAudioFormat{
+		ChatCompletionAudioFormatWav,
+		ChatCompletionAudioFormatAAC,
+		ChatCompletionAudioFormatMP3,
+		ChatCompletionAudioFormatFlac,
+		ChatCompletionAudioFormatOpus,
+		ChatCompletionAudioFormatPCM16,
+	}
+
+	for _, format := range formats {
+		audio := ChatCompletionAudioParam{
+			Voice:  ChatCompletionAudioVoiceNova,
+			Format: format,
+		}
+		data, err := json.Marshal(audio)
 		require.NoError(t, err)
-		require.NotNil(t, req.PredictionContent)
-		require.Equal(t, PredictionContentTypeContent, req.PredictionContent.Type)
-		require.Equal(t, "Hello world!", req.PredictionContent.Content.Value)
+		require.Contains(t, string(data), string(format))
+	}
+}
 
-		// Marshal back and verify.
-		marshaled, err := json.Marshal(req)
-		require.NoError(t, err)
-		require.Contains(t, string(marshaled), `"prediction":{"type":"content","content":"Hello world!"}`)
-	})
-
-	t.Run("prediction content type constant", func(t *testing.T) {
-		// Verify the constant value matches OpenAPI spec.
-		require.Equal(t, PredictionContentTypeContent, PredictionContentType("content"))
-	})
+func TestPredictionContentType(t *testing.T) {
+	// Verify the constant value matches OpenAPI spec.
+	require.Equal(t, PredictionContentTypeContent, PredictionContentType("content"))
 }
 
 func TestUnmarshalJSON_Unmarshal(t *testing.T) {
@@ -912,62 +1004,223 @@ func TestUnmarshalJSON_Unmarshal(t *testing.T) {
 }
 
 func TestChatCompletionResponseChunkChoice(t *testing.T) {
-	t.Run("streaming chunk with content", func(t *testing.T) {
-		choice := ChatCompletionResponseChunkChoice{
-			Index: 0,
-			Delta: &ChatCompletionResponseChunkChoiceDelta{
-				Content: ptr.To("Hello"),
-				Role:    "assistant",
+	testCases := []struct {
+		name     string
+		choice   ChatCompletionResponseChunkChoice
+		expected string
+	}{
+		{
+			name: "streaming chunk with content",
+			choice: ChatCompletionResponseChunkChoice{
+				Index: 0,
+				Delta: &ChatCompletionResponseChunkChoiceDelta{
+					Content: ptr.To("Hello"),
+					Role:    "assistant",
+				},
 			},
-		}
-
-		jsonData, err := json.Marshal(choice)
-		require.NoError(t, err)
-
-		expected := `{"index":0,"delta":{"content":"Hello","role":"assistant"}}`
-		require.JSONEq(t, expected, string(jsonData))
-	})
-
-	t.Run("streaming chunk with empty content", func(t *testing.T) {
-		choice := ChatCompletionResponseChunkChoice{
-			Index: 0,
-			Delta: &ChatCompletionResponseChunkChoiceDelta{
-				Content: ptr.To(""),
-				Role:    "assistant",
+			expected: `{"index":0,"delta":{"content":"Hello","role":"assistant"}}`,
+		},
+		{
+			name: "streaming chunk with empty content",
+			choice: ChatCompletionResponseChunkChoice{
+				Index: 0,
+				Delta: &ChatCompletionResponseChunkChoiceDelta{
+					Content: ptr.To(""),
+					Role:    "assistant",
+				},
 			},
-		}
-
-		jsonData, err := json.Marshal(choice)
-		require.NoError(t, err)
-
-		expected := `{"index":0,"delta":{"content":"","role":"assistant"}}`
-		require.JSONEq(t, expected, string(jsonData))
-	})
-
-	t.Run("streaming chunk with tool calls", func(t *testing.T) {
-		choice := ChatCompletionResponseChunkChoice{
-			Index: 0,
-			Delta: &ChatCompletionResponseChunkChoiceDelta{
-				Role: "assistant",
-				ToolCalls: []ChatCompletionMessageToolCallParam{
-					{
-						ID:   ptr.To("tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"),
-						Type: "function",
-						Function: ChatCompletionMessageToolCallFunctionParam{
-							Name:      "cosine",
-							Arguments: "",
+			expected: `{"index":0,"delta":{"content":"","role":"assistant"}}`,
+		},
+		{
+			name: "streaming chunk with tool calls",
+			choice: ChatCompletionResponseChunkChoice{
+				Index: 0,
+				Delta: &ChatCompletionResponseChunkChoiceDelta{
+					Role: "assistant",
+					ToolCalls: []ChatCompletionMessageToolCallParam{
+						{
+							ID:   ptr.To("tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"),
+							Type: "function",
+							Function: ChatCompletionMessageToolCallFunctionParam{
+								Name:      "cosine",
+								Arguments: "",
+							},
 						},
 					},
 				},
 			},
-		}
+			expected: `{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}`,
+		},
+		{
+			name: "streaming chunk with annotations",
+			choice: ChatCompletionResponseChunkChoice{
+				Index: 0,
+				Delta: &ChatCompletionResponseChunkChoiceDelta{
+					Annotations: []Annotation{
+						{
+							Type: "url_citation",
+							URLCitation: &URLCitation{
+								EndIndex:   215,
+								StartIndex: 160,
+								Title:      "httpbin.org",
+								URL:        "https://httpbin.org/?utm_source=openai",
+							},
+						},
+					},
+				},
+				FinishReason: "stop",
+			},
+			expected: `{"index":0,"delta":{"annotations":[{"type":"url_citation","url_citation":{"end_index":215,"start_index":160,"title":"httpbin.org","url":"https://httpbin.org/?utm_source=openai"}}]},"finish_reason":"stop"}`,
+		},
+	}
 
-		jsonData, err := json.Marshal(choice)
-		require.NoError(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.choice)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+		})
+	}
+}
 
-		expected := `{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}`
-		require.JSONEq(t, expected, string(jsonData))
-	})
+func TestChatCompletionResponseChunk(t *testing.T) {
+	testCases := []struct {
+		name     string
+		chunk    ChatCompletionResponseChunk
+		expected string
+	}{
+		{
+			name: "chunk with obfuscation",
+			chunk: ChatCompletionResponseChunk{
+				ID:                "chatcmpl-123",
+				Object:            "chat.completion.chunk",
+				Created:           JSONUNIXTime(time.Unix(1755137933, 0)),
+				Model:             "gpt-5-nano",
+				ServiceTier:       "default",
+				SystemFingerprint: "fp_123",
+				Choices: []ChatCompletionResponseChunkChoice{
+					{
+						Index: 0,
+						Delta: &ChatCompletionResponseChunkChoiceDelta{
+							Content: ptr.To("Hello"),
+						},
+					},
+				},
+				Obfuscation: "yBUv8b1dlI5ORP",
+			},
+			expected: `{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1755137933,"model":"gpt-5-nano","service_tier":"default","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"content":"Hello"}}],"obfuscation":"yBUv8b1dlI5ORP"}`,
+		},
+		{
+			name: "chunk without obfuscation",
+			chunk: ChatCompletionResponseChunk{
+				ID:      "chatcmpl-456",
+				Object:  "chat.completion.chunk",
+				Created: JSONUNIXTime(time.Unix(1755137934, 0)),
+				Model:   "gpt-5-nano",
+				Choices: []ChatCompletionResponseChunkChoice{
+					{
+						Index: 0,
+						Delta: &ChatCompletionResponseChunkChoiceDelta{
+							Content: ptr.To("World"),
+						},
+					},
+				},
+			},
+			expected: `{"id":"chatcmpl-456","object":"chat.completion.chunk","created":1755137934,"model":"gpt-5-nano","choices":[{"index":0,"delta":{"content":"World"}}]}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.chunk)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+		})
+	}
+}
+
+func TestURLCitation(t *testing.T) {
+	testCases := []struct {
+		name     string
+		citation URLCitation
+		expected string
+	}{
+		{
+			name: "url citation with all fields",
+			citation: URLCitation{
+				EndIndex:   215,
+				StartIndex: 160,
+				Title:      "httpbin.org",
+				URL:        "https://httpbin.org/?utm_source=openai",
+			},
+			expected: `{"end_index":215,"start_index":160,"title":"httpbin.org","url":"https://httpbin.org/?utm_source=openai"}`,
+		},
+		{
+			name: "url citation minimal",
+			citation: URLCitation{
+				EndIndex:   10,
+				StartIndex: 0,
+				URL:        "https://example.com",
+				Title:      "Example",
+			},
+			expected: `{"end_index":10,"start_index":0,"title":"Example","url":"https://example.com"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.citation)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			var decoded URLCitation
+			err = json.Unmarshal([]byte(tc.expected), &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.citation, decoded)
+		})
+	}
+}
+
+func TestAnnotation(t *testing.T) {
+	testCases := []struct {
+		name       string
+		annotation Annotation
+		expected   string
+	}{
+		{
+			name: "annotation with url citation",
+			annotation: Annotation{
+				Type: "url_citation",
+				URLCitation: &URLCitation{
+					EndIndex:   215,
+					StartIndex: 160,
+					Title:      "httpbin.org",
+					URL:        "https://httpbin.org/?utm_source=openai",
+				},
+			},
+			expected: `{"type":"url_citation","url_citation":{"end_index":215,"start_index":160,"title":"httpbin.org","url":"https://httpbin.org/?utm_source=openai"}}`,
+		},
+		{
+			name: "annotation type only",
+			annotation: Annotation{
+				Type: "url_citation",
+			},
+			expected: `{"type":"url_citation"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.annotation)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			var decoded Annotation
+			err = json.Unmarshal([]byte(tc.expected), &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.annotation, decoded)
+		})
+	}
 }
 
 func TestEmbeddingUnionUnmarshal(t *testing.T) {
@@ -1008,6 +1261,301 @@ func TestEmbeddingUnionUnmarshal(t *testing.T) {
 					t.Errorf("EmbeddingUnion Unmarshal Error. got = %v, want %v", eu.Value, tt.want)
 				}
 			}
+		})
+	}
+}
+
+func TestChatCompletionResponseChoiceMessageAudio(t *testing.T) {
+	testCases := []struct {
+		name     string
+		audio    ChatCompletionResponseChoiceMessageAudio
+		expected string
+	}{
+		{
+			name: "audio with all fields",
+			audio: ChatCompletionResponseChoiceMessageAudio{
+				Data:       "base64audiodata",
+				ExpiresAt:  1735689600,
+				ID:         "audio-123",
+				Transcript: "Hello, world!",
+			},
+			expected: `{
+				"data": "base64audiodata",
+				"expires_at": 1735689600,
+				"id": "audio-123",
+				"transcript": "Hello, world!"
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.audio)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			var decoded ChatCompletionResponseChoiceMessageAudio
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.audio, decoded)
+		})
+	}
+}
+
+func TestCompletionTokensDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		details  CompletionTokensDetails
+		expected string
+	}{
+		{
+			name: "with text tokens",
+			details: CompletionTokensDetails{
+				TextTokens:               5,
+				AcceptedPredictionTokens: 10,
+				AudioTokens:              256,
+				ReasoningTokens:          832,
+				RejectedPredictionTokens: 2,
+			},
+			expected: `{
+				"text_tokens": 5,
+				"accepted_prediction_tokens": 10,
+				"audio_tokens": 256,
+				"reasoning_tokens": 832,
+				"rejected_prediction_tokens": 2
+			}`,
+		},
+		{
+			name: "with zero text tokens omitted",
+			details: CompletionTokensDetails{
+				TextTokens:      0,
+				AudioTokens:     256,
+				ReasoningTokens: 832,
+			},
+			expected: `{
+				"audio_tokens": 256,
+				"reasoning_tokens": 832
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.details)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			var decoded CompletionTokensDetails
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.details, decoded)
+		})
+	}
+}
+
+func TestPromptTokensDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		details  PromptTokensDetails
+		expected string
+	}{
+		{
+			name: "with text tokens",
+			details: PromptTokensDetails{
+				TextTokens:   15,
+				AudioTokens:  8,
+				CachedTokens: 384,
+			},
+			expected: `{
+				"text_tokens": 15,
+				"audio_tokens": 8,
+				"cached_tokens": 384
+			}`,
+		},
+		{
+			name: "with zero text tokens omitted",
+			details: PromptTokensDetails{
+				TextTokens:   0,
+				AudioTokens:  8,
+				CachedTokens: 384,
+			},
+			expected: `{
+				"audio_tokens": 8,
+				"cached_tokens": 384
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonData, err := json.Marshal(tc.details)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			var decoded PromptTokensDetails
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.details, decoded)
+		})
+	}
+}
+
+func TestChatCompletionResponseUsage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		usage    ChatCompletionResponseUsage
+		expected string
+	}{
+		{
+			name: "with zero values omitted",
+			usage: ChatCompletionResponseUsage{
+				CompletionTokens: 9,
+				PromptTokens:     19,
+				TotalTokens:      28,
+				CompletionTokensDetails: &CompletionTokensDetails{
+					AcceptedPredictionTokens: 0,
+					AudioTokens:              0,
+					ReasoningTokens:          0,
+					RejectedPredictionTokens: 0,
+				},
+				PromptTokensDetails: &PromptTokensDetails{
+					AudioTokens:  0,
+					CachedTokens: 0,
+				},
+			},
+			expected: `{"completion_tokens":9,"prompt_tokens":19,"total_tokens":28,"completion_tokens_details":{},"prompt_tokens_details":{}}`,
+		},
+		{
+			name: "with non-zero values",
+			usage: ChatCompletionResponseUsage{
+				CompletionTokens: 11,
+				PromptTokens:     37,
+				TotalTokens:      48,
+				CompletionTokensDetails: &CompletionTokensDetails{
+					AcceptedPredictionTokens: 0,
+					AudioTokens:              256,
+					ReasoningTokens:          832,
+					RejectedPredictionTokens: 0,
+				},
+				PromptTokensDetails: &PromptTokensDetails{
+					AudioTokens:  8,
+					CachedTokens: 384,
+				},
+			},
+			expected: `{
+				"completion_tokens": 11,
+				"prompt_tokens": 37,
+				"total_tokens": 48,
+				"completion_tokens_details": {
+					"audio_tokens": 256,
+					"reasoning_tokens": 832
+				},
+				"prompt_tokens_details": {
+					"audio_tokens": 8,
+					"cached_tokens": 384
+				}
+			}`,
+		},
+		{
+			name: "with text tokens",
+			usage: ChatCompletionResponseUsage{
+				CompletionTokens: 11,
+				PromptTokens:     37,
+				TotalTokens:      48,
+				CompletionTokensDetails: &CompletionTokensDetails{
+					TextTokens:               5,
+					AcceptedPredictionTokens: 0,
+					AudioTokens:              256,
+					ReasoningTokens:          832,
+					RejectedPredictionTokens: 0,
+				},
+				PromptTokensDetails: &PromptTokensDetails{
+					TextTokens:   15,
+					AudioTokens:  8,
+					CachedTokens: 384,
+				},
+			},
+			expected: `{
+				"completion_tokens": 11,
+				"prompt_tokens": 37,
+				"total_tokens": 48,
+				"completion_tokens_details": {
+					"text_tokens": 5,
+					"audio_tokens": 256,
+					"reasoning_tokens": 832
+				},
+				"prompt_tokens_details": {
+					"text_tokens": 15,
+					"audio_tokens": 8,
+					"cached_tokens": 384
+				}
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Marshal to JSON
+			jsonData, err := json.Marshal(tc.usage)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			// Unmarshal and verify
+			var decoded ChatCompletionResponseUsage
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.usage, decoded)
+		})
+	}
+}
+
+func TestWebSearchOptions(t *testing.T) {
+	testCases := []struct {
+		name     string
+		options  WebSearchOptions
+		expected string
+	}{
+		{
+			name: "search context size low",
+			options: WebSearchOptions{
+				SearchContextSize: WebSearchContextSizeLow,
+			},
+			expected: `{"search_context_size":"low"}`,
+		},
+		{
+			name: "with user location",
+			options: WebSearchOptions{
+				SearchContextSize: WebSearchContextSizeMedium,
+				UserLocation: &WebSearchUserLocation{
+					Type: "approximate",
+					Approximate: WebSearchLocation{
+						City:    "San Francisco",
+						Region:  "California",
+						Country: "USA",
+					},
+				},
+			},
+			expected: `{"user_location":{"type":"approximate","approximate":{"city":"San Francisco","region":"California","country":"USA"}},"search_context_size":"medium"}`,
+		},
+		{
+			name:     "empty options",
+			options:  WebSearchOptions{},
+			expected: `{}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Marshal to JSON
+			jsonData, err := json.Marshal(tc.options)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(jsonData))
+
+			// Unmarshal and verify
+			var decoded WebSearchOptions
+			err = json.Unmarshal(jsonData, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.options, decoded)
 		})
 	}
 }

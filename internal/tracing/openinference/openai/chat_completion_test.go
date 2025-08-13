@@ -69,10 +69,10 @@ func TestChatCompletionRecorder_RecordRequest(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
@@ -109,7 +109,7 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 			statusCode: 200,
 			respBody:   basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I help you today?"),

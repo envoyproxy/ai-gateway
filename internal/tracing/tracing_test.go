@@ -280,7 +280,7 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 
 			// Create a test request with sensitive data.
 			req := &openai.ChatCompletionRequest{
-				Model: openai.ModelGPT41Nano,
+				Model: openai.ModelGPT5Nano,
 				Messages: []openai.ChatCompletionMessageParamUnion{{
 					Type: openai.ChatMessageRoleUser,
 					Value: openai.ChatCompletionUserMessageParam{
@@ -398,6 +398,6 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation 
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
 	tracer := tracing.ChatCompletionTracer()
-	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT41Nano}
+	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
 	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
 }

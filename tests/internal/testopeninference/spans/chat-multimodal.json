@@ -1,11 +1,7 @@
 {
-  "traceId":  "dl5+iCty3e4poskVjkC8vg==",
-  "spanId":  "j6XvbDdPfw4=",
   "flags":  256,
   "name":  "ChatCompletion",
   "kind":  "SPAN_KIND_INTERNAL",
-  "startTimeUnixNano":  "1753566561875112309",
-  "endTimeUnixNano":  "1753566561881144939",
   "attributes":  [
     {
       "key":  "llm.system",
@@ -16,7 +12,7 @@
     {
       "key":  "input.value",
       "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": [{\"text\": \"What is in this image?\", \"type\": \"text\"}, {\"image_url\": {\"url\": \"https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg\"}, \"type\": \"image_url\"}], \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"max_tokens\": 100}"
+        "stringValue":  "{\"messages\": [{\"content\": [{\"text\": \"What is in this image?\", \"type\": \"text\"}, {\"image_url\": {\"url\": \"https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg\"}, \"type\": \"image_url\"}], \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"max_completion_tokens\": 100}"
       }
     },
     {
@@ -28,7 +24,7 @@
     {
       "key":  "output.value",
       "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-Bx5kVc7U7izUQncE24gOSCVWJld1e\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":\"This image shows a wooden pathway running through a lush, green grassy field under a partly cloudy blue sky. The scene appears peaceful and rural, with trees in the distance and vibrant natural surroundings.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1753423151,\"model\":\"gpt-4.1-nano-2025-04-14\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_38343a2f8f\",\"usage\":{\"completion_tokens\":38,\"prompt_tokens\":3675,\"total_tokens\":3713,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+        "stringValue":  "{\"id\":\"chatcmpl-C4GrQKcrez1dN2o93xZTQ9ohbQFBY\",\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755134160,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":100,\"prompt_tokens\":2245,\"total_tokens\":2345,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":100,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
@@ -40,7 +36,7 @@
     {
       "key":  "llm.invocation_parameters",
       "value":  {
-        "stringValue":  "{\"model\": \"gpt-4.1-nano\", \"max_tokens\": 100}"
+        "stringValue":  "{\"model\": \"gpt-5-nano\", \"max_completion_tokens\": 100}"
       }
     },
     {
@@ -76,25 +72,25 @@
     {
       "key":  "llm.model_name",
       "value":  {
-        "stringValue":  "gpt-4.1-nano-2025-04-14"
+        "stringValue":  "gpt-5-nano-2025-08-07"
       }
     },
     {
       "key":  "llm.token_count.total",
       "value":  {
-        "intValue":  "3713"
+        "intValue":  "2345"
       }
     },
     {
       "key":  "llm.token_count.prompt",
       "value":  {
-        "intValue":  "3675"
+        "intValue":  "2245"
       }
     },
     {
       "key":  "llm.token_count.completion",
       "value":  {
-        "intValue":  "38"
+        "intValue":  "100"
       }
     },
     {
@@ -112,7 +108,7 @@
     {
       "key":  "llm.token_count.completion_details.reasoning",
       "value":  {
-        "intValue":  "0"
+        "intValue":  "100"
       }
     },
     {
@@ -125,12 +121,6 @@
       "key":  "llm.output_messages.0.message.role",
       "value":  {
         "stringValue":  "assistant"
-      }
-    },
-    {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "This image shows a wooden pathway running through a lush, green grassy field under a partly cloudy blue sky. The scene appears peaceful and rural, with trees in the distance and vibrant natural surroundings."
       }
     },
     {
