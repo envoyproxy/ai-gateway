@@ -45,7 +45,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:       []string{"-configPath", "/path/to/config.yaml"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				logLevel:   slog.LevelInfo,
 			},
 			{
@@ -53,7 +53,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
 				configPath: "/path/to/config.yaml",
 				addr:       "unix:///tmp/ext_proc.sock",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				logLevel:   slog.LevelInfo,
 			},
 			{
@@ -61,7 +61,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				logLevel:   slog.LevelDebug,
 			},
 			{
@@ -69,7 +69,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				logLevel:   slog.LevelWarn,
 			},
 			{
@@ -77,7 +77,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				logLevel:   slog.LevelError,
 			},
 			{
@@ -86,11 +86,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-configPath", "/path/to/config.yaml",
 					"-extProcAddr", "unix:///tmp/ext_proc.sock",
 					"-logLevel", "debug",
-					"-rootPrefix", "/foo/bar/v1",
+					"-rootPrefix", "/foo/bar/",
 				},
 				configPath: "/path/to/config.yaml",
 				addr:       "unix:///tmp/ext_proc.sock",
-				rootPrefix: "/foo/bar/v1",
+				rootPrefix: "/foo/bar/",
 				logLevel:   slog.LevelDebug,
 			},
 			{
@@ -100,7 +100,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-metricsRequestHeaderLabels", "x-team-id:team_id,x-user-id:user_id",
 				},
 				configPath: "/path/to/config.yaml",
-				rootPrefix: "/v1",
+				rootPrefix: "/",
 				addr:       ":1063",
 				logLevel:   slog.LevelInfo,
 			},
@@ -111,6 +111,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				assert.Equal(t, tc.configPath, flags.configPath)
 				assert.Equal(t, tc.addr, flags.extProcAddr)
 				assert.Equal(t, tc.logLevel, flags.logLevel)
+				assert.Equal(t, tc.rootPrefix, flags.rootPrefix)
 			})
 		}
 	})
