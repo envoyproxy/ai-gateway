@@ -60,26 +60,13 @@ func (r *ChatCompletionRecorder) RecordRequest(span trace.Span, chatReq *openai.
 	span.SetAttributes(buildRequestAttributes(chatReq, string(body), r.traceConfig)...)
 }
 
-// RecordResponseChunk implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordResponseChunk(span trace.Span, chunk *openai.ChatCompletionResponseChunk, chunkIdx int) {
-	if chunkIdx == 0 {
+// RecordResponseChunks implements the same method as defined in tracing.ChatCompletionRecorder.
+func (r *ChatCompletionRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk) {
+	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
 	}
-	// Set output attributes.
-	var attrs []attribute.KeyValue
-	attrs = buildResponseAttributesForChunk(chunk, r.traceConfig)
-
-	// TODO: what to do with the "output" attribute for streaming? Accumulate it? Right now the last chunk
-	// 	will overwrite the previous ones.
-	bodyString := openinference.RedactedValue
-	if !r.traceConfig.HideOutputs {
-		marshaled, err := json.Marshal(chunk)
-		if err == nil {
-			bodyString = string(marshaled)
-		}
-	}
-	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
-	span.SetAttributes(attrs...)
+	converted := convertSSEToJSON(chunks)
+	r.RecordResponse(span, converted)
 }
 
 // RecordResponseOnError implements the same method as defined in tracing.ChatCompletionRecorder.
@@ -102,9 +89,5 @@ func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.Ch
 	}
 	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
 	span.SetAttributes(attrs...)
-}
-
-// RecordResponseOnOK implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordResponseOnOK(span trace.Span) {
 	span.SetStatus(codes.Ok, "")
 }

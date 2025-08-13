@@ -9,9 +9,6 @@
 package openai
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -28,10 +25,7 @@ var (
 // have zero values.
 //
 // This is optimized for BUFFERED mode where we receive the entire stream at once.
-func convertSSEToJSON(sseData []byte) ([]byte, error) {
-	if len(sseData) == 0 {
-		return nil, nil
-	}
+func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 
 	var (
 		firstChunk *openai.ChatCompletionResponseChunk
@@ -40,27 +34,9 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		role       string
 	)
 
-	// Split into lines assuming single-line data per event.
-	lines := bytes.Split(sseData, []byte("\n"))
-
-	for _, line := range lines {
-		if len(line) == 0 || !bytes.HasPrefix(line, dataPrefix) {
-			continue
-		}
-
-		data := line[len(dataPrefix):]
-
-		if bytes.Equal(data, doneSuffix) {
-			break
-		}
-
-		var chunk openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(data, &chunk); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal chunk: %w", err)
-		}
-
+	for _, chunk := range chunks {
 		if firstChunk == nil {
-			firstChunk = &chunk
+			firstChunk = chunk
 		}
 
 		// Accumulate content and role from delta (assuming single choice at index 0).
@@ -81,7 +57,7 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 
 	// If no valid first chunk found, return a minimal response.
 	if firstChunk == nil {
-		return json.Marshal(openai.ChatCompletionResponse{
+		return &openai.ChatCompletionResponse{
 			ID:      "",
 			Object:  "chat.completion.chunk",
 			Created: openai.JSONUNIXTime{},
@@ -93,14 +69,14 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 					Role: role,
 				},
 			}},
-		})
+		}
 	}
 
 	// Build the response as a chunk with accumulated content.
 	contentStr := content.String()
 
 	// Create a ChatCompletionResponse with all accumulated content.
-	response := openai.ChatCompletionResponse{
+	response := &openai.ChatCompletionResponse{
 		ID:                firstChunk.ID,
 		Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
 		Created:           firstChunk.Created,
@@ -121,5 +97,5 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		response.Usage = *usage
 	}
 
-	return json.Marshal(response)
+	return response
 }

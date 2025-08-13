@@ -18,13 +18,12 @@ var _ tracing.ChatCompletionSpan = (*chatCompletionSpan)(nil)
 type chatCompletionSpan struct {
 	span     trace.Span
 	recorder tracing.ChatCompletionRecorder
-	chunkIdx int
+	chunks   []*openai.ChatCompletionResponseChunk
 }
 
 // RecordResponseChunk invokes [tracing.ChatCompletionRecorder.RecordResponseChunk].
 func (s *chatCompletionSpan) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
-	s.recorder.RecordResponseChunk(s.span, resp, s.chunkIdx)
-	s.chunkIdx++
+	s.chunks = append(s.chunks, resp) // Delay recording until EndSpan.
 }
 
 // RecordResponse invokes [tracing.ChatCompletionRecorder.RecordResponse].
@@ -34,7 +33,9 @@ func (s *chatCompletionSpan) RecordResponse(resp *openai.ChatCompletionResponse)
 
 // EndSpan invokes [tracing.ChatCompletionRecorder.RecordResponse].
 func (s *chatCompletionSpan) EndSpan() {
-	s.recorder.RecordResponseOnOK(s.span)
+	if len(s.chunks) > 0 {
+		s.recorder.RecordResponseChunks(s.span, s.chunks)
+	}
 	s.span.End()
 }
 

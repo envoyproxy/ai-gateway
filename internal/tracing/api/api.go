@@ -96,14 +96,11 @@ type ChatCompletionRecorder interface {
 	//   - body: contains the complete request body.
 	RecordRequest(span trace.Span, req *openai.ChatCompletionRequest, body []byte)
 
-	// RecordResponseChunk records response chunk attributes to the span for streaming response.
-	RecordResponseChunk(span trace.Span, chunk *openai.ChatCompletionResponseChunk, chunkIdx int)
+	// RecordResponseChunks records response chunk attributes to the span for streaming response.
+	RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk)
 
 	// RecordResponse records response attributes to the span for non-streaming response.
 	RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse)
-
-	// RecordResponseOnOK ends recording the span with a successful status.
-	RecordResponseOnOK(span trace.Span)
 
 	// RecordResponseOnError ends recording the span with an error status.
 	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
