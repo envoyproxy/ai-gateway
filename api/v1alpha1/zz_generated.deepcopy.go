@@ -233,7 +233,11 @@ func (in *AIGatewayRouteSpec) DeepCopyInto(out *AIGatewayRouteSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.APISchema.DeepCopyInto(&out.APISchema)
+	if in.APISchema != nil {
+		in, out := &in.APISchema, &out.APISchema
+		*out = new(VersionedAPISchema)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Rules != nil {
 		in, out := &in.Rules, &out.Rules
 		*out = make([]AIGatewayRouteRule, len(*in))

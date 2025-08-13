@@ -13,8 +13,6 @@ spec:
     - name: some-gateway
       kind: SomeKind
       group: gateway.networking.k8s.io
-  schema:
-    name: OpenAI
   rules:
     - matches:
         - headers:

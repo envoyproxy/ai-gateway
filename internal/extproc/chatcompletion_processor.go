@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -27,15 +28,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &chatCompletionProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.ChatCompletionTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil
@@ -73,6 +76,10 @@ type chatCompletionProcessorRouterFilter struct {
 	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
 	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
+	// tracer is the tracer used for requests.
+	tracer tracing.ChatCompletionTracer
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.ChatCompletionSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -89,17 +96,40 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
 	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
 	// c.upstreamFilter can be nil.
 	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		return c.upstreamFilter.ProcessResponseBody(ctx, body)
+		resp, err = c.upstreamFilter.ProcessResponseBody(ctx, body)
+	} else {
+		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
 	}
-	return c.passThroughProcessor.ProcessResponseBody(ctx, body)
+	if c.span == nil {
+		return
+	}
+
+	var statusCode int
+	if upstream, ok := c.upstreamFilter.(*chatCompletionProcessorUpstreamFilter); ok {
+		if statusInt, _ := strconv.Atoi(upstream.responseHeaders[":status"]); statusInt > 0 {
+			statusCode = statusInt
+		}
+	}
+
+	// Record chunk timing for streaming responses.
+	if c.originalRequestBody.Stream {
+		c.span.RecordChunk()
+	}
+
+	// End the span when response processing is complete.
+	if body.EndOfStream {
+		c.span.EndSpan(statusCode, body.Body)
+	}
+
+	return
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -110,7 +140,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
 		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
-		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{})
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, translator.SJSONOptions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set stream_options: %w", err)
 		}
@@ -131,13 +161,24 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(_ context.Conte
 	})
 	c.originalRequestBody = body
 	c.originalRequestBodyRaw = rawBody.Body
+
+	// Tracing may need to inject headers, so create a header mutation here.
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: additionalHeaders,
+	}
+	c.span = c.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		c.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: additionalHeaders,
-					},
+					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
 			},
@@ -296,6 +337,26 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		isGzip = true
 	default:
 		br = bytes.NewReader(body.Body)
+	}
+
+	// Assume all responses have a valid status code header.
+	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
+		var headerMutation *extprocv3.HeaderMutation
+		var bodyMutation *extprocv3.BodyMutation
+		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response error: %w", err)
+		}
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						BodyMutation:   bodyMutation,
+					},
+				},
+			},
+		}, nil
 	}
 
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)

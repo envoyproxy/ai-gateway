@@ -15,6 +15,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // processorConfig is the configuration for the processor.
@@ -40,7 +41,7 @@ type processorConfigRequestCost struct {
 }
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *processorConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool) (Processor, error)
+type ProcessorFactory func(_ *processorConfig, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.

@@ -213,8 +213,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
-					schema := aiGatewayRoute.Spec.APISchema
-					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaName(schema.Name), Version: ptr.Deref(schema.Version, "v1")}
+					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy

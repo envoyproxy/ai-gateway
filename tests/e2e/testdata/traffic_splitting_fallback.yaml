@@ -28,8 +28,6 @@ metadata:
   name: traffic-splitting-fallback
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: traffic-splitting-fallback
       kind: Gateway

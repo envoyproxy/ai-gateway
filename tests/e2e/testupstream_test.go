@@ -14,18 +14,21 @@ import (
 	"testing"
 	"time"
 
+	openaigo "github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestWithTestUpstream tests the end-to-end functionality of the AI Gateway with the testupstream server.
 func TestWithTestUpstream(t *testing.T) {
 	const manifest = "testdata/testupstream.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -75,10 +78,10 @@ func TestWithTestUpstream(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {
-					fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-					defer fwd.kill()
+					fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+					defer fwd.Kill()
 
-					req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(
+					req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(
 						`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`,
 						tc.modelName)))
 					require.NoError(t, err)
@@ -122,7 +125,7 @@ func TestWithTestUpstream(t *testing.T) {
 	// Sometimes this won't be necessary depending on the kubectl apply timing, but this ensures no flaky tests.
 	//
 	// TODO: delete this after 0.3.0 release since this is for backward compatibility testing.
-	kubectl(t.Context(),
+	e2elib.Kubectl(t.Context(),
 		"patch", "aigatewayroute", "translation-testupstream",
 		"-n", "default",
 		"--type=json",
@@ -135,10 +138,10 @@ func TestWithTestUpstream(t *testing.T) {
 		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404
 		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
-			req, err := http.NewRequest(http.MethodGet, fwd.address()+"/non-llm-route", strings.NewReader("somebody"))
+			req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/non-llm-route", strings.NewReader("somebody"))
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -162,5 +165,76 @@ func TestWithTestUpstream(t *testing.T) {
 			}
 			return true
 		}, 10*time.Second, 1*time.Second)
+	})
+
+	// This is a regression test that ensures that stream=true requests are processed in a streaming manner.
+	// https://github.com/envoyproxy/ai-gateway/pull/1026
+	//
+	// We have almost identical test in the tests/extproc.
+	t.Run("stream non blocking", func(t *testing.T) {
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+		defer fwd.Kill()
+		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
+		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
+		client := openaigo.NewClient(
+			option.WithBaseURL(fwd.Address()+"/v1/"),
+			option.WithHeader(testupstreamlib.ResponseTypeKey, "sse"),
+			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
+				base64.StdEncoding.EncodeToString([]byte(
+					`
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" is"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[],"usage":{"prompt_tokens":25,"completion_tokens":61,"total_tokens":86,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+				))),
+		)
+
+		// NewStreaming below will block until the first event is received, so take the time before calling it.
+		start := time.Now()
+		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
+			Messages: []openaigo.ChatCompletionMessageParamUnion{
+				openaigo.UserMessage("Say this is a test"),
+			},
+			Model: "whatever-model",
+		})
+
+		defer func() {
+			_ = stream.Close()
+		}()
+
+		asserted := false
+		for stream.Next() {
+			chunk := stream.Current()
+			fmt.Println(chunk)
+			if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
+				continue
+			}
+			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
+			// Check each event is received less than a second after the previous one.
+			require.Less(t, time.Since(start), time.Second)
+			start = time.Now()
+			asserted = true
+		}
+		require.NoError(t, stream.Err())
+		require.True(t, asserted)
 	})
 }

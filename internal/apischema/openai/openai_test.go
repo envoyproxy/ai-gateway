@@ -969,3 +969,45 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 		require.JSONEq(t, expected, string(jsonData))
 	})
 }
+
+func TestEmbeddingUnionUnmarshal(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name:  "unmarshal array of floats",
+			input: `[1.0, 2.0, 3.0]`,
+			want:  []float64{1.0, 2.0, 3.0},
+		},
+		{
+			name:  "unmarshal string",
+			input: `"base64response"`,
+			want:  "base64response",
+		},
+		{
+			name:    "unmarshal int should error",
+			input:   `123`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var eu EmbeddingUnion
+			err := json.Unmarshal([]byte(tt.input), &eu)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("EmbeddingUnion Unmarshal Error. error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				// Use reflect.DeepEqual to compare
+				if !cmp.Equal(eu.Value, tt.want) {
+					t.Errorf("EmbeddingUnion Unmarshal Error. got = %v, want %v", eu.Value, tt.want)
+				}
+			}
+		})
+	}
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
+	tracing                       tracing.Tracing
 	config                        *processorConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
@@ -46,9 +48,10 @@ type Server struct {
 }
 
 // NewServer creates a new external processor server.
-func NewServer(logger *slog.Logger) (*Server, error) {
+func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 	srv := &Server{
 		logger:                   logger,
+		tracing:                  tracing,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 	}
@@ -116,7 +119,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
+	return newProcessor(s.config, requestHeaders, s.logger, s.tracing, isUpstreamFilter)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.

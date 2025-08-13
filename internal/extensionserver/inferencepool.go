@@ -358,20 +358,6 @@ func searchInferencePoolInFilterChain(pool *gwaiev1a2.InferencePool, chain []*ht
 	return nil, -1, nil
 }
 
-// Tries to find the route config name in the provided listener.
-func findListenerRouteConfig(listener *listenerv3.Listener) string {
-	// First, get the filter chains from the listener.
-	httpConManager, _, err := findHCM(listener.DefaultFilterChain)
-	if err != nil {
-		return ""
-	}
-	rds := httpConManager.GetRds()
-	if rds == nil {
-		return ""
-	}
-	return rds.RouteConfigName
-}
-
 // mustToAny marshals the provided message to an Any message.
 func mustToAny(msg proto.Message) *anypb.Any {
 	b, err := proto.Marshal(msg)

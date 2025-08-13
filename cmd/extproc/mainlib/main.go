@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -43,6 +45,8 @@ type extProcFlags struct {
 	metricsPort                int        // HTTP port for the metrics server.
 	healthPort                 int        // HTTP port for the health check server.
 	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	// openAIPrefix is the OpenAI API prefix to be used for the external processor.
+	openAIPrefix string
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -75,6 +79,12 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"metricsRequestHeaderLabels",
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
+	)
+	fs.StringVar(&flags.openAIPrefix,
+		"openAIPrefix",
+		"/v1",
+		"OpenAI endpoint prefix to be used for the external processor. This is used to route requests to the correct handler. "+
+			"Defaults to /v1, which is the standard OpenAI API prefix.",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -153,13 +163,18 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
-	server, err := extproc.NewServer(l)
+	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	server, err := extproc.NewServer(l, tracing)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register("/v1/chat/completions", extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register("/v1/embeddings", extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
-	server.Register("/v1/models", extproc.NewModelsProcessor)
+	server.Register(path.Join(flags.openAIPrefix, "/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.openAIPrefix, "/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.openAIPrefix, "/models"), extproc.NewModelsProcessor)
 
 	if err := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
@@ -181,6 +196,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
+		}
+		if err := tracing.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown tracing gracefully", "error", err)
 		}
 	}()
 

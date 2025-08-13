@@ -32,20 +32,16 @@ type openAIToOpenAITranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.EmbeddingRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, _ *openai.EmbeddingRequest, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		out, err := sjson.SetBytesOptions(raw, "model", o.modelNameOverride, &sjson.Options{
-			Optimistic:     true,
-			ReplaceInPlace: true,
-		})
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
-		newBody = out
 	}
 
 	// Always set the path header to the embeddings endpoint so that the request is routed correctly.
@@ -58,8 +54,8 @@ func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(raw []byte, _ *openai.
 		},
 	}
 
-	if onRetry {
-		newBody = raw
+	if onRetry && len(newBody) == 0 {
+		newBody = original
 	}
 
 	if len(newBody) > 0 {
@@ -80,18 +76,9 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 }
 
 // ResponseBody implements [OpenAIEmbeddingTranslator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
-	if v, ok := respHeaders[statusHeaderName]; ok {
-		if v, err := strconv.Atoi(v); err == nil {
-			if !isGoodStatusCode(v) {
-				headerMutation, bodyMutation, err = o.ResponseError(respHeaders, body)
-				return headerMutation, bodyMutation, LLMTokenUsage{}, err
-			}
-		}
-	}
-
 	var resp openai.EmbeddingResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
