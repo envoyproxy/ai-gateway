@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
-	"github.com/envoyproxy/ai-gateway/tests/testotel"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
 func TestChatCompletionSpan_RecordChunk(t *testing.T) {
