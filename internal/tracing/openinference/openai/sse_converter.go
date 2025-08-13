@@ -14,11 +14,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-var (
-	dataPrefix = []byte("data: ")
-	doneSuffix = []byte("[DONE]")
-)
-
 // convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
 // openai.ChatCompletionResponse. This will not serialize zero values including
 // fields whose values are zero or empty, or nested objects where all fields
