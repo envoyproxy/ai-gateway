@@ -129,7 +129,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
 			expRequestBody:  `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant","annotations":[]}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
 		},
 		{
 			name:            "openai - /v1/chat/completions",
@@ -178,7 +178,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant","annotations":[]}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
 		},
 		{
 			name:            "gcp-vertexai - /v1/chat/completions - tool use",
@@ -193,7 +193,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}],"annotations":[]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
 		},
 		{
 			name:            "gcp-anthropicai - /v1/chat/completions",
@@ -208,7 +208,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant","annotations":[]}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",

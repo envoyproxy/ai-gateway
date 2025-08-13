@@ -28,7 +28,7 @@
     {
       "key":  "output.value",
       "value":  {
-        "stringValue":  "{\"choices\": [{\"message\": {\"content\": \"Hello!\", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892\", \"created\": 1753423223, \"model\": \"gpt-4.1-nano-2025-04-14\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"system_fingerprint\": \"fp_38343a2f8f\", \"usage\": {\"completion_tokens\": 2, \"prompt_tokens\": 9, \"total_tokens\": 11, \"completion_tokens_details\": {\"accepted_prediction_tokens\": 0, \"audio_tokens\": 0, \"reasoning_tokens\": 0, \"rejected_prediction_tokens\": 0}, \"prompt_tokens_details\": {\"audio_tokens\": 0, \"cached_tokens\": 0}}}"
+        "stringValue":  "{\"choices\": [{\"message\": {\"annotations\":[], \"content\": \"Hello!\", \"role\": \"assistant\"}, \"index\": 0, \"finish_reason\": \"stop\"}], \"id\": \"chatcmpl-Bx5lfsiWaJAorkTpnbrjlnAnl0892\", \"created\": 1753423223, \"model\": \"gpt-4.1-nano-2025-04-14\", \"object\": \"chat.completion.chunk\", \"service_tier\": \"default\", \"system_fingerprint\": \"fp_38343a2f8f\", \"usage\": {\"completion_tokens\": 2, \"prompt_tokens\": 9, \"total_tokens\": 11, \"completion_tokens_details\": {\"accepted_prediction_tokens\": 0, \"audio_tokens\": 0, \"reasoning_tokens\": 0, \"rejected_prediction_tokens\": 0}, \"prompt_tokens_details\": {\"audio_tokens\": 0, \"cached_tokens\": 0}}}"
       }
     },
     {
