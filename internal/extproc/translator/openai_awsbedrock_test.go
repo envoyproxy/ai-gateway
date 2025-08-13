@@ -19,6 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
@@ -1085,7 +1087,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 	tests := []struct {
 		name   string
 		input  awsbedrock.ConverseResponse
-		output openai.ChatCompletionResponse
+		output CustomChatCompletion
 	}{
 		{
 			name: "basic_testing",
@@ -1106,21 +1108,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					},
 				},
 			},
-			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
-					TotalTokens:      30,
-					PromptTokens:     10,
-					CompletionTokens: 20,
+			output: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					Object: "chat.completion",
+					Usage:  openaigo.CompletionUsage{TotalTokens: 30, PromptTokens: 10, CompletionTokens: 20},
 				},
-				Choices: []openai.ChatCompletionResponseChoice{
+				Choices: []CustomChatCompletionChoice{
 					{
-						Index: 0,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response"),
-							Role:    awsbedrock.ConversationRoleAssistant,
+						ChatCompletionChoice: openaigo.ChatCompletionChoice{Index: 0, FinishReason: string(openaigo.CompletionChoiceFinishReasonStop)},
+						Message: CustomChatCompletionMessage{
+							ChatCompletionMessage: openaigo.ChatCompletionMessage{Content: "response", Role: awsbedrock.ConversationRoleAssistant},
+							ExtraFields:           make(map[string]interface{}),
 						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
 			},
@@ -1143,20 +1142,17 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					},
 				},
 			},
-			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
-					TotalTokens:      30,
-					PromptTokens:     10,
-					CompletionTokens: 20,
+			output: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					Object: "chat.completion",
+					Usage:  openaigo.CompletionUsage{TotalTokens: 30, PromptTokens: 10, CompletionTokens: 20},
 				},
-				Choices: []openai.ChatCompletionResponseChoice{
+				Choices: []CustomChatCompletionChoice{
 					{
-						Index:        0,
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response"),
-							Role:    awsbedrock.ConversationRoleAssistant,
+						ChatCompletionChoice: openaigo.ChatCompletionChoice{Index: 0, FinishReason: string(openaigo.CompletionChoiceFinishReasonStop)},
+						Message: CustomChatCompletionMessage{
+							ChatCompletionMessage: openaigo.ChatCompletionMessage{Content: "response", Role: awsbedrock.ConversationRoleAssistant},
+							ExtraFields:           make(map[string]interface{}),
 						},
 					},
 				},
@@ -1169,7 +1165,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
-						// Text and ToolUse are sent in two different content blocks for AWS Bedrock, OpenAI merges them in one message.
 						Content: []*awsbedrock.ContentBlock{
 							{
 								Text: ptr.To("response"),
@@ -1185,25 +1180,27 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					},
 				},
 			},
-			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Choices: []openai.ChatCompletionResponseChoice{
+			output: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{Object: "chat.completion"},
+				Choices: []CustomChatCompletionChoice{
 					{
-						Index:        0,
-						FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response"),
-							Role:    awsbedrock.ConversationRoleAssistant,
-							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
-								{
-									ID: ptr.To("call_6g7a"),
-									Function: openai.ChatCompletionMessageToolCallFunctionParam{
-										Name:      "exec_python_code",
-										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+						ChatCompletionChoice: openaigo.ChatCompletionChoice{Index: 0, FinishReason: "tool_calls"},
+						Message: CustomChatCompletionMessage{
+							ChatCompletionMessage: openaigo.ChatCompletionMessage{
+								Content: "response",
+								Role:    awsbedrock.ConversationRoleAssistant,
+								ToolCalls: []openaigo.ChatCompletionMessageToolCall{
+									{
+										ID:   "call_6g7a",
+										Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+										Function: openaigo.ChatCompletionMessageToolCallFunction{
+											Name:      "exec_python_code",
+											Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+										},
 									},
-									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},
 							},
+							ExtraFields: make(map[string]interface{}),
 						},
 					},
 				},
@@ -1231,31 +1228,37 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					},
 				},
 			},
-			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
-					TotalTokens:      30,
-					PromptTokens:     10,
-					CompletionTokens: 20,
+			output: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					Object: "chat.completion",
+					Usage: openaigo.CompletionUsage{
+						TotalTokens:      30,
+						PromptTokens:     10,
+						CompletionTokens: 20,
+					},
 				},
-				Choices: []openai.ChatCompletionResponseChoice{
+				Choices: []CustomChatCompletionChoice{
 					{
-						Index: 0,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Content: ptr.To("response"),
-							Role:    awsbedrock.ConversationRoleAssistant,
-							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
-								{
-									ID: ptr.To("call_6g7a"),
-									Function: openai.ChatCompletionMessageToolCallFunctionParam{
-										Name:      "exec_python_code",
-										Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+						ChatCompletionChoice: openaigo.ChatCompletionChoice{
+							Index:        0,
+							FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+						},
+						Message: CustomChatCompletionMessage{
+							ChatCompletionMessage: openaigo.ChatCompletionMessage{
+								Content: "response",
+								Role:    awsbedrock.ConversationRoleAssistant,
+								ToolCalls: []openaigo.ChatCompletionMessageToolCall{
+									{
+										ID: "call_6g7a",
+										Function: openaigo.ChatCompletionMessageToolCallFunction{
+											Name:      "exec_python_code",
+											Arguments: "{\"code_block\":\"from playwright.sync_api import sync_playwright\\n\"}",
+										},
+										Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
 									},
-									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},
 							},
 						},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 					},
 				},
 			},
@@ -1282,21 +1285,17 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					},
 				},
 			},
-			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
-				Choices: []openai.ChatCompletionResponseChoice{
+			output: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					Object: "chat.completion",
+				},
+				Choices: []CustomChatCompletionChoice{
 					{
-						Index:        0,
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Role:    awsbedrock.ConversationRoleAssistant,
-							Content: ptr.To("This is the final answer."),
+						ChatCompletionChoice: openaigo.ChatCompletionChoice{Index: 0, FinishReason: string(openaigo.CompletionChoiceFinishReasonStop)},
+						Message: CustomChatCompletionMessage{
+							ChatCompletionMessage: openaigo.ChatCompletionMessage{Content: "This is the final answer.", Role: awsbedrock.ConversationRoleAssistant},
 							ExtraFields: map[string]interface{}{
-								"reasoningContent": &awsbedrock.ReasoningContentBlock{
-									ReasoningText: &awsbedrock.ReasoningTextBlock{
-										Text: "This is the model's thought process.",
-									},
-								},
+								"reasoning_content": &awsbedrock.ReasoningContentBlock{ReasoningText: &awsbedrock.ReasoningTextBlock{Text: "This is the model's thought process."}},
 							},
 						},
 					},
@@ -1332,7 +1331,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
 					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
 					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
-				}, usedToken)
+				},
+				usedToken,
+			)
 		})
 	}
 }

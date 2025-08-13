@@ -17,11 +17,49 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/fatih/structs"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
+
+// CustomChatCompletionMessage embeds the original and adds our ExtraFields.
+// This is where the custom marshaling logic will live.
+type CustomChatCompletionMessage struct {
+	openaigo.ChatCompletionMessage
+	ExtraFields map[string]interface{} `json:"-"`
+}
+
+// CustomChatCompletionChoice shadows the original Message field with our custom type.
+type CustomChatCompletionChoice struct {
+	openaigo.ChatCompletionChoice
+	Message CustomChatCompletionMessage `json:"message"`
+}
+
+// CustomChatCompletion shadows the original Choices slice with our custom type.
+type CustomChatCompletion struct {
+	openaigo.ChatCompletion
+	Choices []CustomChatCompletionChoice `json:"choices"`
+}
+
+// MarshalJSON implements a custom marshaler for CustomChatCompletionMessage.
+// It merges the standard fields with the contents of ExtraFields.
+func (c CustomChatCompletionMessage) MarshalJSON() ([]byte, error) {
+	// 1. Directly convert the embedded struct to a map using the library.
+	// This respects all the `json` tags on the struct's fields.
+	tempMap := structs.Map(c.ChatCompletionMessage)
+
+	// 2. Iterate through your ExtraFields and merge them into the map.
+	for key, value := range c.ExtraFields {
+		tempMap[key] = value
+	}
+
+	// 3. Marshal the final, merged map into a JSON byte slice.
+	return json.Marshal(tempMap)
+}
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
 func NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
@@ -475,21 +513,20 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockStopReasonToOpenAI
 
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICalls(
 	toolUse *awsbedrock.ToolUseBlock,
-) *openai.ChatCompletionMessageToolCallParam {
+) openaigo.ChatCompletionMessageToolCall {
 	if toolUse == nil {
-		return nil
+		return openaigo.ChatCompletionMessageToolCall{}
 	}
 	arguments, err := json.Marshal(toolUse.Input)
 	if err != nil {
-		return nil
+		return openaigo.ChatCompletionMessageToolCall{}
 	}
-	return &openai.ChatCompletionMessageToolCallParam{
-		ID: &toolUse.ToolUseID,
-		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+	return openaigo.ChatCompletionMessageToolCall{
+		ID: toolUse.ToolUseID,
+		Function: openaigo.ChatCompletionMessageToolCallFunction{
 			Name:      toolUse.Name,
 			Arguments: string(arguments),
 		},
-		Type: openai.ChatCompletionMessageToolCallTypeFunction,
 	}
 }
 
@@ -596,10 +633,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	openAIResp := openai.ChatCompletionResponse{
-		Object:  "chat.completion",
-		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+	openAIResp := CustomChatCompletion{
+		Choices: make([]CustomChatCompletionChoice, 0),
 	}
+
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
 		tokenUsage = LLMTokenUsage{
@@ -607,39 +644,38 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
 			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
 		}
-		openAIResp.Usage = openai.ChatCompletionResponseUsage{
-			TotalTokens:      bedrockResp.Usage.TotalTokens,
-			PromptTokens:     bedrockResp.Usage.InputTokens,
-			CompletionTokens: bedrockResp.Usage.OutputTokens,
+		openAIResp.Usage = openaigo.CompletionUsage{
+			TotalTokens:      int64(bedrockResp.Usage.TotalTokens),
+			PromptTokens:     int64(bedrockResp.Usage.InputTokens),
+			CompletionTokens: int64(bedrockResp.Usage.OutputTokens),
 		}
 	}
 
 	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
-	choice := openai.ChatCompletionResponseChoice{
-		Index: (int64)(0),
-		Message: openai.ChatCompletionResponseChoiceMessage{
-			Role: bedrockResp.Output.Message.Role,
+	choice := CustomChatCompletionChoice{
+		Message: CustomChatCompletionMessage{
+			ChatCompletionMessage: openaigo.ChatCompletionMessage{
+				Role: openAIconstant.Assistant(bedrockResp.Output.Message.Role),
+			},
+			ExtraFields: make(map[string]interface{}),
 		},
-		FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
 	}
+	choice.Index = (int64)(0)
+	choice.FinishReason = string(o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason))
 
 	for _, output := range bedrockResp.Output.Message.Content {
 		switch {
 		case output.ToolUse != nil:
 			toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse)
-			choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
+			choice.Message.ToolCalls = append(choice.Message.ToolCalls, toolCall)
 
 		case output.Text != nil:
 			// We expect only one text content block in the response.
-			if choice.Message.Content == nil {
-				choice.Message.Content = output.Text
+			if choice.Message.Content == "" {
+				choice.Message.Content = *output.Text
 			}
 		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
-			// Populate the new ExtraFields map instead of a dedicated field.
-			if choice.Message.ExtraFields == nil {
-				choice.Message.ExtraFields = make(map[string]interface{})
-			}
-			choice.Message.ExtraFields["reasoningContent"] = output.ReasoningContent
+			choice.Message.ExtraFields["reasoning_content"] = *output.ReasoningContent
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
