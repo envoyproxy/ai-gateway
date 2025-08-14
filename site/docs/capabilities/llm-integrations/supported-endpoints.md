@@ -10,11 +10,6 @@ The Envoy AI Gateway provides OpenAI-compatible API endpoints for routing and ma
 
 The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
 
-:::tip
-`/v1` prefix on OpenAI API endpoints is configurable via Envoy AI Gateway installation options. The default is `/v1` unless specified otherwise.
-Please refer to the `endpointConfig` option in the [helm values file](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for details.
-:::
-
 ## Supported Endpoints
 
 ### Chat Completions

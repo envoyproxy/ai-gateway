@@ -34,11 +34,9 @@ installing Envoy Gateway and AI Gateway.
 ### Install Phoenix for LLM observability
 
 ```shell
-# Install Phoenix using SQLite
+# Install Phoenix using PostgreSQL storage.
 helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
   --namespace envoy-ai-gateway-system \
-  --set postgresql.enabled=false \
-  --set persistence.enabled=true \
   --set auth.enableAuth=false \
   --set server.port=6006
 ```

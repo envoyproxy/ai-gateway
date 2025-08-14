@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
-	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
 // otelTestEnvironment holds all the services needed for OTEL tests.

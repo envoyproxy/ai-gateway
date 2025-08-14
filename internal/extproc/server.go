@@ -102,6 +102,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 // Register a new processor for the given request path.
 func (s *Server) Register(path string, newProcessor ProcessorFactory) {
+	s.logger.Info("Registering processor", slog.String("path", path))
 	s.processorFactories[path] = newProcessor
 }
 
@@ -115,6 +116,12 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		pathHeader = originalPathHeader
 	}
 	path := requestHeaders[pathHeader]
+
+	// Strip query parameters for processor lookup.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)

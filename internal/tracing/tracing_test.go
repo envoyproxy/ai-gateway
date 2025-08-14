@@ -20,10 +20,10 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
-	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name

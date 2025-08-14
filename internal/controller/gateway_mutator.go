@@ -37,13 +37,13 @@ type gatewayMutator struct {
 	extProcLogLevel            string
 	udsPath                    string
 	metricsRequestHeaderLabels string
-	openAIPrefix               string
+	rootPrefix                 string
 	extProcExtraEnvVars        []corev1.EnvVar
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderLabels, openAIPrefix, extProcExtraEnvVars string,
+	udsPath, metricsRequestHeaderLabels, rootPrefix, extProcExtraEnvVars string,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -63,7 +63,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		logger:                     logger,
 		udsPath:                    udsPath,
 		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
-		openAIPrefix:               openAIPrefix,
+		rootPrefix:                 rootPrefix,
 		extProcExtraEnvVars:        parsedEnvVars,
 	}
 }
@@ -95,7 +95,7 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMe
 		"-extProcAddr", "unix://" + g.udsPath,
 		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
 		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
-		"-openAIPrefix", g.openAIPrefix,
+		"-rootPrefix", g.rootPrefix,
 	}
 
 	// Add metrics header label mapping if configured.

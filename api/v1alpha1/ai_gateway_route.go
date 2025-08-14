@@ -78,7 +78,7 @@ type AIGatewayRouteSpec struct {
 	// Based on this schema, the ai-gateway will perform the necessary transformation to the
 	// output schema specified in the selected AIServiceBackend during the routing process.
 	//
-	// Currently, the only supported schema is OpenAI as the input schema.
+	// Currently, the supported schemas are OpenAI and Anthropic as input schemas.
 	//
 	// Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0.
 	//

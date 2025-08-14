@@ -8,7 +8,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"path"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -74,8 +73,6 @@ type Options struct {
 	MetricsRequestHeaderLabels string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
-	// OpenAIEndpointsPrefix is the prefix for OpenAI endpoints that follow after the root prefix.
-	OpenAIPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
 	ExtProcExtraEnvVars string
 }
@@ -186,7 +183,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcLogLevel,
 			options.UDSPath,
 			options.MetricsRequestHeaderLabels,
-			path.Join(options.RootPrefix, options.OpenAIPrefix),
+			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
