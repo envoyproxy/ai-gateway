@@ -11,6 +11,7 @@ package anthropic
 type MessagesRequest map[string]interface{}
 
 // Helper methods to extract common fields from the dictionary
+
 func (m MessagesRequest) GetModel() string {
 	if model, ok := m["model"].(string); ok {
 		return model

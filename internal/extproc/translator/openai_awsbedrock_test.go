@@ -1305,6 +1305,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		require.Len(t, o.events, 1)
 		require.Equal(t, eventBytes[offsets[1]:offsets[1]+5], o.bufferedBody)
 
+		clear(o.events)
 		o.events = o.events[:0]
 		o.bufferedBody = eventBytes[0 : offsets[2]+5]
 		o.extractAmazonEventStreamEvents()

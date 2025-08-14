@@ -631,6 +631,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) extractAmazonEventStreamE
 	// TODO: Maybe reuse the reader and decoder.
 	r := bytes.NewReader(o.bufferedBody)
 	dec := eventstream.NewDecoder()
+	clear(o.events)
 	o.events = o.events[:0]
 	var lastRead int64
 	for {

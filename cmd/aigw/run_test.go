@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/openai/openai-go"
@@ -43,7 +44,7 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 
 func TestRun(t *testing.T) {
 	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
@@ -158,6 +159,13 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testRunCmdContextWriteEnvoyResourcesAndRunExtProc)
+}
+
+func testRunCmdContextWriteEnvoyResourcesAndRunExtProc(t *testing.T) {
+	t.Helper()
+
 	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	runCtx := &runCmdContext{
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
@@ -169,7 +177,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	_, err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
@@ -179,7 +187,14 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 }
 
 func Test_mustStartExtProc(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testMustStartExtProc)
+}
+
+func testMustStartExtProc(t *testing.T) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	runCtx := &runCmdContext{
 		tmpdir: t.TempDir(),

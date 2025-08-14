@@ -491,7 +491,6 @@ type Reasoning struct {
 	Summary *string `json:"summary,omitempty"`
 }
 
-// ChatCompletionRequest represents a request structure for chat completion API.
 // ChatCompletionModality represents the output types that the model can generate.
 type ChatCompletionModality string
 
