@@ -13,6 +13,8 @@ go install ./cmd/aigw
 ```
 
 :::tip
+`git clone` step is a temporary workaround for the issue with `go install`. See the issue [#1064](https://github.com/envoyproxy/ai-gateway/issues/1064) for details.
+
 `go install` command installs a binary in the `$(go env GOPATH)/bin` directory.
 Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
 
@@ -20,8 +22,6 @@ For example, you can add the following line to your shell profile (e.g., `~/.bas
 ```sh
 export PATH=$PATH:$(go env GOPATH)/bin
 ```
-
-Also, `git clone` step is a temporary workaround for the issue with `go install`. See the issue [#1064](https://github.com/envoyproxy/ai-gateway/issues/1064) for details.
 :::
 
 Now, you can check if the installation was successful by running the following command:
