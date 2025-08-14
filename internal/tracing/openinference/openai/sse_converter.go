@@ -22,7 +22,7 @@ import (
 // TODO: This can be refactored in "streaming" in stateful way without asking for all chunks at once.
 // That would reduce a slice allocation for events.
 // TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
-// openai.ChatCompletionResponseChunk one at a time, and then we can don't need to accumulate all chunks
+// openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
 func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 
