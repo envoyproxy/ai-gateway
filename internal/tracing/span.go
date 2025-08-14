@@ -8,6 +8,7 @@ package tracing
 import (
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -17,17 +18,29 @@ var _ tracing.ChatCompletionSpan = (*chatCompletionSpan)(nil)
 type chatCompletionSpan struct {
 	span     trace.Span
 	recorder tracing.ChatCompletionRecorder
-	chunkIdx int
+	chunks   []*openai.ChatCompletionResponseChunk
 }
 
-// RecordChunk invokes ChatCompletionRecorder.RecordChunk.
-func (s *chatCompletionSpan) RecordChunk() {
-	s.recorder.RecordChunk(s.span, s.chunkIdx)
-	s.chunkIdx++
+// RecordResponseChunk invokes [tracing.ChatCompletionRecorder.RecordResponseChunk].
+func (s *chatCompletionSpan) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
+	s.chunks = append(s.chunks, resp) // Delay recording until EndSpan to collect all events.
 }
 
-// EndSpan invokes ChatCompletionRecorder.RecordResponse.
-func (s *chatCompletionSpan) EndSpan(statusCode int, body []byte) {
-	s.recorder.RecordResponse(s.span, statusCode, body)
+// RecordResponse invokes [tracing.ChatCompletionRecorder.RecordResponse].
+func (s *chatCompletionSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+	s.recorder.RecordResponse(s.span, resp)
+}
+
+// EndSpan invokes [tracing.ChatCompletionRecorder.RecordResponse].
+func (s *chatCompletionSpan) EndSpan() {
+	if len(s.chunks) > 0 {
+		s.recorder.RecordResponseChunks(s.span, s.chunks)
+	}
+	s.span.End()
+}
+
+// EndSpanOnError invokes [tracing.ChatCompletionRecorder.RecordResponse].
+func (s *chatCompletionSpan) EndSpanOnError(statusCode int, body []byte) {
+	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()
 }

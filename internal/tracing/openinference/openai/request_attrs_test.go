@@ -17,7 +17,7 @@ import (
 
 var (
 	basicReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -37,7 +37,7 @@ var (
 
 	// Multimodal request with text and image.
 	multimodalReq = &openai.ChatCompletionRequest{
-		Model:     openai.ModelGPT41Nano,
+		Model:     openai.ModelGPT5Nano,
 		MaxTokens: ptr(int64(100)),
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
@@ -64,7 +64,7 @@ var (
 
 	// Request with tools.
 	toolsReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -126,7 +126,7 @@ var (
 
 	// Request with JSON mode.
 	jsonModeReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -142,7 +142,7 @@ var (
 
 	// Request with system message.
 	systemMessageReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleSystem,
@@ -164,7 +164,7 @@ var (
 
 	// Request with empty tool array.
 	emptyToolsReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -178,7 +178,7 @@ var (
 
 	// Request with tool message.
 	toolMessageReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -216,7 +216,7 @@ var (
 
 	// Request with empty image URL.
 	emptyImageURLReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -242,7 +242,7 @@ var (
 
 	// Request with empty user content.
 	emptyContentReq = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -269,10 +269,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
@@ -284,10 +284,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(multimodalReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano","max_tokens":100}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is in this image?"),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
@@ -302,10 +302,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(toolsReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","tool_choice":"auto"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano","tool_choice":"auto"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "What is the weather like in Boston today?"),
 				attribute.String("llm.tools.0.tool.json_schema", `{"type":"function","function":{"name":"get_current_weather","description":"Get the current weather in a given location","parameters":{"properties":{"location":{"description":"The city and state, e.g. San Francisco, CA","type":"string"},"unit":{"enum":["celsius","fahrenheit"],"type":"string"}},"required":["location"],"type":"object"}}}`),
@@ -335,10 +335,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(jsonModeReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","response_format":{"type":"json_object"}}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano","response_format":{"type":"json_object"}}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Generate a JSON object with three properties: name, age, and city."),
 			},
@@ -350,10 +350,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(systemMessageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleSystem),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "You are a helpful assistant."),
 				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleUser),
@@ -367,10 +367,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(emptyToolsReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
@@ -382,10 +382,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(toolMessageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "What's the weather?"),
 				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleAssistant),
@@ -401,10 +401,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(emptyImageURLReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "What is this?"),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
@@ -418,10 +418,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(emptyContentReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				// Empty content is skipped..
 			},
@@ -437,9 +437,9 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano","max_tokens":100}`),
 				// Messages are not included when HideInputs is true.
 			},
 		},
@@ -453,10 +453,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(multimodalReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano","max_tokens":100}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano","max_tokens":100}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
 				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
@@ -474,10 +474,10 @@ func TestBuildRequestAttributes(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(systemMessageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleSystem),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
 				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleUser),

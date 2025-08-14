@@ -32,7 +32,7 @@ func TestAnthropicStreamParser_ErrorHandling(t *testing.T) {
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, _, _, err = translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream)
+		_, _, _, err = translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
 		return err
 	}
 
@@ -96,7 +96,7 @@ data: {"type": "message_stop"}
 
 	t.Run("body read error", func(t *testing.T) {
 		parser := newAnthropicStreamParser("test-model")
-		_, _, _, err := parser.Process(&mockErrorReader{}, false)
+		_, _, _, err := parser.Process(&mockErrorReader{}, false, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to read from stream body")
 	})
@@ -139,7 +139,7 @@ data: {"type": "message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 
@@ -248,7 +248,7 @@ data: {"type":"message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -318,7 +318,7 @@ data: {"type":"message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -345,7 +345,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -403,7 +403,7 @@ data: {"type": "message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -462,7 +462,7 @@ func TestAnthropicStreamParser_EventTypes(t *testing.T) {
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, tokenUsage, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream)
+		_, bm, tokenUsage, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
 		return bm, tokenUsage, err
 	}
 

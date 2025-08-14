@@ -65,6 +65,10 @@ const (
 	CassetteChatDetailedUsage
 	// CassetteChatStreamingDetailedUsage tests capture of detailed token usage in streaming responses with include_usage.
 	CassetteChatStreamingDetailedUsage
+	// CassetteChatWebSearch tests OpenAI Web Search tool with a small URL response, including citations.
+	CassetteChatWebSearch
+	// CassetteChatStreamingWebSearch is CassetteChatWebSearch except with streaming enabled.
+	CassetteChatStreamingWebSearch
 	_cassetteNameEnd // Sentinel value for iteration.
 )
 
@@ -87,6 +91,8 @@ var stringValues = map[Cassette]string{
 	CassetteChatTextToAudio:            "chat-text-to-audio",
 	CassetteChatDetailedUsage:          "chat-detailed-usage",
 	CassetteChatStreamingDetailedUsage: "chat-streaming-detailed-usage",
+	CassetteChatWebSearch:              "chat-web-search",
+	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
 }
 
 // String returns the string representation of the cassette name.
@@ -144,49 +150,10 @@ func NewRequest(ctx context.Context, baseURL string, cassetteName Cassette) (*ht
 // Prefer bodies in the OpenAI OpenAPI examples to making them up manually.
 // See https://github.com/openai/openai-openapi/tree/manual_spec
 var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
-	CassetteChatBasic: {
-		Model: openai.ModelGPT41Nano,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
-					Role: openai.ChatMessageRoleUser,
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: "Hello!",
-					},
-				},
-			},
-		},
-	},
-	CassetteChatStreaming: {
-		Model: openai.ModelGPT41Nano,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				Type: openai.ChatMessageRoleDeveloper,
-				Value: openai.ChatCompletionDeveloperMessageParam{
-					Role: openai.ChatMessageRoleDeveloper,
-					Content: openai.StringOrArray{
-						Value: "You are a helpful assistant.",
-					},
-				},
-			},
-			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
-					Role: openai.ChatMessageRoleUser,
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: "Hello!",
-					},
-				},
-			},
-		},
-		Stream: true,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-	},
+	CassetteChatBasic:     cassetteChatBasic,
+	CassetteChatStreaming: withStream(cassetteChatBasic),
 	CassetteChatTools: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -224,7 +191,7 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 		ToolChoice: "auto",
 	},
 	CassetteChatMultimodal: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -251,10 +218,10 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		MaxTokens: ptr.To[int64](100),
+		MaxCompletionTokens: ptr.To[int64](100),
 	},
 	CassetteChatMultiturn: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleDeveloper,
@@ -293,10 +260,10 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		Temperature: ptr.To(0.7),
+		Temperature: ptr.To(1.0),
 	},
 	CassetteChatJSONMode: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -313,11 +280,11 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 		},
 	},
 	CassetteChatNoMessages: {
-		Model:    openai.ModelGPT41Nano,
+		Model:    openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{},
 	},
 	CassetteChatParallelTools: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -356,7 +323,7 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 		ParallelToolCalls: ptr.To(true),
 	},
 	CassetteChatBadRequest: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -372,7 +339,7 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 		MaxTokens:   ptr.To[int64](0),
 	},
 	CassetteChatImageToText: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleUser,
@@ -480,52 +447,10 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 			openai.ChatCompletionModalityAudio,
 		},
 	},
-	CassetteChatDetailedUsage: {
-		Model: openai.ModelGPT41Nano,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				Type: openai.ChatMessageRoleDeveloper,
-				Value: openai.ChatCompletionDeveloperMessageParam{
-					Role: openai.ChatMessageRoleDeveloper,
-					Content: openai.StringOrArray{
-						Value: "You are a poetry assistant. Write a haiku when asked.",
-					},
-				},
-			},
-			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
-					Role: openai.ChatMessageRoleUser,
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: "Write a haiku about OpenTelemetry tracing.",
-					},
-				},
-			},
-		},
-		Temperature: ptr.To(0.8),
-		MaxTokens:   ptr.To[int64](100),
-	},
-	CassetteChatStreamingDetailedUsage: {
-		Model: openai.ModelGPT41Nano,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
-					Role: openai.ChatMessageRoleUser,
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: "Say hello",
-					},
-				},
-			},
-		},
-		Stream: true,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
-		MaxTokens: ptr.To[int64](10),
-	},
+	CassetteChatDetailedUsage:          cassetteChatDetailedUsage,
+	CassetteChatStreamingDetailedUsage: withStreamUsage(cassetteChatDetailedUsage),
 	CassetteChatTextToImageTool: {
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				Type: openai.ChatMessageRoleSystem,
@@ -571,6 +496,74 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				Name: "generate_image",
 			},
 		},
-		MaxTokens: ptr.To[int64](150),
+		MaxCompletionTokens: ptr.To[int64](150),
 	},
+	CassetteChatWebSearch:          cassetteChatWebSearch,
+	CassetteChatStreamingWebSearch: withStream(cassetteChatWebSearch),
+}
+
+// Cassettes that also have streaming variants.
+var (
+	cassetteChatBasic = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Hello!",
+					},
+				},
+			},
+		},
+	}
+	cassetteChatDetailedUsage = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleDeveloper,
+				Value: openai.ChatCompletionDeveloperMessageParam{
+					Role: openai.ChatMessageRoleDeveloper,
+					Content: openai.StringOrArray{
+						Value: "Hello, I'm a developer!",
+					},
+				},
+			},
+		},
+		Temperature:         ptr.To(1.0),
+		MaxCompletionTokens: ptr.To[int64](100),
+	}
+	cassetteChatWebSearch = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT4oMiniSearchPreview,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations",
+					},
+				},
+			},
+		},
+		WebSearchOptions: &openai.WebSearchOptions{
+			SearchContextSize: openai.WebSearchContextSizeLow,
+		},
+	}
+)
+
+func withStream(req *openai.ChatCompletionRequest) *openai.ChatCompletionRequest {
+	if req == nil {
+		return nil
+	}
+	clone := *req // shallow copy.
+	clone.Stream = true
+	return &clone
+}
+
+func withStreamUsage(req *openai.ChatCompletionRequest) *openai.ChatCompletionRequest {
+	clone := withStream(req)
+	clone.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+	return clone
 }

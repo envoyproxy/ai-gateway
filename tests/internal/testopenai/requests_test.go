@@ -23,79 +23,27 @@ func TestNewRequest(t *testing.T) {
 
 	baseURL := server.URL()
 
-	// Test matrix with all cassettes and their expected status.
-	tests := []struct {
+	type testCase struct {
 		cassetteName   Cassette
 		expectedStatus int
-	}{
-		{
-			cassetteName:   CassetteChatBasic,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatStreaming,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatTools,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatMultimodal,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatMultiturn,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatJSONMode,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatNoMessages,
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			cassetteName:   CassetteChatParallelTools,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatBadRequest,
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			cassetteName:   CassetteChatImageToText,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatUnknownModel,
-			expectedStatus: http.StatusNotFound,
-		},
-		{
-			cassetteName:   CassetteChatReasoning,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatTextToImageTool,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatAudioToText,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatTextToAudio,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatDetailedUsage,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			cassetteName:   CassetteChatStreamingDetailedUsage,
-			expectedStatus: http.StatusOK,
-		},
+	}
+
+	cassettes := ChatCassettes()
+	tests := make([]testCase, 0, len(cassettes))
+	for _, cassette := range cassettes {
+		var expectedStatus int
+		switch cassette {
+		case CassetteChatNoMessages, CassetteChatBadRequest:
+			expectedStatus = http.StatusBadRequest
+		case CassetteChatUnknownModel:
+			expectedStatus = http.StatusNotFound
+		default:
+			expectedStatus = http.StatusOK
+		}
+		tests = append(tests, testCase{
+			cassetteName:   cassette,
+			expectedStatus: expectedStatus,
+		})
 	}
 
 	for _, tc := range tests {

@@ -224,11 +224,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).Complete(rc)
 	require.NoError(t, err)
 
-	go func() {
-		err = mgr.Start(t.Context())
-		require.NoError(t, err)
-	}()
-
 	resourceReq := &corev1.ResourceRequirements{
 		Limits: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -294,6 +289,11 @@ func TestAIGatewayRouteController(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
+
+	// Start the manager and wait for resources to be cached before trigger a reconciler.
+	go func() { require.NoError(t, mgr.Start(t.Context())) }()
+	require.True(t, mgr.GetCache().WaitForCacheSync(t.Context()))
+
 	t.Run("create route", func(t *testing.T) {
 		err := c.Create(t.Context(), origin)
 		require.NoError(t, err)
@@ -404,11 +404,6 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
 	require.NoError(t, err)
 
-	go func() {
-		err = mgr.Start(t.Context())
-		require.NoError(t, err)
-	}()
-
 	const backendSecurityPolicyName, backendSecurityPolicyNamespace = "bsp", "default"
 
 	originals := []*aigv1a1.AIServiceBackend{
@@ -446,6 +441,10 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	for _, backend := range originals {
 		require.NoError(t, c.Create(t.Context(), backend))
 	}
+
+	// Start the manager and wait for banckends to be cached before trigger a reconciler.
+	go func() { require.NoError(t, mgr.Start(t.Context())) }()
+	require.True(t, mgr.GetCache().WaitForCacheSync(t.Context()))
 
 	t.Run("create security policy", func(t *testing.T) {
 		origin := &aigv1a1.BackendSecurityPolicy{
@@ -563,11 +562,6 @@ func TestAIServiceBackendController(t *testing.T) {
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
 	require.NoError(t, err)
 
-	go func() {
-		err = mgr.Start(t.Context())
-		require.NoError(t, err)
-	}()
-
 	const aiServiceBackendName, aiServiceBackendNamespace = "mybackend", "default"
 	// Create an AIGatewayRoute to be referenced by the AIServiceBackend.
 	originals := []*aigv1a1.AIGatewayRoute{
@@ -611,6 +605,10 @@ func TestAIServiceBackendController(t *testing.T) {
 	for _, route := range originals {
 		require.NoError(t, c.Create(t.Context(), route))
 	}
+
+	// Start the manager and wait for routes to be cached before trigger a reconciler.
+	go func() { require.NoError(t, mgr.Start(t.Context())) }()
+	require.True(t, mgr.GetCache().WaitForCacheSync(t.Context()))
 
 	t.Run("create backend", func(t *testing.T) {
 		origin := &aigv1a1.AIServiceBackend{
@@ -717,8 +715,6 @@ func TestSecretController(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	go func() { require.NoError(t, mgr.Start(t.Context())) }()
-
 	// Create a bsp that references the secret.
 	originals := []*aigv1a1.BackendSecurityPolicy{
 		{
@@ -743,6 +739,10 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, c.Create(t.Context(), bsp))
 	}
 	sort.Slice(originals, func(i, j int) bool { return originals[i].Name < originals[j].Name })
+
+	// Start the manager and wait for bsps to be cached before trigger a reconciler.
+	go func() { require.NoError(t, mgr.Start(t.Context())) }()
+	require.True(t, mgr.GetCache().WaitForCacheSync(t.Context()))
 
 	t.Run("create secret", func(t *testing.T) {
 		err = c.Create(t.Context(), &corev1.Secret{

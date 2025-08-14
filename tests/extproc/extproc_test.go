@@ -38,7 +38,7 @@ var (
 	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
-	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic}
+	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"}
 	geminiSchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
 	groqSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
 	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}

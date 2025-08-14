@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 const (
@@ -100,11 +101,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[st
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Gemini.
 // This method translates a GCP Gemini API response to the OpenAI ChatCompletion format.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if o.stream {
-		return o.handleStreamingResponse(body, endOfStream)
+		return o.handleStreamingResponse(body, endOfStream, span)
 	}
 
 	// Non-streaming logic.
@@ -137,12 +138,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	}
 
 	headerMutation, bodyMutation = buildRequestMutations("", openAIRespBytes)
-
+	if span != nil {
+		span.RecordResponse(openAIResp)
+	}
 	return headerMutation, bodyMutation, usage, nil
 }
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	// Parse GCP streaming chunks from buffered body and current input.
@@ -175,6 +178,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		sseChunkBuf.WriteString("data: ")
 		sseChunkBuf.Write(chunkBytes)
 		sseChunkBuf.WriteString("\n\n")
+
+		if span != nil {
+			span.RecordResponseChunk(openAIChunk)
+		}
 	}
 	mut := &extprocv3.BodyMutation_Body{
 		Body: sseChunkBuf.Bytes(),
@@ -220,7 +227,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 }
 
 // convertGCPChunkToOpenAI converts a GCP streaming chunk to OpenAI streaming format.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(chunk genai.GenerateContentResponse) openai.ChatCompletionResponseChunk {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(chunk genai.GenerateContentResponse) *openai.ChatCompletionResponseChunk {
 	// Convert candidates to OpenAI choices for streaming.
 	choices, err := geminiCandidatesToOpenAIStreamingChoices(chunk.Candidates)
 	if err != nil {
@@ -234,7 +241,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 		usage = ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
 	}
 
-	return openai.ChatCompletionResponseChunk{
+	return &openai.ChatCompletionResponseChunk{
 		Object:  "chat.completion.chunk",
 		Choices: choices,
 		Usage:   usage,
@@ -303,15 +310,15 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	}
 }
 
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (openai.ChatCompletionResponse, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openai.ChatCompletionResponse, error) {
 	// Convert candidates to OpenAI choices.
 	choices, err := geminiCandidatesToOpenAIChoices(gcr.Candidates)
 	if err != nil {
-		return openai.ChatCompletionResponse{}, fmt.Errorf("error converting choices: %w", err)
+		return nil, fmt.Errorf("error converting choices: %w", err)
 	}
 
 	// Set up the OpenAI response.
-	openaiResp := openai.ChatCompletionResponse{
+	openaiResp := &openai.ChatCompletionResponse{
 		Choices: choices,
 		Object:  "chat.completion",
 		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),

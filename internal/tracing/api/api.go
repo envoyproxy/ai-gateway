@@ -63,15 +63,17 @@ type ChatCompletionTracer interface {
 
 // ChatCompletionSpan represents an OpenAI chat completion.
 type ChatCompletionSpan interface {
-	// RecordChunk records timing events for streaming responses.
-	RecordChunk()
+	// RecordResponseChunk records the response chunk attributes to the span for streaming response.
+	RecordResponseChunk(resp *openai.ChatCompletionResponseChunk)
 
-	// EndSpan finalizes and ends the span with response data.
-	//
-	// Parameters:
-	//   - statusCode: HTTP status code of the response or zero if unknown.
-	//   - body: the entire buffered response body, which is SSE chunks when streaming.
-	EndSpan(statusCode int, body []byte)
+	// RecordResponse records the response attributes to the span for non-streaming response.
+	RecordResponse(resp *openai.ChatCompletionResponse)
+
+	// EndSpanOnError finalizes and ends the span with an error status.
+	EndSpanOnError(statusCode int, body []byte)
+
+	// EndSpan finalizes and ends the span.
+	EndSpan()
 }
 
 // ChatCompletionRecorder records attributes to a span according to a semantic
@@ -94,16 +96,14 @@ type ChatCompletionRecorder interface {
 	//   - body: contains the complete request body.
 	RecordRequest(span trace.Span, req *openai.ChatCompletionRequest, body []byte)
 
-	// RecordChunk is only called when streaming and records the timing of a
-	// streaming chunk.
-	RecordChunk(span trace.Span, chunkIdx int)
+	// RecordResponseChunks records response chunk attributes to the span for streaming response.
+	RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk)
 
-	// RecordResponse records response attributes to the span.
-	//
-	// Parameters:
-	//   - statusCode: is the HTTP status code of the response or zero if unknown.
-	//   - body: contains the complete response body.
-	RecordResponse(span trace.Span, statusCode int, body []byte)
+	// RecordResponse records response attributes to the span for non-streaming response.
+	RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse)
+
+	// RecordResponseOnError ends recording the span with an error status.
+	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
 }
 
 // NoopChatCompletionTracer is a ChatCompletionTracer that doesn't do anything.

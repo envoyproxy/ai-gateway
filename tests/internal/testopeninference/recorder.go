@@ -219,6 +219,11 @@ func (r *spanRecorder) saveSpanToFile(cassette testopenai.Cassette, span *tracev
 		return fmt.Errorf("failed to marshal span: %w", err)
 	}
 
+	// Ensure the file ends with a newline to avoid `make precommit` failures.
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+
 	filename := filepath.Join(r.writeDir, fmt.Sprintf("%s.json", cassette))
 	if err := os.WriteFile(filename, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write span file: %w", err)

@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -29,7 +30,7 @@ var (
 	startOpts = []oteltrace.SpanStartOption{oteltrace.WithSpanKind(oteltrace.SpanKindServer)}
 
 	req = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -38,11 +39,28 @@ var (
 			},
 		}},
 	}
-
-	respBody = `{"id":"chatcmpl-abc123","object":"chat.completion","created":1722950000,"model":"gpt-4.1-nano","choices":[{"index":0,"message":{"role":"assistant","content":"hello world"},"finish_reason":"stop"}]`
 )
 
 func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
+	respBody := &openai.ChatCompletionResponse{
+		ID:     "chatcmpl-abc123",
+		Object: "chat.completion",
+		Model:  "gpt-4.1-nano",
+		Choices: []openai.ChatCompletionResponseChoice{
+			{
+				Index: 0,
+				Message: openai.ChatCompletionResponseChoiceMessage{
+					Role:    "assistant",
+					Content: ptr.To("hello world"),
+				},
+				FinishReason: "stop",
+			},
+		},
+	}
+	respBodyBytes, err := json.Marshal(respBody)
+	require.NoError(t, err)
+	bodyLen := len(respBodyBytes)
+
 	reqStream := *req
 	reqStream.Stream = true
 
@@ -58,24 +76,24 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			name:             "non-streaming request",
 			req:              req,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 		},
 		{
 			name:             "streaming request",
 			req:              &reqStream,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "stream len: 86",
+			expectedSpanName: "stream len: 84",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: true"),
-				attribute.Int("reqBodyLen", 86),
+				attribute.Int("reqBodyLen", 84),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 		},
 		{
@@ -84,12 +102,12 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders: map[string]string{
 				"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 			},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 			expectedTraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		},
@@ -115,7 +133,8 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			require.IsType(t, &chatCompletionSpan{}, span)
 
 			// End the span to export it.
-			span.EndSpan(200, []byte(respBody))
+			span.RecordResponse(respBody)
+			span.EndSpan()
 
 			spans := exporter.GetSpans()
 			require.Len(t, spans, 1)
@@ -242,6 +261,15 @@ var _ tracing.ChatCompletionRecorder = testChatCompletionRecorder{}
 
 type testChatCompletionRecorder struct{}
 
+func (r testChatCompletionRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.ChatCompletionResponseChunk) {
+	span.SetAttributes(attribute.Int("eventCount", len(chunks)))
+}
+
+func (r testChatCompletionRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(attribute.Int("statusCode", statusCode))
+	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
 func (testChatCompletionRecorder) StartParams(req *openai.ChatCompletionRequest, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
 	if req.Stream {
 		return fmt.Sprintf("stream len: %d", len(body)), startOpts
@@ -254,11 +282,11 @@ func (testChatCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai
 	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordChunk(span oteltrace.Span, chunkIdx int) {
-	span.AddEvent(fmt.Sprintf("chunk.%d", chunkIdx))
-}
-
-func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, statusCode int, body []byte) {
-	span.SetAttributes(attribute.Int("statusCode", statusCode))
+func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.ChatCompletionResponse) {
+	span.SetAttributes(attribute.Int("statusCode", 200))
+	body, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
 	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
 }

@@ -1,142 +1,142 @@
 {
-  "flags": 256,
-  "name": "ChatCompletion",
-  "kind": "SPAN_KIND_INTERNAL",
-  "attributes": [
+  "flags":  256,
+  "name":  "ChatCompletion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
     {
-      "key": "llm.system",
-      "value": {
-        "stringValue": "openai"
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
       }
     },
     {
-      "key": "input.value",
-      "value": {
-        "stringValue": "{\"messages\": [{\"content\": \"What is the weather like in San Francisco?\", \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"parallel_tool_calls\": true, \"tool_choice\": \"auto\", \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"get_current_weather\", \"description\": \"Get the current weather in a given location\", \"parameters\": {\"properties\": {\"location\": {\"description\": \"The city and state, e.g. San Francisco, CA\", \"type\": \"string\"}, \"unit\": {\"enum\": [\"celsius\", \"fahrenheit\"], \"type\": \"string\"}}, \"required\": [\"location\"], \"type\": \"object\"}}}]}"
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"messages\": [{\"content\": \"What is the weather like in San Francisco?\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"parallel_tool_calls\": true, \"tool_choice\": \"auto\", \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"get_current_weather\", \"description\": \"Get the current weather in a given location\", \"parameters\": {\"properties\": {\"location\": {\"description\": \"The city and state, e.g. San Francisco, CA\", \"type\": \"string\"}, \"unit\": {\"enum\": [\"celsius\", \"fahrenheit\"], \"type\": \"string\"}}, \"required\": [\"location\"], \"type\": \"object\"}}}]}"
       }
     },
     {
-      "key": "input.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "output.value",
-      "value": {
-        "stringValue": "{\"id\":\"chatcmpl-Bx5kh1kb0qKYD3a7CmCaJwAbMohnb\",\"choices\":[{\"finish_reason\":\"tool_calls\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":null,\"refusal\":null,\"role\":\"assistant\",\"annotations\":[],\"tool_calls\":[{\"id\":\"call_tJS1YOMPgrRQ0uOhzX6u3xRW\",\"function\":{\"arguments\":\"{\\\"location\\\":\\\"San Francisco\\\"}\",\"name\":\"get_current_weather\"},\"type\":\"function\"}]}}],\"created\":1753423163,\"model\":\"gpt-4.1-nano-2025-04-14\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_38343a2f8f\",\"usage\":{\"completion_tokens\":16,\"prompt_tokens\":81,\"total_tokens\":97,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"id\":\"chatcmpl-C4GmNWjg23NFd2DxEgJ1aMbICfhdA\",\"choices\":[{\"finish_reason\":\"tool_calls\",\"index\":0,\"message\":{\"content\":null,\"refusal\":null,\"role\":\"assistant\",\"annotations\":[],\"tool_calls\":[{\"id\":\"call_Xc4Aiih37EUJvqjoZlu4Vdoi\",\"function\":{\"arguments\":\"{\\\"location\\\":\\\"San Francisco, CA\\\"}\",\"name\":\"get_current_weather\"},\"type\":\"function\"}]}}],\"created\":1755133847,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":219,\"prompt_tokens\":162,\"total_tokens\":381,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":192,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
-      "key": "output.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "llm.tools.0.tool.json_schema",
-      "value": {
-        "stringValue": "{\"type\": \"function\", \"function\": {\"name\": \"get_current_weather\", \"description\": \"Get the current weather in a given location\", \"parameters\": {\"properties\": {\"location\": {\"description\": \"The city and state, e.g. San Francisco, CA\", \"type\": \"string\"}, \"unit\": {\"enum\": [\"celsius\", \"fahrenheit\"], \"type\": \"string\"}}, \"required\": [\"location\"], \"type\": \"object\"}}}"
+      "key":  "llm.tools.0.tool.json_schema",
+      "value":  {
+        "stringValue":  "{\"type\": \"function\", \"function\": {\"name\": \"get_current_weather\", \"description\": \"Get the current weather in a given location\", \"parameters\": {\"properties\": {\"location\": {\"description\": \"The city and state, e.g. San Francisco, CA\", \"type\": \"string\"}, \"unit\": {\"enum\": [\"celsius\", \"fahrenheit\"], \"type\": \"string\"}}, \"required\": [\"location\"], \"type\": \"object\"}}}"
       }
     },
     {
-      "key": "llm.invocation_parameters",
-      "value": {
-        "stringValue": "{\"model\": \"gpt-4.1-nano\", \"parallel_tool_calls\": true, \"tool_choice\": \"auto\"}"
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"gpt-5-nano\", \"parallel_tool_calls\": true, \"tool_choice\": \"auto\"}"
       }
     },
     {
-      "key": "llm.input_messages.0.message.role",
-      "value": {
-        "stringValue": "user"
+      "key":  "llm.input_messages.0.message.role",
+      "value":  {
+        "stringValue":  "user"
       }
     },
     {
-      "key": "llm.input_messages.0.message.content",
-      "value": {
-        "stringValue": "What is the weather like in San Francisco?"
+      "key":  "llm.input_messages.0.message.content",
+      "value":  {
+        "stringValue":  "What is the weather like in San Francisco?"
       }
     },
     {
-      "key": "llm.model_name",
-      "value": {
-        "stringValue": "gpt-4.1-nano-2025-04-14"
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "gpt-5-nano-2025-08-07"
       }
     },
     {
-      "key": "llm.token_count.total",
-      "value": {
-        "intValue": "97"
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "381"
       }
     },
     {
-      "key": "llm.token_count.prompt",
-      "value": {
-        "intValue": "81"
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "162"
       }
     },
     {
-      "key": "llm.token_count.completion",
-      "value": {
-        "intValue": "16"
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "219"
       }
     },
     {
-      "key": "llm.token_count.prompt_details.cache_read",
-      "value": {
-        "intValue": "0"
+      "key":  "llm.token_count.prompt_details.cache_read",
+      "value":  {
+        "intValue":  "0"
       }
     },
     {
-      "key": "llm.token_count.prompt_details.audio",
-      "value": {
-        "intValue": "0"
+      "key":  "llm.token_count.prompt_details.audio",
+      "value":  {
+        "intValue":  "0"
       }
     },
     {
-      "key": "llm.token_count.completion_details.reasoning",
-      "value": {
-        "intValue": "0"
+      "key":  "llm.token_count.completion_details.reasoning",
+      "value":  {
+        "intValue":  "192"
       }
     },
     {
-      "key": "llm.token_count.completion_details.audio",
-      "value": {
-        "intValue": "0"
+      "key":  "llm.token_count.completion_details.audio",
+      "value":  {
+        "intValue":  "0"
       }
     },
     {
-      "key": "llm.output_messages.0.message.role",
-      "value": {
-        "stringValue": "assistant"
+      "key":  "llm.output_messages.0.message.role",
+      "value":  {
+        "stringValue":  "assistant"
       }
     },
     {
-      "key": "llm.output_messages.0.message.tool_calls.0.tool_call.id",
-      "value": {
-        "stringValue": "call_tJS1YOMPgrRQ0uOhzX6u3xRW"
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.id",
+      "value":  {
+        "stringValue":  "call_Xc4Aiih37EUJvqjoZlu4Vdoi"
       }
     },
     {
-      "key": "llm.output_messages.0.message.tool_calls.0.tool_call.function.name",
-      "value": {
-        "stringValue": "get_current_weather"
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.function.name",
+      "value":  {
+        "stringValue":  "get_current_weather"
       }
     },
     {
-      "key": "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments",
-      "value": {
-        "stringValue": "{\"location\":\"San Francisco\"}"
+      "key":  "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments",
+      "value":  {
+        "stringValue":  "{\"location\":\"San Francisco, CA\"}"
       }
     },
     {
-      "key": "openinference.span.kind",
-      "value": {
-        "stringValue": "LLM"
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
       }
     }
   ],
-  "status": {
-    "code": "STATUS_CODE_OK"
+  "status":  {
+    "code":  "STATUS_CODE_OK"
   }
 }

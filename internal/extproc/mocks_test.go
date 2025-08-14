@@ -23,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (
@@ -110,7 +111,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (head
 }
 
 // ResponseBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)

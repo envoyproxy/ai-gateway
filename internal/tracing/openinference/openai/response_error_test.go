@@ -15,8 +15,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
 func TestRecordResponseError(t *testing.T) {

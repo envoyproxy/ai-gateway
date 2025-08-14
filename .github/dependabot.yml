@@ -9,6 +9,10 @@ updates:
     directory: site
     schedule:
       interval: weekly
+    groups:
+      node:
+        patterns:
+          - "*"
 
   - package-ecosystem: gomod
     directories:
@@ -16,15 +20,8 @@ updates:
     schedule:
       interval: weekly
     groups:
-      k8s.io:
+      go:
         patterns:
-          - "k8s.io/*"
-      golang.org:
-        patterns:
-          - "golang.org/*"
-      react:
-        patterns:
-          - "react"
-          - "react-*"
+          - "*"
     ignore:
       - dependency-name: "github.com/envoyproxy/gateway"

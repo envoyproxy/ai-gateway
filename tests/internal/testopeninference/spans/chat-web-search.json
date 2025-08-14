@@ -1,0 +1,124 @@
+{
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
+      }
+    },
+    {
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": \"In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations\", \"role\": \"user\"}], \"model\": \"gpt-4o-mini-search-preview\", \"web_search_options\": {\"search_context_size\": \"low\"}}"
+      }
+    },
+    {
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-1cefb1cd-6d8f-41f1-924e-ca6b66b5d611\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"The URL https://httpbin.org/base64/dGVzdA== returns the decoded string \\\"test\\\".  \",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755137745,\"model\":\"gpt-4o-mini-search-preview-2025-03-11\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"completion_tokens\":22,\"prompt_tokens\":26,\"total_tokens\":48,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      }
+    },
+    {
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-4o-mini-search-preview\", \"web_search_options\": {\"search_context_size\": \"low\"}}"
+      }
+    },
+    {
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
+      }
+    },
+    {
+      "key": "llm.input_messages.0.message.content",
+      "value": {
+        "stringValue": "In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations"
+      }
+    },
+    {
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-4o-mini-search-preview-2025-03-11"
+      }
+    },
+    {
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "48"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "26"
+      }
+    },
+    {
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "22"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
+      }
+    },
+    {
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
+      }
+    },
+    {
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "The URL https://httpbin.org/base64/dGVzdA== returns the decoded string \"test\".  "
+      }
+    },
+    {
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
+      }
+    }
+  ],
+  "status": {
+    "code": "STATUS_CODE_OK"
+  }
+}

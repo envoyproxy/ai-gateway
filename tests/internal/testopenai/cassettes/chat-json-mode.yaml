@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -11,7 +6,7 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 224
+        content_length: 222
         host: api.openai.com
         body: |-
             {
@@ -21,7 +16,7 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano",
+              "model": "gpt-5-nano",
               "response_format": {
                 "type": "json_object"
               }
@@ -30,7 +25,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "173"
+                - "171"
             Content-Type:
                 - application/json
             User-Agent:
@@ -41,42 +36,41 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 880
+        content_length: 837
         body: |-
             {
               "choices": [
                 {
                   "finish_reason": "stop",
                   "index": 0,
-                  "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "{\n  \"name\": \"John Doe\",\n  \"age\": 30,\n  \"city\": \"New York\"\n}",
+                    "content": "{\"name\":\"Alex Smith\",\"age\":29,\"city\":\"San Francisco\"}",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753423157,
-              "id": "chatcmpl-Bx5kbEUUMAowmenXgOVnlnUEiEZws",
-              "model": "gpt-4.1-nano-2025-04-14",
+              "created": 1755133839,
+              "id": "chatcmpl-C4GmF9uTIEqemNux4KSwWJMUTrrer",
+              "model": "gpt-5-nano-2025-08-07",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": "fp_38343a2f8f",
+              "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 25,
+                "completion_tokens": 280,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
-                  "reasoning_tokens": 0,
+                  "reasoning_tokens": 256,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 22,
+                "prompt_tokens": 21,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 47
+                "total_tokens": 301
               }
             }
         headers:
@@ -87,13 +81,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496e2ff80fe547-KUL
+                - 96ec92df2a95e4fe-JHB
             Content-Type:
                 - application/json
             Date:
-                - Fri, 25 Jul 2025 05:59:18 GMT
+                - Thu, 14 Aug 2025 01:10:41 GMT
             Openai-Processing-Ms:
-                - "531"
+                - "2028"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -105,7 +99,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "542"
+                - "2121"
             X-Ratelimit-Limit-Requests:
                 - "500"
             X-Ratelimit-Limit-Tokens:
@@ -119,7 +113,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 5ms
             X-Request-Id:
-                - req_36ad695987ede380f7f072212f50d9dc
+                - req_c3e077869997410ca0ad3cfb5b61632d
         status: 200 OK
         code: 200
-        duration: 857.576167ms
+        duration: 2.623018042s
