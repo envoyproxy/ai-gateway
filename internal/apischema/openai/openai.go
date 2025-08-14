@@ -774,7 +774,7 @@ type Tool struct {
 // ToolChoice represents the choice of tool.
 type ToolChoice struct {
 	Type     ToolType     `json:"type"`
-	Function ToolFunction `json:"function"`
+	Function ToolFunction `json:"function,omitempty"`
 }
 
 // ToolFunction represents the function to call.
@@ -960,7 +960,7 @@ type ChatCompletionResponseChoice struct {
 	Logprobs ChatCompletionChoicesLogprobs `json:"logprobs,omitzero"`
 	// Message is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
-	Message ChatCompletionResponseChoiceMessage `json:"message"`
+	Message ChatCompletionResponseChoiceMessage `json:"message,omitempty"`
 }
 
 // ChatCompletionResponseChoiceMessage is described in the OpenAI API documentation:

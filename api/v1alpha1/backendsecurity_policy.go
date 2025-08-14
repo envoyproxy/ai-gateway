@@ -31,10 +31,10 @@ const (
 // +kubebuilder:metadata:labels="gateway.networking.k8s.io/policy=direct"
 type BackendSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              BackendSecurityPolicySpec `json:"spec"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              BackendSecurityPolicySpec `json:"spec,omitempty"`
 	// Status defines the status details of the BackendSecurityPolicy.
-	Status BackendSecurityPolicyStatus `json:"status"`
+	Status BackendSecurityPolicyStatus `json:"status,omitempty"`
 }
 
 // BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
@@ -86,7 +86,7 @@ type BackendSecurityPolicySpec struct {
 // +kubebuilder:object:root=true
 type BackendSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackendSecurityPolicy `json:"items"`
 }
 

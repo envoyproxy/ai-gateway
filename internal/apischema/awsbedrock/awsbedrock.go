@@ -350,7 +350,7 @@ type ConverseResponse struct {
 // ConverseOutput is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseOutput.html
 type ConverseOutput struct {
-	Message Message `json:"message"`
+	Message Message `json:"message,omitempty"`
 }
 
 // TokenUsage is defined in the AWS Bedrock API:

@@ -35,11 +35,11 @@ import (
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
 type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// Spec defines the details of the AIGatewayRoute.
-	Spec AIGatewayRouteSpec `json:"spec"`
+	Spec AIGatewayRouteSpec `json:"spec,omitempty"`
 	// Status defines the status details of the AIGatewayRoute.
-	Status AIGatewayRouteStatus `json:"status"`
+	Status AIGatewayRouteStatus `json:"status,omitempty"`
 }
 
 // AIGatewayRouteList contains a list of AIGatewayRoute.
@@ -47,7 +47,7 @@ type AIGatewayRoute struct {
 // +kubebuilder:object:root=true
 type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AIGatewayRoute `json:"items"`
 }
 
