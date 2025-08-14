@@ -99,6 +99,11 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 		finishReason = openai.ChatCompletionChoicesFinishReasonStop
 	}
 
+	var annotationsPtr *[]openai.Annotation
+	if len(annotations) > 0 {
+		annotationsPtr = &annotations
+	}
+
 	// Create a ChatCompletionResponse with all accumulated content.
 	response := &openai.ChatCompletionResponse{
 		ID:                firstChunk.ID,
@@ -112,7 +117,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 			Message: openai.ChatCompletionResponseChoiceMessage{
 				Role:        role,
 				Content:     &contentStr,
-				Annotations: &annotations,
+				Annotations: annotationsPtr,
 			},
 			Index:        0,
 			FinishReason: finishReason,

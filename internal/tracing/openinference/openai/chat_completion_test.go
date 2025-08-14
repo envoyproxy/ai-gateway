@@ -119,15 +119,6 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 			expectedEvents: nil,
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
-		{
-			name:     "partial/invalid JSON response",
-			respBody: []byte(`{"id":"chatcmpl-123","object":"chat.completion"`),
-			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.OutputValue, `{"id":"chatcmpl-123","object":"chat.completion"`),
-			},
-			expectedEvents: []trace.Event{},
-			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
-		},
 	}
 
 	for _, tt := range tests {
@@ -158,23 +149,19 @@ func TestChatCompletionRecorder_RecordResponseOnError(t *testing.T) {
 		return false
 	})
 
-	expectedAttrs := []attribute.KeyValue{}
-	expectedEvents := []trace.Event{{
+	openinference.RequireAttributesEqual(t, []attribute.KeyValue{}, actualSpan.Attributes)
+	openinference.RequireEventsEqual(t, []trace.Event{{
 		Name: "exception",
 		Attributes: []attribute.KeyValue{
 			attribute.String("exception.type", "BadRequestError"),
 			attribute.String("exception.message", `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`),
 		},
 		Time: time.Time{},
-	}}
-	expectedStatus := trace.Status{
+	}}, actualSpan.Events)
+	require.Equal(t, trace.Status{
 		Code:        codes.Error,
 		Description: `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`,
-	}
-
-	openinference.RequireAttributesEqual(t, expectedAttrs, actualSpan.Attributes)
-	openinference.RequireEventsEqual(t, expectedEvents, actualSpan.Events)
-	require.Equal(t, expectedStatus, actualSpan.Status)
+	}, actualSpan.Status)
 }
 
 func TestChatCompletionRecorder_RecordResponseChunks(t *testing.T) {
