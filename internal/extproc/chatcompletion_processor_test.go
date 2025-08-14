@@ -592,7 +592,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 
 		errorBody := "error response"
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: []byte(errorBody)})
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.Equal(t, 500, span.ErrorStatus)
 		require.Equal(t, errorBody, span.ErrBody)
 	})
