@@ -558,7 +558,6 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 		span := &testotel.MockSpan{}
 		mt := &mockTranslator{t: t}
 		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
 			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
 				responseHeaders: map[string]string{":status": "200"},
@@ -566,6 +565,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
 				config:          &processorConfig{metadataNamespace: ""},
+				span:            span,
 			},
 		}
 
@@ -579,22 +579,20 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 	t.Run("upstream filter error with span", func(t *testing.T) {
 		span := &testotel.MockSpan{}
 		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: false},
 			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
 				responseHeaders: map[string]string{":status": "500"},
-				translator:      &mockTranslator{t: t, retErr: errors.New("translation error")},
+				translator:      &mockTranslator{t: t},
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
 				config:          &processorConfig{metadataNamespace: ""},
+				span:            span,
 			},
 		}
 
-		errorBody := []byte("error response")
-		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: errorBody})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "translation error")
-		require.True(t, span.EndSpanCalled)
+		errorBody := "error response"
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: []byte(errorBody)})
+		require.Nil(t, err)
 		require.Equal(t, 500, span.ErrorStatus)
 		require.Equal(t, errorBody, span.ErrBody)
 	})
