@@ -10,7 +10,7 @@ volumes:
 services:
   # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
   aigw-build:
-    image: golang:1.24.6
+    image: golang:1.25
     container_name: aigw-build
     working_dir: /workspace
     volumes:

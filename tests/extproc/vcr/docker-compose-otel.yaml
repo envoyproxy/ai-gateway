@@ -8,7 +8,7 @@ volumes:
 
 services:
   extproc-build:
-    image: golang:1.24.6
+    image: golang:1.25
     container_name: extproc-build
     working_dir: /workspace
     volumes:
