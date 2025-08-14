@@ -119,17 +119,11 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	// Write the Envoy Gateway resources into a file under resourcesTmpdir.
 	resourceYamlPath := filepath.Join(resourcesTmpdir, "config.yaml")
 	stderrLogger.Info("Creating Envoy Gateway resource file", "path", resourceYamlPath)
-	f, err := os.Create(resourceYamlPath)
-	defer func() {
-		_ = f.Close()
-	}()
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %w", resourceYamlPath, err)
-	}
 	udsPath := filepath.Join(tmpdir, "uds.sock")
 	_ = os.Remove(udsPath)
-	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
-	runCtx := &runCmdContext{envoyGatewayResourcesOut: f, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
+
+	resourcesBuf := &bytes.Buffer{}
+	runCtx := &runCmdContext{envoyGatewayResourcesOut: resourcesBuf, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
 	// Use the default configuration if the path is not given.
 	aiGatewayResourcesYaml := aiGatewayDefaultResources
 	if c.Path != "" {
@@ -140,9 +134,13 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		}
 		aiGatewayResourcesYaml = string(yamlBytes)
 	}
-	fakeCleint, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeClient, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to write envoy resources and run extproc: %w", err)
+	}
+	err = os.WriteFile(resourceYamlPath, resourcesBuf.Bytes(), 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %w", resourceYamlPath, err)
 	}
 
 	lis, err := net.Listen("tcp", "localhost:1061")
@@ -150,7 +148,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeCleint, ctrl.Log, udsPath, true)
+	extSrv := extensionserver.New(fakeClient, ctrl.Log, udsPath, true)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
