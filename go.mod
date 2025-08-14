@@ -4,8 +4,6 @@ go 1.24.6
 
 replace go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 
-replace sigs.k8s.io/gateway-api-inference-extension v0.4.0 => sigs.k8s.io/gateway-api-inference-extension v0.5.1
-
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0
@@ -58,7 +56,7 @@ require (
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/gateway-api v1.3.1-0.20250527223622-54df0a899c1c
-	sigs.k8s.io/gateway-api-inference-extension v0.4.0
+	sigs.k8s.io/gateway-api-inference-extension v0.5.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
