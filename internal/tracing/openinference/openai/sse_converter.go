@@ -25,7 +25,6 @@ import (
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
 func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
-
 	var (
 		firstChunk   *openai.ChatCompletionResponseChunk
 		content      strings.Builder

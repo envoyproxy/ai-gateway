@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package testotel
 
 import (
@@ -6,10 +11,11 @@ import (
 
 // MockSpan is a mock implementation of api.ChatCompletionSpan for testing purposes.
 type MockSpan struct {
-	Resp        *openai.ChatCompletionResponse
-	RespChunks  []*openai.ChatCompletionResponseChunk
-	ErrorStatus int
-	ErrBody     string
+	Resp          *openai.ChatCompletionResponse
+	RespChunks    []*openai.ChatCompletionResponseChunk
+	ErrorStatus   int
+	ErrBody       string
+	EndSpanCalled bool
 }
 
 // RecordResponseChunk implements api.ChatCompletionSpan.
@@ -29,4 +35,6 @@ func (s *MockSpan) EndSpanOnError(statusCode int, body []byte) {
 }
 
 // EndSpan implements api.ChatCompletionSpan.
-func (s *MockSpan) EndSpan() {}
+func (s *MockSpan) EndSpan() {
+	s.EndSpanCalled = true
+}

@@ -23,7 +23,7 @@ type chatCompletionSpan struct {
 
 // RecordResponseChunk invokes [tracing.ChatCompletionRecorder.RecordResponseChunk].
 func (s *chatCompletionSpan) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
-	s.chunks = append(s.chunks, resp) // Delay recording until EndSpan.
+	s.chunks = append(s.chunks, resp) // Delay recording until EndSpan to collect all events.
 }
 
 // RecordResponse invokes [tracing.ChatCompletionRecorder.RecordResponse].

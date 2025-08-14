@@ -20,8 +20,8 @@ import (
 func TestChatCompletionSpan_RecordChunk(t *testing.T) {
 	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
 		s := &chatCompletionSpan{span: span, recorder: testChatCompletionRecorder{}}
-		s.RecordChunk()
-		s.RecordChunk()
+		s.RecordResponseChunk(nil)
+		s.RecordResponseChunk(nil)
 		return false // Recording of chunks shouldn't end the span.
 	})
 
@@ -40,7 +40,7 @@ func TestChatCompletionSpan_RecordChunk(t *testing.T) {
 func TestChatCompletionSpan_EndSpan(t *testing.T) {
 	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
 		s := &chatCompletionSpan{span: span, recorder: testChatCompletionRecorder{}}
-		s.EndSpan(200, []byte(respBody))
+		s.EndSpan()
 		return true // EndSpan ends the underlying span.
 	})
 

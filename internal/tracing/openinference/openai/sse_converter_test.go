@@ -6,10 +6,35 @@
 package openai
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
+
+// parseSSEToChunks converts raw SSE data to a slice of ChatCompletionResponseChunk objects.
+func parseSSEToChunks(t *testing.T, sseData string) []*openai.ChatCompletionResponseChunk {
+	var chunks []*openai.ChatCompletionResponseChunk
+
+	lines := strings.Split(sseData, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+
+		jsonData := strings.TrimPrefix(line, "data: ")
+		var chunk openai.ChatCompletionResponseChunk
+		err := json.Unmarshal([]byte(jsonData), &chunk)
+		require.NoError(t, err)
+		chunks = append(chunks, &chunk)
+	}
+
+	return chunks
+}
 
 func TestConvertSSEToJSON(t *testing.T) {
 	tests := []struct {
@@ -96,9 +121,22 @@ data: [DONE]
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertSSEToJSON([]byte(tt.input))
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, string(result))
+			result := convertSSEToJSON(parseSSEToChunks(t, tt.input))
+
+			if tt.expected != "" {
+				resultJSON, err := json.Marshal(result)
+				require.NoError(t, err)
+
+				var expectedObj, resultObj interface{}
+				err = json.Unmarshal([]byte(tt.expected), &expectedObj)
+				require.NoError(t, err)
+				err = json.Unmarshal(resultJSON, &resultObj)
+				require.NoError(t, err)
+
+				require.Equal(t, expectedObj, resultObj)
+			} else {
+				require.NotNil(t, result)
+			}
 		})
 	}
 }
