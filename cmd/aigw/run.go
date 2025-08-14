@@ -100,7 +100,10 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to execute certgen: %w: %s", err, certGenOut.String())
 	}
 
-	tmpdir := os.TempDir()
+	tmpdir := filepath.Join(os.TempDir(), "aigw-run")
+	if err := recreateDir(tmpdir); err != nil {
+		return fmt.Errorf("failed to create temporary directory %s: %w", tmpdir, err)
+	}
 	egConfigPath := filepath.Join(tmpdir, "envoy-gateway-config.yaml")      // 1. The path to the Envoy Gateway config.
 	resourcesTmpdir := filepath.Join(tmpdir, "/envoy-ai-gateway-resources") // 2. The path to the resources.
 	if err := recreateDir(resourcesTmpdir); err != nil {
