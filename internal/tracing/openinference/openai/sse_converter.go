@@ -113,7 +113,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 			Message: openai.ChatCompletionResponseChoiceMessage{
 				Role:        role,
 				Content:     &contentStr,
-				Annotations: annotations,
+				Annotations: &annotations,
 			},
 			Index:        0,
 			FinishReason: finishReason,
