@@ -978,9 +978,9 @@ type ChatCompletionResponseChoiceMessage struct {
 
 	// Annotations for the message, when applicable, as when using the web search tool.
 	//
-	// Note: do not use the value of slice, but instead a pointer to the slice since otherwise,
+	// Note: do not use the value of slice, but instead use a pointer to the slice since otherwise,
 	// the round trip from bytes to struct and back to bytes will not work properly. E.g.
-	// when the field exist but is empty, it will not be serialized to JSON as opposed to
+	// when the field exists but is empty (which can happen in real responses), this will not be serialized to JSON as opposed to
 	// the fact that the field is present but empty in the original.
 	Annotations *[]Annotation `json:"annotations,omitempty"`
 
