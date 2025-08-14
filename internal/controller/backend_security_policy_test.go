@@ -256,8 +256,8 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 
 	data := map[string][]byte{
-		"credentials": []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
-			"default", "accessKey", "secretKey", "sessionToken", "us-east-2")),
+		"credentials": fmt.Appendf(nil, "[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+			"default", "accessKey", "secretKey", "sessionToken", "us-east-2"),
 	}
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -681,8 +681,8 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 	require.NoError(t, cl.Create(t.Context(), bsp))
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	data := map[string][]byte{
-		"credentials": []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
-			"default", "accessKey", "secretKey", "sessionToken", "us-east-2")),
+		"credentials": fmt.Appendf(nil, "[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+			"default", "accessKey", "secretKey", "sessionToken", "us-east-2"),
 	}
 	now := time.Now()
 	expirationTime := now.Add(-1 * time.Hour)

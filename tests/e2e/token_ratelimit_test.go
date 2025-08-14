@@ -129,7 +129,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 				ResultType string `json:"resultType"`
 				Result     []struct {
 					Metric map[string]string `json:"metric"`
-					Value  []interface{}     `json:"value"`
+					Value  []any             `json:"value"`
 				}
 			}
 		}

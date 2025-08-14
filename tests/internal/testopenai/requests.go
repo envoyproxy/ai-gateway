@@ -108,7 +108,7 @@ func (c Cassette) String() string {
 // audio synthesis is natively supported.
 func ChatCassettes() []Cassette {
 	result := make([]Cassette, 0, int(_cassetteNameEnd))
-	for i := Cassette(0); i < _cassetteNameEnd; i++ {
+	for i := range _cassetteNameEnd {
 		result = append(result, i)
 	}
 	return result
@@ -171,14 +171,14 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				Function: &openai.FunctionDefinition{
 					Name:        "get_current_weather",
 					Description: "Get the current weather in a given location",
-					Parameters: map[string]interface{}{
+					Parameters: map[string]any{
 						"type": "object",
-						"properties": map[string]interface{}{
-							"location": map[string]interface{}{
+						"properties": map[string]any{
+							"location": map[string]any{
 								"type":        "string",
 								"description": "The city and state, e.g. San Francisco, CA",
 							},
-							"unit": map[string]interface{}{
+							"unit": map[string]any{
 								"type": "string",
 								"enum": []string{"celsius", "fahrenheit"},
 							},
@@ -302,14 +302,14 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				Function: &openai.FunctionDefinition{
 					Name:        "get_current_weather",
 					Description: "Get the current weather in a given location",
-					Parameters: map[string]interface{}{
+					Parameters: map[string]any{
 						"type": "object",
-						"properties": map[string]interface{}{
-							"location": map[string]interface{}{
+						"properties": map[string]any{
+							"location": map[string]any{
 								"type":        "string",
 								"description": "The city and state, e.g. San Francisco, CA",
 							},
-							"unit": map[string]interface{}{
+							"unit": map[string]any{
 								"type": "string",
 								"enum": []string{"celsius", "fahrenheit"},
 							},
@@ -477,10 +477,10 @@ var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
 				Function: &openai.FunctionDefinition{
 					Name:        "generate_image",
 					Description: "Generate a simple, minimalist image based on the given prompt in sketch style with low quality for cost efficiency.",
-					Parameters: map[string]interface{}{
+					Parameters: map[string]any{
 						"type": "object",
-						"properties": map[string]interface{}{
-							"prompt": map[string]interface{}{
+						"properties": map[string]any{
+							"prompt": map[string]any{
 								"type":        "string",
 								"description": "The text description of the image to generate.",
 							},

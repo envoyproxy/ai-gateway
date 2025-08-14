@@ -353,8 +353,8 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		var finalToolCallChunk openai.ChatCompletionResponseChunk
 
 		// Split the response into individual SSE messages and find the final data chunk.
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") || strings.HasPrefix(line, "data: [DONE]") {
 				continue
 			}
@@ -412,8 +412,8 @@ data: {"type": "message_stop"}
 		var foundToolCallWithArgs bool
 		var finalFinishReason openai.ChatCompletionChoicesFinishReason
 
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
 				continue
 			}
@@ -495,8 +495,8 @@ data: {"type": "content_block_stop", "index": 0}
 		// 1. Split the stream into individual data chunks
 		//    and remove the "data: " prefix.
 		var chunks []openai.ChatCompletionResponseChunk
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -593,8 +593,8 @@ data: {"type": "content_block_stop", "index": 0}
 
 		// 1. Unmarshal all the chunks from the stream response.
 		var chunks []openai.ChatCompletionResponseChunk
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -640,10 +640,10 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		var contentChunk openai.ChatCompletionResponseChunk
 		foundChunk := false
 
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "data: ") {
-				jsonBody := strings.TrimPrefix(line, "data: ")
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if after, ok := strings.CutPrefix(line, "data: "); ok {
+				jsonBody := after
 				// We only care about the chunk that has the text content.
 				if strings.Contains(jsonBody, `"content"`) {
 					err := json.Unmarshal([]byte(jsonBody), &contentChunk)

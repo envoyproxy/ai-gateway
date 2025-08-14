@@ -231,7 +231,7 @@ func TestWithRealProviders(t *testing.T) {
 									Description: openai.String("Get weather at the given location"),
 									Parameters: openai.FunctionParameters{
 										"type": "object",
-										"properties": map[string]interface{}{
+										"properties": map[string]any{
 											"location": map[string]string{
 												"type": "string",
 											},
@@ -266,7 +266,7 @@ func TestWithRealProviders(t *testing.T) {
 						if toolCall.Function.Name == "get_weather" {
 							getWeatherCalled = true
 							// Extract the location from the function call arguments.
-							var args map[string]interface{}
+							var args map[string]any
 							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
 								t.Logf("Error unmarshalling the function arguments: %v", argErr)
 							}

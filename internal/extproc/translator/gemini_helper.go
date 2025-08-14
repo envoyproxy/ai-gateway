@@ -8,6 +8,7 @@ package translator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"mime"
 	"net/url"
 	"path"
@@ -91,9 +92,7 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting assistant message: %w", err)
 			}
-			for k, v := range toolCalls {
-				knownToolCalls[k] = v
-			}
+			maps.Copy(knownToolCalls, toolCalls)
 			gcpContents = append(gcpContents, genai.Content{Role: genai.RoleModel, Parts: assistantParts})
 		default:
 			return nil, nil, fmt.Errorf("invalid role in message: %s", msgUnion.Type)
@@ -350,7 +349,7 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 //	   ]
 //	 }
 //	}
-func openAIToolChoiceToGeminiToolConfig(toolChoice interface{}) (*genai.ToolConfig, error) {
+func openAIToolChoiceToGeminiToolConfig(toolChoice any) (*genai.ToolConfig, error) {
 	if toolChoice == nil {
 		return nil, nil
 	}
@@ -412,14 +411,14 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		case openai.ChatCompletionResponseFormatTypeJSONObject:
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openai.ChatCompletionResponseFormatTypeJSONSchema:
-			var schemaMap map[string]interface{}
+			var schemaMap map[string]any
 
 			switch sch := openAIReq.ResponseFormat.JSONSchema.Schema.(type) {
 			case string:
 				if err := json.Unmarshal([]byte(sch), &schemaMap); err != nil {
 					return nil, fmt.Errorf("invalid JSON schema string: %w", err)
 				}
-			case map[string]interface{}:
+			case map[string]any:
 				schemaMap = sch
 			}
 
@@ -556,7 +555,7 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 
 		toolCall := openai.ChatCompletionMessageToolCallParam{
 			ID:   &toolCallID,
-			Type: "function",
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
 			Function: openai.ChatCompletionMessageToolCallFunctionParam{
 				Name:      part.FunctionCall.Name,
 				Arguments: string(args),

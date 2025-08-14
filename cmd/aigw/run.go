@@ -309,7 +309,7 @@ func (runCtx *runCmdContext) mustClearSetOwnerReferencesAndStatusAndWriteObj(typ
 	if err != nil {
 		panic(err)
 	}
-	var raw map[string]interface{}
+	var raw map[string]any
 	err = yaml.Unmarshal(marshaled, &raw)
 	if err != nil {
 		panic(err)

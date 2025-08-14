@@ -102,3 +102,14 @@ data: [DONE]
 		})
 	}
 }
+
+func TestConvertSSEToJSON_ErrorCases(t *testing.T) {
+	// Test invalid JSON parsing
+	input := `data: {"invalid json": }
+
+data: [DONE]
+`
+	_, err := convertSSEToJSON([]byte(input))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to unmarshal chunk")
+}

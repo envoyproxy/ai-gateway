@@ -189,27 +189,27 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 }
 
 func TestServer_isRouteGeneratedByAIGateway(t *testing.T) {
-	emptyStruct, err := structpb.NewStruct(map[string]interface{}{})
+	emptyStruct, err := structpb.NewStruct(map[string]any{})
 	require.NoError(t, err)
 
-	structWithEmptyResources, err := structpb.NewStruct(map[string]interface{}{
+	structWithEmptyResources, err := structpb.NewStruct(map[string]any{
 		"resources": nil,
 	})
 	require.NoError(t, err)
 
-	withAnnotationsListStruct, err := structpb.NewStruct(map[string]interface{}{
-		"resources": []interface{}{
-			map[string]interface{}{
-				"annotations": map[string]interface{}{},
+	withAnnotationsListStruct, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"annotations": map[string]any{},
 			},
 		},
 	})
 	require.NoError(t, err)
 
-	withOKAnnotationsListStruct, err := structpb.NewStruct(map[string]interface{}{
-		"resources": []interface{}{
-			map[string]interface{}{
-				"annotations": map[string]interface{}{
+	withOKAnnotationsListStruct, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"annotations": map[string]any{
 					internalapi.AIGatewayGeneratedHTTPRouteAnnotation: "true",
 				},
 			},

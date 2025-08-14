@@ -218,8 +218,8 @@ func listen(ctx context.Context, name, network, address string) (net.Listener, e
 
 // listenAddress returns the network and address for the given address flag.
 func listenAddress(addrFlag string) (string, string) {
-	if strings.HasPrefix(addrFlag, "unix://") {
-		p := strings.TrimPrefix(addrFlag, "unix://")
+	if after, ok := strings.CutPrefix(addrFlag, "unix://"); ok {
+		p := after
 		_ = os.Remove(p) // Remove the socket file if it exists.
 		return "unix", p
 	}
