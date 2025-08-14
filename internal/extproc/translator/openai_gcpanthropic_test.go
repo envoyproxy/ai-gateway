@@ -422,7 +422,7 @@ func TestMessageTranslation(t *testing.T) {
 								ID:    testTool,
 								Type:  "tool_use",
 								Name:  "get_weather",
-								Input: map[string]interface{}{"location": "NYC"},
+								Input: map[string]any{"location": "NYC"},
 							},
 						},
 					},
@@ -707,7 +707,7 @@ func TestOpenAIToGCPAnthropicTranslator_ResponseError(t *testing.T) {
 	tests := []struct {
 		name            string
 		responseHeaders map[string]string
-		inputBody       interface{}
+		inputBody       any
 		expectedOutput  openai.Error
 	}{
 		{
@@ -864,10 +864,10 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
 								},
 							},
 						},
@@ -881,8 +881,8 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "object",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
 							},
 						},
 					},
@@ -898,13 +898,13 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather with a required location",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
-									"unit":     map[string]interface{}{"type": "string"},
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
+									"unit":     map[string]any{"type": "string"},
 								},
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -917,9 +917,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather with a required location"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "object",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
-								"unit":     map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
+								"unit":     map[string]any{"type": "string"},
 							},
 							Required: []string{"location"},
 						},
@@ -1063,11 +1063,11 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather without type",
-							Parameters: map[string]interface{}{
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
+							Parameters: map[string]any{
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
 								},
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -1080,8 +1080,8 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather without type"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
 							},
 							Required: []string{"location"},
 						},
@@ -1098,9 +1098,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather without properties",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type":     "object",
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -1201,7 +1201,7 @@ func TestFinishReasonTranslation(t *testing.T) {
 func TestContentTranslationCoverage(t *testing.T) {
 	tests := []struct {
 		name            string
-		inputContent    interface{}
+		inputContent    any
 		expectedContent []anthropic.ContentBlockParamUnion
 		expectErr       bool
 	}{

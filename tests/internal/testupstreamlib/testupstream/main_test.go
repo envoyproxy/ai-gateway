@@ -60,7 +60,7 @@ func Test_main(t *testing.T) {
 		require.Equal(t, http.StatusOK, response.StatusCode)
 
 		reader := bufio.NewReader(response.Body)
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			dataLine, err := reader.ReadString('\n')
 			require.NoError(t, err)
 			require.Equal(t, fmt.Sprintf("data: %d\n", i+1), dataLine)
@@ -328,7 +328,7 @@ func Test_main(t *testing.T) {
 		require.Equal(t, http.StatusOK, response.StatusCode)
 
 		decoder := eventstream.NewDecoder()
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			var message eventstream.Message
 			message, err = decoder.Decode(response.Body, nil)
 			require.NoError(t, err)
@@ -589,7 +589,7 @@ func Test_main(t *testing.T) {
 		require.Equal(t, http.StatusOK, response.StatusCode)
 
 		reader := bufio.NewReader(response.Body)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			dataLine, err := reader.ReadString('\n')
 			require.NoError(t, err)
 			require.Equal(t, fmt.Sprintf("data: %d\n", i+1), dataLine)

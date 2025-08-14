@@ -442,7 +442,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message"},
+					Response: map[string]any{"output": "This is a tool message"},
 				},
 			},
 		},
@@ -468,7 +468,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message. And this is another part"},
+					Response: map[string]any{"output": "This is a tool message. And this is another part"},
 				},
 			},
 		},
@@ -785,7 +785,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseFormat: &openai.ChatCompletionResponseFormat{
 					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: map[string]interface{}{
+						Schema: map[string]any{
 							"type": "string",
 						},
 					},
@@ -975,7 +975,7 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     interface{}
+		input     any
 		expected  *genai.ToolConfig
 		expectErr string
 	}{

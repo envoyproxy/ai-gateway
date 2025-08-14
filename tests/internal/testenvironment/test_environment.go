@@ -179,7 +179,7 @@ func requireRandomPorts(t *testing.T, count int) []int {
 	ports := make([]int, count)
 
 	var listeners []net.Listener
-	for i := 0; i < count; i++ {
+	for i := range count {
 		lc := net.ListenConfig{}
 		lis, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 		require.NoError(t, err, "failed to listen on random port %d", i)

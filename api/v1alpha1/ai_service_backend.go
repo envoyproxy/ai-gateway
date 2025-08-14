@@ -24,11 +24,11 @@ import (
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
 type AIServiceBackend struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 	// Spec defines the details of AIServiceBackend.
-	Spec AIServiceBackendSpec `json:"spec,omitempty"`
+	Spec AIServiceBackendSpec `json:"spec"`
 	// Status defines the status details of the AIServiceBackend.
-	Status AIServiceBackendStatus `json:"status,omitempty"`
+	Status AIServiceBackendStatus `json:"status"`
 }
 
 // AIServiceBackendList contains a list of AIServiceBackends.
@@ -36,7 +36,7 @@ type AIServiceBackend struct {
 // +kubebuilder:object:root=true
 type AIServiceBackendList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata"`
 	Items           []AIServiceBackend `json:"items"`
 }
 

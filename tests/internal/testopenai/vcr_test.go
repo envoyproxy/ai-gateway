@@ -206,7 +206,7 @@ func TestAfterCaptureHook(t *testing.T) {
 	require.Contains(t, interaction.Request.Headers, "Content-Type")
 
 	// Request body should be pretty-printed.
-	var reqBody map[string]interface{}
+	var reqBody map[string]any
 	err = json.Unmarshal([]byte(interaction.Request.Body), &reqBody)
 	require.NoError(t, err)
 	require.Contains(t, interaction.Request.Body, "\n") // Pretty-printed has newlines.
@@ -217,7 +217,7 @@ func TestAfterCaptureHook(t *testing.T) {
 	require.NotContains(t, interaction.Response.Headers, "Content-Encoding") // Removed after decompression.
 
 	// Response body should be pretty-printed.
-	var respBody map[string]interface{}
+	var respBody map[string]any
 	err = json.Unmarshal([]byte(interaction.Response.Body), &respBody)
 	require.NoError(t, err)
 	require.Contains(t, interaction.Response.Body, "\n") // Pretty-printed has newlines.

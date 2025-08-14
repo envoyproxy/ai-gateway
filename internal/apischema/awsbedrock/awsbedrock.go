@@ -287,7 +287,7 @@ type ToolUseBlock struct {
 	// Name is the name the tool that the model wants to use.
 	Name string `json:"name"`
 	// Input is to pass to the tool in JSON format.
-	Input map[string]interface{} `json:"input"`
+	Input map[string]any `json:"input"`
 	// ToolUseID is the ID for the tool request, pattern is ^[a-zA-Z0-9_-]+$.
 	ToolUseID string `json:"toolUseId"`
 }
@@ -350,7 +350,7 @@ type ConverseResponse struct {
 // ConverseOutput is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseOutput.html
 type ConverseOutput struct {
-	Message Message `json:"message,omitempty"`
+	Message Message `json:"message"`
 }
 
 // TokenUsage is defined in the AWS Bedrock API:

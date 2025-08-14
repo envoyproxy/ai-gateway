@@ -136,7 +136,7 @@ type ChatCompletionContentPartUserUnionParam struct {
 }
 
 func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) error {
-	var chatContentPart map[string]interface{}
+	var chatContentPart map[string]any
 	if err := json.Unmarshal(data, &chatContentPart); err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
 }
 
 type StringOrAssistantRoleContentUnion struct {
-	Value interface{}
+	Value any
 }
 
 func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
@@ -210,7 +210,7 @@ func (s StringOrAssistantRoleContentUnion) MarshalJSON() ([]byte, error) {
 }
 
 type StringOrArray struct {
-	Value interface{}
+	Value any
 }
 
 func (s *StringOrArray) UnmarshalJSON(data []byte) error {
@@ -245,7 +245,7 @@ func (s StringOrArray) MarshalJSON() ([]byte, error) {
 }
 
 type StringOrUserRoleContentUnion struct {
-	Value interface{}
+	Value any
 }
 
 func (s *StringOrUserRoleContentUnion) UnmarshalJSON(data []byte) error {
@@ -271,12 +271,12 @@ func (s StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
 }
 
 type ChatCompletionMessageParamUnion struct {
-	Value interface{}
+	Value any
 	Type  string
 }
 
 func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
-	var chatMessage map[string]interface{}
+	var chatMessage map[string]any
 	if err := json.Unmarshal(data, &chatMessage); err != nil {
 		return err
 	}
@@ -692,7 +692,7 @@ type ChatCompletionRequest struct {
 	// Stop string / array / null Defaults to null
 	// Up to 4 sequences where the API will stop generating further tokens.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stop
-	Stop interface{} `json:"stop,omitempty"`
+	Stop any `json:"stop,omitempty"`
 
 	// Stream: If set, partial message deltas will be sent, like in ChatGPT.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stream
@@ -774,7 +774,7 @@ type Tool struct {
 // ToolChoice represents the choice of tool.
 type ToolChoice struct {
 	Type     ToolType     `json:"type"`
-	Function ToolFunction `json:"function,omitempty"`
+	Function ToolFunction `json:"function"`
 }
 
 // ToolFunction represents the function to call.
@@ -798,7 +798,7 @@ const (
 
 // ChatCompletionToolChoice represents the tool choice for chat completions.
 // It can be either a string (none, auto, required) or a ChatCompletionNamedToolChoice object.
-type ChatCompletionToolChoice interface{}
+type ChatCompletionToolChoice any
 
 // ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
 type ChatCompletionNamedToolChoice struct {
@@ -960,7 +960,7 @@ type ChatCompletionResponseChoice struct {
 	Logprobs ChatCompletionChoicesLogprobs `json:"logprobs,omitzero"`
 	// Message is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
-	Message ChatCompletionResponseChoiceMessage `json:"message,omitempty"`
+	Message ChatCompletionResponseChoiceMessage `json:"message"`
 }
 
 // ChatCompletionResponseChoiceMessage is described in the OpenAI API documentation:
@@ -1224,7 +1224,7 @@ type Embedding struct {
 
 // EmbeddingUnion is a union type that can handle both []float64 and string formats.
 type EmbeddingUnion struct {
-	Value interface{}
+	Value any
 }
 
 // UnmarshalJSON implements json.Unmarshaler to handle both []float64 and string formats.

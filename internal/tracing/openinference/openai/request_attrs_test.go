@@ -78,14 +78,14 @@ var (
 			Function: &openai.FunctionDefinition{
 				Name:        "get_current_weather",
 				Description: "Get the current weather in a given location",
-				Parameters: map[string]interface{}{
+				Parameters: map[string]any{
 					"type": "object",
-					"properties": map[string]interface{}{
-						"location": map[string]interface{}{
+					"properties": map[string]any{
+						"location": map[string]any{
 							"type":        "string",
 							"description": "The city and state, e.g. San Francisco, CA",
 						},
-						"unit": map[string]interface{}{
+						"unit": map[string]any{
 							"type": "string",
 							"enum": []string{"celsius", "fahrenheit"},
 						},

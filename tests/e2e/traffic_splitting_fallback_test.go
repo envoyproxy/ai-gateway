@@ -35,7 +35,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 		backendAResponses := 0
 		backendBResponses := 0
 
-		for i := 0; i < requestCount; i++ {
+		for range requestCount {
 			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 			defer fwd.Kill()
 
@@ -92,7 +92,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 			backendCounts := make(map[string]int)
 			numRequests := 20
 
-			for i := 0; i < numRequests; i++ {
+			for range numRequests {
 				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
 					`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 				require.NoError(t, err)

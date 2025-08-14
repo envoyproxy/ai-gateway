@@ -274,6 +274,10 @@ spec:
                   type: object
                 type: array
             type: object
+        required:
+        - metadata
+        - spec
+        - status
         type: object
     served: true
     storage: true

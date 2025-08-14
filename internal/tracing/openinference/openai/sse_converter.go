@@ -44,9 +44,9 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 	)
 
 	// Split into lines assuming single-line data per event.
-	lines := bytes.Split(sseData, []byte("\n"))
+	lines := bytes.SplitSeq(sseData, []byte("\n"))
 
-	for _, line := range lines {
+	for line := range lines {
 		if len(line) == 0 || !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}

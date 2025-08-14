@@ -184,19 +184,19 @@ func Test_maybeModifyCluster(t *testing.T) {
 // Helper function to create an InferencePool ExtensionResource.
 func createInferencePoolExtensionResource(name, namespace string) *egextension.ExtensionResource {
 	unstructuredObj := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "inference.networking.x-k8s.io/v1alpha2",
 			"kind":       "InferencePool",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      name,
 				"namespace": namespace,
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"targetPortNumber": int32(8080),
-				"selector": map[string]interface{}{
+				"selector": map[string]any{
 					"app": "test-inference",
 				},
-				"extensionRef": map[string]interface{}{
+				"extensionRef": map[string]any{
 					"name": "test-epp",
 				},
 			},
@@ -1187,10 +1187,10 @@ func TestConstructInferencePoolsFrom(t *testing.T) {
 
 	t.Run("wrong API version", func(t *testing.T) {
 		unstructuredObj := &unstructured.Unstructured{
-			Object: map[string]interface{}{
+			Object: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Service",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-service",
 					"namespace": "default",
 				},

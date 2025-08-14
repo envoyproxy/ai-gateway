@@ -323,7 +323,7 @@ func (m *mockT) Helper() {
 	// No-op for testing.
 }
 
-func (m *mockT) Fatalf(format string, args ...interface{}) {
+func (m *mockT) Fatalf(format string, args ...any) {
 	m.failed = true
 	m.errorMsg = strings.TrimSpace(fmt.Sprintf(format, args...))
 }

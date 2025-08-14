@@ -100,7 +100,7 @@ func systemMsgToDeveloperMsg(msg openai.ChatCompletionSystemMessageParam) openai
 
 // processStop handles the 'stop' parameter which can be a string or a slice of strings.
 // It normalizes the input into a []*string.
-func processStop(data interface{}) ([]*string, error) {
+func processStop(data any) ([]*string, error) {
 	if data == nil {
 		return nil, nil
 	}

@@ -373,7 +373,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			requestBody := &anthropicschema.MessagesRequest{
 				"model":      "claude-3-sonnet",
 				"max_tokens": 1000,
-				"messages":   []interface{}{map[string]interface{}{"role": "user", "content": "Hello"}},
+				"messages":   []any{map[string]any{"role": "user", "content": "Hello"}},
 			}
 			requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "max_tokens": 1000, "messages": [{"role": "user", "content": "Hello"}]}`)
 

@@ -60,7 +60,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: []byte(fmt.Sprintf(pathTemplate, modelName)),
+				RawValue: fmt.Appendf(nil, pathTemplate, modelName),
 			}},
 		},
 	}
@@ -225,8 +225,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 }
 
 // unmarshalToolCallArguments is a helper method to unmarshal tool call arguments.
-func unmarshalToolCallArguments(arguments string) (map[string]interface{}, error) {
-	var input map[string]interface{}
+func unmarshalToolCallArguments(arguments string) (map[string]any, error) {
+	var input map[string]any
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
 	}

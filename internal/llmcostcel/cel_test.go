@@ -45,7 +45,7 @@ func TestNewProgram(t *testing.T) {
 	t.Run("ensure concurrency safety", func(t *testing.T) {
 		// Ensure that the program can be evaluated concurrently.
 		synctest.Test(t, func(t *testing.T) {
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				go func() {
 					_, err := NewProgram("model == 'cool_model' ?  input_tokens * output_tokens : total_tokens")
 					require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestEvaluateProgram(t *testing.T) {
 
 		// Ensure that the program can be evaluated concurrently.
 		synctest.Test(t, func(t *testing.T) {
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				go func() {
 					v, err := EvaluateProgram(prog, "cool_model", "cool_backend", 100, 2, 3)
 					require.NoError(t, err)

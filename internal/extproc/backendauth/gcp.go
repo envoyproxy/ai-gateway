@@ -80,7 +80,7 @@ func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extpr
 		&corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
 				Key:      "Authorization",
-				RawValue: []byte(fmt.Sprintf("Bearer %s", g.gcpAccessToken)),
+				RawValue: fmt.Appendf(nil, "Bearer %s", g.gcpAccessToken),
 			},
 		},
 	)

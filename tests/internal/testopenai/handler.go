@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -213,9 +214,7 @@ func (h *cassetteHandler) recordNewInteraction(r *http.Request, body []byte, w h
 	defer resp.Body.Close()
 
 	// Copy the response to the client.
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
+	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
 	respBody, err := io.ReadAll(resp.Body)
@@ -281,7 +280,7 @@ func splitSSEEvents(body string) []string {
 	var current []byte
 
 	bytes := []byte(body)
-	for i := 0; i < len(bytes); i++ {
+	for i := range bytes {
 		current = append(current, bytes[i])
 
 		// Check for double newline (event separator).
