@@ -1,11 +1,7 @@
 {
-  "traceId":  "Is5zyLGmCqE7EAjAFd5tzw==",
-  "spanId":  "sxUotsackbg=",
   "flags":  256,
   "name":  "ChatCompletion",
   "kind":  "SPAN_KIND_INTERNAL",
-  "startTimeUnixNano":  "1753566672879752323",
-  "endTimeUnixNano":  "1753566672883572279",
   "attributes":  [
     {
       "key":  "llm.system",
@@ -16,7 +12,7 @@
     {
       "key":  "input.value",
       "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": null, \"role\": \"user\"}], \"model\": \"gpt-4.1-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
+        "stringValue":  "{\"messages\": [{\"content\": null, \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
       }
     },
     {
@@ -28,7 +24,7 @@
     {
       "key":  "llm.invocation_parameters",
       "value":  {
-        "stringValue":  "{\"model\": \"gpt-4.1-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
+        "stringValue":  "{\"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
       }
     },
     {
@@ -46,7 +42,6 @@
   ],
   "events":  [
     {
-      "timeUnixNano":  "1753566672883551237",
       "name":  "exception",
       "attributes":  [
         {
@@ -58,13 +53,13 @@
         {
           "key":  "exception.message",
           "value":  {
-            "stringValue":  "Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}"
+            "stringValue":  "Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}"
           }
         },
         {
           "key":  "exception.stacktrace",
           "value":  {
-            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 306, in __call__\n    response = wrapped(*args, **kwargs)\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1044, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}\n"
+            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}\n"
           }
         },
         {
@@ -77,7 +72,7 @@
     }
   ],
   "status":  {
-    "message":  "BadRequestError: Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 1, but got 0 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}",
+    "message":  "BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}",
     "code":  "STATUS_CODE_ERROR"
   }
 }

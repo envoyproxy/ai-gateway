@@ -42,7 +42,7 @@ func TestServer_ExistingCassette(t *testing.T) {
 
 	// Verify it's a valid OpenAI response.
 	require.Contains(t, string(body), "chat.completion")
-	require.Contains(t, string(body), "Hello! How can I assist you today?")
+	require.Contains(t, string(body), "Hi there! How can I help you today?")
 }
 
 func TestServer_MissingCassette_NoAPIKey(t *testing.T) {
@@ -188,7 +188,7 @@ func TestServer_JSONMatching(t *testing.T) {
 
 	// Make request with same content as chat-basic but different JSON formatting.
 	// This tests that JSON matching works despite different formatting.
-	reqBody := `{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello!"}]}`
+	reqBody := `{"model":"gpt-5-nano","messages":[{"role":"user","content":"Hello!"}]}`
 
 	req, err := http.NewRequest("POST", server.URL()+"/v1/chat/completions", bytes.NewReader([]byte(reqBody)))
 	require.NoError(t, err)

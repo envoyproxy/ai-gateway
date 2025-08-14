@@ -27,10 +27,13 @@ import (
 func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 
 	var (
-		firstChunk *openai.ChatCompletionResponseChunk
-		content    strings.Builder
-		usage      *openai.ChatCompletionResponseUsage
-		role       string
+		firstChunk   *openai.ChatCompletionResponseChunk
+		content      strings.Builder
+		usage        *openai.ChatCompletionResponseUsage
+		annotations  []openai.Annotation
+		role         string
+		obfuscation  string
+		finishReason openai.ChatCompletionChoicesFinishReason
 	)
 
 	for _, chunk := range chunks {
@@ -38,13 +41,22 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 			firstChunk = chunk
 		}
 
-		// Accumulate content and role from delta (assuming single choice at index 0).
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
-			if chunk.Choices[0].Delta.Content != nil {
-				content.WriteString(*chunk.Choices[0].Delta.Content)
+		// Accumulate content, role, and annotations from delta (assuming single choice at index 0).
+		if len(chunk.Choices) > 0 {
+			if chunk.Choices[0].Delta != nil {
+				if chunk.Choices[0].Delta.Content != nil {
+					content.WriteString(*chunk.Choices[0].Delta.Content)
+				}
+				if chunk.Choices[0].Delta.Role != "" {
+					role = chunk.Choices[0].Delta.Role
+				}
+				if len(chunk.Choices[0].Delta.Annotations) > 0 {
+					annotations = append(annotations, chunk.Choices[0].Delta.Annotations...)
+				}
 			}
-			if chunk.Choices[0].Delta.Role != "" {
-				role = chunk.Choices[0].Delta.Role
+			// Capture finish_reason from any chunk that has it.
+			if chunk.Choices[0].FinishReason != "" {
+				finishReason = chunk.Choices[0].FinishReason
 			}
 		}
 
@@ -52,10 +64,19 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
+
+		// Capture obfuscation from the last chunk that has it.
+		if chunk.Obfuscation != "" {
+			obfuscation = chunk.Obfuscation
+		}
 	}
 
 	// If no valid first chunk found, return a minimal response.
 	if firstChunk == nil {
+		// Default to "stop" if no finish reason was captured.
+		if finishReason == "" {
+			finishReason = openai.ChatCompletionChoicesFinishReasonStop
+		}
 		return &openai.ChatCompletionResponse{
 			ID:      "",
 			Object:  "chat.completion.chunk",
@@ -63,7 +84,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 			Model:   "",
 			Choices: []openai.ChatCompletionResponseChoice{{
 				Index:        0,
-				FinishReason: "stop",
+				FinishReason: finishReason,
 				Message: openai.ChatCompletionResponseChoiceMessage{
 					Role: role,
 				},
@@ -74,6 +95,11 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 	// Build the response as a chunk with accumulated content.
 	contentStr := content.String()
 
+	// Default to "stop" if no finish reason was captured.
+	if finishReason == "" {
+		finishReason = openai.ChatCompletionChoicesFinishReasonStop
+	}
+
 	// Create a ChatCompletionResponse with all accumulated content.
 	response := &openai.ChatCompletionResponse{
 		ID:                firstChunk.ID,
@@ -82,13 +108,15 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 		Model:             firstChunk.Model,
 		ServiceTier:       firstChunk.ServiceTier,
 		SystemFingerprint: firstChunk.SystemFingerprint,
+		Obfuscation:       obfuscation,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Message: openai.ChatCompletionResponseChoiceMessage{
-				Role:    role,
-				Content: &contentStr,
+				Role:        role,
+				Content:     &contentStr,
+				Annotations: annotations,
 			},
 			Index:        0,
-			FinishReason: "stop",
+			FinishReason: finishReason,
 		}},
 	}
 

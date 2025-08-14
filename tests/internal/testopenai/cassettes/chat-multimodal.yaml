@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 version: 2
 interactions:
@@ -11,11 +6,11 @@ interactions:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 490
+        content_length: 499
         host: api.openai.com
         body: |-
             {
-              "max_tokens": 100,
+              "max_completion_tokens": 100,
               "messages": [
                 {
                   "content": [
@@ -33,13 +28,13 @@ interactions:
                   "role": "user"
                 }
               ],
-              "model": "gpt-4.1-nano"
+              "model": "gpt-5-nano"
             }
         headers:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "332"
+                - "341"
             Content-Type:
                 - application/json
             User-Agent:
@@ -50,42 +45,41 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 1018
+        content_length: 779
         body: |-
             {
               "choices": [
                 {
-                  "finish_reason": "stop",
+                  "finish_reason": "length",
                   "index": 0,
-                  "logprobs": null,
                   "message": {
                     "annotations": [],
-                    "content": "This image shows a wooden pathway running through a lush, green grassy field under a partly cloudy blue sky. The scene appears peaceful and rural, with trees in the distance and vibrant natural surroundings.",
+                    "content": "",
                     "refusal": null,
                     "role": "assistant"
                   }
                 }
               ],
-              "created": 1753423151,
-              "id": "chatcmpl-Bx5kVc7U7izUQncE24gOSCVWJld1e",
-              "model": "gpt-4.1-nano-2025-04-14",
+              "created": 1755134160,
+              "id": "chatcmpl-C4GrQKcrez1dN2o93xZTQ9ohbQFBY",
+              "model": "gpt-5-nano-2025-08-07",
               "object": "chat.completion",
               "service_tier": "default",
-              "system_fingerprint": "fp_38343a2f8f",
+              "system_fingerprint": null,
               "usage": {
-                "completion_tokens": 38,
+                "completion_tokens": 100,
                 "completion_tokens_details": {
                   "accepted_prediction_tokens": 0,
                   "audio_tokens": 0,
-                  "reasoning_tokens": 0,
+                  "reasoning_tokens": 100,
                   "rejected_prediction_tokens": 0
                 },
-                "prompt_tokens": 3675,
+                "prompt_tokens": 2245,
                 "prompt_tokens_details": {
                   "audio_tokens": 0,
                   "cached_tokens": 0
                 },
-                "total_tokens": 3713
+                "total_tokens": 2345
               }
             }
         headers:
@@ -96,13 +90,13 @@ interactions:
             Cf-Cache-Status:
                 - DYNAMIC
             Cf-Ray:
-                - 96496e047b01e547-KUL
+                - 96ec9ab00c623523-KUL
             Content-Type:
                 - application/json
             Date:
-                - Fri, 25 Jul 2025 05:59:12 GMT
+                - Thu, 14 Aug 2025 01:16:01 GMT
             Openai-Processing-Ms:
-                - "1457"
+                - "1818"
             Openai-Project:
                 - proj_KYenqYOfeZsnXEVK8dXVBhez
             Openai-Version:
@@ -114,7 +108,7 @@ interactions:
             X-Content-Type-Options:
                 - nosniff
             X-Envoy-Upstream-Service-Time:
-                - "1144"
+                - "1856"
             X-Ratelimit-Limit-Input-Images:
                 - "50000"
             X-Ratelimit-Limit-Requests:
@@ -134,7 +128,7 @@ interactions:
             X-Ratelimit-Reset-Tokens:
                 - 231ms
             X-Request-Id:
-                - 4d1f1549-c82d-4916-8bd9-3b757946c581
+                - req_fa83d58286d5428bb2b9bd830cffa594
         status: 200 OK
         code: 200
-        duration: 1.978446292s
+        duration: 2.294758542s

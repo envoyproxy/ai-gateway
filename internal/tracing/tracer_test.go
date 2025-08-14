@@ -29,7 +29,7 @@ var (
 	startOpts = []oteltrace.SpanStartOption{oteltrace.WithSpanKind(oteltrace.SpanKindServer)}
 
 	req = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
 			Type: openai.ChatMessageRoleUser,
 			Value: openai.ChatCompletionUserMessageParam{
@@ -58,10 +58,10 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			name:             "non-streaming request",
 			req:              req,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", 196),
 			},
@@ -70,10 +70,10 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			name:             "streaming request",
 			req:              &reqStream,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "stream len: 86",
+			expectedSpanName: "stream len: 84",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: true"),
-				attribute.Int("reqBodyLen", 86),
+				attribute.Int("reqBodyLen", 84),
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", 196),
 			},
@@ -84,10 +84,10 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders: map[string]string{
 				"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 			},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", 196),
 			},
