@@ -49,8 +49,8 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 				if chunk.Choices[0].Delta.Role != "" {
 					role = chunk.Choices[0].Delta.Role
 				}
-				if len(chunk.Choices[0].Delta.Annotations) > 0 {
-					annotations = append(annotations, chunk.Choices[0].Delta.Annotations...)
+				if as := chunk.Choices[0].Delta.Annotations; as != nil && len(*as) > 0 {
+					annotations = append(annotations, *as...)
 				}
 			}
 			// Capture finish_reason from any chunk that has it.

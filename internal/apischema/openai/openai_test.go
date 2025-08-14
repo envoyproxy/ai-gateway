@@ -1056,7 +1056,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 			choice: ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &ChatCompletionResponseChunkChoiceDelta{
-					Annotations: []Annotation{
+					Annotations: ptr.To([]Annotation{
 						{
 							Type: "url_citation",
 							URLCitation: &URLCitation{
@@ -1066,7 +1066,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 								URL:        "https://httpbin.org/?utm_source=openai",
 							},
 						},
-					},
+					}),
 				},
 				FinishReason: "stop",
 			},
@@ -1558,4 +1558,46 @@ func TestWebSearchOptions(t *testing.T) {
 			require.Equal(t, tc.options, decoded)
 		})
 	}
+}
+
+// This tests ensures to use a pointer to the slice since otherwise for "annotations" field to maintain
+// the same results after round trip.
+func TestChatCompletionResponseChoiceMessage_annotations_round_trip(t *testing.T) {
+	orig := []byte(`{"annotations": []}`)
+	var msg ChatCompletionResponseChoiceMessage
+	err := json.Unmarshal(orig, &msg)
+	require.NoError(t, err)
+	require.NotNil(t, msg.Annotations)
+	marshaled, err := json.Marshal(msg)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"annotations":[]}`, string(marshaled))
+
+	var msg2 ChatCompletionResponseChoiceMessage
+	err = json.Unmarshal([]byte(`{}`), &msg2)
+	require.NoError(t, err)
+	require.Nil(t, msg2.Annotations)
+	marshaled, err = json.Marshal(msg2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(marshaled))
+}
+
+// This tests ensures to use a pointer to the slice since otherwise for "annotations" field to maintain
+// the same results after round trip.
+func TestChatCompletionResponseChunkChoiceDelta_annotations_round_trip(t *testing.T) {
+	orig := []byte(`{"annotations": []}`)
+	var msg ChatCompletionResponseChunkChoiceDelta
+	err := json.Unmarshal(orig, &msg)
+	require.NoError(t, err)
+	require.NotNil(t, msg.Annotations)
+	marshaled, err := json.Marshal(msg)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"annotations":[]}`, string(marshaled))
+
+	var msg2 ChatCompletionResponseChunkChoiceDelta
+	err = json.Unmarshal([]byte(`{}`), &msg2)
+	require.NoError(t, err)
+	require.Nil(t, msg2.Annotations)
+	marshaled, err = json.Marshal(msg2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(marshaled))
 }
