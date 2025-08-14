@@ -555,7 +555,7 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 
 		toolCall := openai.ChatCompletionMessageToolCallParam{
 			ID:   &toolCallID,
-			Type: "function",
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
 			Function: openai.ChatCompletionMessageToolCallFunctionParam{
 				Name:      part.FunctionCall.Name,
 				Arguments: string(args),
