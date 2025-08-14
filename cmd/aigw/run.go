@@ -122,6 +122,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	udsPath := filepath.Join(tmpdir, "uds.sock")
 	_ = os.Remove(udsPath)
 
+	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	resourcesBuf := &bytes.Buffer{}
 	runCtx := &runCmdContext{envoyGatewayResourcesOut: resourcesBuf, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
 	// Use the default configuration if the path is not given.
