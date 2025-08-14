@@ -19,7 +19,8 @@ import (
 // fields whose values are zero or empty, or nested objects where all fields
 // have zero values.
 //
-// This is optimized for BUFFERED mode where we receive the entire stream at once.
+// TODO: This can be refactored in "streaming" in stateful way without asking for all chunks at once.
+// That would reduce a slice allocation for events.
 func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 
 	var (

@@ -224,14 +224,32 @@ data: [DONE]
 	})
 }
 
+type span struct {
+	counts int
+}
+
+func (s *span) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
+	s.counts++
+	if s.counts == 1 {
+		fmt.Println("First chunk received:", resp)
+	} else {
+		fmt.Println("Subsequent chunk received:", resp)
+	}
+}
+func (s *span) RecordResponse(resp *openai.ChatCompletionResponse) {}
+func (s *span) EndSpanOnError(statusCode int, body []byte)         {}
+func (s *span) EndSpan()                                           {}
+
 func TestExtractUsageFromBufferEvent(t *testing.T) {
 	t.Run("valid usage data", func(t *testing.T) {
+		s := &span{}
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
-		usedToken := o.extractUsageFromBufferEvent(nil)
+		usedToken := o.extractUsageFromBufferEvent(s)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.True(t, o.bufferingDone)
 		require.Nil(t, o.buffered)
+		require.Equal(t, 1, s.counts)
 	})
 
 	t.Run("valid usage data after invalid", func(t *testing.T) {
