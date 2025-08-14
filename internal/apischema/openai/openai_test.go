@@ -746,7 +746,7 @@ func TestChatCompletionResponse(t *testing.T) {
 						Message: ChatCompletionResponseChoiceMessage{
 							Role:    "assistant",
 							Content: ptr.To("Check out httpbin.org"),
-							Annotations: []Annotation{
+							Annotations: ptr.To([]Annotation{
 								{
 									Type: "url_citation",
 									URLCitation: &URLCitation{
@@ -756,7 +756,7 @@ func TestChatCompletionResponse(t *testing.T) {
 										URL:        "https://httpbin.org/?utm_source=openai",
 									},
 								},
-							},
+							}),
 						},
 					},
 				},
