@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
@@ -212,44 +213,30 @@ data: [DONE]
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
+			s := &testotel.MockSpan{}
 			var resp openai.ChatCompletionResponse
 			resp.Usage.TotalTokens = 42
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
+			require.Equal(t, &resp, s.Resp)
 		})
 	})
 }
 
-type span struct {
-	counts int
-}
-
-func (s *span) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
-	s.counts++
-	if s.counts == 1 {
-		fmt.Println("First chunk received:", resp)
-	} else {
-		fmt.Println("Subsequent chunk received:", resp)
-	}
-}
-func (s *span) RecordResponse(resp *openai.ChatCompletionResponse) {}
-func (s *span) EndSpanOnError(statusCode int, body []byte)         {}
-func (s *span) EndSpan()                                           {}
-
 func TestExtractUsageFromBufferEvent(t *testing.T) {
 	t.Run("valid usage data", func(t *testing.T) {
-		s := &span{}
+		s := &testotel.MockSpan{}
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(s)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.True(t, o.bufferingDone)
 		require.Nil(t, o.buffered)
-		require.Equal(t, 1, s.counts)
+		require.Len(t, s.RespChunks, 1)
 	})
 
 	t.Run("valid usage data after invalid", func(t *testing.T) {
