@@ -19,6 +19,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"google.golang.org/genai"
+
+	"github.com/openai/openai-go/v2/packages/param"
 )
 
 // Chat message role defined by the OpenAI API.
@@ -1187,6 +1189,9 @@ type EmbeddingRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+
+	// Embed vllm specific fields
+	*vLLMEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -1319,4 +1324,20 @@ type AnthropicVendorFields struct {
 	//
 	// https://docs.anthropic.com/en/api/messages#body-thinking
 	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
+}
+
+type vLLMEmbeddingVendorFields struct {
+	AddSpecialTokens param.Opt[bool] `json:"add_special_tokens,omitzero"`
+	//If true (the default), special tokens (e.g. BOS) will be added to the prompt
+
+	Priority param.Opt[int64] `json:"priority,omitzero"`
+	// The priority of the request (lower means earlier handling
+	// default: 0). Any priority other than 0 will raise an error
+	// if the served model does not use priority scheduling
+
+	RequestId param.Opt[string] `json:"request_id,omitzero"`
+	// The request_id related to this request. If the caller does  not set it, a random_uuid will be generated. This id is used "
+	// through out the inference process and return in response
+
+	Normalize param.Opt[bool] `json:"normalize,omitzero"`
 }

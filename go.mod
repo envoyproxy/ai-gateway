@@ -348,6 +348,7 @@ require (
 	github.com/nunnatsa/ginkgolinter v0.20.0 // indirect
 	github.com/ohler55/ojg v1.26.8 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/openai/openai-go/v2 v2.0.2
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
