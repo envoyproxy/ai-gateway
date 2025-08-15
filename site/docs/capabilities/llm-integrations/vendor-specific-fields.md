@@ -28,6 +28,11 @@ The following backends support vendor-specific fields:
 - **Supported Fields**:
     - `thinking`: Configuration for enabling Claude's extended thinking. [Anthropic Docs](https://docs.anthropic.com/en/api/messages#body-thinking)
 
+### AWS Bedrock
+- **API Schema Name**: `AWSBedrock`
+- **Supported Fields**:
+    - `thinking`: Configuration for enabling Anthropic Claude's extended thinking. [AWS Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html)
+
 ## Usage
 
 Add vendor-specific fields directly as inline fields in your OpenAI request:
