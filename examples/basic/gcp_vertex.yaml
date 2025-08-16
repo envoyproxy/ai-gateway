@@ -78,3 +78,24 @@ metadata:
   namespace: default
 stringData:
   client-secret: "GCP_OIDC_CLIENT_SECRET"  # Replace with your OIDC client secret
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gemini-flash-2.5
+      backendRefs:
+        - name: envoy-ai-gateway-basic-gcp
