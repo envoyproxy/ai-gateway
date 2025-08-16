@@ -52,6 +52,8 @@ The Gateway integrates with each provider's identity system to ensure secure, sh
 
 - **AWS Bedrock**: Uses OIDC integration with AWS STS to generate temporary credentials for each request
 - **Azure OpenAI**: Leverages Entra ID (formerly Azure AD) to provide short-lived access tokens
+- **GCP VertexAI**: Uses GCP workload federation with Google STS to generate temporary credentials for each request
+
 
 In both cases, the Gateway automatically manages these credentials, ensuring that each request to upstream providers is sent with short-lived credentials. This approach significantly reduces the risk of credential exposure and aligns with enterprise security best practices.
 
