@@ -45,6 +45,9 @@ const (
 	// ModelGPT4oMiniSearchPreview is the cheapest web search model usable with /chat/completions.
 	// Note: gpt-5 series supports web search, but only in the /responses API.
 	ModelGPT4oMiniSearchPreview = "gpt-4o-mini-search-preview"
+
+	// ModelTextEmbedding3Small is the cheapest model usable with /embeddings.
+	ModelTextEmbedding3Small = "text-embedding-3-small"
 )
 
 // ChatCompletionContentPartRefusalType The type of the content part.
@@ -226,6 +229,14 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 	err = json.Unmarshal(data, &strArr)
 	if err == nil {
 		s.Value = strArr
+		return nil
+	}
+
+	// Try to unmarshal as array of ints (for token embeddings).
+	var ints []int64
+	err = json.Unmarshal(data, &ints)
+	if err == nil {
+		s.Value = ints
 		return nil
 	}
 

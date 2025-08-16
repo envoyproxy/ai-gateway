@@ -36,7 +36,7 @@ You can record new spans for the following scenarios:
 
 In any of these cases, you can backfill any missing spans like this:
 ```bash
-RECORD_SPANS=true go test -v -run TestGetChatSpan
+RECORD_SPANS=true go test -v -run TestGetAllSpans
 ```
 
 Any missing spans will be automatically recorded using a Docker container

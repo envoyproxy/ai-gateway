@@ -17,7 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
-func TestOpenAIChatCompletions(t *testing.T) {
+func TestOpenAIEmbeddings(t *testing.T) {
 	env := startTestEnvironment(t, extprocBin, extprocConfig, nil, envoyConfig)
 
 	listenerPort := env.EnvoyListenerPort()
@@ -30,73 +30,45 @@ func TestOpenAIChatCompletions(t *testing.T) {
 		expectResponseBody string // only set this when not the same as what's proxied.
 	}{
 		{
-			name:             testopenai.CassetteChatBasic,
+			name:             testopenai.CassetteEmbeddingsBasic,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatStreaming,
+			name:             testopenai.CassetteEmbeddingsBase64,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatTools,
+			name:             testopenai.CassetteEmbeddingsTokens,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatMultimodal,
+			name:             testopenai.CassetteEmbeddingsLargeText,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatMultiturn,
-			expectStatusCode: http.StatusOK,
-		},
-		{
-			name:             testopenai.CassetteChatJSONMode,
-			expectStatusCode: http.StatusOK,
-		},
-		{
-			name:             testopenai.CassetteChatNoMessages,
-			expectStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:             testopenai.CassetteChatParallelTools,
-			expectStatusCode: http.StatusOK,
-		},
-		{
-			name:             testopenai.CassetteChatBadRequest,
-			expectStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               testopenai.CassetteChatUnknownModel,
-			expectResponseBody: `{"type":"error","error":{"type":"OpenAIBackendError","code":"404","message":"{\n    \"error\": {\n        \"message\": \"The model ` + "`gpt-4.1-nano-wrong`" + ` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n"}}`,
+			name:               testopenai.CassetteEmbeddingsUnknownModel,
+			expectResponseBody: `{"type":"error","error":{"type":"OpenAIBackendError","code":"404","message":"{\n    \"error\": {\n        \"message\": \"The model ` + "`text-embedding-4-ultra`" + ` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n"}}`,
 			expectStatusCode:   http.StatusNotFound,
 		},
 		{
-			name:             testopenai.CassetteChatReasoning,
+			name:             testopenai.CassetteEmbeddingsDimensions,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatImageToText,
+			name:             testopenai.CassetteEmbeddingsMaxTokens,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatTextToImageTool,
+			name:             testopenai.CassetteEmbeddingsMixedBatch,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatAudioToText,
+			name:             testopenai.CassetteEmbeddingsWhitespace,
 			expectStatusCode: http.StatusOK,
 		},
 		{
-			name:             testopenai.CassetteChatTextToAudio,
-			expectStatusCode: http.StatusOK,
-		},
-		{
-			name:             testopenai.CassetteChatDetailedUsage,
-			expectStatusCode: http.StatusOK,
-		},
-		{
-			name:             testopenai.CassetteChatStreamingDetailedUsage,
-			expectStatusCode: http.StatusOK,
+			name:             testopenai.CassetteEmbeddingsBadRequest,
+			expectStatusCode: http.StatusBadRequest,
 		},
 	}
 
@@ -120,6 +92,7 @@ func TestOpenAIChatCompletions(t *testing.T) {
 				wasBadGateway = true // assertions will fail later and log the body.
 			}
 			// Safe to use assert as no nil risk and response body explains status.
+			assert.Equal(t, tc.expectStatusCode, resp.StatusCode, "Response body: %s", string(body))
 			expectedBody := tc.expectResponseBody
 			if expectedBody == "" {
 				expectedBody = testopenai.ResponseBody(tc.name)

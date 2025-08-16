@@ -486,6 +486,11 @@ func TestStringOrArrayMarshal(t *testing.T) {
 			expected: `["hello","world"]`,
 		},
 		{
+			name:     "int array", // for token embeddings.
+			input:    StringOrArray{Value: []int64{1, 2}},
+			expected: `[1,2]`,
+		},
+		{
 			name: "text param array",
 			input: StringOrArray{Value: []ChatCompletionContentPartTextParam{
 				{Text: "hello", Type: "text"},

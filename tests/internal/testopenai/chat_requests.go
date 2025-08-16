@@ -6,150 +6,24 @@
 package testopenai
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// Cassette is an HTTP interaction recording.
-//
-// Note: At the moment, our tests are optimized for single request/response
-// pairs and do not include scenarios requiring multiple round-trips, such as
-// `cached_tokens`.
-type Cassette int
-
-// Cassette names for testing, corresponding to ChatCassettes().
-const (
-	// CassetteChatBasic is the canonical OpenAI chat completion request.
-	CassetteChatBasic Cassette = iota
-	// CassetteChatJSONMode is a chat completion request with JSON response format.
-	CassetteChatJSONMode
-	// CassetteChatMultimodal is a multimodal chat request with text and image inputs.
-	CassetteChatMultimodal
-	// CassetteChatMultiturn is a multi-turn conversation with message history.
-	CassetteChatMultiturn
-	// CassetteChatNoMessages is a request missing the required messages field.
-	CassetteChatNoMessages
-	// CassetteChatParallelTools is a chat completion with parallel function calling enabled.
-	CassetteChatParallelTools
-	// CassetteChatStreaming is the canonical OpenAI chat completion request,
-	// with streaming enabled.
-	CassetteChatStreaming
-	// CassetteChatTools is a chat completion request with function tools.
-	CassetteChatTools
-	// CassetteChatUnknownModel is a request with a non-existent model.
-	CassetteChatUnknownModel
-	// CassetteChatBadRequest is a request with multiple validation errors.
-	CassetteChatBadRequest
-	// CassetteChatReasoning tests capture of reasoning_tokens in completion_tokens_details for O1 models.
-	CassetteChatReasoning
-	// CassetteChatImageToText tests image input processing showing image token
-	// count in usage details.
-	CassetteChatImageToText
-	// CassetteChatTextToImageTool tests image generation through tool calls since
-	// chat completions cannot natively output images.
-	CassetteChatTextToImageTool
-	// CassetteChatAudioToText tests audio input transcription and audio_tokens
-	// in prompt_tokens_details.
-	CassetteChatAudioToText
-	// CassetteChatTextToAudio tests audio output generation where the model
-	// produces audio content, showing audio_tokens in completion_tokens_details.
-	CassetteChatTextToAudio
-	// CassetteChatDetailedUsage tests capture of all token usage detail fields in a single response.
-	CassetteChatDetailedUsage
-	// CassetteChatStreamingDetailedUsage tests capture of detailed token usage in streaming responses with include_usage.
-	CassetteChatStreamingDetailedUsage
-	// CassetteChatWebSearch tests OpenAI Web Search tool with a small URL response, including citations.
-	CassetteChatWebSearch
-	// CassetteChatStreamingWebSearch is CassetteChatWebSearch except with streaming enabled.
-	CassetteChatStreamingWebSearch
-	_cassetteNameEnd // Sentinel value for iteration.
-)
-
-// stringValues maps Cassette values to their string representations.
-var stringValues = map[Cassette]string{
-	CassetteChatBasic:                  "chat-basic",
-	CassetteChatJSONMode:               "chat-json-mode",
-	CassetteChatMultimodal:             "chat-multimodal",
-	CassetteChatMultiturn:              "chat-multiturn",
-	CassetteChatNoMessages:             "chat-no-messages",
-	CassetteChatParallelTools:          "chat-parallel-tools",
-	CassetteChatStreaming:              "chat-streaming",
-	CassetteChatTools:                  "chat-tools",
-	CassetteChatUnknownModel:           "chat-unknown-model",
-	CassetteChatBadRequest:             "chat-bad-request",
-	CassetteChatReasoning:              "chat-reasoning",
-	CassetteChatImageToText:            "chat-image-to-text",
-	CassetteChatTextToImageTool:        "chat-text-to-image-tool",
-	CassetteChatAudioToText:            "chat-audio-to-text",
-	CassetteChatTextToAudio:            "chat-text-to-audio",
-	CassetteChatDetailedUsage:          "chat-detailed-usage",
-	CassetteChatStreamingDetailedUsage: "chat-streaming-detailed-usage",
-	CassetteChatWebSearch:              "chat-web-search",
-	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
-}
-
-// String returns the string representation of the cassette name.
-func (c Cassette) String() string {
-	if s, ok := stringValues[c]; ok {
-		return s
-	}
-	return "unknown"
-}
-
-// ChatCassettes returns a slice of all available cassette names for chat compeltions.
+// ChatCassettes returns a slice of all cassettes for chat completions.
 // Unlike image generation—which *requires* an image_generation tool call—
 // audio synthesis is natively supported.
 func ChatCassettes() []Cassette {
-	result := make([]Cassette, 0, int(_cassetteNameEnd))
-	for i := Cassette(0); i < _cassetteNameEnd; i++ {
-		result = append(result, i)
-	}
-	return result
+	return cassettes(chatRequests)
 }
 
-// NewRequest creates a new HTTP request for the given cassette.
-//
-// The returned request is an http.MethodPost with the body and
-// CassetteNameHeader according to the pre-recorded cassette.
-func NewRequest(ctx context.Context, baseURL string, cassetteName Cassette) (*http.Request, error) {
-	// Get the request body for this cassette.
-	requestBody, ok := requestBodies[cassetteName]
-	if !ok {
-		return nil, fmt.Errorf("unknown cassette name: %s", cassetteName)
-	}
-
-	// Marshal the request body to JSON.
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	// Create the request.
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	// Set headers.
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cassette-Name", cassetteName.String())
-
-	return req, nil
-}
-
-// requestBodies contains the actual request body for each cassette and are
+// chatRequests contains the actual request body for each cassette and are
 // needed for re-recording the cassettes to get realistic responses.
 //
 // Prefer bodies in the OpenAI OpenAPI examples to making them up manually.
 // See https://github.com/openai/openai-openapi/tree/manual_spec
-var requestBodies = map[Cassette]*openai.ChatCompletionRequest{
+var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 	CassetteChatBasic:     cassetteChatBasic,
 	CassetteChatStreaming: withStream(cassetteChatBasic),
 	CassetteChatTools: {

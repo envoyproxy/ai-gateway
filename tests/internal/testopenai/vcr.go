@@ -38,6 +38,14 @@ var (
 		return filepath.Join(filepath.Dir(file), "cassettes")
 	}()
 
+	allVCRCassettes = func() map[string]*cassette.Cassette {
+		c, err := loadVCRCassettes(embeddedCassettes)
+		if err != nil {
+			panic(err)
+		}
+		return c
+	}()
+
 	// requestHeadersToRedact are sensitive or ephemeral headers to remove from requests and matching.
 	requestHeadersToRedact = []string{
 		"Authorization",
@@ -179,10 +187,10 @@ func matchJSONBodies(liveBody, cassetteBody string) bool {
 	return reflect.DeepEqual(liveData, cassetteData)
 }
 
-// loadCassettes walks the cassettes directory and loads all YAML files.
+// loadVCRCassettes walks the cassettes directory and loads all YAML files.
 // It returns a slice of cassettes ready for playback by the fake server.
-func loadCassettes(cassettesFS fs.FS) []*cassette.Cassette {
-	var cassettes []*cassette.Cassette
+func loadVCRCassettes(cassettesFS fs.FS) (map[string]*cassette.Cassette, error) {
+	cassettes := map[string]*cassette.Cassette{}
 	err := fs.WalkDir(cassettesFS, "cassettes", func(path string, _ fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -203,13 +211,15 @@ func loadCassettes(cassettesFS fs.FS) []*cassette.Cassette {
 		}
 		// Store the path as the cassette name for identification.
 		c.Name = path
-		cassettes = append(cassettes, &c)
+		name := strings.TrimPrefix(path, "cassettes/")
+		name = strings.TrimSuffix(name, ".yaml")
+		cassettes[name] = &c
 		return nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to load cassettes: %v", err))
+		return nil, fmt.Errorf("failed to load cassettes: %w", err)
 	}
-	return cassettes
+	return cassettes, nil
 }
 
 // prettyPrintJSON formats JSON for readability in cassette files.
