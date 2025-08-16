@@ -14,18 +14,30 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
-// TestGetChatSpan records any missing spans vs cassettes.
-func TestGetChatSpan(t *testing.T) {
-	for _, cassette := range testopenai.ChatCassettes() {
-		t.Run(cassette.String(), func(t *testing.T) {
-			span, err := GetChatSpan(t.Context(), os.Stdout, cassette)
-			require.NoError(t, err)
+// TestGetAllSpans records any missing spans vs cassettes.
+func TestGetAllSpans(t *testing.T) {
+	tests := []struct {
+		name      string
+		cassettes []testopenai.Cassette
+	}{
+		{"ChatCompletion", testopenai.ChatCassettes()},
+		{"CreateEmbeddingResponse", testopenai.EmbeddingsCassettes()},
+	}
 
-			require.NotEmpty(t, span.Name, "span name is empty for %s", cassette)
-			require.NotEmpty(t, span.Attributes, "span has no attributes for %s", cassette)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, cassette := range tc.cassettes {
+				t.Run(cassette.String(), func(t *testing.T) {
+					span, err := GetSpan(t.Context(), os.Stdout, cassette)
+					require.NoError(t, err)
 
-			// Basic validation that this looks like an OpenInference span.
-			require.Equal(t, "ChatCompletion", span.Name, "unexpected span name for %s", cassette)
+					require.NotEmpty(t, span.Name, "span name is empty for %s", cassette)
+					require.NotEmpty(t, span.Attributes, "span has no attributes for %s", cassette)
+
+					// Basic validation that this looks like an OpenInference span.
+					require.Equal(t, tc.name, span.Name, "unexpected span name for %s", cassette)
+				})
+			}
 		})
 	}
 }

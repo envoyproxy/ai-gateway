@@ -113,7 +113,7 @@ func TestServer_Recording(t *testing.T) {
 
 	// Use temp directory for recording.
 	tempDir := t.TempDir()
-	server, err := newServer(io.Discard, 0, embeddedCassettes, tempDir)
+	server, err := newServer(io.Discard, 0, allVCRCassettes, tempDir)
 	require.NoError(t, err)
 	defer server.Close()
 
@@ -204,7 +204,7 @@ func TestServer_JSONMatching(t *testing.T) {
 }
 
 func newTestServer(t *testing.T) *Server {
-	server, err := newServer(io.Discard, 0, embeddedCassettes, t.TempDir())
+	server, err := newServer(io.Discard, 0, allVCRCassettes, t.TempDir())
 	require.NoError(t, err)
 	return server
 }

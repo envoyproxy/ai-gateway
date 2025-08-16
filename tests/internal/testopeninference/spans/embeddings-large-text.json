@@ -1,0 +1,72 @@
+{
+  "flags": 256,
+  "name": "CreateEmbeddingResponse",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
+      }
+    },
+    {
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"input\": \"The quick brown fox jumps over the lazy dog. This pangram sentence contains every letter of the English alphabet at least once. It has been used since at least the late 19th century to test typewriters and computer keyboards, display examples of fonts, and other applications involving text where the use of all letters in the alphabet is desired. The phrase is commonly used for touch-typing practice, testing typewriters and computer keyboards, and displaying examples of fonts. It is also used in other applications involving all the letters in the English alphabet.\", \"model\": \"text-embedding-3-small\", \"encoding_format\": \"base64\"}"
+      }
+    },
+    {
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"text-embedding-3-small\", \"encoding_format\": \"base64\"}"
+      }
+    },
+    {
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "EMBEDDING"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "exception",
+      "attributes": [
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "openai.ConflictError"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-large-text.yaml and re-run with OPENAI_API_KEY set."
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-large-text.yaml and re-run with OPENAI_API_KEY set.\n"
+          }
+        },
+        {
+          "key": "exception.escaped",
+          "value": {
+            "stringValue": "False"
+          }
+        }
+      ]
+    }
+  ],
+  "status": {
+    "message": "ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-large-text.yaml and re-run with OPENAI_API_KEY set.",
+    "code": "STATUS_CODE_ERROR"
+  }
+}

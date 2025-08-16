@@ -287,7 +287,8 @@ func TestHandler_NoAPIKeyError(t *testing.T) {
 // TestLoadCassettes_EmbeddedFS tests loading cassettes from embedded filesystem.
 func TestLoadCassettes_EmbeddedFS(t *testing.T) {
 	// Load cassettes from the embedded filesystem.
-	cassettes := loadCassettes(embeddedCassettes)
+	cassettes, err := loadVCRCassettes(embeddedCassettes)
+	require.NoError(t, err)
 
 	// Should have loaded all cassettes.
 	require.NotEmpty(t, cassettes)

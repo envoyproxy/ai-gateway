@@ -29,7 +29,7 @@ func TestOtelOpenAIChatCompletions(t *testing.T) {
 			return // rather than also failing subsequent tests, which confuses root cause.
 		}
 
-		expected, err := testopeninference.GetChatSpan(t.Context(), io.Discard, cassette)
+		expected, err := testopeninference.GetSpan(t.Context(), io.Discard, cassette)
 		require.NoError(t, err)
 
 		t.Run(cassette.String(), func(t *testing.T) {

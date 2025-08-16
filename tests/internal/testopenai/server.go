@@ -12,7 +12,6 @@ package testopenai
 import (
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -33,33 +32,21 @@ type Server struct {
 
 // NewServer creates a new test OpenAI server (use port 0 for random).
 func NewServer(out io.Writer, port int) (*Server, error) {
-	return newServer(out, port, embeddedCassettes, cassettesDir)
+	return newServer(out, port, allVCRCassettes, cassettesDir)
 }
 
 // newServer creates a new test OpenAI server on a random port.
 //
 // out is where to write logs
 // port can be zero for a random port. The real value is available via Server.Port
-// cassettesFS is the filesystem containing pre-recorded cassettes.
+// cassettes is the pre-recorded cassettes.
 // cassettesDir is the directory name of a recording, only used when writing a new cassette.
-func newServer(out io.Writer, port int, cassettesFS fs.FS, cassettesDir string) (*Server, error) {
+func newServer(out io.Writer, port int, cassettes map[string]*cassette.Cassette, cassettesDir string) (*Server, error) {
 	logger := log.New(out, "[testopenai] ", 0)
 	// ":{port}" not "127.0.0.1:{port}" so Docker containers to access this server.
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port)) // #nosec G102 - need to bind to all interfaces for Docker
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener: %w", err)
-	}
-
-	// Load all cassettes from embedded filesystem.
-	cassettesSlice := loadCassettes(cassettesFS)
-
-	// Convert to map for faster lookup.
-	cassettes := make(map[string]*cassette.Cassette, len(cassettesSlice))
-	for _, c := range cassettesSlice {
-		name := c.Name
-		name = strings.TrimPrefix(name, "cassettes/")
-		name = strings.TrimSuffix(name, ".yaml")
-		cassettes[name] = c
 	}
 
 	// Determine base URL for recording.

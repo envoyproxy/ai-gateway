@@ -1,0 +1,96 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 127
+        host: api.openai.com
+        body: |-
+            {
+              "dimensions": -1,
+              "encoding_format": "invalid_format",
+              "input": [
+                102257
+              ],
+              "model": "text-embedding-3-small"
+            }
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "102"
+            Content-Type:
+                - application/json
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/embeddings
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 159
+        body: |-
+            {
+              "error": {
+                "code": null,
+                "message": "-1 is less than the minimum of 1 - 'dimensions'",
+                "param": null,
+                "type": "invalid_request_error"
+              }
+            }
+        headers:
+            Access-Control-Allow-Origin:
+                - '*'
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 96fd2ad2f86e3c63-KUL
+            Content-Length:
+                # TODO: OpenAI actually returned "160" which causes an error instead of passing it through.
+                # "upstream connect error or disconnect/reset before headers. reset reason: protocol error"
+                - "159"
+            Content-Type:
+                - application/json
+            Date:
+                - Sat, 16 Aug 2025 01:30:35 GMT
+            Openai-Processing-Ms:
+                - "37"
+            Openai-Project:
+                - proj_KYenqYOfeZsnXEVK8dXVBhez
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            Via:
+                - envoy-router-6c5b965c88-tb4qd
+            X-Content-Type-Options:
+                - nosniff
+            X-Envoy-Upstream-Service-Time:
+                - "144"
+            X-Ratelimit-Limit-Requests:
+                - "3000"
+            X-Ratelimit-Limit-Tokens:
+                - "1000000"
+            X-Ratelimit-Remaining-Requests:
+                - "2999"
+            X-Ratelimit-Remaining-Tokens:
+                - "999999"
+            X-Ratelimit-Reset-Requests:
+                - 20ms
+            X-Ratelimit-Reset-Tokens:
+                - 0s
+            X-Request-Id:
+                - req_062af047cd0840219b342a94ab0a5bad
+        status: 400 Bad Request
+        code: 400
+        duration: 574.093959ms
