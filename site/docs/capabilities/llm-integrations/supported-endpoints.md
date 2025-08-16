@@ -34,6 +34,8 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible requests and
 - OpenAI
 - AWS Bedrock (with automatic translation)
 - Azure OpenAI (with automatic translation)
+- GCP VertexAI (with automatic translation)
+- GCP Anthropic (with automatic translation)
 - Any OpenAI-compatible provider (Groq, Together AI, Mistral, etc.)
 
 **Example:**
@@ -49,6 +51,42 @@ curl -H "Content-Type: application/json" \
     ]
   }' \
   $GATEWAY_URL/v1/chat/completions
+```
+
+### Anthropic Messages
+
+**Endpoint:** `POST /anthropic/v1/messages`
+
+**Status:** ✅ Fully Supported
+
+**Description:** Create a chat completion response for the given conversation.
+
+**Features:**
+- ✅ Streaming and non-streaming responses
+- ✅ Function calling
+- ✅ Response format specification (including JSON schema)
+- ✅ Temperature, top_p, and other sampling parameters
+- ✅ System and user messages
+- ✅ Model selection via request body or `x-ai-eg-model` header
+- ✅ Token usage tracking and cost calculation
+- ✅ Provider fallback and load balancing
+
+**Supported Providers:**
+- GCP Anthropic
+
+**Example:**
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello, how are you?"
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1/messages
 ```
 
 ### Embeddings
@@ -102,24 +140,24 @@ curl $GATEWAY_URL/v1/models
 
 The following table summarizes which providers support which endpoints:
 
-| Provider                                                                                              | Chat Completions | Embeddings | Notes                         |
-|-------------------------------------------------------------------------------------------------------|:----------------:|:----------:|-------------------------------|
-| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅         |     ✅      |                               |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅         |     🚧     | Via API translation           |
-| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅         |     🚧     | Via API translation           |
-| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅         |     ✅      | Via OpenAI-compatible API     |
-| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅         |     ❌      | Via OpenAI-compatible API     |
-| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅         |     ❌      | Via OpenAI-compatible API     |
-| [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️     | Via OpenAI-compatible API     |
-| [Cohere](https://docs.cohere.com/v2/docs/compatibility-api)                                           |        ⚠️        |     ⚠️     | Via OpenAI-compatible API     |
-| [Mistral](https://docs.mistral.ai/api/)                                                               |        ⚠️        |     ⚠️     | Via OpenAI-compatible API     |
-| [DeepInfra](https://deepinfra.com/docs/inference)                                                     |        ✅         |     ✅      | Via OpenAI-compatible API     |
-| [DeepSeek](https://api-docs.deepseek.com/)                                                            |        ⚠️        |     ❌      | Via OpenAI-compatible API     |
-| [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️     | Via OpenAI-compatible API     |
-| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      | Via OpenAI-compatible API     |
-| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        🚧        |     🚧     | Work-in-progress: [issue#609] |
-| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        🚧        |     🚧     | Work-in-progress: [issue#609] |
-| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅         |     ✅      | Via OpenAI-compatible API     |                                                                                                                                                        |
+| Provider                                                                                              | Chat Completions | Embeddings | Notes                                              |
+|-------------------------------------------------------------------------------------------------------|:----------------:|:----------:|----------------------------------------------------|
+| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅         |     ✅      |                                                    |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅         |     🚧     | Via API translation                                |
+| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅         |     🚧     | Via API translation                                |
+| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅         |     ✅      | Via OpenAI-compatible API                          |
+| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅         |     ❌      | Via OpenAI-compatible API                          |
+| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅         |     ❌      | Via OpenAI-compatible API                          |
+| [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️     | Via OpenAI-compatible API                          |
+| [Cohere](https://docs.cohere.com/v2/docs/compatibility-api)                                           |        ⚠️        |     ⚠️     | Via OpenAI-compatible API                          |
+| [Mistral](https://docs.mistral.ai/api/)                                                               |        ⚠️        |     ⚠️     | Via OpenAI-compatible API                          |
+| [DeepInfra](https://deepinfra.com/docs/inference)                                                     |        ✅         |     ✅      | Via OpenAI-compatible API                          |
+| [DeepSeek](https://api-docs.deepseek.com/)                                                            |        ⚠️        |     ❌      | Via OpenAI-compatible API                          |
+| [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️     | Via OpenAI-compatible API                          |
+| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      | Via OpenAI-compatible API                          |
+| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅         |     🚧     | Via OpenAI-compatible API                          |
+| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅         |     🚧     | Via OpenAI-compatible API and Native Anthropic API |
+| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅         |     ✅      | Via OpenAI-compatible API                          |                                                                                                                                                        |
 * ✅ - Supported and Tested on Envoy AI Gateway CI
 * ⚠️️ - Expected to work based on provider documentation, but not tested on the CI.
 * ❌ - Not supported according to provider documentation.
