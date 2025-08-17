@@ -29,9 +29,10 @@ import (
 
 const (
 	// GCPAccessTokenKey is the key used to store GCP access token in Kubernetes secrets.
-	GCPAccessTokenKey = "gcpAccessToken"
-	GCPProjectNameKey = "projectName"
-	GCPRegionKey      = "region"
+	GCPAccessTokenKey     = "gcpAccessToken"
+	GCPServiceAccountJSON = "service_account.json"
+	GCPProjectNameKey     = "projectName"
+	GCPRegionKey          = "region"
 	// grantTypeTokenExchange is the OAuth 2.0 grant type for token exchange.
 	grantTypeTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// gcpIAMScope is the OAuth scope for IAM operations in GCP.
@@ -184,7 +185,7 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	// 2. Exchange the JWT for an STS token.
 	// The OIDC JWT token is exchanged for a Google Cloud STS token.
-	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, r.gcpCredentials.WorkloadIdentityFederationConfig)
+	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig)
 	if err != nil {
 		wifConfig := r.gcpCredentials.WorkloadIdentityFederationConfig
 		r.logger.Error(err, "failed to exchange JWT for STS token",

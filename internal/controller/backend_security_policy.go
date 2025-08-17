@@ -163,11 +163,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
-
-		// For GCP, OIDC is currently the only supported authentication method.
-		// If additional methods are added, validate that OIDC is used before calling getBackendSecurityPolicyAuthOIDC.
 		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
-
+		if oidc == nil {
+			return ctrl.Result{}, nil
+		}
 		// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
 		var oidcProvider tokenprovider.TokenProvider
 		oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
@@ -258,7 +257,7 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 		}
 		return nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
-		if spec.GCPCredentials != nil {
+		if spec.GCPCredentials != nil && spec.GCPCredentials.WorkloadIdentityFederationConfig != nil {
 			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
 		}
 	}
@@ -339,16 +338,17 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 	}
 
 	wifConfig := gcpCreds.WorkloadIdentityFederationConfig
-	if wifConfig.ProjectID == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+	if wifConfig != nil {
+		if wifConfig.ProjectID == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+		}
+		if wifConfig.WorkloadIdentityPoolName == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
+		}
+		if wifConfig.WorkloadIdentityProviderName == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
+		}
 	}
-	if wifConfig.WorkloadIdentityPoolName == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
-	}
-	if wifConfig.WorkloadIdentityProviderName == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
-	}
-
 	return nil
 }
 
@@ -365,6 +365,9 @@ func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
 			return ""
 		}
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if bsp.Spec.GCPCredentials.WorkloadIdentityFederationConfig == nil {
+			return ""
+		}
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		return "" // APIKey does not require rotation.
 	default:

@@ -164,6 +164,8 @@ type AzureAuth struct {
 
 // GCPAuth defines the GCP authentication configuration used to access Google Cloud AI services.
 type GCPAuth struct {
+	// CredentialFileLiteral is the literal string of the Google service account credential json string.
+	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
 	// AccessToken is the access token as a literal string.
 	// This token is obtained through GCP Workload Identity Federation and service account impersonation.
 	// The token is automatically rotated by the BackendSecurityPolicy controller before expiration.

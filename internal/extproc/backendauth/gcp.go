@@ -11,14 +11,16 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"golang.org/x/oauth2/google"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 type gcpHandler struct {
-	gcpAccessToken string // The GCP access token used for authentication.
-	region         string // The GCP region to use for requests.
-	projectName    string // The GCP project to use for requests.
+	gcpAccessToken        string // The GCP access token used for authentication.
+	gcpServiceAccountJSON string // The GCP service account credential json string.
+	region                string // The GCP region to use for requests.
+	projectName           string // The GCP project to use for requests.
 }
 
 func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
@@ -26,14 +28,15 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 		return nil, fmt.Errorf("GCP auth configuration cannot be nil")
 	}
 
-	if gcpAuth.AccessToken == "" {
-		return nil, fmt.Errorf("GCP access token cannot be empty")
+	if gcpAuth.AccessToken == "" && gcpAuth.CredentialFileLiteral == "" {
+		return nil, fmt.Errorf("GCP access token and service account credential json cannot be both empty")
 	}
 
 	return &gcpHandler{
-		gcpAccessToken: gcpAuth.AccessToken,
-		region:         gcpAuth.Region,
-		projectName:    gcpAuth.ProjectName,
+		gcpServiceAccountJSON: gcpAuth.CredentialFileLiteral,
+		gcpAccessToken:        gcpAuth.AccessToken,
+		region:                gcpAuth.Region,
+		projectName:           gcpAuth.ProjectName,
 	}, nil
 }
 
@@ -45,7 +48,7 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 //
 // The ":path" header is expected to contain the API-specific suffix, which is injected by translator.requestBody.
 // The suffix is combined with the generated prefix to form the complete path for the GCP API call.
-func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+func (g *gcpHandler) Do(ctx context.Context, _ map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
 	var pathHeaderFound bool
 
 	// Build the GCP URL prefix using the configured region and project name.
@@ -72,6 +75,18 @@ func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extpr
 
 	if !pathHeaderFound {
 		return fmt.Errorf("missing ':path' header in the request")
+	}
+
+	if g.gcpAccessToken == "" {
+		creds, err := google.CredentialsFromJSON(ctx, []byte(g.gcpServiceAccountJSON), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			return err
+		}
+		token, err := creds.TokenSource.Token()
+		if err != nil {
+			return err
+		}
+		g.gcpAccessToken = token.AccessToken
 	}
 
 	// Add the Authorization header with the GCP access token.

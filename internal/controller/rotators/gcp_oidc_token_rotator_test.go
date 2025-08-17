@@ -207,7 +207,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 			gcpCredentials := aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: dummyProjectName,
 				Region:      dummyProjectRegion,
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                "test-project-id",
 					WorkloadIdentityPoolName: "test-pool-name",
 				},
@@ -708,7 +708,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 						ProjectName: "test-project",
 						Region:      "us-central1",
-						WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+						WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 							ProjectID:                    "test-project-id",
 							WorkloadIdentityPoolName:     "test-pool-name",
 							WorkloadIdentityProviderName: "test-provider",

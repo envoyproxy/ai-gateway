@@ -450,7 +450,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 			ProjectName: "fake-project-name",
 			Region:      "fake-region",
-			WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "fake-project-id",
 				WorkloadIdentityProviderName: "fake-workload-identity-provider-name",
 				OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
@@ -732,7 +732,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -745,7 +745,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -758,7 +758,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -771,7 +771,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "",
 					WorkloadIdentityProviderName: "provider",
@@ -784,7 +784,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "",
@@ -797,7 +797,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -965,9 +965,14 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 				},
 				Spec: aigv1a1.BackendSecurityPolicySpec{
 					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+						CredentialsFile: &aigv1a1.GCPCredentialsFile{
+							SecretRef: nil,
+						},
+					},
 				},
 			},
-			expectedName: "ai-eg-bsp-gcp-bsp",
+			expectedName: "",
 		},
 		{
 			name: "APIKey type",
