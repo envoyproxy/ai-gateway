@@ -193,7 +193,7 @@ type BackendSecurityPolicyGCPCredentials struct {
 	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
 
-	// CredentialsFile specifies the credentials file to use for the AWS provider.
+	// CredentialsFile specifies the service account credentials file to use for the GCP provider.
 	//
 	// +optional
 	CredentialsFile *GCPCredentialsFile `json:"credentialsFile,omitempty"`
