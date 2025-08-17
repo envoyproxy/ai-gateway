@@ -19,12 +19,11 @@ Before you begin, you'll need:
 
 Ensure you have:
 1. An GCP project with VertexAI access enabled
-2. GCP credentials with workload identity federation setup
+2. GCP service account JSON key files
 3. Your GCP project id and name
-4. Enabled model access to Gemini
 
 :::tip GCP Best Practices
-Consider using GCP IAM roles and limited-scope credentials for production environments.
+Consider using GCP Workload Identity (Federation)/IAM roles and limited-scope credentials for production environments.
 :::
 
 ## Configuration Steps
@@ -46,7 +45,7 @@ Edit the `gcp_vertex.yaml` file to replace these placeholder values:
 - `GCP_REGION`: GCP region
 
 :::caution Security Note
-Make sure to keep your GCP credentials secure and never commit them to version control.
+Make sure to keep your GCP service account credentials secure and never commit them to version control.
 The credentials will be stored in Kubernetes secrets.
 :::
 
@@ -72,7 +71,7 @@ See the [Basic Usage](../basic-usage.md) page for instructions.
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-flash",
+    "model": "gemini-2.5-flash",
     "messages": [
       {
         "role": "user",
@@ -98,7 +97,7 @@ If you encounter issues:
    ```
 4. Common errors:
     - 401/403: Invalid credentials or insufficient permissions
-    - 404: Model not found or not available in region
+    - 404: Model not found or not available in a region
     - 429: Rate limit exceeded
 
 ## Configuring More Models
@@ -123,11 +122,11 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: gemini-flash-2.5
+              value: gemini-2.5-flash
       backendRefs:
         - name: envoy-ai-gateway-basic-gcp
 ```
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
-[model ID]:
-[Claude 3 Sonnet]: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table
+[model ID]: https://cloud.google.com/vertex-ai/generative-ai/docs/models
+[Anthropic Claude]: https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude
