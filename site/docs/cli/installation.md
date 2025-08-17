@@ -9,6 +9,7 @@ To install the `aigw` CLI, run the following command (This may take a while):
 
 ```shell
 git clone https://github.com/envoyproxy/ai-gateway.git
+cd ai-gateway
 go install ./cmd/aigw
 ```
 
