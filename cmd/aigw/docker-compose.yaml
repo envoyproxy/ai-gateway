@@ -54,7 +54,7 @@ services:
 
   # chat-completion is a simple curl-based test client for sending requests to aigw.
   chat-completion:
-    image: golang:1.25.6
+    image: golang:1.24.6
     container_name: chat-completion
     profiles: ["test"]
     env_file:

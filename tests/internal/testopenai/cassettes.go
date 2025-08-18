@@ -66,6 +66,9 @@ const (
 	CassetteChatWebSearch
 	// CassetteChatStreamingWebSearch is CassetteChatWebSearch except with streaming enabled.
 	CassetteChatStreamingWebSearch
+	// CassetteChatOpenAIAgentsPython is a real request from OpenAI Agents Python library for financial research.
+	// See https://github.com/openai/openai-agents-python/tree/main/examples/financial_research_agent
+	CassetteChatOpenAIAgentsPython
 
 	// Cassettes for the OpenAI /embeddings endpoint.
 
@@ -113,6 +116,7 @@ var stringValues = map[Cassette]string{
 	CassetteChatStreamingDetailedUsage: "chat-streaming-detailed-usage",
 	CassetteChatWebSearch:              "chat-web-search",
 	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
+	CassetteChatOpenAIAgentsPython:     "chat-openai-agents-python",
 
 	CassetteEmbeddingsBasic:        "embeddings-basic",
 	CassetteEmbeddingsBase64:       "embeddings-base64",

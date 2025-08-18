@@ -22,7 +22,7 @@ interactions:
             Accept-Encoding:
                 - gzip
             Content-Length:
-                - "70"
+                - "108"
             Content-Type:
                 - application/json
             User-Agent:

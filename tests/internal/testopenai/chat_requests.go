@@ -374,6 +374,70 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 	},
 	CassetteChatWebSearch:          cassetteChatWebSearch,
 	CassetteChatStreamingWebSearch: withStream(cassetteChatWebSearch),
+	CassetteChatOpenAIAgentsPython: {
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				Type: openai.ChatMessageRoleSystem,
+				Value: openai.ChatCompletionSystemMessageParam{
+					Role: openai.ChatMessageRoleSystem,
+					Content: openai.StringOrArray{
+						Value: "You are a financial research planner. Given a request for financial analysis, produce a set of web searches to gather the context needed. Aim for recent headlines, earnings  calls or 10‑K snippets, analyst commentary, and industry background. Output between 5 and 15 search terms to query for.",
+					},
+				},
+			},
+			{
+				Type: openai.ChatMessageRoleUser,
+				Value: openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: "Query: tell me about acme",
+					},
+				},
+			},
+		},
+		ResponseFormat: &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:   "final_output",
+				Strict: true,
+				Schema: map[string]interface{}{
+					"$defs": map[string]interface{}{
+						"FinancialSearchItem": map[string]interface{}{
+							"properties": map[string]interface{}{
+								"reason": map[string]interface{}{
+									"title": "Reason",
+									"type":  "string",
+								},
+								"query": map[string]interface{}{
+									"title": "Query",
+									"type":  "string",
+								},
+							},
+							"required":             []string{"reason", "query"},
+							"title":                "FinancialSearchItem",
+							"type":                 "object",
+							"additionalProperties": false,
+						},
+					},
+					"properties": map[string]interface{}{
+						"searches": map[string]interface{}{
+							"items": map[string]interface{}{
+								"$ref": "#/$defs/FinancialSearchItem",
+							},
+							"title": "Searches",
+							"type":  "array",
+						},
+					},
+					"required":             []string{"searches"},
+					"title":                "FinancialSearchPlan",
+					"type":                 "object",
+					"additionalProperties": false,
+				},
+			},
+		},
+		Stream: false,
+	},
 }
 
 // Cassettes that also have streaming variants.

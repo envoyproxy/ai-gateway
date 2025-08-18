@@ -1,0 +1,136 @@
+{
+  "flags":  256,
+  "name":  "ChatCompletion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"messages\": [{\"content\": \"You are a financial research planner. Given a request for financial analysis, produce a set of web searches to gather the context needed. Aim for recent headlines, earnings  calls or 10‑K snippets, analyst commentary, and industry background. Output between 5 and 15 search terms to query for.\", \"role\": \"system\"}, {\"content\": \"Query: tell me about acme\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_schema\", \"json_schema\": {\"name\": \"final_output\", \"schema\": {\"$defs\": {\"FinancialSearchItem\": {\"additionalProperties\": false, \"properties\": {\"query\": {\"title\": \"Query\", \"type\": \"string\"}, \"reason\": {\"title\": \"Reason\", \"type\": \"string\"}}, \"required\": [\"reason\", \"query\"], \"title\": \"FinancialSearchItem\", \"type\": \"object\"}}, \"additionalProperties\": false, \"properties\": {\"searches\": {\"items\": {\"$ref\": \"#/$defs/FinancialSearchItem\"}, \"title\": \"Searches\", \"type\": \"array\"}}, \"required\": [\"searches\"], \"title\": \"FinancialSearchPlan\", \"type\": \"object\"}, \"strict\": true}}}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"id\":\"chatcmpl-C5jqnj4Qa8hydwksNKvONOgYdUJxQ\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"{\\\"searches\\\":[{\\\"query\\\":\\\"Acme Corp earnings call latest\\\",\\\"reason\\\":\\\"Capture the most recent quarterly results, margins, guidance, and management commentary.\\\"},{\\\"query\\\":\\\"Acme Corp stock price\\\",\\\"reason\\\":\\\"Check current market valuation and recent price movement for the public company.\\\"},{\\\"query\\\":\\\"Acme Corp 10-K 2023\\\",\\\"reason\\\":\\\"Review regulatory filings for business overview, risk factors, and financial statements.\\\"},{\\\"query\\\":\\\"Acme annual report 2023\\\",\\\"reason\\\":\\\"Gain narrative context on strategy, markets, and operational highlights.\\\"},{\\\"query\\\":\\\"Acme investor presentation\\\",\\\"reason\\\":\\\"Understand strategy, product roadmap, and capital allocation plans.\\\"},{\\\"query\\\":\\\"Acme press release\\\",\\\"reason\\\":\\\"Identify the latest corporate announcements such as partnerships, product launches, or leadership changes.\\\"},{\\\"query\\\":\\\"Acme SEC filings\\\",\\\"reason\\\":\\\"Obtain comprehensive regulatory documents and disclosures for public company.\\\"},{\\\"query\\\":\\\"Acme competitors\\\",\\\"reason\\\":\\\"Assess the competitive landscape and peer benchmarking.\\\"},{\\\"query\\\":\\\"Acme industry analysis 2024\\\",\\\"reason\\\":\\\"Context on sector trends, demand drivers, and regulatory impacts.\\\"},{\\\"query\\\":\\\"Acme earnings transcript\\\",\\\"reason\\\":\\\"Extract key quotes and management commentary from the earnings call.\\\"},{\\\"query\\\":\\\"Acme governance and leadership\\\",\\\"reason\\\":\\\"Review board composition, executive management, and compensation insights.\\\"},{\\\"query\\\":\\\"Acme sustainability report\\\",\\\"reason\\\":\\\"Understand environmental, social, and governance metrics and initiatives.\\\"}]}\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755483925,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":1962,\"prompt_tokens\":171,\"total_tokens\":2133,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":1664,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_schema\", \"json_schema\": {\"name\": \"final_output\", \"schema\": {\"$defs\": {\"FinancialSearchItem\": {\"additionalProperties\": false, \"properties\": {\"query\": {\"title\": \"Query\", \"type\": \"string\"}, \"reason\": {\"title\": \"Reason\", \"type\": \"string\"}}, \"required\": [\"reason\", \"query\"], \"title\": \"FinancialSearchItem\", \"type\": \"object\"}}, \"additionalProperties\": false, \"properties\": {\"searches\": {\"items\": {\"$ref\": \"#/$defs/FinancialSearchItem\"}, \"title\": \"Searches\", \"type\": \"array\"}}, \"required\": [\"searches\"], \"title\": \"FinancialSearchPlan\", \"type\": \"object\"}, \"strict\": true}}}"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.role",
+      "value":  {
+        "stringValue":  "system"
+      }
+    },
+    {
+      "key":  "llm.input_messages.0.message.content",
+      "value":  {
+        "stringValue":  "You are a financial research planner. Given a request for financial analysis, produce a set of web searches to gather the context needed. Aim for recent headlines, earnings  calls or 10‑K snippets, analyst commentary, and industry background. Output between 5 and 15 search terms to query for."
+      }
+    },
+    {
+      "key":  "llm.input_messages.1.message.role",
+      "value":  {
+        "stringValue":  "user"
+      }
+    },
+    {
+      "key":  "llm.input_messages.1.message.content",
+      "value":  {
+        "stringValue":  "Query: tell me about acme"
+      }
+    },
+    {
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "gpt-5-nano-2025-08-07"
+      }
+    },
+    {
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "2133"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "171"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "1962"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.cache_read",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.reasoning",
+      "value":  {
+        "intValue":  "1664"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion_details.audio",
+      "value":  {
+        "intValue":  "0"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.role",
+      "value":  {
+        "stringValue":  "assistant"
+      }
+    },
+    {
+      "key":  "llm.output_messages.0.message.content",
+      "value":  {
+        "stringValue":  "{\"searches\":[{\"query\":\"Acme Corp earnings call latest\",\"reason\":\"Capture the most recent quarterly results, margins, guidance, and management commentary.\"},{\"query\":\"Acme Corp stock price\",\"reason\":\"Check current market valuation and recent price movement for the public company.\"},{\"query\":\"Acme Corp 10-K 2023\",\"reason\":\"Review regulatory filings for business overview, risk factors, and financial statements.\"},{\"query\":\"Acme annual report 2023\",\"reason\":\"Gain narrative context on strategy, markets, and operational highlights.\"},{\"query\":\"Acme investor presentation\",\"reason\":\"Understand strategy, product roadmap, and capital allocation plans.\"},{\"query\":\"Acme press release\",\"reason\":\"Identify the latest corporate announcements such as partnerships, product launches, or leadership changes.\"},{\"query\":\"Acme SEC filings\",\"reason\":\"Obtain comprehensive regulatory documents and disclosures for public company.\"},{\"query\":\"Acme competitors\",\"reason\":\"Assess the competitive landscape and peer benchmarking.\"},{\"query\":\"Acme industry analysis 2024\",\"reason\":\"Context on sector trends, demand drivers, and regulatory impacts.\"},{\"query\":\"Acme earnings transcript\",\"reason\":\"Extract key quotes and management commentary from the earnings call.\"},{\"query\":\"Acme governance and leadership\",\"reason\":\"Review board composition, executive management, and compensation insights.\"},{\"query\":\"Acme sustainability report\",\"reason\":\"Understand environmental, social, and governance metrics and initiatives.\"}]}"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
+}

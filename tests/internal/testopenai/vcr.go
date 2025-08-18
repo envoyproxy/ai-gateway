@@ -120,6 +120,10 @@ func afterCaptureHook(i *cassette.Interaction) error {
 		i.Request.Body = pretty
 	}
 	i.Request.ContentLength = int64(len(i.Request.Body))
+	// Update Content-Length header to match the actual body size
+	if i.Request.Headers != nil {
+		i.Request.Headers["Content-Length"] = []string{fmt.Sprintf("%d", len(i.Request.Body))}
+	}
 
 	// Clear sensitive response headers.
 	for _, header := range responseHeadersToRedact {
@@ -153,6 +157,10 @@ func afterCaptureHook(i *cassette.Interaction) error {
 		i.Response.Body = pretty
 	}
 	i.Response.ContentLength = int64(len(i.Response.Body))
+	// Update Content-Length header to match the actual body size
+	if i.Response.Headers != nil {
+		i.Response.Headers["Content-Length"] = []string{fmt.Sprintf("%d", len(i.Response.Body))}
+	}
 	return nil
 }
 

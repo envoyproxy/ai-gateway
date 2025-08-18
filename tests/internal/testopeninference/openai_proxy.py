@@ -29,9 +29,11 @@ async def health() -> str:
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request) -> Response:
+    request_data = await request.json()
     return await handle_openai_request(
         request,
         client.chat.completions.create,
+        request_data=request_data,
         is_streaming=request_data.get('stream', False)
     )
 
@@ -45,10 +47,12 @@ async def embeddings(request: Request) -> Response:
 async def handle_openai_request(
     request: Request,
     client_method,
+    request_data: dict = None,
     is_streaming: bool = False
 ) -> Response:
     try:
-        request_data = await request.json()
+        if request_data is None:
+            request_data = await request.json()
         logger.info(f"Received request: {json.dumps(request_data)}")
 
         cassette_name = request.headers.get('X-Cassette-Name')
