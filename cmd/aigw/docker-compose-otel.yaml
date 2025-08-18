@@ -74,15 +74,15 @@ services:
     working_dir: /app
     command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
 
-  # openai-client is the standard OpenAI client (`openai` in pip), instrumented
+  # chat-completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
   # - openinference-instrumentation-python (LLM chat completion spans)
   # - opentelemetry-instrumentation-httpx (HTTP client spans and trace headers)
-  openai-client:
+  chat-completion:
     build:
       context: ../../tests/internal/testopeninference
       dockerfile: Dockerfile.openai_client
-    container_name: openai-client
+    container_name: chat-completion
     profiles: ["test"]
     env_file:
       - ../../.env.ollama
