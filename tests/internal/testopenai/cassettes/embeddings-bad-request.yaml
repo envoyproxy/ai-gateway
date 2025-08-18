@@ -54,8 +54,6 @@ interactions:
             Cf-Ray:
                 - 96fd2ad2f86e3c63-KUL
             Content-Length:
-                # TODO: OpenAI actually returned "160" which causes an error instead of passing it through.
-                # "upstream connect error or disconnect/reset before headers. reset reason: protocol error"
                 - "159"
             Content-Type:
                 - application/json
