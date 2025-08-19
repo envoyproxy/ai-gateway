@@ -60,37 +60,36 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 }
 
 // buildBaseAttributes creates the base attributes for metrics recording.
-func (b *baseMetrics) buildBaseAttributes(headers map[string]string, extraAttrs ...attribute.KeyValue) []attribute.KeyValue {
-	attrs := make([]attribute.KeyValue, 0, 3+len(extraAttrs))
-	attrs = append(attrs,
-		attribute.Key(genaiAttributeOperationName).String(b.operation),
-		attribute.Key(genaiAttributeSystemName).String(b.backend),
-		attribute.Key(genaiAttributeRequestModel).String(b.model),
-	)
-	attrs = append(attrs, extraAttrs...)
+func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.Set {
+	opt := attribute.Key(genaiAttributeOperationName).String(b.operation)
+	sys := attribute.Key(genaiAttributeSystemName).String(b.backend)
+	model := attribute.Key(genaiAttributeRequestModel).String(b.model)
+	if len(b.requestHeaderLabelMapping) == 0 {
+		return attribute.NewSet(opt, sys, model)
+	}
 
 	// Add header values as attributes based on the header mapping if headers are provided.
+	attrs := []attribute.KeyValue{opt, sys, model}
 	for headerName, labelName := range b.requestHeaderLabelMapping {
 		if headerValue, exists := headers[headerName]; exists {
 			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
 		}
 	}
-
-	return attrs
+	return attribute.NewSet(attrs...)
 }
 
 // RecordRequestCompletion records the completion of a request with success/failure status.
-func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
-	attrs := b.buildBaseAttributes(requestHeaders, extraAttrs...)
+func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string) {
+	attrs := b.buildBaseAttributes(requestHeaders)
 
 	if success {
 		// According to the semantic conventions, the error attribute should not be added for successful operations.
-		b.metrics.requestLatency.Record(ctx, time.Since(b.requestStart).Seconds(), metric.WithAttributes(attrs...))
+		b.metrics.requestLatency.Record(ctx, time.Since(b.requestStart).Seconds(), metric.WithAttributeSet(attrs))
 	} else {
 		// We don't have a set of typed errors yet, or a set of low-cardinality values, so we can just set the value to the
 		// placeholder one. See: https://opentelemetry.io/docs/specs/semconv/attributes-registry/error/#error-type
 		b.metrics.requestLatency.Record(ctx, time.Since(b.requestStart).Seconds(),
-			metric.WithAttributes(attrs...),
+			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback)),
 		)
 	}
