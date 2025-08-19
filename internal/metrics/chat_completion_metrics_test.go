@@ -51,12 +51,10 @@ func TestRecordTokenUsage(t *testing.T) {
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 
-		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		}
 		inputAttrs  = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
