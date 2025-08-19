@@ -3,16 +3,17 @@
 ## Quick Start
 
 [docker-compose.yml](docker-compose.yaml) builds and runs `aigw`, targeting
-Ollama and listening for OpenAI chat completion requests on port 1975.
+[Ollama][ollama] for OpenAI chat completion requests on port 1975.
 
 - **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode)
 - **chat-completion**: curl command making a simple chat completion
 
 1. **Start Ollama** on your host machine:
 
-   Start Ollama listening on all interfaces to allow it to be accessible via Docker.
+   Start Ollama on all interfaces, with a large context. This allows it to be
+   addressable by Docker and handle large tasks, such as from [Goose][goose].
    ```bash
-   OLLAMA_HOST=0.0.0.0 ollama serve
+   OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_HOST=0.0.0.0 ollama serve
    ```
 
 2. **Run the example minimal stack**:
@@ -50,9 +51,10 @@ and evaluation system. It has UX features for LLM spans formatted with
 
 1. **Start Ollama** on your host machine:
 
-   Start Ollama listening on all interfaces to allow it to be accessible via Docker.
+   Start Ollama on all interfaces, with a large context. This allows it to be
+   addressable by Docker and handle large tasks, such as from [Goose][goose].
    ```bash
-   OLLAMA_HOST=0.0.0.0 ollama serve
+   OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_HOST=0.0.0.0 ollama serve
    ```
 
 2. **Run the example OpenTelemetry stack**:
@@ -97,6 +99,8 @@ and evaluation system. It has UX features for LLM spans formatted with
    ```
 
 ---
+[ollama]: https://ollama.com/
+[goose]: https://block.github.io/goose/
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [phoenix]: https://docs.arize.com/phoenix
 [otel-python]: https://opentelemetry.io/docs/zero-code/python/
