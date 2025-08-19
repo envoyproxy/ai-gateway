@@ -18,11 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 )
 
 // TestEnvironment holds all the services needed for tests.
@@ -36,7 +37,7 @@ type TestEnvironment struct {
 	upstreamOut, extprocOut, envoyStdout, envoyStderr  *syncBuffer
 }
 
-func (e *TestEnvironment) LogOutput(t *testing.T) {
+func (e *TestEnvironment) LogOutput(t TestingT) {
 	t.Logf("=== Envoy Stdout ===\n%s", e.envoyStdout.String())
 	t.Logf("=== Envoy Stderr ===\n%s", e.envoyStderr.String())
 	t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", e.extprocOut.String())
@@ -62,10 +63,24 @@ func (e *TestEnvironment) ExtProcMetricsPort() int {
 	return e.extProcMetricsPort
 }
 
+// TestingT is an abstraction over testing.T and testing.B.
+type TestingT interface {
+	require.TestingT
+	Logf(format string, args ...interface{})
+	TempDir() string
+	Context() context.Context
+	Cleanup(func())
+	Failed() bool
+}
+
 // StartTestEnvironment starts all required services and returns ports and a closer.
-func StartTestEnvironment(t *testing.T,
-	requireNewUpstream func(t *testing.T, out io.Writer, port int), upstreamPortDefault int,
-	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure bool,
+//
+// If extProcInProcess is true, then this starts the extproc in-process by directly calling
+// mainlib.Main instead of the built binary. This allows the benchmark test suite to directly do the profiling
+// without the extroc.
+func StartTestEnvironment(t TestingT,
+	requireNewUpstream func(t TestingT, out io.Writer, port int), upstreamPortDefault int,
+	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
 	ports := requireRandomPorts(t, 6)
@@ -105,6 +120,7 @@ func StartTestEnvironment(t *testing.T,
 		env.extProcPort,
 		env.extProcMetricsPort,
 		env.extProcHealthPort,
+		extProcInProcess,
 	)
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
@@ -128,18 +144,19 @@ func StartTestEnvironment(t *testing.T,
 
 	// Sanity-check all connections to ensure everything is up.
 	require.Eventually(t, func() bool {
+		t.Logf("Checking connections to all services in the test environment")
 		err := env.checkAllConnections(t)
 		if err != nil {
 			t.Logf("Error checking connections: %v", err)
 			return false
 		}
-		t.Log("All services are up and running")
+		t.Logf("All services are up and running")
 		return true
 	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
 	return env
 }
 
-func (e *TestEnvironment) checkAllConnections(t *testing.T) error {
+func (e *TestEnvironment) checkAllConnections(t TestingT) error {
 	errGroup := &errgroup.Group{}
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.extProcPort, "extProc")
@@ -159,7 +176,7 @@ func (e *TestEnvironment) checkAllConnections(t *testing.T) error {
 	return errGroup.Wait()
 }
 
-func (e *TestEnvironment) checkConnection(t *testing.T, port int, name string) error {
+func (e *TestEnvironment) checkConnection(t TestingT, port int, name string) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		t.Logf("Failed to connect to %s on port %d: %v", name, port, err)
@@ -175,13 +192,13 @@ func (e *TestEnvironment) checkConnection(t *testing.T, port int, name string) e
 }
 
 // requireRandomPorts returns random available ports.
-func requireRandomPorts(t *testing.T, count int) []int {
+func requireRandomPorts(t require.TestingT, count int) []int {
 	ports := make([]int, count)
 
 	var listeners []net.Listener
 	for i := 0; i < count; i++ {
 		lc := net.ListenConfig{}
-		lis, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+		lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 		require.NoError(t, err, "failed to listen on random port %d", i)
 		listeners = append(listeners, lis)
 		addr := lis.Addr().(*net.TCPAddr)
@@ -219,7 +236,7 @@ func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage 
 }
 
 // requireEnvoy starts Envoy with the given configuration and ports.
-func requireEnvoy(t *testing.T,
+func requireEnvoy(t TestingT,
 	stdout, stderr io.Writer,
 	config string,
 	listenerPort, adminPort, extProcPort, upstreamPortDefault, upstreamPort int,
@@ -254,25 +271,35 @@ func requireEnvoy(t *testing.T,
 }
 
 // requireExtProc starts the external processor with the given configuration.
-func requireExtProc(t *testing.T, out io.Writer, bin, config string, env []string, port, metricsPort, healthPort int) {
+func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string, port, metricsPort, healthPort int, inProcess bool) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 
-	cmd := exec.CommandContext(t.Context(), bin)
-	cmd.Args = append(cmd.Args,
+	args := []string{
 		"-configPath", configPath,
 		"-extProcAddr", fmt.Sprintf(":%d", port),
 		"-metricsPort", strconv.Itoa(metricsPort),
 		"-healthPort", strconv.Itoa(healthPort),
-		"-logLevel", "info")
-	cmd.Env = append(os.Environ(), env...)
-
-	StartAndAwaitReady(t, cmd, out, out, "AI Gateway External Processor is ready")
+		"-logLevel", "info",
+	}
+	if inProcess {
+		go func() {
+			err := mainlib.Main(t.Context(), args, os.Stdout)
+			if err != nil {
+				panic(err)
+			}
+		}()
+	} else {
+		cmd := exec.CommandContext(t.Context(), bin)
+		cmd.Args = args
+		cmd.Env = append(os.Environ(), env...)
+		StartAndAwaitReady(t, cmd, out, out, "AI Gateway External Processor is ready")
+	}
 }
 
 // StartAndAwaitReady takes a prepared exec.Cmd, assigns stdout and stderr to out, and starts it.
 // This blocks on the readyMessage.
-func StartAndAwaitReady(t *testing.T, cmd *exec.Cmd, stdout, stderr io.Writer, readyMessage string) {
+func StartAndAwaitReady(t TestingT, cmd *exec.Cmd, stdout, stderr io.Writer, readyMessage string) {
 	// Create a pipe to capture stderr for startup detection.
 	stderrReader, stderrWriter, err := os.Pipe()
 	require.NoError(t, err)
