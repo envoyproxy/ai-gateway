@@ -83,13 +83,10 @@ func TestRecordTokenLatency(t *testing.T) {
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
-
-		extra = attribute.Key("extra").String("value")
 		attrs = attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String(genAISystemAWSBedrock),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		)
 	)
 
@@ -125,13 +122,10 @@ func TestRecordRequestCompletion(t *testing.T) {
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
-
-		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String("custom"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		}
 		attrsSuccess = attribute.NewSet(attrs...)
 		attrsFailure = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback))...)
