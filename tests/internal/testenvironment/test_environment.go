@@ -291,7 +291,7 @@ func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string,
 		}()
 	} else {
 		cmd := exec.CommandContext(t.Context(), bin)
-		cmd.Args = args
+		cmd.Args = append(cmd.Args, args...)
 		cmd.Env = append(os.Environ(), env...)
 		StartAndAwaitReady(t, cmd, out, out, "AI Gateway External Processor is ready")
 	}
