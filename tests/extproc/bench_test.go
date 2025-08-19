@@ -174,6 +174,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 				for pb.Next() {
 					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
+					req.ContentLength = int64(len(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
@@ -257,6 +258,7 @@ func BenchmarkEmbeddings(b *testing.B) {
 				for pb.Next() {
 					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
+					req.ContentLength = int64(len(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
@@ -368,6 +370,7 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 				for pb.Next() {
 					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
+					req.ContentLength = int64(len(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
@@ -445,6 +448,7 @@ func BenchmarkConcurrentRequests(b *testing.B) {
 		for pb.Next() {
 			// Only create a new body reader for each iteration
 			req.Body = io.NopCloser(strings.NewReader(requestBody))
+			req.ContentLength = int64(len(requestBody))
 
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(b, err)
