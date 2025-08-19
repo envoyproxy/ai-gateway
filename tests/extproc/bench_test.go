@@ -160,7 +160,6 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				// Create request template once outside the loop
 				req, err := http.NewRequestWithContext(context.Background(),
 					http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
 				require.NoError(b, err)
@@ -172,7 +171,6 @@ func BenchmarkChatCompletions(b *testing.B) {
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
 				for pb.Next() {
-					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 					req.ContentLength = int64(len(tc.requestBody))
 
@@ -244,7 +242,6 @@ func BenchmarkEmbeddings(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				// Create request template once outside the loop
 				req, err := http.NewRequestWithContext(context.Background(),
 					http.MethodPost, listenerAddress+"/v1/embeddings", nil)
 				require.NoError(b, err)
@@ -256,7 +253,6 @@ func BenchmarkEmbeddings(b *testing.B) {
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
 				for pb.Next() {
-					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 					req.ContentLength = int64(len(tc.requestBody))
 
@@ -355,7 +351,6 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				// Create request template once outside the loop
 				req, err := http.NewRequestWithContext(context.Background(),
 					http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
 				require.NoError(b, err)
@@ -368,7 +363,6 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
 				for pb.Next() {
-					// Only create a new body reader for each iteration
 					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 					req.ContentLength = int64(len(tc.requestBody))
 
@@ -381,83 +375,4 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 			})
 		})
 	}
-}
-
-// BenchmarkConcurrentRequests tests performance under concurrent load.
-func BenchmarkConcurrentRequests(b *testing.B) {
-	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
-		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
-		},
-		ModelNameHeaderKey: "x-model-name",
-		Backends: []filterapi.Backend{
-			testUpstreamOpenAIBackend,
-		},
-	}
-
-	configBytes, err := yaml.Marshal(config)
-	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), false, true)
-
-	listenerPort := env.EnvoyListenerPort()
-
-	requestBody := `{
-		"model": "gpt-4",
-		"messages": [
-			{"role": "user", "content": "This is a concurrent benchmark test."}
-		],
-		"max_tokens": 50
-	}`
-
-	responseBody := `{
-		"id": "chatcmpl-concurrent",
-		"object": "chat.completion",
-		"created": 1234567890,
-		"model": "gpt-4",
-		"choices": [{
-			"index": 0,
-			"message": {
-				"role": "assistant",
-				"content": "This is a concurrent benchmark response."
-			},
-			"finish_reason": "stop"
-		}],
-		"usage": {
-			"prompt_tokens": 8,
-			"completion_tokens": 8,
-			"total_tokens": 16
-		}
-	}`
-
-	listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		// Create request template once outside the loop
-		req, err := http.NewRequestWithContext(context.Background(),
-			http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
-		require.NoError(b, err)
-
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-test-backend", "openai")
-		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-			base64.StdEncoding.EncodeToString([]byte(responseBody)))
-		req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
-
-		for pb.Next() {
-			// Only create a new body reader for each iteration
-			req.Body = io.NopCloser(strings.NewReader(requestBody))
-			req.ContentLength = int64(len(requestBody))
-
-			resp, err := http.DefaultClient.Do(req)
-			require.NoError(b, err)
-
-			_, err = io.ReadAll(resp.Body)
-			require.NoError(b, err)
-			resp.Body.Close()
-
-			require.Equal(b, http.StatusOK, resp.StatusCode)
-		}
-	})
 }
