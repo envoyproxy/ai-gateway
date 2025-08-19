@@ -160,17 +160,20 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					req, err := http.NewRequestWithContext(b.Context(),
-						http.MethodPost, listenerAddress+"/v1/chat/completions",
-						strings.NewReader(tc.requestBody))
-					require.NoError(b, err)
+				// Create request template once outside the loop
+				req, err := http.NewRequestWithContext(context.Background(),
+					http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
+				require.NoError(b, err)
 
-					req.Header.Set("Content-Type", "application/json")
-					req.Header.Set("x-test-backend", tc.backend)
-					req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-						base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
-					req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("x-test-backend", tc.backend)
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+					base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+
+				for pb.Next() {
+					// Only create a new body reader for each iteration
+					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
@@ -240,17 +243,20 @@ func BenchmarkEmbeddings(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					req, err := http.NewRequestWithContext(context.Background(),
-						http.MethodPost, listenerAddress+"/v1/embeddings",
-						strings.NewReader(tc.requestBody))
-					require.NoError(b, err)
+				// Create request template once outside the loop
+				req, err := http.NewRequestWithContext(context.Background(),
+					http.MethodPost, listenerAddress+"/v1/embeddings", nil)
+				require.NoError(b, err)
 
-					req.Header.Set("Content-Type", "application/json")
-					req.Header.Set("x-test-backend", tc.backend)
-					req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-						base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
-					req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("x-test-backend", tc.backend)
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+					base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+
+				for pb.Next() {
+					// Only create a new body reader for each iteration
+					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
@@ -347,27 +353,26 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					req, err := http.NewRequestWithContext(context.Background(),
-						http.MethodPost, listenerAddress+"/v1/chat/completions",
-						strings.NewReader(tc.requestBody))
-					require.NoError(b, err)
+				// Create request template once outside the loop
+				req, err := http.NewRequestWithContext(context.Background(),
+					http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
+				require.NoError(b, err)
 
-					req.Header.Set("Content-Type", "application/json")
-					req.Header.Set("x-test-backend", tc.backend)
-					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
-					req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-						base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
-					req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("x-test-backend", tc.backend)
+				req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+					base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+
+				for pb.Next() {
+					// Only create a new body reader for each iteration
+					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
 
 					resp, err := http.DefaultClient.Do(req)
 					require.NoError(b, err)
 
-					// Read streaming response.
-					_, err = io.ReadAll(resp.Body)
-					require.NoError(b, err)
-					resp.Body.Close()
-
+					require.NoError(b, resp.Body.Close())
 					require.Equal(b, http.StatusOK, resp.StatusCode)
 				}
 			})
@@ -426,17 +431,20 @@ func BenchmarkConcurrentRequests(b *testing.B) {
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			req, err := http.NewRequestWithContext(context.Background(),
-				http.MethodPost, listenerAddress+"/v1/chat/completions",
-				strings.NewReader(requestBody))
-			require.NoError(b, err)
+		// Create request template once outside the loop
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
+		require.NoError(b, err)
 
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("x-test-backend", "openai")
-			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-				base64.StdEncoding.EncodeToString([]byte(responseBody)))
-			req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-test-backend", "openai")
+		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte(responseBody)))
+		req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+
+		for pb.Next() {
+			// Only create a new body reader for each iteration
+			req.Body = io.NopCloser(strings.NewReader(requestBody))
 
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(b, err)
