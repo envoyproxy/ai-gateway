@@ -18,6 +18,19 @@ spec:
     group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-gcp-anthropic
+  namespace: default
+spec:
+  schema:
+    name: GCPAnthropic
+  backendRef:
+    name: envoy-ai-gateway-basic-gcp-us-east5
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-gcp-credentials
@@ -46,6 +59,17 @@ spec:
         hostname: us-central1-aiplatform.googleapis.com
         port: 443
 ---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-gcp-us-east5
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-east5-aiplatform.googleapis.com
+        port: 443
+---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
@@ -59,6 +83,20 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: us-central1-aiplatform.googleapis.com
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-us-east5-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: envoy-ai-gateway-basic-gcp-us-east5
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: us-east5-aiplatform.googleapis.com
 ---
 apiVersion: v1
 kind: Secret
@@ -88,3 +126,24 @@ spec:
               value: gemini-2.5-flash
       backendRefs:
         - name: envoy-ai-gateway-basic-gcp
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-gcp-anthropic
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-3-7-sonnet@20250219
+      backendRefs:
+        - name: envoy-ai-gateway-basic-gcp-anthropic

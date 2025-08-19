@@ -18,9 +18,9 @@ Before you begin, you'll need:
 ## GCP Credentials Setup
 
 Ensure you have:
-1. An GCP project with VertexAI access enabled
-2. GCP service account JSON key files
-3. Your GCP project id and name
+1. Your GCP project id and name.
+2. In your GCP project, enable VertexAI API access.
+3. Create a GCP service account and generate the JSON key file.
 
 :::tip GCP Best Practices
 Consider using GCP Workload Identity (Federation)/IAM roles and limited-scope credentials for production environments.
@@ -68,6 +68,7 @@ kubectl wait pods --timeout=2m \
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
+To access a Gemini model with chat completion endpoint:
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
@@ -80,6 +81,56 @@ curl -H "Content-Type: application/json" \
     ]
   }' \
   $GATEWAY_URL/v1/chat/completions
+```
+
+To access an Anthropic model with chat completion endpoint:
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-7-sonnet@20250219",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is capital of France?"
+      }
+    ],
+    "max_completion_tokens": 100
+  }' \
+  $GATEWAY_URL/v1/chat/completions
+```
+
+Expected output:
+```json
+{
+  "choices":[
+    {
+      "finish_reason":"stop",
+      "index":0,
+      "message":{
+        "content":"The capital of France is Paris. Paris is not only the capital city but also the largest city in France, known for its cultural significance, historic landmarks like the Eiffel Tower and the Louvre Museum, and its influence in fashion, art, and cuisine.",
+        "role":"assistant"
+      }
+    }
+  ],
+  "object":"chat.completion",
+  "usage":{"completion_tokens":58,"prompt_tokens":13,"total_tokens":71}
+}
+```
+
+You can also access an Anthropic model with native Anthropic messages endpoint:
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-7-sonnet@20250219",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is capital of France?"
+      }
+    ],
+    "max_tokens": 100
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
 ```
 
 ## Troubleshooting
@@ -108,7 +159,7 @@ To use more models, add more [AIGatewayRouteRule]s to the `gcp_vertex.yaml` file
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
-  name: envoy-ai-gateway-basic-gcp
+  name: envoy-ai-gateway-basic-gcp-gemini
   namespace: default
 spec:
   schema:
@@ -122,7 +173,7 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: gemini-2.5-flash
+              value: gemini-2.5-flash-pro
       backendRefs:
         - name: envoy-ai-gateway-basic-gcp
 ```
