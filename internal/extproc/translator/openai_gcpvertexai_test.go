@@ -496,8 +496,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 		endOfStream        bool
 		wantError          bool
 		wantHeaderMut      *extprocv3.HeaderMutation
-		wantBodyMut        *extprocv3.BodyMutation  // For streaming tests
-		wantOpenAIResponse *openaigo.ChatCompletion // For non-streaming tests
+		wantBodyMut        *extprocv3.BodyMutation  // For streaming tests.
+		wantOpenAIResponse *openaigo.ChatCompletion // For non-streaming tests.
 		wantTokenUsage     LLMTokenUsage
 	}{
 		{
@@ -526,7 +526,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:   false,
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("715")}, // <-- Updated value
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("715")},
 				}},
 			},
 			wantOpenAIResponse: &openaigo.ChatCompletion{
@@ -564,7 +564,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{
 					{
-						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("372")}, // <-- Updated value
+						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("372")},
 					},
 				},
 			},
@@ -620,12 +620,10 @@ data: [DONE]
 			}
 			require.NoError(t, err)
 
-			// Compare headers
 			if diff := cmp.Diff(tc.wantHeaderMut, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
-			// Compare body based on stream or non-stream
 			if tc.stream {
 				if diff := cmp.Diff(tc.wantBodyMut, bodyMut, bodyMutTransformer(t)); diff != "" {
 					t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
@@ -638,7 +636,6 @@ data: [DONE]
 				require.JSONEq(t, string(expectedBody), string(actualBody))
 			}
 
-			// Compare token usage
 			if diff := cmp.Diff(tc.wantTokenUsage, tokenUsage); diff != "" {
 				t.Errorf("TokenUsage mismatch (-want +got):\n%s", diff)
 			}

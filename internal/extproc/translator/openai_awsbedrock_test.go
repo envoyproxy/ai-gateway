@@ -1248,11 +1248,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
 			require.Equal(t, strconv.Itoa(len(actualBody)), string(hm.SetHeaders[0].Header.RawValue))
 
-			// Marshal the expected struct to JSON
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
-
-			// Compare the actual JSON with the expected JSON
 			require.JSONEq(t, string(expectedBody), string(actualBody))
 		})
 	}

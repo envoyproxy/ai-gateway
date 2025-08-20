@@ -125,8 +125,8 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.Ch
 		Model:             firstChunk.Model,
 		ServiceTier:       openaigo.ChatCompletionServiceTier(firstChunk.ServiceTier),
 		SystemFingerprint: firstChunk.SystemFingerprint,
+		// Obfuscation:       obfuscation,
 		// TODO: obfuscation is not a response type - not a chat completion field. we should not include it.
-		//Obfuscation:       obfuscation,
 		Choices: []openaigo.ChatCompletionChoice{{
 			Message: openaigo.ChatCompletionMessage{
 				Role:        openAIconstant.Assistant(role),
