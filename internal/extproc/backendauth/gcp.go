@@ -32,6 +32,18 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 		return nil, fmt.Errorf("GCP access token and service account credential json cannot be both empty")
 	}
 
+	if gcpAuth.CredentialFileLiteral != "" {
+		creds, err := google.CredentialsFromJSON(context.Background(), []byte(gcpAuth.CredentialFileLiteral), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			return nil, err
+		}
+		token, err := creds.TokenSource.Token()
+		if err != nil {
+			return nil, err
+		}
+		gcpAuth.AccessToken = token.AccessToken
+	}
+
 	return &gcpHandler{
 		gcpServiceAccountJSON: gcpAuth.CredentialFileLiteral,
 		gcpAccessToken:        gcpAuth.AccessToken,
@@ -48,7 +60,7 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 //
 // The ":path" header is expected to contain the API-specific suffix, which is injected by translator.requestBody.
 // The suffix is combined with the generated prefix to form the complete path for the GCP API call.
-func (g *gcpHandler) Do(ctx context.Context, _ map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
 	var pathHeaderFound bool
 
 	// Build the GCP URL prefix using the configured region and project name.
@@ -75,18 +87,6 @@ func (g *gcpHandler) Do(ctx context.Context, _ map[string]string, headerMut *ext
 
 	if !pathHeaderFound {
 		return fmt.Errorf("missing ':path' header in the request")
-	}
-
-	if g.gcpAccessToken == "" {
-		creds, err := google.CredentialsFromJSON(ctx, []byte(g.gcpServiceAccountJSON), "https://www.googleapis.com/auth/cloud-platform")
-		if err != nil {
-			return err
-		}
-		token, err := creds.TokenSource.Token()
-		if err != nil {
-			return err
-		}
-		g.gcpAccessToken = token.AccessToken
 	}
 
 	// Add the Authorization header with the GCP access token.

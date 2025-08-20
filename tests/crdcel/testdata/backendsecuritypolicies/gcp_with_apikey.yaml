@@ -10,7 +10,6 @@ metadata:
   namespace: default
 spec:
   type: GCPCredentials
-  gcpCredentials:
-    region: us-central1
+  apiKey:
     secretRef:
-      name: gcp-secret
+      name: api-key-secret

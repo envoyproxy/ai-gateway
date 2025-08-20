@@ -297,6 +297,6 @@ type AWSOIDCExchangeToken struct {
 type GCPCredentialsFile struct {
 	// SecretRef is the reference to the credential file.
 	//
-	// The secret should contain the AWS credentials file keyed on "credentials".
+	// The secret should contain the GCP service account credentials file keyed on "service_account.json".
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }

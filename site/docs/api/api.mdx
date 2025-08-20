@@ -1042,7 +1042,7 @@ Envoy reads the secret file to authenticate with GCP.
   name="secretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
   required="true"
-  description="SecretRef is the reference to the credential file.<br />The secret should contain the AWS credentials file keyed on `credentials`."
+  description="SecretRef is the reference to the credential file.<br />The secret should contain the GCP service account credentials file keyed on `service_account.json`."
 />
 
 
