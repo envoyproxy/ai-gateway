@@ -7,11 +7,12 @@ package testotel
 
 import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	openaigo "github.com/openai/openai-go"
 )
 
 // MockSpan is a mock implementation of api.ChatCompletionSpan for testing purposes.
 type MockSpan struct {
-	Resp          *openai.ChatCompletionResponse
+	Resp          *openaigo.ChatCompletion
 	RespChunks    []*openai.ChatCompletionResponseChunk
 	ErrorStatus   int
 	ErrBody       string
@@ -24,7 +25,7 @@ func (s *MockSpan) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk)
 }
 
 // RecordResponse implements api.ChatCompletionSpan.
-func (s *MockSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+func (s *MockSpan) RecordResponse(resp *openaigo.ChatCompletion) {
 	s.Resp = resp
 }
 

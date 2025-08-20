@@ -10,6 +10,7 @@ package openai
 import (
 	"encoding/json"
 
+	openaigo "github.com/openai/openai-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -75,7 +76,7 @@ func (r *ChatCompletionRecorder) RecordResponseOnError(span trace.Span, statusCo
 }
 
 // RecordResponse implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse) {
+func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openaigo.ChatCompletion) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
 	attrs = buildResponseAttributes(resp, r.traceConfig)

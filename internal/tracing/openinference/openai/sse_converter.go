@@ -10,8 +10,11 @@ package openai
 
 import (
 	"strings"
+	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 )
 
 // convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
@@ -24,7 +27,7 @@ import (
 // TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
-func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
+func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.ChatCompletion {
 	var (
 		firstChunk   *openai.ChatCompletionResponseChunk
 		content      strings.Builder
@@ -32,7 +35,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 		annotations  []openai.Annotation
 		role         string
 		obfuscation  string
-		finishReason openai.ChatCompletionChoicesFinishReason
+		finishReason openaigo.CompletionChoiceFinishReason
 	)
 
 	for _, chunk := range chunks {
@@ -55,7 +58,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 			}
 			// Capture finish_reason from any chunk that has it.
 			if chunk.Choices[0].FinishReason != "" {
-				finishReason = chunk.Choices[0].FinishReason
+				finishReason = openaigo.CompletionChoiceFinishReason(chunk.Choices[0].FinishReason)
 			}
 		}
 
@@ -74,18 +77,17 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 	if firstChunk == nil {
 		// Default to "stop" if no finish reason was captured.
 		if finishReason == "" {
-			finishReason = openai.ChatCompletionChoicesFinishReasonStop
+			finishReason = openaigo.CompletionChoiceFinishReasonStop
 		}
-		return &openai.ChatCompletionResponse{
-			ID:      "",
-			Object:  "chat.completion.chunk",
-			Created: openai.JSONUNIXTime{},
-			Model:   "",
-			Choices: []openai.ChatCompletionResponseChoice{{
+		return &openaigo.ChatCompletion{
+			ID:     "",
+			Object: "chat.completion.chunk",
+			Model:  "",
+			Choices: []openaigo.ChatCompletionChoice{{
 				Index:        0,
-				FinishReason: finishReason,
-				Message: openai.ChatCompletionResponseChoiceMessage{
-					Role: role,
+				FinishReason: string(finishReason),
+				Message: openaigo.ChatCompletionMessage{
+					Role: openAIconstant.Assistant(role),
 				},
 			}},
 		}
@@ -96,36 +98,64 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 
 	// Default to "stop" if no finish reason was captured.
 	if finishReason == "" {
-		finishReason = openai.ChatCompletionChoicesFinishReasonStop
+		finishReason = openaigo.CompletionChoiceFinishReasonStop
 	}
 
-	var annotationsPtr *[]openai.Annotation
+	var annotationsPtr []openaigo.ChatCompletionMessageAnnotation
 	if len(annotations) > 0 {
-		annotationsPtr = &annotations
+		annotationsPtr = make([]openaigo.ChatCompletionMessageAnnotation, len(annotations))
+		for i, a := range annotations {
+			annotationsPtr[i] = openaigo.ChatCompletionMessageAnnotation{
+				URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
+					EndIndex:   int64(a.URLCitation.EndIndex),
+					StartIndex: int64(a.URLCitation.StartIndex),
+					Title:      a.URLCitation.Title,
+					URL:        a.URLCitation.URL,
+				},
+			}
+		}
 	}
 
-	// Create a ChatCompletionResponse with all accumulated content.
-	response := &openai.ChatCompletionResponse{
+	// Create a ChatCompletion with all accumulated content.
+	_ = obfuscation
+	response := &openaigo.ChatCompletion{
 		ID:                firstChunk.ID,
 		Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
-		Created:           firstChunk.Created,
+		Created:           time.Time(firstChunk.Created).Unix(),
 		Model:             firstChunk.Model,
-		ServiceTier:       firstChunk.ServiceTier,
+		ServiceTier:       openaigo.ChatCompletionServiceTier(firstChunk.ServiceTier),
 		SystemFingerprint: firstChunk.SystemFingerprint,
-		Obfuscation:       obfuscation,
-		Choices: []openai.ChatCompletionResponseChoice{{
-			Message: openai.ChatCompletionResponseChoiceMessage{
-				Role:        role,
-				Content:     &contentStr,
+		// TODO: obfuscation is not a response type - not a chat completion field. we should not include it.
+		//Obfuscation:       obfuscation,
+		Choices: []openaigo.ChatCompletionChoice{{
+			Message: openaigo.ChatCompletionMessage{
+				Role:        openAIconstant.Assistant(role),
+				Content:     contentStr,
 				Annotations: annotationsPtr,
 			},
 			Index:        0,
-			FinishReason: finishReason,
+			FinishReason: string(finishReason),
 		}},
 	}
 
 	if usage != nil {
-		response.Usage = *usage
+		// Convert usage to openaigo.ChatCompletionUsage for now,
+		// but once the refactor to use openaigo natively is done, this conversion can be removed.
+		response.Usage = openaigo.CompletionUsage{
+			CompletionTokens: int64(usage.CompletionTokens),
+			PromptTokens:     int64(usage.PromptTokens),
+			TotalTokens:      int64(usage.TotalTokens),
+			CompletionTokensDetails: openaigo.CompletionUsageCompletionTokensDetails{
+				AudioTokens:              int64(usage.CompletionTokensDetails.AudioTokens),
+				ReasoningTokens:          int64(usage.CompletionTokensDetails.ReasoningTokens),
+				AcceptedPredictionTokens: int64(usage.CompletionTokensDetails.AcceptedPredictionTokens),
+				RejectedPredictionTokens: int64(usage.CompletionTokensDetails.RejectedPredictionTokens),
+			},
+			PromptTokensDetails: openaigo.CompletionUsagePromptTokensDetails{
+				AudioTokens:  int64(usage.PromptTokensDetails.AudioTokens),
+				CachedTokens: int64(usage.PromptTokensDetails.CachedTokens),
+			},
+		}
 	}
 
 	return response

@@ -11,14 +11,13 @@ import (
 	"fmt"
 	"io"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"google.golang.org/genai"
-	"k8s.io/utils/ptr"
-
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
+	"google.golang.org/genai"
 )
 
 const (
@@ -238,7 +237,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	// Convert usage to pointer if available.
 	var usage *openai.ChatCompletionResponseUsage
 	if chunk.UsageMetadata != nil {
-		usage = ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
+		// TODO: use geminiUsageToOpenAIUsage when stream is refactored to use openaigo.
+		usage = &openai.ChatCompletionResponseUsage{
+			CompletionTokens: int(chunk.UsageMetadata.CandidatesTokenCount),
+			PromptTokens:     int(chunk.UsageMetadata.PromptTokenCount),
+			TotalTokens:      int(chunk.UsageMetadata.TotalTokenCount),
+		}
 	}
 
 	return &openai.ChatCompletionResponseChunk{
@@ -310,7 +314,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	}
 }
 
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openai.ChatCompletionResponse, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openaigo.ChatCompletion, error) {
 	// Convert candidates to OpenAI choices.
 	choices, err := geminiCandidatesToOpenAIChoices(gcr.Candidates)
 	if err != nil {
@@ -318,7 +322,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	}
 
 	// Set up the OpenAI response.
-	openaiResp := &openai.ChatCompletionResponse{
+	openaiResp := &openaigo.ChatCompletion{
 		Choices: choices,
 		Object:  "chat.completion",
 		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),

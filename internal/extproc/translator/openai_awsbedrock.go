@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -467,7 +469,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockStopReasonToOpenAI
 
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICalls(
 	toolUse *awsbedrock.ToolUseBlock,
-) *openai.ChatCompletionMessageToolCallParam {
+) *openaigo.ChatCompletionMessageToolCall {
 	if toolUse == nil {
 		return nil
 	}
@@ -475,13 +477,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 	if err != nil {
 		return nil
 	}
-	return &openai.ChatCompletionMessageToolCallParam{
-		ID: &toolUse.ToolUseID,
-		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+	return &openaigo.ChatCompletionMessageToolCall{
+		ID: toolUse.ToolUseID,
+		Function: openaigo.ChatCompletionMessageToolCallFunction{
 			Name:      toolUse.Name,
 			Arguments: string(arguments),
 		},
-		Type: openai.ChatCompletionMessageToolCallTypeFunction,
 	}
 }
 
@@ -582,9 +583,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	openAIResp := &openai.ChatCompletionResponse{
+	openAIResp := &openaigo.ChatCompletion{
 		Object:  "chat.completion",
-		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+		Choices: make([]openaigo.ChatCompletionChoice, 0),
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
@@ -593,28 +594,28 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
 			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
 		}
-		openAIResp.Usage = openai.ChatCompletionResponseUsage{
-			TotalTokens:      bedrockResp.Usage.TotalTokens,
-			PromptTokens:     bedrockResp.Usage.InputTokens,
-			CompletionTokens: bedrockResp.Usage.OutputTokens,
+		openAIResp.Usage = openaigo.CompletionUsage{
+			TotalTokens:      int64(bedrockResp.Usage.TotalTokens),
+			PromptTokens:     int64(bedrockResp.Usage.InputTokens),
+			CompletionTokens: int64(bedrockResp.Usage.OutputTokens),
 		}
 	}
 
 	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
-	choice := openai.ChatCompletionResponseChoice{
+	choice := openaigo.ChatCompletionChoice{
 		Index: (int64)(0),
-		Message: openai.ChatCompletionResponseChoiceMessage{
-			Role: bedrockResp.Output.Message.Role,
+		Message: openaigo.ChatCompletionMessage{
+			Role: openAIconstant.Assistant(bedrockResp.Output.Message.Role),
 		},
-		FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
+		FinishReason: string(o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason)),
 	}
 	for _, output := range bedrockResp.Output.Message.Content {
 		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
-			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
+			choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
 		} else if output.Text != nil {
 			// For the converse response the assumption is that there is only one text content block, we take the first one.
-			if choice.Message.Content == nil {
-				choice.Message.Content = output.Text
+			if choice.Message.Content == "" {
+				choice.Message.Content = *output.Text
 			}
 		}
 	}

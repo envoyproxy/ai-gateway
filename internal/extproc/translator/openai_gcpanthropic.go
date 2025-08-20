@@ -19,6 +19,7 @@ import (
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
 
@@ -635,8 +636,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 }
 
 // anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
-func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
+func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openaigo.ChatCompletionMessageToolCall, error) {
+	var toolCalls []openaigo.ChatCompletionMessageToolCall
 	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
 		return toolCalls, nil
 	}
@@ -644,10 +645,9 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
 	}
-	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-		ID:   &block.ID,
-		Type: openai.ChatCompletionMessageToolCallTypeFunction,
-		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+	toolCalls = append(toolCalls, openaigo.ChatCompletionMessageToolCall{
+		ID: block.ID,
+		Function: openaigo.ChatCompletionMessageToolCallFunction{
 			Name:      block.Name,
 			Arguments: string(argsBytes),
 		},
@@ -686,19 +686,19 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	openAIResp := &openai.ChatCompletionResponse{
-		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
-		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+	openAIResp := &openaigo.ChatCompletion{
+		Object:  "chat.completion",
+		Choices: make([]openaigo.ChatCompletionChoice, 0),
 	}
 	tokenUsage = LLMTokenUsage{
 		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
 		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
 		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
 	}
-	openAIResp.Usage = openai.ChatCompletionResponseUsage{
-		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
-		PromptTokens:     int(anthropicResp.Usage.InputTokens),
-		TotalTokens:      int(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens),
+	openAIResp.Usage = openaigo.CompletionUsage{
+		CompletionTokens: anthropicResp.Usage.OutputTokens,
+		PromptTokens:     anthropicResp.Usage.InputTokens,
+		TotalTokens:      anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens,
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)
@@ -711,10 +711,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		return nil, nil, LLMTokenUsage{}, err
 	}
 
-	choice := openai.ChatCompletionResponseChoice{
-		Index:        0,
-		Message:      openai.ChatCompletionResponseChoiceMessage{Role: role},
-		FinishReason: finishReason,
+	choice := openaigo.ChatCompletionChoice{
+		Index: (int64)(0),
+		Message: openaigo.ChatCompletionMessage{
+			Role: openAIconstant.Assistant(role),
+		},
+		FinishReason: string(finishReason),
 	}
 
 	for _, output := range anthropicResp.Content {
@@ -725,8 +727,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 			}
 			choice.Message.ToolCalls = append(choice.Message.ToolCalls, toolCalls...)
 		} else if output.Type == string(constant.ValueOf[constant.Text]()) && output.Text != "" {
-			if choice.Message.Content == nil {
-				choice.Message.Content = &output.Text
+			if choice.Message.Content == "" {
+				choice.Message.Content = output.Text
 			}
 		}
 	}

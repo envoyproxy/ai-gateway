@@ -11,6 +11,7 @@ import (
 	"context"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
@@ -67,7 +68,7 @@ type ChatCompletionSpan interface {
 	RecordResponseChunk(resp *openai.ChatCompletionResponseChunk)
 
 	// RecordResponse records the response attributes to the span for non-streaming response.
-	RecordResponse(resp *openai.ChatCompletionResponse)
+	RecordResponse(resp *openaigo.ChatCompletion)
 
 	// EndSpanOnError finalizes and ends the span with an error status.
 	EndSpanOnError(statusCode int, body []byte)
@@ -100,7 +101,7 @@ type ChatCompletionRecorder interface {
 	RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk)
 
 	// RecordResponse records response attributes to the span for non-streaming response.
-	RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse)
+	RecordResponse(span trace.Span, resp *openaigo.ChatCompletion)
 
 	// RecordResponseOnError ends recording the span with an error status.
 	RecordResponseOnError(span trace.Span, statusCode int, body []byte)

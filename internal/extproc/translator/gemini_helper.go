@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -461,8 +463,8 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 // --------------------------------------------------------------.
 
 // geminiCandidatesToOpenAIChoices converts Gemini candidates to OpenAI choices.
-func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.ChatCompletionResponseChoice, error) {
-	choices := make([]openai.ChatCompletionResponseChoice, 0, len(candidates))
+func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openaigo.ChatCompletionChoice, error) {
+	choices := make([]openaigo.ChatCompletionChoice, 0, len(candidates))
 
 	for idx, candidate := range candidates {
 		if candidate == nil {
@@ -470,18 +472,18 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.Ch
 		}
 
 		// Create the choice.
-		choice := openai.ChatCompletionResponseChoice{
+		choice := openaigo.ChatCompletionChoice{
 			Index:        int64(idx),
-			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
+			FinishReason: string(geminiFinishReasonToOpenAI(candidate.FinishReason)),
 		}
 
 		if candidate.Content != nil {
-			message := openai.ChatCompletionResponseChoiceMessage{
-				Role: openai.ChatMessageRoleAssistant,
+			message := openaigo.ChatCompletionMessage{
+				Role: openAIconstant.Assistant(openaigo.MessageRoleAssistant),
 			}
 			// Extract text from parts.
 			content := extractTextFromGeminiParts(candidate.Content.Parts)
-			message.Content = &content
+			message.Content = content
 
 			// Extract tool calls if any.
 			toolCalls, err := extractToolCallsFromGeminiParts(candidate.Content.Parts)
@@ -489,12 +491,6 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.Ch
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
 			message.ToolCalls = toolCalls
-
-			// If there's no content but there are tool calls, set content to nil.
-			if content == "" && len(toolCalls) > 0 {
-				message.Content = nil
-			}
-
 			choice.Message = message
 		}
 
@@ -510,18 +506,18 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.Ch
 }
 
 // geminiFinishReasonToOpenAI converts Gemini finish reason to OpenAI finish reason.
-func geminiFinishReasonToOpenAI(reason genai.FinishReason) openai.ChatCompletionChoicesFinishReason {
+func geminiFinishReasonToOpenAI(reason genai.FinishReason) openaigo.CompletionChoiceFinishReason {
 	switch reason {
 	case genai.FinishReasonStop:
-		return openai.ChatCompletionChoicesFinishReasonStop
+		return openaigo.CompletionChoiceFinishReasonStop
 	case genai.FinishReasonMaxTokens:
-		return openai.ChatCompletionChoicesFinishReasonLength
+		return openaigo.CompletionChoiceFinishReasonLength
 	case "":
 		// For intermediate chunks in a streaming response, the finish reason is an empty string.
 		// This is normal behavior and should not be treated as an error.
 		return ""
 	default:
-		return openai.ChatCompletionChoicesFinishReasonContentFilter
+		return openaigo.CompletionChoiceFinishReasonContentFilter
 	}
 }
 
@@ -537,8 +533,8 @@ func extractTextFromGeminiParts(parts []*genai.Part) string {
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
-func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
+func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openaigo.ChatCompletionMessageToolCall, error) {
+	var toolCalls []openaigo.ChatCompletionMessageToolCall
 
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
@@ -554,10 +550,10 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 		// Generate a random ID for the tool call.
 		toolCallID := uuid.New().String()
 
-		toolCall := openai.ChatCompletionMessageToolCallParam{
-			ID:   &toolCallID,
-			Type: "function",
-			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+		// TODO: for streaming, index is required... what should index be here?
+		toolCall := openaigo.ChatCompletionMessageToolCall{
+			ID: toolCallID,
+			Function: openaigo.ChatCompletionMessageToolCallFunction{
 				Name:      part.FunctionCall.Name,
 				Arguments: string(args),
 			},
@@ -574,38 +570,38 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 }
 
 // geminiUsageToOpenAIUsage converts Gemini usage metadata to OpenAI usage.
-func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetadata) openai.ChatCompletionResponseUsage {
+func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetadata) (usage openaigo.CompletionUsage) {
 	if metadata == nil {
-		return openai.ChatCompletionResponseUsage{}
+		return
 	}
 
-	return openai.ChatCompletionResponseUsage{
-		CompletionTokens: int(metadata.CandidatesTokenCount),
-		PromptTokens:     int(metadata.PromptTokenCount),
-		TotalTokens:      int(metadata.TotalTokenCount),
+	return openaigo.CompletionUsage{
+		CompletionTokens: int64(metadata.CandidatesTokenCount),
+		PromptTokens:     int64(metadata.PromptTokenCount),
+		TotalTokens:      int64(metadata.TotalTokenCount),
 	}
 }
 
 // geminiLogprobsToOpenAILogprobs converts Gemini logprobs to OpenAI logprobs.
-func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) openai.ChatCompletionChoicesLogprobs {
+func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) (logProbs openaigo.ChatCompletionChoiceLogprobs) {
 	if len(logprobsResult.ChosenCandidates) == 0 {
-		return openai.ChatCompletionChoicesLogprobs{}
+		return
 	}
 
-	content := make([]openai.ChatCompletionTokenLogprob, 0, len(logprobsResult.ChosenCandidates))
+	content := make([]openaigo.ChatCompletionTokenLogprob, 0, len(logprobsResult.ChosenCandidates))
 
 	for i := 0; i < len(logprobsResult.ChosenCandidates); i++ {
 		chosen := logprobsResult.ChosenCandidates[i]
 
-		var topLogprobs []openai.ChatCompletionTokenLogprobTopLogprob
+		var topLogprobs []openaigo.ChatCompletionTokenLogprobTopLogprob
 
 		// Process top candidates if available.
 		if i < len(logprobsResult.TopCandidates) && logprobsResult.TopCandidates[i] != nil {
 			topCandidates := logprobsResult.TopCandidates[i].Candidates
 			if len(topCandidates) > 0 {
-				topLogprobs = make([]openai.ChatCompletionTokenLogprobTopLogprob, 0, len(topCandidates))
+				topLogprobs = make([]openaigo.ChatCompletionTokenLogprobTopLogprob, 0, len(topCandidates))
 				for _, tc := range topCandidates {
-					topLogprobs = append(topLogprobs, openai.ChatCompletionTokenLogprobTopLogprob{
+					topLogprobs = append(topLogprobs, openaigo.ChatCompletionTokenLogprobTopLogprob{
 						Token:   tc.Token,
 						Logprob: float64(tc.LogProbability),
 					})
@@ -614,7 +610,7 @@ func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) openai.
 		}
 
 		// Create token logprob.
-		tokenLogprob := openai.ChatCompletionTokenLogprob{
+		tokenLogprob := openaigo.ChatCompletionTokenLogprob{
 			Token:       chosen.Token,
 			Logprob:     float64(chosen.LogProbability),
 			TopLogprobs: topLogprobs,
@@ -622,11 +618,9 @@ func geminiLogprobsToOpenAILogprobs(logprobsResult genai.LogprobsResult) openai.
 
 		content = append(content, tokenLogprob)
 	}
+	logProbs.Content = content
 
-	// Return the logprobs.
-	return openai.ChatCompletionChoicesLogprobs{
-		Content: content,
-	}
+	return
 }
 
 // buildGCPModelPathSuffix constructs a path Suffix with an optional queryParams where each string is in the form of "%s=%s".
@@ -651,7 +645,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]
 		// Create the streaming choice.
 		choice := openai.ChatCompletionResponseChunkChoice{
 			Index:        0,
-			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
+			FinishReason: openai.ChatCompletionChoicesFinishReason(geminiFinishReasonToOpenAI(candidate.FinishReason)),
 		}
 
 		if candidate.Content != nil {
@@ -670,7 +664,22 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
-			delta.ToolCalls = toolCalls
+			// convert toolCalls to [] ChatCompletionMessageToolCallParam
+			// TODO: when refactored to use openaigo, use extractToolCallsFromGeminiParts directly.
+			var streamingToolCalls []openai.ChatCompletionMessageToolCallParam
+			if toolCalls != nil {
+				for _, tc := range toolCalls {
+					streamingToolCalls = append(streamingToolCalls, openai.ChatCompletionMessageToolCallParam{
+						// TODO: for streaming, index is required... what should index be here?
+						ID: &tc.ID,
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Arguments: tc.Function.Arguments,
+							Name:      tc.Function.Name,
+						},
+					})
+				}
+			}
+			delta.ToolCalls = streamingToolCalls
 
 			choice.Delta = delta
 		}
