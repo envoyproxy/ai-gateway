@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -125,7 +126,7 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := NewChatCompletionRecorderFromEnv()
 
-			resp := &openai.ChatCompletionResponse{}
+			resp := &openaigo.ChatCompletion{}
 			err := json.Unmarshal(tt.respBody, resp)
 			require.NoError(t, err)
 

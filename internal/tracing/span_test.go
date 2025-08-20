@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -31,7 +32,7 @@ func TestChatCompletionSpan_RecordResponseChunk(t *testing.T) {
 }
 
 func TestChatCompletionSpan_RecordResponse(t *testing.T) {
-	resp := &openai.ChatCompletionResponse{ID: "chatcmpl-abc123"}
+	resp := &openaigo.ChatCompletion{ID: "chatcmpl-abc123"}
 	respBytes, err := json.Marshal(resp)
 	require.NoError(t, err)
 	s := &chatCompletionSpan{recorder: testChatCompletionRecorder{}}

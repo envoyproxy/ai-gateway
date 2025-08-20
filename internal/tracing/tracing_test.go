@@ -13,18 +13,17 @@ import (
 	"strconv"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/contrib/propagators/autoprop"
-	"go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace/noop"
-	"k8s.io/utils/ptr"
-
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/contrib/propagators/autoprop"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name
@@ -291,13 +290,13 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 				}},
 			}
 			reqBody := []byte(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello, sensitive data!"}]}`)
-			respBody := &openai.ChatCompletionResponse{
+			respBody := &openaigo.ChatCompletion{
 				ID:     "chatcmpl-abc123",
 				Object: "chat.completion",
-				Choices: []openai.ChatCompletionResponseChoice{{
-					Message: openai.ChatCompletionResponseChoiceMessage{
+				Choices: []openaigo.ChatCompletionChoice{{
+					Message: openaigo.ChatCompletionMessage{
 						Role:    "assistant",
-						Content: ptr.To("Response with sensitive data"),
+						Content: "Response with sensitive data",
 					},
 				}},
 			}

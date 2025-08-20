@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -182,7 +183,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			recorder := NewChatCompletionRecorder(tt.config)
 
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				resp := &openai.ChatCompletionResponse{}
+				resp := &openaigo.ChatCompletion{}
 				err := json.Unmarshal(tt.respBody, resp)
 				require.NoError(t, err)
 				recorder.RecordResponse(span, resp)
@@ -430,7 +431,7 @@ func TestChatCompletionRecorder_ConfigFromEnvironment(t *testing.T) {
 
 	// Response test.
 	respSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-		resp := &openai.ChatCompletionResponse{}
+		resp := &openaigo.ChatCompletion{}
 		err := json.Unmarshal(basicRespBody, resp)
 		require.NoError(t, err)
 		recorder.RecordResponse(span, resp)
