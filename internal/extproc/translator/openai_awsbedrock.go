@@ -483,6 +483,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 			Name:      toolUse.Name,
 			Arguments: string(arguments),
 		},
+		Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
 	}
 }
 

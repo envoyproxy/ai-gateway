@@ -651,6 +651,7 @@ func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openaig
 			Name:      block.Name,
 			Arguments: string(argsBytes),
 		},
+		Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
 	})
 
 	return toolCalls, nil

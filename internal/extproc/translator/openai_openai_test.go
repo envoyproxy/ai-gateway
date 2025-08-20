@@ -15,6 +15,7 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
@@ -214,15 +215,27 @@ data: [DONE]
 		})
 		t.Run("valid body", func(t *testing.T) {
 			s := &testotel.MockSpan{}
-			var resp openai.ChatCompletionResponse
-			resp.Usage.TotalTokens = 42
-			body, err := json.Marshal(resp)
+
+			expectedResp := openaigo.ChatCompletion{
+				Object: "chat.completion",
+				Usage: openaigo.CompletionUsage{
+					TotalTokens: 42,
+				},
+			}
+			body, err := json.Marshal(expectedResp)
 			require.NoError(t, err)
+
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
 			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-			require.Equal(t, &resp, s.Resp)
+			require.NotNil(t, s.Resp, "The response object should have been recorded in the span")
+
+			expectedJSON, err := json.Marshal(expectedResp)
+			require.NoError(t, err)
+			actualJSON, err := json.Marshal(s.Resp)
+			require.NoError(t, err)
+			require.JSONEq(t, string(expectedJSON), string(actualJSON))
 		})
 	})
 }

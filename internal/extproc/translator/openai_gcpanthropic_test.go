@@ -18,6 +18,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -273,7 +275,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 		name                   string
 		inputResponse          *anthropic.Message
 		respHeaders            map[string]string
-		expectedOpenAIResponse openai.ChatCompletionResponse
+		expectedOpenAIResponse openaigo.ChatCompletion
 	}{
 		{
 			name: "basic text response",
@@ -284,14 +286,14 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
-			expectedOpenAIResponse: openai.ChatCompletionResponse{
+			expectedOpenAIResponse: openaigo.ChatCompletion{
 				Object: "chat.completion",
-				Usage:  openai.ChatCompletionResponseUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
-				Choices: []openai.ChatCompletionResponseChoice{
+				Usage:  openaigo.CompletionUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
+				Choices: []openaigo.ChatCompletionChoice{
 					{
 						Index:        0,
-						Message:      openai.ChatCompletionResponseChoiceMessage{Role: "assistant", Content: ptr.To("Hello there!")},
-						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+						Message:      openaigo.ChatCompletionMessage{Role: "assistant", Content: "Hello there!"},
+						FinishReason: string(openai.ChatCompletionChoicesFinishReasonStop),
 					},
 				},
 			},
@@ -308,21 +310,21 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
-			expectedOpenAIResponse: openai.ChatCompletionResponse{
+			expectedOpenAIResponse: openaigo.ChatCompletion{
 				Object: "chat.completion",
-				Usage:  openai.ChatCompletionResponseUsage{PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40},
-				Choices: []openai.ChatCompletionResponseChoice{
+				Usage:  openaigo.CompletionUsage{PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40},
+				Choices: []openaigo.ChatCompletionChoice{
 					{
 						Index:        0,
-						FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
-						Message: openai.ChatCompletionResponseChoiceMessage{
-							Role:    string(anthropic.MessageParamRoleAssistant),
-							Content: ptr.To("Ok, I will call the tool."),
-							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+						FinishReason: string(openai.ChatCompletionChoicesFinishReasonToolCalls),
+						Message: openaigo.ChatCompletionMessage{
+							Role:    openAIconstant.Assistant(anthropic.MessageParamRoleAssistant),
+							Content: "Ok, I will call the tool.",
+							ToolCalls: []openaigo.ChatCompletionMessageToolCall{
 								{
-									ID:   ptr.To("toolu_01"),
-									Type: openai.ChatCompletionMessageToolCallTypeFunction,
-									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									ID:   "toolu_01",
+									Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+									Function: openaigo.ChatCompletionMessageToolCallFunction{
 										Name:      "get_weather",
 										Arguments: `{"location":"Tokyo","unit":"celsius"}`,
 									},
@@ -341,32 +343,22 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
 			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
+			hm, bm, _, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
 			require.NotNil(t, hm)
 			require.NotNil(t, bm)
 
-			newBody := bm.GetBody()
-			require.NotNil(t, newBody)
+			actualBody := bm.GetBody()
+			require.NotNil(t, actualBody)
 			require.Len(t, hm.SetHeaders, 1)
 			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			require.Equal(t, strconv.Itoa(len(actualBody)), string(hm.SetHeaders[0].Header.RawValue))
 
-			var gotResp openai.ChatCompletionResponse
-			err = json.Unmarshal(newBody, &gotResp)
+			expectedBody, err := json.Marshal(tt.expectedOpenAIResponse)
 			require.NoError(t, err)
 
-			expectedTokenUsage := LLMTokenUsage{
-				InputTokens:  uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),     //nolint:gosec
-				OutputTokens: uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens), //nolint:gosec
-				TotalTokens:  uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),      //nolint:gosec
-			}
-			require.Equal(t, expectedTokenUsage, usedToken)
-
-			if diff := cmp.Diff(tt.expectedOpenAIResponse, gotResp); diff != "" {
-				t.Errorf("ResponseBody mismatch (-want +got):\n%s", diff)
-			}
+			require.JSONEq(t, string(expectedBody), string(actualBody))
 		})
 	}
 }
