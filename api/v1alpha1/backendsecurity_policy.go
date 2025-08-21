@@ -292,8 +292,7 @@ type AWSOIDCExchangeToken struct {
 	AwsRoleArn string `json:"awsRoleArn"`
 }
 
-// GCPCredentialsFile specifies the credentials file to use for the GCP provider.
-// Envoy reads the secret file to authenticate with GCP.
+// GCPCredentialsFile specifies the service account key json file to authenticate with GCP provider.
 type GCPCredentialsFile struct {
 	// SecretRef is the reference to the credential file.
 	//

@@ -340,7 +340,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
-			StringData: map[string]string{rotators.GCPServiceAccountJSON: "thisisgcpcredentials"},
+			StringData: map[string]string{rotators.GCPServiceAccountJSON: "{}"},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp-wif"), Namespace: namespace},
@@ -377,12 +377,6 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "azure-oidc",
 			exp: &filterapi.BackendAuth{
 				AzureAuth: &filterapi.AzureAuth{AccessToken: "thisisazurecredentials"},
-			},
-		},
-		{
-			bspName: "gcp-sa-key-file",
-			exp: &filterapi.BackendAuth{
-				GCPAuth: &filterapi.GCPAuth{CredentialFileLiteral: "thisisgcpcredentials"},
 			},
 		},
 		{

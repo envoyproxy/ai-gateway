@@ -11,16 +11,14 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"golang.org/x/oauth2/google"
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 )
 
 type gcpHandler struct {
-	gcpAccessToken        string // The GCP access token used for authentication.
-	gcpServiceAccountJSON string // The GCP service account credential json string.
-	region                string // The GCP region to use for requests.
-	projectName           string // The GCP project to use for requests.
+	gcpAccessToken string // The GCP access token used for authentication.
+	region         string // The GCP region to use for requests.
+	projectName    string // The GCP project to use for requests.
 }
 
 func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
@@ -28,27 +26,14 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 		return nil, fmt.Errorf("GCP auth configuration cannot be nil")
 	}
 
-	if gcpAuth.AccessToken == "" && gcpAuth.CredentialFileLiteral == "" {
-		return nil, fmt.Errorf("GCP access token and service account credential json cannot be both empty")
-	}
-
-	if gcpAuth.CredentialFileLiteral != "" {
-		creds, err := google.CredentialsFromJSON(context.Background(), []byte(gcpAuth.CredentialFileLiteral), "https://www.googleapis.com/auth/cloud-platform")
-		if err != nil {
-			return nil, err
-		}
-		token, err := creds.TokenSource.Token()
-		if err != nil {
-			return nil, err
-		}
-		gcpAuth.AccessToken = token.AccessToken
+	if gcpAuth.AccessToken == "" {
+		return nil, fmt.Errorf("GCP access token cannot be empty")
 	}
 
 	return &gcpHandler{
-		gcpServiceAccountJSON: gcpAuth.CredentialFileLiteral,
-		gcpAccessToken:        gcpAuth.AccessToken,
-		region:                gcpAuth.Region,
-		projectName:           gcpAuth.ProjectName,
+		gcpAccessToken: gcpAuth.AccessToken,
+		region:         gcpAuth.Region,
+		projectName:    gcpAuth.ProjectName,
 	}, nil
 }
 

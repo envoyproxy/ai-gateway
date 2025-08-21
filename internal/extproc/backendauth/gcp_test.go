@@ -47,7 +47,7 @@ func TestNewGCPHandler(t *testing.T) {
 				ProjectName: "test-project",
 			},
 			wantHandler:  nil,
-			wantErrorMsg: "GCP access token and service account credential json cannot be both empty",
+			wantErrorMsg: "GCP access token cannot be empty",
 		},
 		{
 			name:         "nil config",

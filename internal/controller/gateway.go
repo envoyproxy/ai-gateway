@@ -335,22 +335,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
-		var secretName string
-		if gcpCreds := backendSecurityPolicy.Spec.GCPCredentials; gcpCreds.CredentialsFile != nil {
-			secretName = string(gcpCreds.CredentialsFile.SecretRef.Name)
-			gcpCredentialFileLiteral, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPServiceAccountJSON)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
-			}
-			return &filterapi.BackendAuth{
-				GCPAuth: &filterapi.GCPAuth{
-					CredentialFileLiteral: gcpCredentialFileLiteral,
-					Region:                backendSecurityPolicy.Spec.GCPCredentials.Region,
-					ProjectName:           backendSecurityPolicy.Spec.GCPCredentials.ProjectName,
-				},
-			}, nil
-		}
-		secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
