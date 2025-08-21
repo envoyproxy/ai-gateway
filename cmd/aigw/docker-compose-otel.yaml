@@ -63,13 +63,14 @@ services:
       # See https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
       - OPENINFERENCE_HIDE_INPUTS=false
       - OPENINFERENCE_HIDE_OUTPUTS=false
+      - OPENAI_HOST=host.docker.internal
     ports:
       - "1975:1975"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
     volumes:
       - aigw-target:/app
-      - ./testdata/ai-gateway-ollama-docker.yaml:/app/config.yaml:ro
+      - ./testdata/ai-gateway-local.yaml:/app/config.yaml:ro
       - envoy-cache:/tmp/envoy-gateway
     working_dir: /app
     command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run /app/config.yaml"]
