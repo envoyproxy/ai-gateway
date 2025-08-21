@@ -36,5 +36,4 @@ Below is a table of currently supported providers and their respective configura
 [AWS Bedrock Credentials]: api/api.mdx#backendsecuritypolicyawscredentials
 [GCP Credentials]: api/api.mdx#backendsecuritypolicygcpcredentials
 [Azure Credentials]: api/api.mdx#backendsecuritypolicyazurecredentials
-[issue#609]: https://github.com/envoyproxy/ai-gateway/issues/609
 [vLLM]: https://docs.vllm.ai/en/v0.8.3/serving/openai_compatible_server.html
