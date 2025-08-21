@@ -46,7 +46,7 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
 ```shell
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
+  --version v0.3.0 \
   --namespace envoy-ai-gateway-system \
   --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \
   --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006"
@@ -117,7 +117,7 @@ helm uninstall phoenix -n envoy-ai-gateway-system
 
 # Disable tracing in AI Gateway
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
+  --version v0.3.0 \
   --namespace envoy-ai-gateway-system \
   --reuse-values \
   --unset extProc.extraEnvVars

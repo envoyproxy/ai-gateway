@@ -15,7 +15,7 @@ The easiest way to install Envoy AI Gateway is using the Helm chart. First, inst
 
 ```shell
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --version v0.0.0-latest \
+    --version v0.3.0 \
     --namespace envoy-ai-gateway-system \
     --create-namespace
 
@@ -28,7 +28,7 @@ If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gatew
 
 ```shell
 helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-    --version v0.0.0-latest \
+    --version v0.3.0 \
     --namespace envoy-ai-gateway-system \
     --create-namespace
 ```
@@ -37,7 +37,7 @@ After the CRDs are installed, you can install the AI Gateway Helm chart without 
 
 ```shell
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --version v0.0.0-latest \
+    --version v0.3.0 \
     --namespace envoy-ai-gateway-system \
     --create-namespace \
     --skip-crds
