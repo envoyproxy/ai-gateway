@@ -1,14 +1,14 @@
 ---
 id: supported-endpoints
-title: Supported OpenAI API Endpoints
+title: Supported API Endpoints
 sidebar_position: 9
 ---
 
-The Envoy AI Gateway provides OpenAI-compatible API endpoints for routing and managing LLM/AI traffic. This page documents which OpenAI API endpoints are currently supported and their capabilities.
+The Envoy AI Gateway provides OpenAI-compatible API endpoints as well as the Anthropic-compatible API for routing and managing LLM/AI traffic. This page documents which OpenAI API endpoints and Anthropic-compatible API endpoints are currently supported and their capabilities.
 
 ## Overview
 
-The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
+The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropic-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
 
 ## Supported Endpoints
 
