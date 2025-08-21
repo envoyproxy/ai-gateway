@@ -29,7 +29,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 		now := time.Now()
 		oneHourBeforeNow := now.Add(-1 * time.Hour)
 		twoHourAfterNow := now.Add(2 * time.Hour)
-		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, fmt.Errorf("failed to get azure access token"))
+		mockProvider := tokenprovider.NewMockTokenProvider("fake-token", twoHourAfterNow, fmt.Errorf("failed to get gcp access token"))
 
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -40,7 +40,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				AzureAccessTokenKey: []byte("some-azure-access-token"),
+				GCPAccessTokenKey: []byte("some-gcp-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -97,7 +97,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 				},
 			},
 			Data: map[string][]byte{
-				AzureAccessTokenKey: []byte("some-azure-access-token"),
+				GCPAccessTokenKey: []byte("some-gcp-access-token"),
 			},
 		}
 		err := client.Create(context.Background(), secret)
@@ -125,7 +125,7 @@ func TestGCPTokenRotator_GetPreRotationTime(t *testing.T) {
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Secret{})
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	rotator := &azureTokenRotator{
+	rotator := &gcpTokenRotator{
 		client:                         client,
 		preRotationWindow:              5 * time.Minute,
 		backendSecurityPolicyNamespace: "default",
@@ -148,7 +148,7 @@ func TestGCPTokenRotator_GetPreRotationTime(t *testing.T) {
 					Namespace: "default",
 				},
 				Data: map[string][]byte{
-					GCPAccessTokenKey: []byte("some-azure-access-token"),
+					GCPAccessTokenKey: []byte("some-gcp-access-token"),
 				},
 			},
 			expectedTime:  time.Time{},
@@ -229,8 +229,8 @@ func TestPopulateGCPAccessToken(t *testing.T) {
 	secret := &corev1.Secret{}
 	expiration := time.Now()
 
-	azureToken := tokenprovider.TokenExpiry{Token: "some-gcp-token", ExpiresAt: expiration}
-	populateGCPAccessToken(secret, &azureToken)
+	gcpAccessToken := tokenprovider.TokenExpiry{Token: "some-gcp-token", ExpiresAt: expiration}
+	populateGCPAccessToken(secret, &gcpAccessToken)
 
 	annotation, ok := secret.Annotations[ExpirationTimeAnnotationKey]
 	require.True(t, ok)
