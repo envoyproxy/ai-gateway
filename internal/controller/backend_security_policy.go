@@ -189,7 +189,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			}
 			serviceAccountKeyJSON, exists := secret.Data[rotators.GCPServiceAccountJSON]
 			if !exists {
-				return ctrl.Result{}, fmt.Errorf("missing azure client secret key %s", rotators.GCPServiceAccountJSON)
+				return ctrl.Result{}, fmt.Errorf("missing gcp service account key %s", rotators.GCPServiceAccountJSON)
 			}
 			var tokenProvider tokenprovider.TokenProvider
 			tokenProvider, err = tokenprovider.NewGCPTokenProvider(ctx, serviceAccountKeyJSON)
