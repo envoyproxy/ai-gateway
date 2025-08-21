@@ -28,10 +28,6 @@ Consider using GCP Workload Identity (Federation)/IAM roles and limited-scope cr
 
 ## Configuration Steps
 
-:::info Ready to proceed?
-Ensure you have followed the steps in [Connect Providers](../connect-providers/)
-:::
-
 ### 1. Download configuration template
 
 ```shell
@@ -43,6 +39,7 @@ curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/ba
 Edit the `gcp_vertex.yaml` file to replace these placeholder values:
 - `GCP_PROJECT_NAME`: Your GCP project name
 - `GCP_REGION`: GCP region
+- Update the generated service account key JSON string in the secret
 
 :::caution Security Note
 Make sure to keep your GCP service account credentials secure and never commit them to version control.
