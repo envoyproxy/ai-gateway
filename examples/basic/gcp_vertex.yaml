@@ -115,8 +115,6 @@ metadata:
   name: envoy-ai-gateway-basic-gcp
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway
@@ -136,8 +134,6 @@ metadata:
   name: envoy-ai-gateway-basic-gcp-anthropic
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: envoy-ai-gateway-basic
       kind: Gateway
