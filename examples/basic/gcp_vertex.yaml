@@ -40,6 +40,9 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: envoy-ai-gateway-basic-gcp
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-gcp-anthropic
   type: GCPCredentials
   gcpCredentials:
     projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
