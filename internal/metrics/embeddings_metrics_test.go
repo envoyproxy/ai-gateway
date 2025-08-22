@@ -20,19 +20,17 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter, nil).(*embeddings)
 
-	extra := attribute.Key("extra").String("value")
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
 		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-ada-002"),
-		extra,
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
 
 	em.SetModel("text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	em.RecordTokenUsage(t.Context(), 10, 10, nil, extra)
+	em.RecordTokenUsage(t.Context(), 10, 10, nil)
 
 	// For embeddings, input tokens and total tokens should be the same (no output tokens).
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)

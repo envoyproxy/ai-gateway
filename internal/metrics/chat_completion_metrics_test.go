@@ -51,12 +51,10 @@ func TestRecordTokenUsage(t *testing.T) {
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
 
-		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		}
 		inputAttrs  = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
@@ -65,7 +63,7 @@ func TestRecordTokenUsage(t *testing.T) {
 
 	pm.SetModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.RecordTokenUsage(t.Context(), 10, 5, 15, nil, extra)
+	pm.RecordTokenUsage(t.Context(), 10, 5, 15, nil)
 
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
@@ -85,13 +83,10 @@ func TestRecordTokenLatency(t *testing.T) {
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
-
-		extra = attribute.Key("extra").String("value")
 		attrs = attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String(genAISystemAWSBedrock),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		)
 	)
 
@@ -101,7 +96,7 @@ func TestRecordTokenLatency(t *testing.T) {
 
 	// Test first token.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 1, nil, extra)
+	pm.RecordTokenLatency(t.Context(), 1, nil)
 	assert.True(t, pm.firstTokenSent)
 	count, sum := getHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
 	assert.Equal(t, uint64(1), count)
@@ -109,14 +104,14 @@ func TestRecordTokenLatency(t *testing.T) {
 
 	// Test subsequent tokens.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 5, nil, extra)
+	pm.RecordTokenLatency(t.Context(), 5, nil)
 	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Greater(t, sum, 0.0)
 
 	// Test zero tokens case.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 0, nil, extra)
+	pm.RecordTokenLatency(t.Context(), 0, nil)
 	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Greater(t, sum, 0.0)
@@ -127,13 +122,10 @@ func TestRecordRequestCompletion(t *testing.T) {
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		pm    = NewChatCompletion(meter, nil).(*chatCompletion)
-
-		extra = attribute.Key("extra").String("value")
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeSystemName).String("custom"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
-			extra,
 		}
 		attrsSuccess = attribute.NewSet(attrs...)
 		attrsFailure = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback))...)
@@ -144,14 +136,14 @@ func TestRecordRequestCompletion(t *testing.T) {
 	pm.SetBackend(&filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordRequestCompletion(t.Context(), true, nil, extra)
+	pm.RecordRequestCompletion(t.Context(), true, nil)
 	count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
 	assert.Equal(t, uint64(1), count)
 	assert.Greater(t, sum, 0.0)
 
 	// Test some failed requests.
-	pm.RecordRequestCompletion(t.Context(), false, nil, extra)
-	pm.RecordRequestCompletion(t.Context(), false, nil, extra)
+	pm.RecordRequestCompletion(t.Context(), false, nil)
+	pm.RecordRequestCompletion(t.Context(), false, nil)
 	count, sum = getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
 	assert.Equal(t, uint64(2), count)
 	assert.Greater(t, sum, 0.0)

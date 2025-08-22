@@ -635,7 +635,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 }
 
 // anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
-func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
+func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
 		return toolCalls, nil
@@ -717,7 +717,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		FinishReason: finishReason,
 	}
 
-	for _, output := range anthropicResp.Content {
+	for i := range anthropicResp.Content { // NOTE: Content structure is massive, do not range over values.
+		output := &anthropicResp.Content[i]
 		if output.Type == string(constant.ValueOf[constant.ToolUse]()) && output.ID != "" {
 			toolCalls, toolErr := anthropicToolUseToOpenAICalls(output)
 			if toolErr != nil {
