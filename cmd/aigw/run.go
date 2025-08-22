@@ -187,7 +187,7 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 // similar to `envsubst`. If the path is empty the default config is returned.
 func readConfig(path string) (string, error) {
 	if path == "" {
-		return envsubst.String(aiGatewayDefaultResources)
+		return aiGatewayDefaultResources, nil
 	}
 	var yamlBytes []byte
 	yamlBytes, err := envsubst.ReadFile(path)

@@ -25,19 +25,6 @@ func TestReadConfig(t *testing.T) {
 		expectPort     string
 	}{
 		{
-			name:           "default hostname and port",
-			expectHostname: "127.0.0.1.nip.io",
-			expectPort:     "11434",
-		},
-		{
-			name: "default config override with OLLAMA_HOST",
-			envVars: map[string]string{
-				"OLLAMA_HOST": "host.docker.internal",
-			},
-			expectHostname: "host.docker.internal",
-			expectPort:     "11434",
-		},
-		{
 			name:           "non default config",
 			path:           aiGatewayLocalPath,
 			expectHostname: "127.0.0.1.nip.io",
@@ -67,6 +54,17 @@ func TestReadConfig(t *testing.T) {
 			require.Contains(t, config, "port: "+tt.expectPort)
 		})
 	}
+
+	// Historical configuration used an IP for ollama. We can't use this
+	// config in docker, as it needs a hostname. However, we have another
+	// config to use in docker, ai-gateway-local.yaml. So, we leave this
+	// one alone.
+	t.Run("Default config uses 0.0.0.0 IP for Ollama", func(t *testing.T) {
+		config, err := readConfig("")
+		require.NoError(t, err)
+		require.Contains(t, config, "address: 0.0.0.0")
+		require.Contains(t, config, "port: 11434")
+	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
 		_, err := readConfig("/non/existent/file.yaml")

@@ -288,9 +288,10 @@ metadata:
   namespace: default
 spec:
   endpoints:
-    - fqdn:  # Default to the special 127.0.0.1.nip.io hostname that resolves to 127.0.0.1
-        hostname: ${OLLAMA_HOST:=127.0.0.1.nip.io}
-        port: 11434  # There is no OLLAMA_PORT as it optionally a part of OLLAMA_HOST.
+    - ip:
+        address: 0.0.0.0
+        # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network
+        port: 11434
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
