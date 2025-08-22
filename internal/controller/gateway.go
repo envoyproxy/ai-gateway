@@ -378,16 +378,6 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return
 	}
 
-	// Old Pattern using BackendSecurityPolicyRef. Prioritize this field over the new pattern as per the documentation.
-	if bspRef := backend.Spec.BackendSecurityPolicyRef; bspRef != nil {
-		bsp, err = c.backendSecurityPolicy(ctx, namespace, string(bspRef.Name))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
-		}
-		return
-	}
-
-	// New Pattern using BackendSecurityPolicy.
 	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
@@ -409,11 +399,6 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return
-}
-
-func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
-	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
-	return backendSecurityPolicy, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy)
 }
 
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
