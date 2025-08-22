@@ -192,7 +192,7 @@ func readConfig(path string) (string, error) {
 	var yamlBytes []byte
 	yamlBytes, err := envsubst.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read config file %s: %w", path, err)
+		return "", fmt.Errorf("error reading config: %w", err)
 	}
 	return string(yamlBytes), nil
 }
