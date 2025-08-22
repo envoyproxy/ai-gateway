@@ -75,22 +75,12 @@ type embeddingsProcessorRouterFilter struct {
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (e *embeddingsProcessorRouterFilter) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
-	// e.upstreamFilter can be nil.
-	if e.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		return e.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
-	}
-	return e.passThroughProcessor.ProcessResponseHeaders(ctx, headerMap)
+	return processRouterResponseHeaders(ctx, headerMap, e.upstreamFilter, e.passThroughProcessor)
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
-	// e.upstreamFilter can be nil.
-	if e.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		return e.upstreamFilter.ProcessResponseBody(ctx, body)
-	}
-	return e.passThroughProcessor.ProcessResponseBody(ctx, body)
+	return processRouterResponseBody(ctx, body, e.upstreamFilter, e.passThroughProcessor)
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
@@ -100,29 +90,10 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, 
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	e.requestHeaders[e.config.modelNameHeaderKey] = model
-
-	var additionalHeaders []*corev3.HeaderValueOption
-	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
-	})
 	e.originalRequestBody = body
 	e.originalRequestBodyRaw = rawBody.Body
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: additionalHeaders,
-					},
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}, nil
+	
+	return createStandardRouterRequestResponse(e.config, e.requestHeaders, model, nil), nil
 }
 
 // embeddingsProcessorUpstreamFilter implements [Processor] for the `/v1/embeddings` endpoint at the upstream filter.
@@ -212,7 +183,8 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	panic("BUG: ProcessRequestBody should not be called in the upstream filter")
+	standardUpstreamProcessRequestBodyPanic()
+	return nil, nil // unreachable
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -223,19 +195,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 		}
 	}()
 
-	e.responseHeaders = headersToMap(headers)
-	if enc := e.responseHeaders["content-encoding"]; enc != "" {
-		e.responseEncoding = enc
-	}
-	headerMutation, err := e.translator.ResponseHeaders(e.responseHeaders)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform response headers: %w", err)
-	}
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
-		ResponseHeaders: &extprocv3.HeadersResponse{
-			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
-		},
-	}}, nil
+	return standardUpstreamResponseHeadersProcessing(headers, &e.responseHeaders, &e.responseEncoding, e.translator)
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].

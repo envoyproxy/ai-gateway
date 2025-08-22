@@ -87,24 +87,12 @@ type chatCompletionProcessorRouterFilter struct {
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
-	// c.upstreamFilter can be nil.
-	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		return c.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
-	}
-	return c.passThroughProcessor.ProcessResponseHeaders(ctx, headerMap)
+	return processRouterResponseHeaders(ctx, headerMap, c.upstreamFilter, c.passThroughProcessor)
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
-	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
-	// c.upstreamFilter can be nil.
-	if c.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
-		resp, err = c.upstreamFilter.ProcessResponseBody(ctx, body)
-	} else {
-		resp, err = c.passThroughProcessor.ProcessResponseBody(ctx, body)
-	}
-	return
+	return processRouterResponseBody(ctx, body, c.upstreamFilter, c.passThroughProcessor)
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
@@ -129,22 +117,14 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 		// setting this option to false means that clients are trying to escape that rule.
 	}
 
-	c.requestHeaders[c.config.modelNameHeaderKey] = model
-
-	var additionalHeaders []*corev3.HeaderValueOption
-	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(model)},
-	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
-	})
 	c.originalRequestBody = body
 	c.originalRequestBodyRaw = rawBody.Body
 
+	// Tracing may need to inject headers, so create additional headers for tracing
+	var additionalHeaders []*corev3.HeaderValueOption
+	
 	// Tracing may need to inject headers, so create a header mutation here.
-	headerMutation := &extprocv3.HeaderMutation{
-		SetHeaders: additionalHeaders,
-	}
+	headerMutation := &extprocv3.HeaderMutation{}
 	c.span = c.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		c.requestHeaders,
@@ -152,17 +132,13 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 		body,
 		rawBody.Body,
 	)
+	
+	// Add any headers that tracing injected
+	if headerMutation != nil {
+		additionalHeaders = append(additionalHeaders, headerMutation.SetHeaders...)
+	}
 
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}, nil
+	return createStandardRouterRequestResponse(c.config, c.requestHeaders, model, additionalHeaders), nil
 }
 
 // chatCompletionProcessorUpstreamFilter implements [Processor] for the `/v1/chat/completion` endpoint at the upstream filter.
@@ -271,7 +247,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	panic("BUG: ProcessRequestBody should not be called in the upstream filter")
+	standardUpstreamProcessRequestBodyPanic()
+	return nil, nil // unreachable
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -282,24 +259,19 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx conte
 		}
 	}()
 
-	c.responseHeaders = headersToMap(headers)
-	if enc := c.responseHeaders["content-encoding"]; enc != "" {
-		c.responseEncoding = enc
-	}
-	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
+	resp, err := standardUpstreamResponseHeadersProcessing(headers, &c.responseHeaders, &c.responseEncoding, c.translator)
 	if err != nil {
-		return nil, fmt.Errorf("failed to transform response headers: %w", err)
+		return nil, err
 	}
+
+	// Chat completion has special streaming mode handling
 	var mode *extprocv3http.ProcessingMode
 	if c.stream && c.responseHeaders[":status"] == "200" {
 		// We only stream the response if the status code is 200 and the response is a stream.
 		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
 	}
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
-		ResponseHeaders: &extprocv3.HeadersResponse{
-			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
-		},
-	}, ModeOverride: mode}, nil
+	resp.ModeOverride = mode
+	return resp, nil
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
