@@ -352,15 +352,6 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-						{
-							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-								Group: gwapiv1a2.Group("gateway.networking.k8s.io"),
-								Kind:  gwapiv1a2.Kind("Gateway"),
-								Name:  "target-gateway",
-							},
-						},
-					},
 					ParentRefs: []gwapiv1a2.ParentReference{
 						{
 							Name:      "parent-gateway",
@@ -370,10 +361,7 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expectedIndexes: []string{
-				"target-gateway.default",
-				"parent-gateway.system",
-			},
+			expectedIndexes: []string{"parent-gateway.system"},
 		},
 	}
 

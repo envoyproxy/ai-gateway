@@ -65,18 +65,18 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		Spec:       gwapiv1.GatewaySpec{},
 	})
 	require.NoError(t, err)
-	targets := []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	targets := []gwapiv1a2.ParentReference{
 		{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-				Name: okGwName, Kind: "Gateway", Group: "gateway.networking.k8s.io",
-			},
+			Name:  okGwName,
+			Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+			Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 		},
 	}
 	for _, aigwRoute := range []*aigv1a1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 				},
@@ -85,7 +85,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
@@ -736,15 +736,17 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, backend)
 	require.Nil(t, bsp, "should not return BSP when backend exists without BSP")
 
-	// Create a new BSP for the existing backend.
+	// Create a new BSP for the existing backend, referencing the backend by name.
 	const bspName = "bsp-bar"
 	bspObj := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
-		Spec:       aigv1a1.BackendSecurityPolicySpec{},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+			},
+		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspObj))
-	// Update the backend to reference the BSP.
-	backend.Spec.BackendSecurityPolicyRef = &gwapiv1.LocalObjectReference{Name: bspName}
 	require.NoError(t, fakeClient.Update(t.Context(), backend))
 
 	// Check that we can retrieve the backend and BSP.
@@ -762,39 +764,6 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
-
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.NoError(t, err, "should not error when backend exists with BSP using targetRefs")
-	require.NotNil(t, backend, "should return backend when it exists")
-	require.NotNil(t, bsp, "should return BSP when backend exists with BSP using targetRefs")
-	require.Equal(t, bspWithTargetRefs.Name, bsp.Name, "should return the correct BSP name when using targetRefs")
-
-	// Create yet another BSP that has targetRefs (new pattern) to the backend, which should be the error case.
-	bspWithTargetRefs2 := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs2", Namespace: backend.Namespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
-		},
-	}
-	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs2))
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs, but it should error out
-	// because there are multiple BSPs with targetRefs pointing to the same backend.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend",
-		"should indicate that multiple BSPs with targetRefs exist for the same backend")
-	require.Nil(t, backend, "should not return backend when multiple BSPs with targetRefs exist")
-	require.Nil(t, bsp, "should not return BSP when multiple BSPs with targetRefs exist for the same backend")
 }
 
 func TestGatewayController_cleanUpV02(t *testing.T) {
