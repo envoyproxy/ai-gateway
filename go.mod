@@ -7,6 +7,7 @@ replace go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelg
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0
+	github.com/a8m/envsubst v1.4.3
 	github.com/alecthomas/kong v1.12.1
 	github.com/anthropics/anthropic-sdk-go v1.9.1
 	github.com/aws/aws-sdk-go-v2 v1.38.0

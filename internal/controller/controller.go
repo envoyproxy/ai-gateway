@@ -307,6 +307,11 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		} else if awsCreds.OIDCExchangeToken != nil {
 			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
 		}
+	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+		if gcpCreds.CredentialsFile != nil {
+			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
+		}
 	}
 	return []string{key}
 }

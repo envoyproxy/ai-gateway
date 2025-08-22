@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/a8m/envsubst"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"google.golang.org/grpc"
@@ -128,15 +129,9 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	resourcesBuf := &bytes.Buffer{}
 	runCtx := &runCmdContext{envoyGatewayResourcesOut: resourcesBuf, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
-	// Use the default configuration if the path is not given.
-	aiGatewayResourcesYaml := aiGatewayDefaultResources
-	if c.Path != "" {
-		var yamlBytes []byte
-		yamlBytes, err = os.ReadFile(c.Path)
-		if err != nil {
-			return fmt.Errorf("failed to read file %s: %w", c.Path, err)
-		}
-		aiGatewayResourcesYaml = string(yamlBytes)
+	aiGatewayResourcesYaml, err := readConfig(c.Path)
+	if err != nil {
+		return err
 	}
 	fakeClient, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
@@ -186,6 +181,20 @@ func run(ctx context.Context, c cmdRun, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
 	return nil
+}
+
+// readConfig returns config from the given path, substituting ENV variables
+// similar to `envsubst`. If the path is empty the default config is returned.
+func readConfig(path string) (string, error) {
+	if path == "" {
+		return aiGatewayDefaultResources, nil
+	}
+	var yamlBytes []byte
+	yamlBytes, err := envsubst.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("error reading config: %w", err)
+	}
+	return string(yamlBytes), nil
 }
 
 // recreateDir removes the directory at the given path and creates a new one.

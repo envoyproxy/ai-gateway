@@ -450,7 +450,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 			ProjectName: "fake-project-name",
 			Region:      "fake-region",
-			WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "fake-project-id",
 				WorkloadIdentityProviderName: "fake-workload-identity-provider-name",
 				OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
@@ -579,6 +579,33 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-OIDC", bspName)}})
+	require.Error(t, err)
+	require.Equal(t, time.Duration(0), res.RequeueAfter)
+}
+
+func TestNewBackendSecurityPolicyController_RotateCredentialGcpCredentialFile(t *testing.T) {
+	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	bspName := "gcp-backend-security-policy"
+	bspNamespace := "default"
+
+	bsp := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-sa", bspName), Namespace: bspNamespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+			GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				CredentialsFile: &aigv1a1.GCPCredentialsFile{
+					SecretRef: &gwapiv1.SecretObjectReference{
+						Name: "gcp-app-credentials",
+					},
+				},
+			},
+		},
+	}
+	err := cl.Create(t.Context(), bsp)
+	require.NoError(t, err)
+	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-sa", bspName)}})
 	require.Error(t, err)
 	require.Equal(t, time.Duration(0), res.RequeueAfter)
 }
@@ -732,7 +759,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -745,7 +772,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -758,7 +785,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -771,7 +798,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "",
 					WorkloadIdentityProviderName: "provider",
@@ -784,7 +811,7 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "",
@@ -797,7 +824,20 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: "proj",
 				Region:      "us-central1",
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
+					ProjectID:                    "pid",
+					WorkloadIdentityPoolName:     "pool",
+					WorkloadIdentityProviderName: "provider",
+				},
+			},
+			wantError: "",
+		},
+		{
+			name: "valid credentials",
+			input: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "proj",
+				Region:      "us-central1",
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                    "pid",
 					WorkloadIdentityPoolName:     "pool",
 					WorkloadIdentityProviderName: "provider",
@@ -965,9 +1005,33 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 				},
 				Spec: aigv1a1.BackendSecurityPolicySpec{
 					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+						CredentialsFile: &aigv1a1.GCPCredentialsFile{
+							SecretRef: nil,
+						},
+					},
 				},
 			},
-			expectedName: "ai-eg-bsp-gcp-bsp",
+			expectedName: "",
+		},
+		{
+			name: "GCP with service account credential file",
+			bsp: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gcp-bsp-sa",
+				},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+						CredentialsFile: &aigv1a1.GCPCredentialsFile{
+							SecretRef: &gwapiv1.SecretObjectReference{
+								Name: "gcp-bsp-sa-json-key-file",
+							},
+						},
+					},
+				},
+			},
+			expectedName: "",
 		},
 		{
 			name: "APIKey type",

@@ -96,6 +96,22 @@ Next, let's say change the `mistral:latest` model to `deepseek-r1:1.5b` and save
 +              value: deepseek-r1:1.5b
 ```
 
+You can also use environment variable substitution (`envsubst`) to allow small
+changes without needing to copy a file. For example, you could use this syntax
+instead, to default the model to the `CHAT_MODEL` variable.
+
+```diff
+--- default.yaml        2025-03-26 11:27:30
++++ custom.yaml 2025-03-26 11:28:55
+@@ -115,9 +115,9 @@
+     - matches:
+         - headers:
+             - type: Exact
+               name: x-ai-eg-model
+-              value: mistral:latest
++              value: ${CHAT_MODEL:=deepseek-r1:1.5b}
+```
+
 ### Run with the Custom Configuration
 
 Now, run the AI Gateway with the custom configuration by running the following command:

@@ -18,6 +18,19 @@ spec:
     group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-gcp-anthropic
+  namespace: default
+spec:
+  schema:
+    name: GCPAnthropic
+  backendRef:
+    name: envoy-ai-gateway-basic-gcp-us-east5
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-gcp-credentials
@@ -27,24 +40,16 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: envoy-ai-gateway-basic-gcp
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-gcp-anthropic
   type: GCPCredentials
   gcpCredentials:
     projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
     region: GCP_REGION  # Replace with your GCP region
-    workloadIdentityFederationConfig:
-      projectID: GCP_PROJECT_ID  # Replace with your GCP project ID
-      workloadIdentityPoolName: GCP_WORKLOAD_IDENTITY_POOL  # Replace with your workload identity pool name
-      workloadIdentityProviderName: GCP_IDENTITY_PROVIDER_NAME  # Replace with the identity provider configured with GCP
-      serviceAccountImpersonation:
-        serviceAccountName: SERVICE_ACCOUNT_NAME  # Replace with the service account name to impersonate
-      oidcExchangeToken:
-        oidc:
-          provider:
-            issuer: GCP_OIDC_PROVIDER_ISSUER  # Replace with your OIDC provider issuer
-          clientID: GCP_OIDC_CLIENT_ID  # Replace with your OIDC client ID
-          clientSecret:
-            name: envoy-ai-gateway-basic-gcp-client-secret
-            namespace: default
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-gcp-service-account-key-file
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
@@ -55,6 +60,17 @@ spec:
   endpoints:
     - fqdn:
         hostname: us-central1-aiplatform.googleapis.com
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-gcp-us-east5
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-east5-aiplatform.googleapis.com
         port: 443
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
@@ -71,10 +87,62 @@ spec:
     wellKnownCACertificates: "System"
     hostname: us-central1-aiplatform.googleapis.com
 ---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-gcp-us-east5-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: envoy-ai-gateway-basic-gcp-us-east5
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: us-east5-aiplatform.googleapis.com
+---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: envoy-ai-gateway-basic-gcp-client-secret
+  name: envoy-ai-gateway-basic-gcp-service-account-key-file
   namespace: default
 stringData:
-  client-secret: "GCP_OIDC_CLIENT_SECRET"  # Replace with your OIDC client secret
+  service_account.json: "{}"  # Replace with your service account json key file
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-gcp
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gemini-2.5-flash
+      backendRefs:
+        - name: envoy-ai-gateway-basic-gcp
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-gcp-anthropic
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-3-7-sonnet@20250219
+      backendRefs:
+        - name: envoy-ai-gateway-basic-gcp-anthropic
