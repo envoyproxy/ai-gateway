@@ -59,11 +59,12 @@ curl -H "Content-Type: application/json" \
 
 **Status:** ✅ Fully Supported
 
-**Description:** Create a chat completion response for the given conversation.
+**Description:** Send a structured list of input messages with text and/or image content, and the model will generate the next message in the conversation.
 
 **Features:**
 - ✅ Streaming and non-streaming responses
 - ✅ Function calling
+- ✅ Extended thinking
 - ✅ Response format specification (including JSON schema)
 - ✅ Temperature, top_p, and other sampling parameters
 - ✅ System and user messages
@@ -84,9 +85,10 @@ curl -H "Content-Type: application/json" \
         "role": "user",
         "content": "Hello, how are you?"
       }
-    ]
+    ],
+    "max_tokens": 100
   }' \
-  $GATEWAY_URL/v1/messages
+  $GATEWAY_URL/anthropic/v1/messages
 ```
 
 ### Embeddings

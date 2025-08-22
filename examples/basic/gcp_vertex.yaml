@@ -25,6 +25,7 @@ metadata:
 spec:
   schema:
     name: GCPAnthropic
+    version: vertex-2023-10-16
   backendRef:
     name: envoy-ai-gateway-basic-gcp-us-east5
     kind: Backend
