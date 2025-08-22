@@ -70,10 +70,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - aigw-target:/app
-      - ./ai-gateway-local.yaml:/app/config.yaml:ro
+      - ./ai-gateway-local.yaml:/config.yaml:ro
       - envoy-cache:/tmp/envoy-gateway
     working_dir: /app
-    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run /app/config.yaml"]
+    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run /config.yaml"]
 
   # chat-completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
