@@ -25,7 +25,7 @@ func TestReadConfig(t *testing.T) {
 	}{
 		{
 			name:           "default hostname and port",
-			expectHostname: "fbi.com",
+			expectHostname: "127.0.0.1.nip.io",
 			expectPort:     "11434",
 		},
 		{
@@ -39,7 +39,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:           "non default config",
 			path:           aiGatewayLocalPath,
-			expectHostname: "fbi.com",
+			expectHostname: "127.0.0.1.nip.io",
 			expectPort:     "11434",
 		},
 		{

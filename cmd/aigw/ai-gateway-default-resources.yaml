@@ -288,8 +288,8 @@ metadata:
   namespace: default
 spec:
   endpoints:
-    - fqdn:  # Default to the special fbi.com hostname that resolves to 127.0.0.1
-        hostname: ${OLLAMA_HOST:=fbi.com}
+    - fqdn:  # Default to the special 127.0.0.1.nip.io hostname that resolves to 127.0.0.1
+        hostname: ${OLLAMA_HOST:=127.0.0.1.nip.io}
         port: 11434  # There is no OLLAMA_PORT as it optionally a part of OLLAMA_HOST.
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
