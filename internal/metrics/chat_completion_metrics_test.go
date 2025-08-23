@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -79,6 +80,13 @@ func TestRecordTokenUsage(t *testing.T) {
 }
 
 func TestRecordTokenLatency(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testRecordTokenLatency)
+}
+
+func testRecordTokenLatency(t *testing.T) {
+	t.Helper()
+
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
@@ -118,6 +126,13 @@ func TestRecordTokenLatency(t *testing.T) {
 }
 
 func TestRecordRequestCompletion(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testRecordRequestCompletion)
+}
+
+func testRecordRequestCompletion(t *testing.T) {
+	t.Helper()
+
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")

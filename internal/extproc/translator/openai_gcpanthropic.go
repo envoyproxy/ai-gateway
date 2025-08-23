@@ -150,7 +150,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
 			if openAITool.Function.Parameters != nil {
-				paramsMap, ok := openAITool.Function.Parameters.(map[string]interface{})
+				paramsMap, ok := openAITool.Function.Parameters.(map[string]any)
 				if !ok {
 					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
 					return
@@ -163,13 +163,13 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 					inputSchema.Type = constant.Object(typeVal)
 				}
 
-				var propsVal map[string]interface{}
-				if propsVal, ok = paramsMap["properties"].(map[string]interface{}); ok {
+				var propsVal map[string]any
+				if propsVal, ok = paramsMap["properties"].(map[string]any); ok {
 					inputSchema.Properties = propsVal
 				}
 
-				var requiredVal []interface{}
-				if requiredVal, ok = paramsMap["required"].([]interface{}); ok {
+				var requiredVal []any
+				if requiredVal, ok = paramsMap["required"].([]any); ok {
 					requiredSlice := make([]string, len(requiredVal))
 					for i, v := range requiredVal {
 						if s, ok := v.(string); ok {
@@ -256,7 +256,7 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 }
 
 // Helper: Convert OpenAI message content to Anthropic content.
-func openAIToAnthropicContent(content interface{}) ([]anthropic.ContentBlockParamUnion, error) {
+func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, error) {
 	switch v := content.(type) {
 	case nil:
 		return nil, nil
@@ -357,7 +357,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 	// Handle tool_calls (if any).
 	for i := range openAiMessage.ToolCalls {
 		toolCall := &openAiMessage.ToolCalls[i]
-		var input map[string]interface{}
+		var input map[string]any
 		if err = json.Unmarshal([]byte(toolCall.Function.Arguments), &input); err != nil {
 			err = fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
 			return
@@ -440,7 +440,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 
 				isError := false
 				if contentStr, ok := toolMsg.Content.Value.(string); ok {
-					var contentMap map[string]interface{}
+					var contentMap map[string]any
 					if json.Unmarshal([]byte(contentStr), &contentMap) == nil {
 						if _, ok = contentMap["error"]; ok {
 							isError = true

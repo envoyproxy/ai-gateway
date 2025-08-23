@@ -275,13 +275,13 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					JSONSchema: &ChatCompletionResponseFormatJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: map[string]interface{}{
+						Schema: map[string]any{
 							"additionalProperties": false,
 							"type":                 "object",
-							"properties": map[string]interface{}{
+							"properties": map[string]any{
 								"step": "test_step",
 							},
-							"required": []interface{}{"steps"},
+							"required": []any{"steps"},
 						},
 					},
 				},
@@ -310,7 +310,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				},
 				MaxCompletionTokens: ptr.To[int64](1024),
 				ParallelToolCalls:   ptr.To(true),
-				Stop:                []interface{}{"\n", "stop"},
+				Stop:                []any{"\n", "stop"},
 				ServiceTier:         ptr.To("flex"),
 			},
 		},
@@ -1232,7 +1232,7 @@ func TestEmbeddingUnionUnmarshal(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{

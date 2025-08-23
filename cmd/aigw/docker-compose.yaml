@@ -11,7 +11,7 @@ volumes:
 services:
   # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
   aigw-build:
-    image: golang:1.24.6
+    image: golang:1.25
     container_name: aigw-build
     working_dir: /workspace
     volumes:
@@ -56,7 +56,7 @@ services:
 
   # chat-completion is a simple curl-based test client for sending requests to aigw.
   chat-completion:
-    image: golang:1.24.6
+    image: golang:1.25
     container_name: chat-completion
     profiles: ["test"]
     env_file:

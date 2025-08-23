@@ -73,7 +73,7 @@ func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
 	headers.SetHeaders = append(headers.SetHeaders, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{
 			Key:      "content-length",
-			RawValue: []byte(fmt.Sprintf("%d", len(body))),
+			RawValue: fmt.Appendf(nil, "%d", len(body)),
 		},
 	})
 }

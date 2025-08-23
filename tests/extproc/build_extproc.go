@@ -38,11 +38,6 @@ func buildExtProc() (string, error) {
 	return buildGoBinary("extproc", "./cmd/extproc")
 }
 
-// BuildExtProcCustom builds a custom extproc binary from the given package path.
-func BuildExtProcCustom(binaryNamePrefix, packagePath string) (string, error) {
-	return buildGoBinary(binaryNamePrefix, packagePath)
-}
-
 // buildGoBinary builds a Go binary with the given name and package path.
 func buildGoBinary(binaryNamePrefix, packagePath string) (string, error) {
 	projectRoot := findProjectRoot()

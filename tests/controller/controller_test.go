@@ -9,10 +9,11 @@
 package controller
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"os"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -455,10 +456,10 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 		require.NoError(t, c.Create(t.Context(), origin))
 		// Verify that they are the same.
 		backends := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(backends, func(i, j int) bool {
-			backends[i].TypeMeta = metav1.TypeMeta{}
-			backends[j].TypeMeta = metav1.TypeMeta{}
-			return backends[i].Name < backends[j].Name
+		slices.SortFunc(backends, func(a, b *aigv1a1.AIServiceBackend) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, backends)
 	})
@@ -485,10 +486,10 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 
 		// Verify that they are the same.
 		backends := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(backends, func(i, j int) bool {
-			backends[i].TypeMeta = metav1.TypeMeta{}
-			backends[j].TypeMeta = metav1.TypeMeta{}
-			return backends[i].Name < backends[j].Name
+		slices.SortFunc(backends, func(a, b *aigv1a1.AIServiceBackend) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, backends)
 	})
@@ -528,10 +529,10 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			}
 			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
 			backends := eventCh.RequireItemsEventually(t, 2)
-			sort.Slice(backends, func(i, j int) bool {
-				backends[i].TypeMeta = metav1.TypeMeta{}
-				backends[j].TypeMeta = metav1.TypeMeta{}
-				return backends[i].Name < backends[j].Name
+			slices.SortFunc(backends, func(a, b *aigv1a1.AIServiceBackend) int {
+				a.TypeMeta = metav1.TypeMeta{}
+				b.TypeMeta = metav1.TypeMeta{}
+				return cmp.Compare(a.Name, b.Name)
 			})
 			require.Equal(t, originals, backends)
 			return true
@@ -617,10 +618,10 @@ func TestAIServiceBackendController(t *testing.T) {
 
 		// Verify that they are the same.
 		routes := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(routes, func(i, j int) bool {
-			routes[i].TypeMeta = metav1.TypeMeta{}
-			routes[j].TypeMeta = metav1.TypeMeta{}
-			return routes[i].Name < routes[j].Name
+		slices.SortFunc(routes, func(a, b *aigv1a1.AIGatewayRoute) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, routes)
 	})
@@ -636,10 +637,10 @@ func TestAIServiceBackendController(t *testing.T) {
 		require.NoError(t, err)
 		// Verify that they are the same.
 		routes := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(routes, func(i, j int) bool {
-			routes[i].TypeMeta = metav1.TypeMeta{}
-			routes[j].TypeMeta = metav1.TypeMeta{}
-			return routes[i].Name < routes[j].Name
+		slices.SortFunc(routes, func(a, b *aigv1a1.AIGatewayRoute) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, routes)
 	})
@@ -680,10 +681,10 @@ func TestAIServiceBackendController(t *testing.T) {
 			}
 			// On deletion, the event should be sent to the event channel to propagate the deletion to the Gateway.
 			routes := eventCh.RequireItemsEventually(t, 2)
-			sort.Slice(routes, func(i, j int) bool {
-				routes[i].TypeMeta = metav1.TypeMeta{}
-				routes[j].TypeMeta = metav1.TypeMeta{}
-				return routes[i].Name < routes[j].Name
+			slices.SortFunc(routes, func(a, b *aigv1a1.AIGatewayRoute) int {
+				a.TypeMeta = metav1.TypeMeta{}
+				b.TypeMeta = metav1.TypeMeta{}
+				return cmp.Compare(a.Name, b.Name)
 			})
 			require.Equal(t, originals, routes)
 			return true
@@ -729,7 +730,9 @@ func TestSecretController(t *testing.T) {
 	for _, bsp := range originals {
 		require.NoError(t, c.Create(t.Context(), bsp))
 	}
-	sort.Slice(originals, func(i, j int) bool { return originals[i].Name < originals[j].Name })
+	slices.SortFunc(originals, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
 
 	// Start the manager and wait for bsps to be cached before trigger a reconciler.
 	go func() { require.NoError(t, mgr.Start(t.Context())) }()
@@ -744,10 +747,10 @@ func TestSecretController(t *testing.T) {
 
 		// Verify that they are the same.
 		bsps := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(bsps, func(i, j int) bool {
-			bsps[i].TypeMeta = metav1.TypeMeta{}
-			bsps[j].TypeMeta = metav1.TypeMeta{}
-			return bsps[i].Name < bsps[j].Name
+		slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, bsps)
 	})
@@ -761,10 +764,10 @@ func TestSecretController(t *testing.T) {
 
 		// Verify that they are the same.
 		bsps := eventCh.RequireItemsEventually(t, 2)
-		sort.Slice(bsps, func(i, j int) bool {
-			bsps[i].TypeMeta = metav1.TypeMeta{}
-			bsps[j].TypeMeta = metav1.TypeMeta{}
-			return bsps[i].Name < bsps[j].Name
+		slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+			a.TypeMeta = metav1.TypeMeta{}
+			b.TypeMeta = metav1.TypeMeta{}
+			return cmp.Compare(a.Name, b.Name)
 		})
 		require.Equal(t, originals, bsps)
 	})

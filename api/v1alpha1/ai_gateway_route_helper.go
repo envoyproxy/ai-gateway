@@ -20,7 +20,7 @@ const (
 	inferencePoolKind = "InferencePool"
 )
 
-// GetTimeoutsWithDefaults returns the timeouts with default values applied when not specified.
+// GetTimeoutsOrDefault returns the timeouts with default values applied when not specified.
 // This ensures that AI Gateway routes have appropriate timeout defaults for AI workloads.
 func (r *AIGatewayRouteRule) GetTimeoutsOrDefault() *gwapiv1.HTTPRouteTimeouts {
 	defaultTimeout := defaultRequestTimeout

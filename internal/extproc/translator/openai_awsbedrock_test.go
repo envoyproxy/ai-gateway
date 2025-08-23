@@ -176,7 +176,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
+									Input:     map[string]any{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -400,14 +400,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						Function: &openai.FunctionDefinition{
 							Name:        "get_current_weather",
 							Description: "Get the current weather in a given location",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{
+								"properties": map[string]any{
+									"location": map[string]any{
 										"type":        "string",
 										"description": "The city and state, e.g. San Francisco, CA",
 									},
-									"unit": map[string]interface{}{
+									"unit": map[string]any{
 										"type": "string",
 										"enum": []string{"celsius", "fahrenheit"},
 									},
@@ -441,14 +441,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								Name:        ptr.To("get_current_weather"),
 								Description: ptr.To("Get the current weather in a given location"),
 								InputSchema: &awsbedrock.ToolInputSchema{
-									JSON: map[string]interface{}{
+									JSON: map[string]any{
 										"type": "object",
-										"properties": map[string]interface{}{
-											"location": map[string]interface{}{
+										"properties": map[string]any{
+											"location": map[string]any{
 												"type":        "string",
 												"description": "The city and state, e.g. San Francisco, CA",
 											},
-											"unit": map[string]interface{}{
+											"unit": map[string]any{
 												"type": "string",
 												"enum": []any{"celsius", "fahrenheit"},
 											},
@@ -784,14 +784,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "get_current_weather",
 									ToolUseID: "tool-1",
-									Input:     map[string]interface{}{"city": "Dallas", "state": "TX", "unit": "fahrenheit"},
+									Input:     map[string]any{"city": "Dallas", "state": "TX", "unit": "fahrenheit"},
 								},
 							},
 							{
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "get_current_weather",
 									ToolUseID: "tool-2",
-									Input:     map[string]interface{}{"city": "Orlando", "state": "FL", "unit": "fahrenheit"},
+									Input:     map[string]any{"city": "Orlando", "state": "FL", "unit": "fahrenheit"},
 								},
 							},
 						},
@@ -897,7 +897,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 		require.NoError(t, err)
 
 		var results []string
-		for i := 0; i < len(buf); i++ {
+		for i := range buf {
 			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)
@@ -1138,7 +1138,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 								ToolUse: &awsbedrock.ToolUseBlock{
 									Name:      "exec_python_code",
 									ToolUseID: "call_6g7a",
-									Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
+									Input:     map[string]any{"code_block": "from playwright.sync_api import sync_playwright\n"},
 								},
 							},
 						},
@@ -1185,7 +1185,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							{ToolUse: &awsbedrock.ToolUseBlock{
 								Name:      "exec_python_code",
 								ToolUseID: "call_6g7a",
-								Input:     map[string]interface{}{"code_block": "from playwright.sync_api import sync_playwright\n"},
+								Input:     map[string]any{"code_block": "from playwright.sync_api import sync_playwright\n"},
 							}},
 						},
 					},
@@ -1305,6 +1305,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 		require.Len(t, o.events, 1)
 		require.Equal(t, eventBytes[offsets[1]:offsets[1]+5], o.bufferedBody)
 
+		clear(o.events)
 		o.events = o.events[:0]
 		o.bufferedBody = eventBytes[0 : offsets[2]+5]
 		o.extractAmazonEventStreamEvents()

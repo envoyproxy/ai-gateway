@@ -196,7 +196,7 @@ data: [DONE]
 `)
 
 		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
-		for i := 0; i < len(wholeBody); i++ {
+		for i := range wholeBody {
 			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)

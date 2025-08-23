@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -75,6 +76,13 @@ func newTestLoggerWithBuffer() (*slog.Logger, *syncBuffer) {
 }
 
 func TestStartConfigWatcher(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testStartConfigWatcher)
+}
+
+func testStartConfigWatcher(t *testing.T) {
+	t.Helper()
+
 	tmpdir := t.TempDir()
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}

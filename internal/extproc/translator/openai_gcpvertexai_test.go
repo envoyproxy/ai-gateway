@@ -318,14 +318,14 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the current weather in a given location",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{
+								"properties": map[string]any{
+									"location": map[string]any{
 										"type":        "string",
 										"description": "The city and state, e.g. San Francisco, CA",
 									},
-									"unit": map[string]interface{}{
+									"unit": map[string]any{
 										"type": "string",
 										"enum": []string{"celsius", "fahrenheit"},
 									},
@@ -381,10 +381,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						Function: &openai.FunctionDefinition{
 							Name:        "test_function",
 							Description: "A test function",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"param1": map[string]interface{}{
+								"properties": map[string]any{
+									"param1": map[string]any{
 										"type": "string",
 									},
 								},
@@ -1111,16 +1111,16 @@ Details: [
 }
 
 func bodyMutTransformer(_ *testing.T) cmp.Option {
-	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]interface{} {
+	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]any {
 		if bm == nil {
 			return nil
 		}
 
-		var bdy map[string]interface{}
+		var bdy map[string]any
 		if body, ok := bm.Mutation.(*extprocv3.BodyMutation_Body); ok {
 			if err := json.Unmarshal(body.Body, &bdy); err != nil {
 				// The response body may not be valid JSON for streaming requests.
-				return map[string]interface{}{
+				return map[string]any{
 					"BodyMutation": string(body.Body),
 				}
 			}

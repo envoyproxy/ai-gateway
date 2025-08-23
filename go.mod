@@ -1,6 +1,6 @@
 module github.com/envoyproxy/ai-gateway
 
-go 1.24.6
+go 1.25
 
 replace go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 

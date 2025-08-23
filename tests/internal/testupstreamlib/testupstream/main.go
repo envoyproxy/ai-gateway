@@ -92,7 +92,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("expected headers", string(expectedHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(expectedHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(expectedHeaders, []byte(",")) {
 			parts := bytes.SplitN(kv, []byte(":"), 2)
 			if len(parts) != 2 {
 				logger.Println("invalid header key-value pair", string(kv))
@@ -122,7 +122,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("non-expected headers", string(nonExpectedHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(nonExpectedHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(nonExpectedHeaders, []byte(",")) {
 			key := string(kv)
 			if r.Header.Get(key) != "" {
 				logger.Printf("unexpected header %q presence with value %q\n", key, r.Header.Get(key))
@@ -219,7 +219,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logger.Println("response headers", string(responseHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(responseHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(responseHeaders, []byte(",")) {
 			parts := bytes.SplitN(kv, []byte(":"), 2)
 			if len(parts) != 2 {
 				logger.Println("invalid header key-value pair", string(kv))
@@ -263,9 +263,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		// we treat it as a stream of pre-formatted "raw" SSE events. Otherwise, we treat it
 		// as a simple line-by-line stream that needs to be formatted.
 		if bytes.Contains(expResponseBody, []byte("\n\n")) {
-			eventBlocks := bytes.Split(expResponseBody, []byte("\n\n"))
+			eventBlocks := bytes.SplitSeq(expResponseBody, []byte("\n\n"))
 
-			for _, block := range eventBlocks {
+			for block := range eventBlocks {
 				// Skip any empty blocks that can result from splitting.
 				if len(bytes.TrimSpace(block)) == 0 {
 					continue
@@ -288,9 +288,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		} else {
 			logger.Println("detected line-by-line stream, formatting as SSE")
-			lines := bytes.Split(expResponseBody, []byte("\n"))
+			lines := bytes.SplitSeq(expResponseBody, []byte("\n"))
 
-			for _, line := range lines {
+			for line := range lines {
 				if len(line) == 0 {
 					continue
 				}
@@ -326,7 +326,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		w.WriteHeader(status)
 		e := eventstream.NewEncoder()
-		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
+		for line := range bytes.SplitSeq(expResponseBody, []byte("\n")) {
 			// Write each line as a chunk with AWS Event Stream format.
 			if len(line) == 0 {
 				continue
