@@ -862,8 +862,8 @@ func TestValidateGCPCredentialsParams(t *testing.T) {
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *testing.T) {
 	bspNamespace := "default"
 	bspName := "test-gcp-policy"
-	
-	// Test cases for validation errors
+
+	// Test cases for validation errors.
 	validationTests := []struct {
 		name           string
 		bsp            *aigv1a1.BackendSecurityPolicySpec
@@ -892,7 +892,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 					ProjectName: "test-project",
 					Region:      "us-central1",
-					// Neither WorkloadIdentityFederationConfig nor CredentialsFile is set
+					// Neither WorkloadIdentityFederationConfig nor CredentialsFile is set.
 				},
 			},
 			expectedErrMsg: "one of service account key json file or oidc must be defined",
@@ -934,7 +934,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t 
 	bspName := "gcp-oidc-policy"
 	bspNamespace := "default"
 
-	oidcSecretName := "gcp-oidc-secret"
+	oidcSecretName := "gcp-oidc-secret" // #nosec G101
 	oidcSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      oidcSecretName,
@@ -981,10 +981,10 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t 
 	require.NoError(t, err)
 
 	// Test that the OIDC path validation passes and the method attempts to create OIDC provider
-	// (which will fail due to network issues, but that confirms the OIDC path logic is working)
+	// (which will fail due to network issues, but that confirms the OIDC path logic is working).
 	res, err := c.rotateCredential(t.Context(), bsp)
-	
-	// We expect an error due to network calls in the OIDC provider initialization
+
+	// We expect an error due to network calls in the OIDC provider initialization.
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to initialize OIDC provider")
 	require.Equal(t, ctrl.Result{}, res)
@@ -997,7 +997,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Credent
 	bspName := "gcp-sa-policy"
 	bspNamespace := "default"
 
-	// Create a secret containing an invalid service account JSON structure to ensure controlled test failure
+	// Create a secret containing an invalid service account JSON structure to ensure controlled test failure.
 	serviceAccountJSON := `{
 		"type": "service_account",
 		"project_id": "test-project",
@@ -1007,9 +1007,9 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Credent
 		"client_id": "123456789",
 		"auth_uri": "https://accounts.google.com/o/oauth2/auth",
 		"token_uri": "https://oauth2.googleapis.com/token"
-	}`
+	}` // #nosec G101
 
-	serviceAccountSecretName := "gcp-sa-secret"
+	serviceAccountSecretName := "gcp-sa-secret" // #nosec G101
 	serviceAccountSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceAccountSecretName,
@@ -1040,12 +1040,12 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Credent
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// Test that credentials file path is correctly selected and reaches token provider creation
+	// Test that credentials file path is correctly selected and reaches token provider creation.
 	res, err := c.rotateCredential(t.Context(), bsp)
-	
+
 	// The test behavior varies depending on environment mocking, but both outcomes are valid:
 	// 1. Error at token provider creation confirms the credentials file path worked
-	// 2. Success indicates test environment provides full mocking
+	// 2. Success indicates test environment provides full mocking.
 	if err != nil {
 		require.Contains(t, err.Error(), "private key")
 	} else {
@@ -1060,7 +1060,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	bspName := "gcp-missing-secret-policy"
 	bspNamespace := "default"
 
-	// Create backend security policy with GCP credentials file that doesn't exist
+	// Create backend security policy with GCP credentials file that doesn't exist.
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
@@ -1079,7 +1079,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// Test that rotation fails when the referenced secret doesn't exist
+	// Test that rotation fails when the referenced secret doesn't exist.
 	res, err := c.rotateCredential(t.Context(), bsp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "secrets \"non-existent-secret\" not found")
@@ -1093,8 +1093,8 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	bspName := "gcp-missing-key-policy"
 	bspNamespace := "default"
 
-	// Create a secret without the required GCP service account JSON key
-	serviceAccountSecretName := "gcp-incomplete-secret"
+	// Create a secret without the required GCP service account JSON key.
+	serviceAccountSecretName := "gcp-incomplete-secret" // #nosec G101
 	serviceAccountSecret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceAccountSecretName,
@@ -1106,7 +1106,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	}
 	require.NoError(t, cl.Create(t.Context(), &serviceAccountSecret, &client.CreateOptions{}))
 
-	// Create backend security policy with GCP credentials file config pointing to incomplete secret
+	// Create backend security policy with GCP credentials file config pointing to incomplete secret.
 	bsp := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: bspNamespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
@@ -1125,7 +1125,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 
-	// Test that rotation fails when the secret doesn't contain the required key
+	// Test that rotation fails when the secret doesn't contain the required key.
 	res, err := c.rotateCredential(t.Context(), bsp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing gcp service account key service_account.json")
