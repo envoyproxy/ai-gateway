@@ -1,1 +1,0 @@
-kind v0.29.0 go1.25.0 linux/amd64
