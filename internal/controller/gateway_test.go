@@ -754,16 +754,19 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, bsp, "should return BSP when backend exists with BSP")
 	require.Equal(t, bspName, bsp.Name, "should return the correct BSP name")
 
-	// Update the BSP so that it has multiple targetRefs to the backend.
-	bspObj.Spec.TargetRefs = append(bspObj.Spec.TargetRefs, gwapiv1a2.LocalPolicyTargetReference{
-		Name: "something-else",
-	})
-	require.NoError(t, fakeClient.Update(t.Context(), bspObj))
+	// Create a new BSP that has the same target ref, and one that does not exist.
+	bspWithTargetRefs := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+				{Name: gwapiv1.ObjectName("non-existent-backend")},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
 
-	// Check that we can still retrieve the backend and one of the BSPs.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
-	require.NoError(t, err, "should not error when backend exists with multiple BSPs")
-	require.NotNil(t, backend, "should return backend when it exists")
-	require.NotNil(t, bsp, "should return BSP when backend exists with BSP")
-	require.Contains(t, []string{bspName, "bsp-bar-target-refs"}, bsp.Name, "should return one of the BSPs targeting the backend")
+	// Then it should result in the error due to multiple BSPs found.
+	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
 }
