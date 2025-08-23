@@ -55,7 +55,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
+          key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}-
 
       # This runs ollama server to be used in `aigw run` end-to-end tests.
       # The test case using it will be skipped if ollama is not available.
