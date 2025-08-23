@@ -15,6 +15,5 @@ func TestMain(m *testing.M) {
 	e2elib.TestMain(m, e2elib.TestMainConfig{
 		AIGatewayHelmFlags: nil,
 		InferenceExtension: true,
-		InstallMode:        e2elib.AIGatewayInstallLocal,
 	})
 }

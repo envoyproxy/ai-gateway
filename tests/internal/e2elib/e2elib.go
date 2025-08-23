@@ -48,15 +48,7 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
-// AIGatewayInstallMode defines how AI Gateway should be installed.
-type AIGatewayInstallMode int
 
-const (
-	// AIGatewayInstallLocal installs AI Gateway from local helm charts.
-	AIGatewayInstallLocal AIGatewayInstallMode = iota
-	// AIGatewayInstallRegistry installs AI Gateway from OCI registry with specified version.
-	AIGatewayInstallRegistry
-)
 
 // TestMainConfig contains configuration for TestMain setup.
 type TestMainConfig struct {
@@ -64,9 +56,7 @@ type TestMainConfig struct {
 	AIGatewayHelmFlags []string
 	// InferenceExtension indicates whether to install inference extension components.
 	InferenceExtension bool
-	// InstallMode determines how AI Gateway should be installed.
-	InstallMode AIGatewayInstallMode
-	// RegistryVersion specifies the version to install from registry (only used when InstallMode is AIGatewayInstallRegistry).
+	// RegistryVersion specifies the version to install from registry. If empty, installs from local charts.
 	RegistryVersion string
 }
 
@@ -78,7 +68,7 @@ type TestMainConfig struct {
 func TestMain(m *testing.M, config TestMainConfig) {
 	// Extend timeout for upgrade tests that need more time
 	timeout := 5 * time.Minute
-	if config.InstallMode == AIGatewayInstallRegistry {
+	if len(config.RegistryVersion) != 0 {
 		timeout = 10 * time.Minute
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
@@ -118,21 +108,17 @@ func TestMain(m *testing.M, config TestMainConfig) {
 		panic(err)
 	}
 
-	// Install AI Gateway based on the configured mode
-	switch config.InstallMode {
-	case AIGatewayInstallLocal:
-		if err := initAIGateway(ctx, config.AIGatewayHelmFlags); err != nil {
-			cancel()
-			panic(err)
-		}
-	case AIGatewayInstallRegistry:
+	// Install AI Gateway based on the configured version
+	if len(config.RegistryVersion) != 0 {
 		if err := initAIGatewayFromRegistry(ctx, config.RegistryVersion); err != nil {
 			cancel()
 			panic(err)
 		}
-	default:
-		cancel()
-		panic("unknown AI Gateway install mode")
+	} else {
+		if err := initAIGateway(ctx, config.AIGatewayHelmFlags); err != nil {
+			cancel()
+			panic(err)
+		}
 	}
 
 	if !config.InferenceExtension {

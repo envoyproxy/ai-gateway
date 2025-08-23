@@ -27,7 +27,6 @@ func TestMain(m *testing.M) {
 	e2elib.TestMain(m, e2elib.TestMainConfig{
 		AIGatewayHelmFlags: nil,
 		InferenceExtension: false,
-		InstallMode:        e2elib.AIGatewayInstallRegistry,
 		RegistryVersion:    "0.3.0",
 	})
 }

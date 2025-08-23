@@ -16,6 +16,5 @@ func TestMain(m *testing.M) {
 		// Configure the additional prometheus metrics label for user ID.
 		AIGatewayHelmFlags: []string{"--set", "controller.metricsRequestHeaderLabels=x-user-id:" + userIDMetricsLabel},
 		InferenceExtension: false,
-		InstallMode:        e2elib.AIGatewayInstallLocal,
 	})
 }
