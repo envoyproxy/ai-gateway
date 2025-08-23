@@ -449,6 +449,147 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
+// InitAIGatewayFromRegistry initializes the AI Gateway from the OCI registry with the specified version.
+// This is used for upgrade testing where we start with a released version and upgrade to local charts.
+func InitAIGatewayFromRegistry(ctx context.Context, version string) (err error) {
+	initLog("Installing AI Gateway from registry")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+
+	initLog("\tHelm Install CRDs from registry")
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"oci://registry-1.docker.io/envoyproxy/ai-gateway-crds-helm", "--version", version,
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
+		return
+	}
+
+	initLog("\tHelm Install AI Gateway from registry")
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
+		"oci://registry-1.docker.io/envoyproxy/ai-gateway-helm", "--version", version,
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	initLog("\tWaiting for AI Gateway controller to be ready")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+// UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
+// This is used for upgrade testing to simulate upgrading from a released version to a new version.
+func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
+	initLog("Upgrading AI Gateway to local charts")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+
+	initLog("\tHelm Upgrade CRDs to local")
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"../../manifests/charts/ai-gateway-crds-helm",
+		"-n", "envoy-ai-gateway-system")
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
+		return
+	}
+
+	initLog("\tHelm Upgrade AI Gateway to local")
+	args := []string{
+		"tool", "helm", "upgrade", "-i", "ai-eg",
+		"../../manifests/charts/ai-gateway-helm",
+		"-n", "envoy-ai-gateway-system",
+	}
+	args = append(args, aiGatewayHelmFlags...)
+
+	helm := exec.CommandContext(ctx, "go", args...)
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	// Restart the controller to pick up the new changes in the AI Gateway.
+	initLog("\tRestart AI Gateway controller")
+	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+		return
+	}
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+// TestMainUpgrade is the entry point for the e2e upgrade tests. It sets up the kind cluster,
+// installs the Envoy Gateway, and installs the AI Gateway from the registry (v0.3.0).
+// This allows upgrade tests to start with a released version.
+func TestMainUpgrade(m *testing.M, _ []string, inferenceExtension bool) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Minute))
+
+	// The following code sets up the kind cluster, installs the Envoy Gateway,
+	// and installs the AI Gateway from registry.
+	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
+	// failures.
+
+	run := false
+	defer func() {
+		// If the setup or some tests panic, try to collect the cluster logs.
+		if r := recover(); r != nil {
+			cleanupKindCluster(true)
+		}
+		if !run {
+			panic("BUG: no tests were run. This is likely a bug during the setup")
+		}
+	}()
+
+	if err := initKindCluster(ctx); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	if inferenceExtension {
+		if err := initMetalLB(ctx); err != nil {
+			cancel()
+			panic(err)
+		}
+		if err := installInferencePoolEnvironment(ctx); err != nil {
+			cancel()
+			panic(err)
+		}
+	}
+
+	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	// Install AI Gateway from registry v0.3.0 instead of local charts.
+	if err := InitAIGatewayFromRegistry(ctx, "0.3.0"); err != nil {
+		cancel()
+		panic(err)
+	}
+
+	if !inferenceExtension {
+		if err := initPrometheus(ctx); err != nil {
+			cancel()
+			panic(err)
+		}
+	}
+	code := m.Run()
+	run = true
+	cancel()
+
+	cleanupKindCluster(code != 0)
+
+	os.Exit(code) // nolint: gocritic
+}
+
 func initPrometheus(ctx context.Context) (err error) {
 	initLog("Installing Prometheus")
 	start := time.Now()
