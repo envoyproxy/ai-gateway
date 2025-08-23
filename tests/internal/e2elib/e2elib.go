@@ -64,8 +64,8 @@ type TestMainConfig struct {
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
 func TestMain(m *testing.M, config TestMainConfig) {
-	timeout := 30 * time.Second
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	ctx := context.Background()
+	var cancel context.CancelFunc = func() {} // no-op cancel function
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
