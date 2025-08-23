@@ -67,11 +67,6 @@ spec:
     name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
-  # This is mainly to ensure backward compatibility in tests.
-  backendSecurityPolicyRef:
-    name: translation-testupstream-cool-model-backend-api-key
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -93,6 +88,10 @@ metadata:
   namespace: default
 spec:
   type: APIKey
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: translation-testupstream-cool-model-backend
   apiKey:
     secretRef:
       name: translation-testupstream-cool-model-backend-api-key
