@@ -331,7 +331,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -390,7 +389,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -449,7 +447,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -596,7 +593,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -656,7 +652,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -715,7 +710,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -791,7 +785,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -875,7 +868,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -940,7 +932,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -1005,7 +996,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -1070,7 +1060,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
@@ -1135,7 +1124,6 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:

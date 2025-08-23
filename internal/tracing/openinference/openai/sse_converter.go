@@ -9,17 +9,9 @@
 package openai
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-)
-
-var (
-	dataPrefix = []byte("data: ")
-	doneSuffix = []byte("[DONE]")
 )
 
 // convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
@@ -27,12 +19,12 @@ var (
 // fields whose values are zero or empty, or nested objects where all fields
 // have zero values.
 //
-// This is optimized for BUFFERED mode where we receive the entire stream at once.
-func convertSSEToJSON(sseData []byte) ([]byte, error) {
-	if len(sseData) == 0 {
-		return nil, nil
-	}
-
+// TODO: This can be refactored in "streaming" in stateful way without asking for all chunks at once.
+// That would reduce a slice allocation for events.
+// TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
+// openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
+// in memory.
+func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 	var (
 		firstChunk   *openai.ChatCompletionResponseChunk
 		content      strings.Builder
@@ -43,27 +35,9 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		finishReason openai.ChatCompletionChoicesFinishReason
 	)
 
-	// Split into lines assuming single-line data per event.
-	lines := bytes.SplitSeq(sseData, []byte("\n"))
-
-	for line := range lines {
-		if len(line) == 0 || !bytes.HasPrefix(line, dataPrefix) {
-			continue
-		}
-
-		data := line[len(dataPrefix):]
-
-		if bytes.Equal(data, doneSuffix) {
-			break
-		}
-
-		var chunk openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(data, &chunk); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal chunk: %w", err)
-		}
-
+	for _, chunk := range chunks {
 		if firstChunk == nil {
-			firstChunk = &chunk
+			firstChunk = chunk
 		}
 
 		// Accumulate content, role, and annotations from delta (assuming single choice at index 0).
@@ -75,8 +49,8 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 				if chunk.Choices[0].Delta.Role != "" {
 					role = chunk.Choices[0].Delta.Role
 				}
-				if len(chunk.Choices[0].Delta.Annotations) > 0 {
-					annotations = append(annotations, chunk.Choices[0].Delta.Annotations...)
+				if as := chunk.Choices[0].Delta.Annotations; as != nil && len(*as) > 0 {
+					annotations = append(annotations, *as...)
 				}
 			}
 			// Capture finish_reason from any chunk that has it.
@@ -102,7 +76,7 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		if finishReason == "" {
 			finishReason = openai.ChatCompletionChoicesFinishReasonStop
 		}
-		return json.Marshal(openai.ChatCompletionResponse{
+		return &openai.ChatCompletionResponse{
 			ID:      "",
 			Object:  "chat.completion.chunk",
 			Created: openai.JSONUNIXTime{},
@@ -114,7 +88,7 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 					Role: role,
 				},
 			}},
-		})
+		}
 	}
 
 	// Build the response as a chunk with accumulated content.
@@ -125,8 +99,13 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		finishReason = openai.ChatCompletionChoicesFinishReasonStop
 	}
 
+	var annotationsPtr *[]openai.Annotation
+	if len(annotations) > 0 {
+		annotationsPtr = &annotations
+	}
+
 	// Create a ChatCompletionResponse with all accumulated content.
-	response := openai.ChatCompletionResponse{
+	response := &openai.ChatCompletionResponse{
 		ID:                firstChunk.ID,
 		Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
 		Created:           firstChunk.Created,
@@ -138,7 +117,7 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 			Message: openai.ChatCompletionResponseChoiceMessage{
 				Role:        role,
 				Content:     &contentStr,
-				Annotations: annotations,
+				Annotations: annotationsPtr,
 			},
 			Index:        0,
 			FinishReason: finishReason,
@@ -149,5 +128,5 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		response.Usage = *usage
 	}
 
-	return json.Marshal(response)
+	return response
 }

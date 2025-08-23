@@ -6,6 +6,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -117,7 +118,6 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *openinference.TraceConfig
-		statusCode     int
 		respBody       []byte
 		expectedAttrs  []attribute.KeyValue
 		expectedStatus trace.Status
@@ -127,8 +127,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideOutputs: true,
 			},
-			statusCode: 200,
-			respBody:   basicRespBody,
+			respBody: basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				// No OutputMimeType when output is hidden.
@@ -146,8 +145,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideOutputMessages: true,
 			},
-			statusCode: 200,
-			respBody:   basicRespBody,
+			respBody: basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
@@ -164,8 +162,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideOutputText: true,
 			},
-			statusCode: 200,
-			respBody:   basicRespBody,
+			respBody: basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
@@ -185,7 +182,10 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			recorder := NewChatCompletionRecorder(tt.config)
 
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				recorder.RecordResponse(span, tt.statusCode, tt.respBody)
+				resp := &openai.ChatCompletionResponse{}
+				err := json.Unmarshal(tt.respBody, resp)
+				require.NoError(t, err)
+				recorder.RecordResponse(span, resp)
 				return false
 			})
 
@@ -430,7 +430,10 @@ func TestChatCompletionRecorder_ConfigFromEnvironment(t *testing.T) {
 
 	// Response test.
 	respSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-		recorder.RecordResponse(span, 200, basicRespBody)
+		resp := &openai.ChatCompletionResponse{}
+		err := json.Unmarshal(basicRespBody, resp)
+		require.NoError(t, err)
+		recorder.RecordResponse(span, resp)
 		return false
 	})
 
@@ -449,12 +452,12 @@ func TestChatCompletionRecorder_WithConfig_Streaming(t *testing.T) {
 
 	recorder := NewChatCompletionRecorder(config)
 
-	sseBody := []byte(`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1702000000,"model":"gpt-5-nano","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+	sseBody := `data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1702000000,"model":"gpt-5-nano","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
 
-data: [DONE]`)
+data: [DONE]`
 
 	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-		recorder.RecordResponse(span, 200, sseBody)
+		recorder.RecordResponseChunks(span, parseSSEToChunks(t, sseBody))
 		return false
 	})
 

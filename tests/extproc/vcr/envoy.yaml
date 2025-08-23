@@ -71,11 +71,12 @@ static_resources:
                         request_header_mode: SEND       # Examine headers before routing
                         response_header_mode: SEND      # Examine response headers from upstream
                         request_body_mode: BUFFERED     # Process complete OpenAI request body
-                        response_body_mode: BUFFERED    # Process complete response body
+                        response_body_mode: BUFFERED    # Process complete response body. This will be overridden to STREAMED when streaming.
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
                             - ai_gateway_llm_ns
+                      allow_mode_override: true
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -98,14 +99,13 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                allow_mode_override: true
                 message_timeout: 5s  # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
                   request_header_mode: "SEND"    # Transform request format and inject auth headers
                   request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SEND"   # Mode override can switch this to STREAMED
+                  response_header_mode: "SKIP"   # Router filter handles all response processing
                   response_body_mode: "NONE"     # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:

@@ -17,6 +17,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (
@@ -73,9 +74,10 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
-func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool) (
+func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, error,
 ) {
+	_ = span // TODO: add support for streaming chunks in tracing.
 	if _, err := p.buffer.ReadFrom(body); err != nil {
 		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read from stream body: %w", err)
 	}

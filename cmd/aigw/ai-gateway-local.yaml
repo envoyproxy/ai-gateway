@@ -3,7 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# Ollama-only configuration for AI Gateway with OpenTelemetry tracing
+# Configuration for running Envoy AI Gateway with an OpenAI compatible
+# inference platform, defaulting to Ollama.
+#
+# Override with the OPENAI_HOST and OPENAI_PORT environment variables.
+# For example, to use RamaLama you would set OPENAI_PORT=8080.
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -37,14 +41,6 @@ spec:
   logging:
     level:
       default: error
-  bootstrap:
-    type: Merge
-    value: |-
-      admin:
-        address:
-          socket_address:
-            address: 127.0.0.1
-            port_value: 9901
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
@@ -83,9 +79,10 @@ metadata:
   namespace: default
 spec:
   endpoints:
+    # Use fqdn, not ip, to allow changing to host.docker.internal
     - fqdn:
-        hostname: host.docker.internal
-        port: 11434
+        hostname: ${OPENAI_HOST:=127.0.0.1.nip.io}  # Resolves to 127.0.0.1
+        port: ${OPENAI_PORT:=11434}  # Default to Ollama's port
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -102,3 +99,19 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+---
+# By default, Envoy Gateway sets the buffer limit to 32kiB which is not
+# sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
+# to 50MiB as an example.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: client-buffer-limit
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: aigw-run
+  connection:
+    bufferLimit: 50Mi

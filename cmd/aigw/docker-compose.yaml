@@ -41,21 +41,23 @@ services:
         condition: service_completed_successfully
       ollama-pull:
         condition: service_completed_successfully
+    environment:
+      - OPENAI_HOST=host.docker.internal
     ports:
       - "1975:1975"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
     volumes:
       - aigw-target:/app
-      - ./testdata/ai-gateway-ollama-docker.yaml:/app/config.yaml:ro
+      - ./ai-gateway-local.yaml:/config.yaml:ro
       - envoy-cache:/tmp/envoy-gateway
     working_dir: /app
-    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
+    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run /config.yaml"]
 
-  # openai-client is a simple curl-based test client for sending requests to aigw.
-  openai-client:
+  # chat-completion is a simple curl-based test client for sending requests to aigw.
+  chat-completion:
     image: golang:1.25
-    container_name: openai-client
+    container_name: chat-completion
     profiles: ["test"]
     env_file:
       - ../../.env.ollama

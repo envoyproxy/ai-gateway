@@ -35,11 +35,11 @@ type ChatCompletionMetrics interface {
 	SetBackend(backend *filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaderLabelMapping map[string]string, extraAttrs ...attribute.KeyValue)
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaderLabelMapping map[string]string)
 	// RecordRequestCompletion records latency metrics for the entire request.
-	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string, extraAttrs ...attribute.KeyValue)
+	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaderLabelMapping map[string]string, extraAttrs ...attribute.KeyValue)
+	RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaderLabelMapping map[string]string)
 	// GetTimeToFirstTokenMs returns the time to first token in stream mode in milliseconds.
 	GetTimeToFirstTokenMs() float64
 	// GetInterTokenLatencyMs returns the inter token latency in stream mode in milliseconds.
@@ -60,35 +60,35 @@ func (c *chatCompletion) StartRequest(headers map[string]string) {
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
-	attrs := c.buildBaseAttributes(requestHeaders, extraAttrs...)
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string) {
+	attrs := c.buildBaseAttributes(requestHeaders)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
-		metric.WithAttributes(attrs...),
+		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
 	)
 	c.metrics.tokenUsage.Record(ctx, float64(outputTokens),
-		metric.WithAttributes(attrs...),
+		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
 	)
 	c.metrics.tokenUsage.Record(ctx, float64(totalTokens),
-		metric.WithAttributes(attrs...),
+		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
 	)
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
-func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaders map[string]string, extraAttrs ...attribute.KeyValue) {
-	attrs := c.buildBaseAttributes(requestHeaders, extraAttrs...)
+func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaders map[string]string) {
+	attrs := c.buildBaseAttributes(requestHeaders)
 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
 		c.timeToFirstToken = time.Since(c.requestStart).Seconds()
-		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributes(attrs...))
+		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributeSet(attrs))
 	} else if tokens > 0 {
 		// Calculate time between tokens.
 		c.interTokenLatency = time.Since(c.lastTokenTime).Seconds() / float64(tokens)
-		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributes(attrs...))
+		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributeSet(attrs))
 	}
 	c.lastTokenTime = time.Now()
 }

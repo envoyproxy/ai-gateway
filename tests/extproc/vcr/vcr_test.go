@@ -31,11 +31,11 @@ var extprocConfig string
 func startTestEnvironment(t *testing.T, extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, 11434,
-		extprocBin, extprocConfig, extprocEnv, envoyConfig, true,
+		extprocBin, extprocConfig, extprocEnv, envoyConfig, true, false,
 	)
 }
 
-func requireUpstream(t *testing.T, out io.Writer, port int) {
+func requireUpstream(t testenvironment.TestingT, out io.Writer, port int) {
 	openAIServer, err := testopenai.NewServer(out, port)
 	require.NoError(t, err, "failed to create test OpenAI server")
 	t.Cleanup(openAIServer.Close)

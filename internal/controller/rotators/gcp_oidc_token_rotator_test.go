@@ -42,7 +42,7 @@ const (
 	newGCPAccessToken  = "new-gcp-access-token" // #nosec G101
 )
 
-func TestGCPTokenRotator_Rotate(t *testing.T) {
+func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Secret{})
 
@@ -207,7 +207,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 			gcpCredentials := aigv1a1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: dummyProjectName,
 				Region:      dummyProjectRegion,
-				WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                "test-project-id",
 					WorkloadIdentityPoolName: "test-pool-name",
 				},
@@ -270,7 +270,7 @@ func TestGCPTokenRotator_Rotate(t *testing.T) {
 	}
 }
 
-func TestGCPTokenRotator_GetPreRotationTime(t *testing.T) {
+func TestGCPOIDCTokenRotator_GetPreRotationTime(t *testing.T) {
 	scheme := runtime.NewScheme()
 	scheme.AddKnownTypes(corev1.SchemeGroupVersion, &corev1.Secret{})
 
@@ -365,7 +365,7 @@ func TestGCPTokenRotator_GetPreRotationTime(t *testing.T) {
 	}
 }
 
-func TestGCPTokenRotator_IsExpired(t *testing.T) {
+func TestGCPOIDCTokenRotator_IsExpired(t *testing.T) {
 	fakeKubeClient := fake.NewFakeClient()
 	rotator := &gcpOIDCTokenRotator{
 		client: fakeKubeClient,
@@ -708,7 +708,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 						ProjectName: "test-project",
 						Region:      "us-central1",
-						WorkloadIdentityFederationConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+						WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 							ProjectID:                    "test-project-id",
 							WorkloadIdentityPoolName:     "test-pool-name",
 							WorkloadIdentityProviderName: "test-provider",

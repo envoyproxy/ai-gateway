@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -67,7 +68,7 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 			// Start a span to trigger output.
 			span := startCompletionsSpan(t, result, nil)
 			require.NotNil(t, span)
-			span.EndSpan(200, nil)
+			span.EndSpan()
 
 			// Check that the service name appears in the console output.
 			output := stdout.String()
@@ -130,7 +131,7 @@ func TestNewTracingFromEnv_Exporter(t *testing.T) {
 			// Create a test request to start a span.
 			span := startCompletionsSpan(t, tracing, nil)
 			require.NotNil(t, span, "expected span to be sampled")
-			span.EndSpan(200, nil)
+			span.EndSpan()
 
 			// Now, verify the actual ENV were honored.
 			v1Span := collector.TakeSpan()
@@ -167,7 +168,7 @@ func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
 			span := startCompletionsSpan(t, tracing, nil)
 			if tt.expectSampled {
 				require.NotNil(t, span, "expected span to be sampled")
-				span.EndSpan(200, nil)
+				span.EndSpan()
 			} else {
 				require.Nil(t, span, "expected span to not be sampled")
 			}
@@ -216,7 +217,7 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 			// Start span and inject headers.
 			span := startCompletionsSpan(t, tracing, headerMutation)
 			require.NotNil(t, span)
-			span.EndSpan(200, nil)
+			span.EndSpan()
 
 			// Check that the expected header was injected.
 			require.Len(t, headerMutation.SetHeaders, 1, "expected exactly one header to be set")
@@ -275,8 +276,8 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 			t.Setenv(openinference.EnvHideInputs, strconv.FormatBool(tt.hideInputs))
 			t.Setenv(openinference.EnvHideOutputs, strconv.FormatBool(tt.hideOutputs))
 
-			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
-			tracer := tracing.ChatCompletionTracer()
+			collector, tr := newTracingFromEnvForTest(t, io.Discard)
+			tracer := tr.ChatCompletionTracer()
 
 			// Create a test request with sensitive data.
 			req := &openai.ChatCompletionRequest{
@@ -290,7 +291,16 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 				}},
 			}
 			reqBody := []byte(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello, sensitive data!"}]}`)
-			respBody := []byte(`{"choices":[{"message":{"role":"assistant","content":"Response with sensitive data"}}]}`)
+			respBody := &openai.ChatCompletionResponse{
+				ID:     "chatcmpl-abc123",
+				Object: "chat.completion",
+				Choices: []openai.ChatCompletionResponseChoice{{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: ptr.To("Response with sensitive data"),
+					},
+				}},
+			}
 
 			// Start a span and record request/response.
 			span := tracer.StartSpanAndInjectHeaders(
@@ -301,7 +311,8 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 				reqBody,
 			)
 			require.NotNil(t, span)
-			span.EndSpan(200, respBody)
+			span.RecordResponse(respBody)
+			span.EndSpan()
 
 			// Check the recorded span.
 			v1Span := collector.TakeSpan()

@@ -23,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -122,8 +123,8 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("span creation", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/chat/completions"}
 		const modelKey = "x-ai-gateway-model-key"
-		mockSpanInstance := &mockSpan{}
-		mockTracerInstance := &mockTracer{returnedSpan: mockSpanInstance}
+		span := &testotel.MockSpan{}
+		mockTracerInstance := &mockTracer{returnedSpan: span}
 
 		p := &chatCompletionProcessorRouterFilter{
 			config:         &processorConfig{modelNameHeaderKey: modelKey},
@@ -137,7 +138,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.True(t, mockTracerInstance.startSpanCalled)
-		require.Equal(t, mockSpanInstance, p.span)
+		require.Equal(t, span, p.span)
 		require.True(t, p.originalRequestBody.Stream)
 
 		// Verify headers are injected.
@@ -542,23 +543,6 @@ func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResp
 	})
 }
 
-type mockSpan struct {
-	recordChunkCalled int
-	endSpanCalled     bool
-	endSpanStatusCode int
-	endSpanBody       []byte
-}
-
-func (m *mockSpan) RecordChunk() {
-	m.recordChunkCalled++
-}
-
-func (m *mockSpan) EndSpan(statusCode int, body []byte) {
-	m.endSpanCalled = true
-	m.endSpanStatusCode = statusCode
-	m.endSpanBody = body
-}
-
 func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t *testing.T) {
 	t.Run("passthrough without span", func(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
@@ -570,33 +554,10 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 		// Should not panic when span is nil.
 	})
 
-	t.Run("passthrough with span for streaming", func(t *testing.T) {
-		span := &mockSpan{}
-		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
-			originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
-		}
-
-		// First chunk.
-		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: false, Body: []byte("chunk1")})
-		require.NoError(t, err)
-		require.Equal(t, 1, span.recordChunkCalled)
-		require.False(t, span.endSpanCalled)
-
-		// End of stream.
-		_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: []byte("chunk2")})
-		require.NoError(t, err)
-		require.Equal(t, 2, span.recordChunkCalled)
-		require.True(t, span.endSpanCalled)
-		require.Equal(t, 0, span.endSpanStatusCode) // No status code for passthrough.
-		require.Equal(t, []byte("chunk2"), span.endSpanBody)
-	})
-
-	t.Run("upstream filter with span and status code", func(t *testing.T) {
-		span := &mockSpan{}
+	t.Run("upstream filter span", func(t *testing.T) {
+		span := &testotel.MockSpan{}
 		mt := &mockTranslator{t: t}
 		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
 			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
 				responseHeaders: map[string]string{":status": "200"},
@@ -604,70 +565,35 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
 				config:          &processorConfig{metadataNamespace: ""},
+				span:            span,
 			},
 		}
 
-		// Stream chunks.
-		chunk1Body := &extprocv3.HttpBody{EndOfStream: false, Body: []byte("chunk1")}
-		mt.expResponseBody = chunk1Body
-		_, err := p.ProcessResponseBody(t.Context(), chunk1Body)
-		require.NoError(t, err)
-		require.Equal(t, 1, span.recordChunkCalled)
-
-		// End of stream.
 		finalBody := &extprocv3.HttpBody{EndOfStream: true, Body: []byte("final")}
 		mt.expResponseBody = finalBody
-		_, err = p.ProcessResponseBody(t.Context(), finalBody)
+		_, err := p.ProcessResponseBody(t.Context(), finalBody)
 		require.NoError(t, err)
-		require.Equal(t, 2, span.recordChunkCalled)
-		require.True(t, span.endSpanCalled)
-		require.Equal(t, 200, span.endSpanStatusCode)
-		require.Equal(t, []byte("final"), span.endSpanBody)
-	})
-
-	t.Run("upstream filter with invalid status code", func(t *testing.T) {
-		span := &mockSpan{}
-		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
-			originalRequestBody: &openai.ChatCompletionRequest{Stream: false},
-			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
-				responseHeaders: map[string]string{":status": "invalid"},
-				translator:      &mockTranslator{t: t, expResponseBody: &extprocv3.HttpBody{Body: []byte("response")}},
-				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-				metrics:         &mockChatCompletionMetrics{},
-				config:          &processorConfig{metadataNamespace: ""},
-			},
-		}
-
-		// Non-streaming response.
-		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: []byte("response")})
-		require.NoError(t, err)
-		require.Equal(t, 0, span.recordChunkCalled) // No chunks for non-streaming.
-		require.True(t, span.endSpanCalled)
-		require.Equal(t, 0, span.endSpanStatusCode) // Invalid status code defaults to 0.
-		require.Equal(t, []byte("response"), span.endSpanBody)
+		require.True(t, span.EndSpanCalled)
 	})
 
 	t.Run("upstream filter error with span", func(t *testing.T) {
-		span := &mockSpan{}
+		span := &testotel.MockSpan{}
 		p := &chatCompletionProcessorRouterFilter{
-			span:                span,
 			originalRequestBody: &openai.ChatCompletionRequest{Stream: false},
 			upstreamFilter: &chatCompletionProcessorUpstreamFilter{
 				responseHeaders: map[string]string{":status": "500"},
-				translator:      &mockTranslator{t: t, retErr: errors.New("translation error")},
+				translator:      &mockTranslator{t: t},
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
 				config:          &processorConfig{metadataNamespace: ""},
+				span:            span,
 			},
 		}
 
-		errorBody := []byte("error response")
-		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: errorBody})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "translation error")
-		require.True(t, span.endSpanCalled)
-		require.Equal(t, 500, span.endSpanStatusCode)
-		require.Equal(t, errorBody, span.endSpanBody)
+		errorBody := "error response"
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true, Body: []byte(errorBody)})
+		require.NoError(t, err)
+		require.Equal(t, 500, span.ErrorStatus)
+		require.Equal(t, errorBody, span.ErrBody)
 	})
 }

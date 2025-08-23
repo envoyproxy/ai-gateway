@@ -1171,7 +1171,7 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := geminiLogprobsToOpenAILogprobs(tt.input)
-			// Use cmp.Equal with EquateApprox for float comparison due to float32->float64 conversion
+			// Use cmp.Equal with EquateApprox for float comparison due to float32->float64 conversion.
 			if !cmp.Equal(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)) {
 				t.Errorf("geminiLogprobsToOpenAILogprobs() diff:\n%s", cmp.Diff(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)))
 			}
@@ -1278,7 +1278,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 			require.NoError(t, err)
 
-			// Normalize IDs since they're generated
+			// Normalize IDs since they're generated.
 			for i := range calls {
 				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
 			}

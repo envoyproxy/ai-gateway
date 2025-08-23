@@ -180,6 +180,7 @@ type GCPServiceAccountImpersonationConfig struct {
 }
 
 // BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+// +kubebuilder:validation:XValidation:rule="(has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig)) || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))",message="Exactly one of GCPWorkloadIdentityFederationConfig or GCPCredentialsFile must be specified"
 type BackendSecurityPolicyGCPCredentials struct {
 	// ProjectName is the GCP project name.
 	//
@@ -192,10 +193,15 @@ type BackendSecurityPolicyGCPCredentials struct {
 	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
 
+	// CredentialsFile specifies the service account credentials file to use for the GCP provider.
+	//
+	// +optional
+	CredentialsFile *GCPCredentialsFile `json:"credentialsFile,omitempty"`
+
 	// WorkloadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation.
 	//
-	// +kubebuilder:validation:Required
-	WorkloadIdentityFederationConfig GCPWorkloadIdentityFederationConfig `json:"workloadIdentityFederationConfig"`
+	// +optional
+	WorkloadIdentityFederationConfig *GCPWorkloadIdentityFederationConfig `json:"workloadIdentityFederationConfig,omitempty"`
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
@@ -284,4 +290,12 @@ type AWSOIDCExchangeToken struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	AwsRoleArn string `json:"awsRoleArn"`
+}
+
+// GCPCredentialsFile specifies the service account key json file to authenticate with GCP provider.
+type GCPCredentialsFile struct {
+	// SecretRef is the reference to the credential file.
+	//
+	// The secret should contain the GCP service account credentials file keyed on "service_account.json".
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
 }
