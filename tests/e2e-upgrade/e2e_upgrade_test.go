@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 }
 
 // TestUpgrade tests the upgrade process from v0.3.0 to the local version.
-// It continuously makes requests during the upgrade to ensure no downtime.
+// It waits for the first successful request, then continuously makes requests during the upgrade to ensure no downtime.
 func TestUpgrade(t *testing.T) {
 	const manifest = "../e2e/testdata/testupstream.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -49,12 +49,16 @@ func TestUpgrade(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
+	// Wait for the first successful request before starting continuous testing.
+	t.Log("Waiting for first successful request...")
+	waitForFirstSuccess(t, testURL)
+	t.Log("First successful request received, starting continuous requests...")
+
 	// Channel to track request success/failure.
 	resultChan := make(chan bool, 1000)
 	var wg sync.WaitGroup
 
 	// Start making continuous requests.
-	t.Log("Starting continuous requests...")
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -72,8 +76,8 @@ func TestUpgrade(t *testing.T) {
 		}
 	}()
 
-	// Wait for some initial requests to establish baseline.
-	time.Sleep(5 * time.Second)
+	// Wait a brief moment to establish baseline after successful startup.
+	time.Sleep(2 * time.Second)
 	t.Log("Baseline established, starting upgrade...")
 
 	// Perform the upgrade.
@@ -106,10 +110,30 @@ func TestUpgrade(t *testing.T) {
 	t.Logf("Total requests: %d, Successful: %d, Success rate: %.2f%%",
 		totalRequests, successfulRequests, float64(successfulRequests)/float64(totalRequests)*100)
 
-	// Require at least 95% success rate during upgrade.
+	// Require 100% success rate during upgrade since we wait for initial success.
 	require.Positive(t, totalRequests, "Should have made some requests")
-	successRate := float64(successfulRequests) / float64(totalRequests)
-	require.GreaterOrEqual(t, successRate, 0.95, "Success rate should be at least 95%% during upgrade")
+	require.Equal(t, totalRequests, successfulRequests, "All requests should succeed after initial success - no downtime during upgrade")
+}
+
+// waitForFirstSuccess waits for the first successful request before starting continuous testing.
+func waitForFirstSuccess(t *testing.T, url string) {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Timeout waiting for first successful request")
+		case <-ticker.C:
+			if makeTestRequest(url) {
+				return
+			}
+			t.Log("Waiting for first successful request...")
+		}
+	}
 }
 
 // makeTestRequest makes a single test request and returns whether it was successful.
