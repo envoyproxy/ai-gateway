@@ -48,8 +48,6 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
-
-
 // TestMainConfig contains configuration for TestMain setup.
 type TestMainConfig struct {
 	// AIGatewayHelmFlags are additional flags for the AI Gateway Helm chart.
@@ -505,6 +503,49 @@ func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) 
 	}
 
 	initLog("\tWaiting for AI Gateway controller to be ready")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+// UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
+// This is used for upgrade testing to simulate upgrading from a released version to a new version.
+func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
+	initLog("Upgrading AI Gateway to local charts")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
+	}()
+
+	initLog("\tHelm Upgrade CRDs to local")
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"../../manifests/charts/ai-gateway-crds-helm",
+		"-n", "envoy-ai-gateway-system")
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
+		return
+	}
+
+	initLog("\tHelm Upgrade AI Gateway to local")
+	args := []string{
+		"tool", "helm", "upgrade", "-i", "ai-eg",
+		"../../manifests/charts/ai-gateway-helm",
+		"-n", "envoy-ai-gateway-system",
+	}
+	args = append(args, aiGatewayHelmFlags...)
+
+	helm := exec.CommandContext(ctx, "go", args...)
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	// Restart the controller to pick up the new changes in the AI Gateway.
+	initLog("\tRestart AI Gateway controller")
+	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+		return
+	}
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
