@@ -48,13 +48,40 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
+// AIGatewayInstallMode defines how AI Gateway should be installed.
+type AIGatewayInstallMode int
+
+const (
+	// AIGatewayInstallLocal installs AI Gateway from local helm charts.
+	AIGatewayInstallLocal AIGatewayInstallMode = iota
+	// AIGatewayInstallRegistry installs AI Gateway from OCI registry with specified version.
+	AIGatewayInstallRegistry
+)
+
+// TestMainConfig contains configuration for TestMain setup.
+type TestMainConfig struct {
+	// AIGatewayHelmFlags are additional flags for the AI Gateway Helm chart.
+	AIGatewayHelmFlags []string
+	// InferenceExtension indicates whether to install inference extension components.
+	InferenceExtension bool
+	// InstallMode determines how AI Gateway should be installed.
+	InstallMode AIGatewayInstallMode
+	// RegistryVersion specifies the version to install from registry (only used when InstallMode is AIGatewayInstallRegistry).
+	RegistryVersion string
+}
+
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
 // and installs the AI Gateway. It can be called with additional flags for the AI Gateway Helm chart.
 //
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
-func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
+func TestMain(m *testing.M, config TestMainConfig) {
+	// Extend timeout for upgrade tests that need more time
+	timeout := 5 * time.Minute
+	if config.InstallMode == AIGatewayInstallRegistry {
+		timeout = 10 * time.Minute
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
@@ -76,7 +103,7 @@ func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool
 		panic(err)
 	}
 
-	if inferenceExtension {
+	if config.InferenceExtension {
 		if err := initMetalLB(ctx); err != nil {
 			cancel()
 			panic(err)
@@ -86,17 +113,29 @@ func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool
 			panic(err)
 		}
 	}
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+	if err := initEnvoyGateway(ctx, config.InferenceExtension); err != nil {
 		cancel()
 		panic(err)
 	}
 
-	if err := initAIGateway(ctx, aiGatewayHelmFlags); err != nil {
+	// Install AI Gateway based on the configured mode
+	switch config.InstallMode {
+	case AIGatewayInstallLocal:
+		if err := initAIGateway(ctx, config.AIGatewayHelmFlags); err != nil {
+			cancel()
+			panic(err)
+		}
+	case AIGatewayInstallRegistry:
+		if err := initAIGatewayFromRegistry(ctx, config.RegistryVersion); err != nil {
+			cancel()
+			panic(err)
+		}
+	default:
 		cancel()
-		panic(err)
+		panic("unknown AI Gateway install mode")
 	}
 
-	if !inferenceExtension {
+	if !config.InferenceExtension {
 		if err := initPrometheus(ctx); err != nil {
 			cancel()
 			panic(err)
@@ -449,9 +488,9 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
-// InitAIGatewayFromRegistry initializes the AI Gateway from the OCI registry with the specified version.
+// initAIGatewayFromRegistry initializes the AI Gateway from the OCI registry with the specified version.
 // This is used for upgrade testing where we start with a released version and upgrade to local charts.
-func InitAIGatewayFromRegistry(ctx context.Context, version string) (err error) {
+func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) {
 	initLog("Installing AI Gateway from registry")
 	start := time.Now()
 	defer func() {
@@ -481,113 +520,6 @@ func InitAIGatewayFromRegistry(ctx context.Context, version string) (err error) 
 
 	initLog("\tWaiting for AI Gateway controller to be ready")
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
-}
-
-// UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
-// This is used for upgrade testing to simulate upgrading from a released version to a new version.
-func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
-	initLog("Upgrading AI Gateway to local charts")
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
-	}()
-
-	initLog("\tHelm Upgrade CRDs to local")
-	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
-		"../../manifests/charts/ai-gateway-crds-helm",
-		"-n", "envoy-ai-gateway-system")
-	helmCRD.Stdout = os.Stdout
-	helmCRD.Stderr = os.Stderr
-	if err = helmCRD.Run(); err != nil {
-		return
-	}
-
-	initLog("\tHelm Upgrade AI Gateway to local")
-	args := []string{
-		"tool", "helm", "upgrade", "-i", "ai-eg",
-		"../../manifests/charts/ai-gateway-helm",
-		"-n", "envoy-ai-gateway-system",
-	}
-	args = append(args, aiGatewayHelmFlags...)
-
-	helm := exec.CommandContext(ctx, "go", args...)
-	helm.Stdout = os.Stdout
-	helm.Stderr = os.Stderr
-	if err = helm.Run(); err != nil {
-		return
-	}
-
-	// Restart the controller to pick up the new changes in the AI Gateway.
-	initLog("\tRestart AI Gateway controller")
-	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
-		return
-	}
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
-}
-
-// TestMainUpgrade is the entry point for the e2e upgrade tests. It sets up the kind cluster,
-// installs the Envoy Gateway, and installs the AI Gateway from the registry (v0.3.0).
-// This allows upgrade tests to start with a released version.
-func TestMainUpgrade(m *testing.M, _ []string, inferenceExtension bool) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Minute))
-
-	// The following code sets up the kind cluster, installs the Envoy Gateway,
-	// and installs the AI Gateway from registry.
-	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
-	// failures.
-
-	run := false
-	defer func() {
-		// If the setup or some tests panic, try to collect the cluster logs.
-		if r := recover(); r != nil {
-			cleanupKindCluster(true)
-		}
-		if !run {
-			panic("BUG: no tests were run. This is likely a bug during the setup")
-		}
-	}()
-
-	if err := initKindCluster(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if inferenceExtension {
-		if err := initMetalLB(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
-		if err := installInferencePoolEnvironment(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
-	}
-
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	// Install AI Gateway from registry v0.3.0 instead of local charts.
-	if err := InitAIGatewayFromRegistry(ctx, "0.3.0"); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if !inferenceExtension {
-		if err := initPrometheus(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
-	}
-	code := m.Run()
-	run = true
-	cancel()
-
-	cleanupKindCluster(code != 0)
-
-	os.Exit(code) // nolint: gocritic
 }
 
 func initPrometheus(ctx context.Context) (err error) {
