@@ -64,7 +64,7 @@ type TestMainConfig struct {
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
 func TestMain(m *testing.M, config TestMainConfig) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Minute))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
@@ -153,6 +153,11 @@ func initKindCluster(ctx context.Context) (err error) {
 		return
 	}
 
+	initLog("\tWaiting for API server to be ready")
+	if err = waitForAPIServerReady(ctx); err != nil {
+		return
+	}
+
 	initLog("\tLoading Docker images into kind cluster")
 	for _, image := range []string{
 		"docker.io/envoyproxy/ai-gateway-controller:latest",
@@ -167,6 +172,31 @@ func initKindCluster(ctx context.Context) (err error) {
 		}
 	}
 	return nil
+}
+
+func waitForAPIServerReady(ctx context.Context) error {
+	initLog("\t\tWaiting for API server to be available")
+	
+	// Try for up to 2 minutes
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for API server to be ready")
+		case <-ticker.C:
+			cmd := Kubectl(ctx, "cluster-info")
+			cmd.Stdout = nil
+			cmd.Stderr = nil
+			if err := cmd.Run(); err == nil {
+				initLog("\t\tAPI server is ready")
+				return nil
+			}
+			initLog("\t\tAPI server not ready yet, retrying...")
+		}
+	}
 }
 
 func initMetalLB(ctx context.Context) (err error) {

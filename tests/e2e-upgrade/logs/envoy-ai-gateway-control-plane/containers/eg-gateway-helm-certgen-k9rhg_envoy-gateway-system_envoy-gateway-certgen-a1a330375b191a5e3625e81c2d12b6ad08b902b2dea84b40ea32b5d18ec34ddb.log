@@ -1,0 +1,12 @@
+2025-08-23T20:04:53.166353524Z stdout F 2025-08-23T20:04:53.165Z	INFO	cmd/certgen.go:76	generated certificates
+2025-08-23T20:05:23.192876349Z stderr F Error: failed to output certificates: failed to create or update secrets: failed to get secret envoy-gateway-system/envoy-gateway: failed to get server groups: Get "https://10.96.0.1:443/api": dial tcp 10.96.0.1:443: i/o timeout
+2025-08-23T20:05:23.192925501Z stderr F Usage:
+2025-08-23T20:05:23.192933125Z stderr F   envoy-gateway certgen [flags]
+2025-08-23T20:05:23.192938586Z stderr F 
+2025-08-23T20:05:23.192944196Z stderr F Flags:
+2025-08-23T20:05:23.192950909Z stderr F       --disable-topology-injector   Disables patching caBundle for injector MutatingWebhookConfiguration.
+2025-08-23T20:05:23.192956268Z stderr F   -h, --help                        help for certgen
+2025-08-23T20:05:23.19296258Z stderr F   -l, --local                       Generate all the certificates locally.
+2025-08-23T20:05:23.192968912Z stderr F   -o, --overwrite                   Updates the secrets containing the control plane certs.
+2025-08-23T20:05:23.192974012Z stderr F 
+2025-08-23T20:05:23.192980404Z stderr F failed to output certificates: failed to create or update secrets: failed to get secret envoy-gateway-system/envoy-gateway: failed to get server groups: Get "https://10.96.0.1:443/api": dial tcp 10.96.0.1:443: i/o timeout

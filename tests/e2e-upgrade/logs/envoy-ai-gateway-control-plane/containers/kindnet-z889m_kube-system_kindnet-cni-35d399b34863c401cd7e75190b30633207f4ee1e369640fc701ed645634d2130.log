@@ -1,0 +1,38 @@
+2025-08-23T20:03:38.180663462Z stderr F I0823 20:03:38.180449       1 main.go:390] probe TCP address envoy-ai-gateway-control-plane:6443
+2025-08-23T20:03:38.269583456Z stderr F I0823 20:03:38.269387       1 main.go:109] connected to apiserver: https://envoy-ai-gateway-control-plane:6443
+2025-08-23T20:03:38.272332664Z stderr F I0823 20:03:38.272247       1 main.go:139] hostIP = 172.18.0.2
+2025-08-23T20:03:38.272343534Z stderr F podIP = 172.18.0.2
+2025-08-23T20:03:38.272454412Z stderr F I0823 20:03:38.272383       1 main.go:148] setting mtu 1500 for CNI 
+2025-08-23T20:03:38.272458841Z stderr F I0823 20:03:38.272399       1 main.go:178] kindnetd IP family: "ipv4"
+2025-08-23T20:03:38.272461466Z stderr F I0823 20:03:38.272412       1 main.go:182] noMask IPv4 subnets: [10.244.0.0/16]
+2025-08-23T20:03:38.473119129Z stderr F time="2025-08-23T20:03:38Z" level=info msg="Created plugin 10-kube-network-policies (kindnetd, handles RunPodSandbox,RemovePodSandbox)"
+2025-08-23T20:03:38.473405847Z stderr F I0823 20:03:38.473333       1 controller.go:377] "Starting controller" name="kube-network-policies"
+2025-08-23T20:03:38.473450901Z stderr F I0823 20:03:38.473410       1 controller.go:381] "Waiting for informer caches to sync"
+2025-08-23T20:03:38.473595392Z stderr F I0823 20:03:38.473492       1 shared_informer.go:350] "Waiting for caches to sync" controller="kube-network-policies"
+2025-08-23T20:03:38.551207503Z stderr F time="2025-08-23T20:03:38Z" level=info msg="Registering plugin 10-kube-network-policies..."
+2025-08-23T20:03:38.55757025Z stderr F time="2025-08-23T20:03:38Z" level=info msg="Configuring plugin 10-kube-network-policies for runtime containerd/v2.1.1..."
+2025-08-23T20:03:38.570028754Z stderr F time="2025-08-23T20:03:38Z" level=info msg="Started plugin 10-kube-network-policies..."
+2025-08-23T20:03:38.770391941Z stderr F I0823 20:03:38.770228       1 nri.go:56] Synchronized state with the runtime (6 pods, 6 containers)...
+2025-08-23T20:03:38.851925393Z stderr F I0823 20:03:38.851776       1 shared_informer.go:357] "Caches are synced" controller="kube-network-policies"
+2025-08-23T20:03:38.852036852Z stderr F I0823 20:03:38.851941       1 metrics.go:72] Registering metrics
+2025-08-23T20:03:38.852487988Z stderr F I0823 20:03:38.852105       1 controller.go:711] "Syncing nftables rules"
+2025-08-23T20:03:48.477382452Z stderr F I0823 20:03:48.477260       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:03:48.47740244Z stderr F I0823 20:03:48.477315       1 main.go:301] handling current node
+2025-08-23T20:03:58.473744715Z stderr F I0823 20:03:58.473284       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:03:58.473774522Z stderr F I0823 20:03:58.473397       1 main.go:301] handling current node
+2025-08-23T20:04:08.479427642Z stderr F I0823 20:04:08.479267       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:08.479456897Z stderr F I0823 20:04:08.479307       1 main.go:301] handling current node
+2025-08-23T20:04:18.47963618Z stderr F I0823 20:04:18.479523       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:18.479666607Z stderr F I0823 20:04:18.479552       1 main.go:301] handling current node
+2025-08-23T20:04:28.47494012Z stderr F I0823 20:04:28.474798       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:28.474969625Z stderr F I0823 20:04:28.474844       1 main.go:301] handling current node
+2025-08-23T20:04:38.473983888Z stderr F I0823 20:04:38.473851       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:38.474015117Z stderr F I0823 20:04:38.473884       1 main.go:301] handling current node
+2025-08-23T20:04:48.474313024Z stderr F I0823 20:04:48.474159       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:48.47434249Z stderr F I0823 20:04:48.474215       1 main.go:301] handling current node
+2025-08-23T20:04:58.474719811Z stderr F I0823 20:04:58.474580       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:04:58.474742774Z stderr F I0823 20:04:58.474618       1 main.go:301] handling current node
+2025-08-23T20:05:08.47339731Z stderr F I0823 20:05:08.473261       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:05:08.473430693Z stderr F I0823 20:05:08.473303       1 main.go:301] handling current node
+2025-08-23T20:05:18.474284579Z stderr F I0823 20:05:18.474155       1 main.go:297] Handling node with IPs: map[172.18.0.2:{}]
+2025-08-23T20:05:18.474316649Z stderr F I0823 20:05:18.474207       1 main.go:301] handling current node

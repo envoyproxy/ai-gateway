@@ -1,0 +1,173 @@
+2025-08-23T20:03:23.022746134Z stderr F I0823 20:03:23.022556       1 options.go:249] external host was not specified, using 172.18.0.2
+2025-08-23T20:03:23.024863558Z stderr F I0823 20:03:23.024650       1 server.go:147] Version: v1.33.1
+2025-08-23T20:03:23.024871603Z stderr F I0823 20:03:23.024722       1 server.go:149] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+2025-08-23T20:03:24.400889416Z stderr F I0823 20:03:24.400691       1 shared_informer.go:350] "Waiting for caches to sync" controller="node_authorizer"
+2025-08-23T20:03:24.4095546Z stderr F I0823 20:03:24.409463       1 shared_informer.go:350] "Waiting for caches to sync" controller="*generic.policySource[*k8s.io/api/admissionregistration/v1.ValidatingAdmissionPolicy,*k8s.io/api/admissionregistration/v1.ValidatingAdmissionPolicyBinding,k8s.io/apiserver/pkg/admission/plugin/policy/validating.Validator]"
+2025-08-23T20:03:24.413602637Z stderr F I0823 20:03:24.413515       1 plugins.go:157] Loaded 14 mutating admission controller(s) successfully in the following order: NamespaceLifecycle,LimitRanger,ServiceAccount,NodeRestriction,TaintNodesByCondition,Priority,DefaultTolerationSeconds,DefaultStorageClass,StorageObjectInUseProtection,RuntimeClass,DefaultIngressClass,PodTopologyLabels,MutatingAdmissionPolicy,MutatingAdmissionWebhook.
+2025-08-23T20:03:24.413617184Z stderr F I0823 20:03:24.413569       1 plugins.go:160] Loaded 13 validating admission controller(s) successfully in the following order: LimitRanger,ServiceAccount,PodSecurity,Priority,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,ClusterTrustBundleAttest,CertificateSubjectRestriction,ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,ResourceQuota.
+2025-08-23T20:03:24.413792754Z stderr F I0823 20:03:24.413723       1 instance.go:233] Using reconciler: lease
+2025-08-23T20:03:25.170302948Z stderr F I0823 20:03:25.169526       1 handler.go:288] Adding GroupVersion apiextensions.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.170337012Z stderr F W0823 20:03:25.169550       1 genericapiserver.go:778] Skipping API apiextensions.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.184530125Z stderr F I0823 20:03:25.182254       1 storage_core.go:375] kube-apiserver started with IP allocator and dual write enabled but bitmap allocator does not exist, recreating it ...
+2025-08-23T20:03:25.187517171Z stderr F I0823 20:03:25.187402       1 cidrallocator.go:197] starting ServiceCIDR Allocator Controller
+2025-08-23T20:03:25.312277886Z stderr F I0823 20:03:25.312159       1 handler.go:288] Adding GroupVersion  v1 to ResourceManager
+2025-08-23T20:03:25.312422167Z stderr F I0823 20:03:25.312361       1 apis.go:112] API group "internal.apiserver.k8s.io" is not enabled, skipping.
+2025-08-23T20:03:25.468292633Z stderr F I0823 20:03:25.468133       1 apis.go:112] API group "storagemigration.k8s.io" is not enabled, skipping.
+2025-08-23T20:03:25.549321707Z stderr F I0823 20:03:25.549162       1 apis.go:112] API group "resource.k8s.io" is not enabled, skipping.
+2025-08-23T20:03:25.555942968Z stderr F I0823 20:03:25.555855       1 handler.go:288] Adding GroupVersion authentication.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.555960731Z stderr F W0823 20:03:25.555876       1 genericapiserver.go:778] Skipping API authentication.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.555965661Z stderr F W0823 20:03:25.555882       1 genericapiserver.go:778] Skipping API authentication.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.556396439Z stderr F I0823 20:03:25.556329       1 handler.go:288] Adding GroupVersion authorization.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.556405546Z stderr F W0823 20:03:25.556344       1 genericapiserver.go:778] Skipping API authorization.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.556974504Z stderr F I0823 20:03:25.556911       1 handler.go:288] Adding GroupVersion autoscaling v2 to ResourceManager
+2025-08-23T20:03:25.557504849Z stderr F I0823 20:03:25.557439       1 handler.go:288] Adding GroupVersion autoscaling v1 to ResourceManager
+2025-08-23T20:03:25.557536679Z stderr F W0823 20:03:25.557455       1 genericapiserver.go:778] Skipping API autoscaling/v2beta1 because it has no resources.
+2025-08-23T20:03:25.557538903Z stderr F W0823 20:03:25.557461       1 genericapiserver.go:778] Skipping API autoscaling/v2beta2 because it has no resources.
+2025-08-23T20:03:25.55870981Z stderr F I0823 20:03:25.558636       1 handler.go:288] Adding GroupVersion batch v1 to ResourceManager
+2025-08-23T20:03:25.558717525Z stderr F W0823 20:03:25.558652       1 genericapiserver.go:778] Skipping API batch/v1beta1 because it has no resources.
+2025-08-23T20:03:25.559377596Z stderr F I0823 20:03:25.559314       1 handler.go:288] Adding GroupVersion certificates.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.559394537Z stderr F W0823 20:03:25.559328       1 genericapiserver.go:778] Skipping API certificates.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.559397503Z stderr F W0823 20:03:25.559334       1 genericapiserver.go:778] Skipping API certificates.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.559840745Z stderr F I0823 20:03:25.559771       1 handler.go:288] Adding GroupVersion coordination.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.559845063Z stderr F W0823 20:03:25.559785       1 genericapiserver.go:778] Skipping API coordination.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.559847738Z stderr F W0823 20:03:25.559791       1 genericapiserver.go:778] Skipping API coordination.k8s.io/v1alpha2 because it has no resources.
+2025-08-23T20:03:25.56031752Z stderr F I0823 20:03:25.560245       1 handler.go:288] Adding GroupVersion discovery.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.560327819Z stderr F W0823 20:03:25.560260       1 genericapiserver.go:778] Skipping API discovery.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.561991359Z stderr F I0823 20:03:25.561919       1 handler.go:288] Adding GroupVersion networking.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.562001949Z stderr F W0823 20:03:25.561935       1 genericapiserver.go:778] Skipping API networking.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.562005315Z stderr F W0823 20:03:25.561941       1 genericapiserver.go:778] Skipping API networking.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.56241289Z stderr F I0823 20:03:25.562350       1 handler.go:288] Adding GroupVersion node.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.562419863Z stderr F W0823 20:03:25.562365       1 genericapiserver.go:778] Skipping API node.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.562423209Z stderr F W0823 20:03:25.562371       1 genericapiserver.go:778] Skipping API node.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.562987658Z stderr F I0823 20:03:25.562929       1 handler.go:288] Adding GroupVersion policy v1 to ResourceManager
+2025-08-23T20:03:25.562990394Z stderr F W0823 20:03:25.562944       1 genericapiserver.go:778] Skipping API policy/v1beta1 because it has no resources.
+2025-08-23T20:03:25.564437479Z stderr F I0823 20:03:25.564372       1 handler.go:288] Adding GroupVersion rbac.authorization.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.564445084Z stderr F W0823 20:03:25.564386       1 genericapiserver.go:778] Skipping API rbac.authorization.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.564447779Z stderr F W0823 20:03:25.564392       1 genericapiserver.go:778] Skipping API rbac.authorization.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.56486389Z stderr F I0823 20:03:25.564806       1 handler.go:288] Adding GroupVersion scheduling.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.564866765Z stderr F W0823 20:03:25.564821       1 genericapiserver.go:778] Skipping API scheduling.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.564868508Z stderr F W0823 20:03:25.564827       1 genericapiserver.go:778] Skipping API scheduling.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.566391238Z stderr F I0823 20:03:25.566324       1 handler.go:288] Adding GroupVersion storage.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.566405996Z stderr F W0823 20:03:25.566341       1 genericapiserver.go:778] Skipping API storage.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.566409232Z stderr F W0823 20:03:25.566348       1 genericapiserver.go:778] Skipping API storage.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.567288141Z stderr F I0823 20:03:25.567221       1 handler.go:288] Adding GroupVersion flowcontrol.apiserver.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.567296377Z stderr F W0823 20:03:25.567234       1 genericapiserver.go:778] Skipping API flowcontrol.apiserver.k8s.io/v1beta3 because it has no resources.
+2025-08-23T20:03:25.567298971Z stderr F W0823 20:03:25.567240       1 genericapiserver.go:778] Skipping API flowcontrol.apiserver.k8s.io/v1beta2 because it has no resources.
+2025-08-23T20:03:25.567301687Z stderr F W0823 20:03:25.567244       1 genericapiserver.go:778] Skipping API flowcontrol.apiserver.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.570074159Z stderr F I0823 20:03:25.569997       1 handler.go:288] Adding GroupVersion apps v1 to ResourceManager
+2025-08-23T20:03:25.570082906Z stderr F W0823 20:03:25.570013       1 genericapiserver.go:778] Skipping API apps/v1beta2 because it has no resources.
+2025-08-23T20:03:25.570084779Z stderr F W0823 20:03:25.570019       1 genericapiserver.go:778] Skipping API apps/v1beta1 because it has no resources.
+2025-08-23T20:03:25.571496589Z stderr F I0823 20:03:25.571431       1 handler.go:288] Adding GroupVersion admissionregistration.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.571504654Z stderr F W0823 20:03:25.571446       1 genericapiserver.go:778] Skipping API admissionregistration.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.57150772Z stderr F W0823 20:03:25.571452       1 genericapiserver.go:778] Skipping API admissionregistration.k8s.io/v1alpha1 because it has no resources.
+2025-08-23T20:03:25.581149925Z stderr F I0823 20:03:25.581026       1 handler.go:288] Adding GroupVersion events.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.581171886Z stderr F W0823 20:03:25.581046       1 genericapiserver.go:778] Skipping API events.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.588814258Z stderr F I0823 20:03:25.588602       1 handler.go:288] Adding GroupVersion apiregistration.k8s.io v1 to ResourceManager
+2025-08-23T20:03:25.588826271Z stderr F W0823 20:03:25.588620       1 genericapiserver.go:778] Skipping API apiregistration.k8s.io/v1beta1 because it has no resources.
+2025-08-23T20:03:25.862877429Z stderr F I0823 20:03:25.862688       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+2025-08-23T20:03:25.862897327Z stderr F I0823 20:03:25.862689       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+2025-08-23T20:03:25.863128363Z stderr F I0823 20:03:25.863053       1 dynamic_serving_content.go:135] "Starting controller" name="serving-cert::/etc/kubernetes/pki/apiserver.crt::/etc/kubernetes/pki/apiserver.key"
+2025-08-23T20:03:25.863513816Z stderr F I0823 20:03:25.863457       1 secure_serving.go:211] Serving securely on [::]:6443
+2025-08-23T20:03:25.863573718Z stderr F I0823 20:03:25.863509       1 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+2025-08-23T20:03:25.863719612Z stderr F I0823 20:03:25.863646       1 dynamic_serving_content.go:135] "Starting controller" name="aggregator-proxy-cert::/etc/kubernetes/pki/front-proxy-client.crt::/etc/kubernetes/pki/front-proxy-client.key"
+2025-08-23T20:03:25.86476321Z stderr F I0823 20:03:25.863655       1 remote_available_controller.go:411] Starting RemoteAvailability controller
+2025-08-23T20:03:25.865703495Z stderr F I0823 20:03:25.865071       1 cache.go:32] Waiting for caches to sync for RemoteAvailability controller
+2025-08-23T20:03:25.866145234Z stderr F I0823 20:03:25.866074       1 crdregistration_controller.go:114] Starting crd-autoregister controller
+2025-08-23T20:03:25.86634549Z stderr F I0823 20:03:25.866222       1 shared_informer.go:350] "Waiting for caches to sync" controller="crd-autoregister"
+2025-08-23T20:03:25.871362545Z stderr F I0823 20:03:25.867538       1 apf_controller.go:377] Starting API Priority and Fairness config controller
+2025-08-23T20:03:25.880281703Z stderr F I0823 20:03:25.875770       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+2025-08-23T20:03:25.880495705Z stderr F I0823 20:03:25.880428       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+2025-08-23T20:03:25.880682215Z stderr F I0823 20:03:25.863702       1 repairip.go:200] Starting ipallocator-repair-controller
+2025-08-23T20:03:25.881226076Z stderr F I0823 20:03:25.880705       1 shared_informer.go:350] "Waiting for caches to sync" controller="ipallocator-repair-controller"
+2025-08-23T20:03:25.884976033Z stderr F I0823 20:03:25.863847       1 aggregator.go:169] waiting for initial CRD sync...
+2025-08-23T20:03:25.885109884Z stderr F I0823 20:03:25.863917       1 controller.go:119] Starting legacy_token_tracking_controller
+2025-08-23T20:03:25.885220993Z stderr F I0823 20:03:25.885133       1 shared_informer.go:350] "Waiting for caches to sync" controller="configmaps"
+2025-08-23T20:03:25.885356276Z stderr F I0823 20:03:25.864156       1 controller.go:78] Starting OpenAPI AggregationController
+2025-08-23T20:03:25.888270185Z stderr F I0823 20:03:25.864333       1 customresource_discovery_controller.go:294] Starting DiscoveryController
+2025-08-23T20:03:25.888423062Z stderr F I0823 20:03:25.864379       1 default_servicecidr_controller.go:110] Starting kubernetes-service-cidr-controller
+2025-08-23T20:03:25.888529522Z stderr F I0823 20:03:25.888448       1 shared_informer.go:350] "Waiting for caches to sync" controller="kubernetes-service-cidr-controller"
+2025-08-23T20:03:25.888626353Z stderr F I0823 20:03:25.864404       1 controller.go:142] Starting OpenAPI controller
+2025-08-23T20:03:25.888902882Z stderr F I0823 20:03:25.864418       1 controller.go:90] Starting OpenAPI V3 controller
+2025-08-23T20:03:25.88903473Z stderr F I0823 20:03:25.864426       1 naming_controller.go:299] Starting NamingConditionController
+2025-08-23T20:03:25.889131772Z stderr F I0823 20:03:25.864434       1 establishing_controller.go:81] Starting EstablishingController
+2025-08-23T20:03:25.89196059Z stderr F I0823 20:03:25.864442       1 nonstructuralschema_controller.go:195] Starting NonStructuralSchemaConditionController
+2025-08-23T20:03:25.892208225Z stderr F I0823 20:03:25.864448       1 apiapproval_controller.go:189] Starting KubernetesAPIApprovalPolicyConformantConditionController
+2025-08-23T20:03:25.893334348Z stderr F I0823 20:03:25.864458       1 crd_finalizer.go:269] Starting CRDFinalizer
+2025-08-23T20:03:25.89344724Z stderr F I0823 20:03:25.864458       1 local_available_controller.go:156] Starting LocalAvailability controller
+2025-08-23T20:03:25.893554512Z stderr F I0823 20:03:25.893471       1 cache.go:32] Waiting for caches to sync for LocalAvailability controller
+2025-08-23T20:03:25.894007302Z stderr F I0823 20:03:25.864472       1 apiservice_controller.go:100] Starting APIServiceRegistrationController
+2025-08-23T20:03:25.896329472Z stderr F I0823 20:03:25.896229       1 cache.go:32] Waiting for caches to sync for APIServiceRegistrationController controller
+2025-08-23T20:03:25.896344881Z stderr F I0823 20:03:25.864481       1 controller.go:80] Starting OpenAPI V3 AggregationController
+2025-08-23T20:03:25.896462211Z stderr F I0823 20:03:25.864512       1 gc_controller.go:78] Starting apiserver lease garbage collector
+2025-08-23T20:03:25.896529147Z stderr F I0823 20:03:25.864534       1 system_namespaces_controller.go:66] Starting system namespaces controller
+2025-08-23T20:03:25.896774767Z stderr F I0823 20:03:25.864667       1 cluster_authentication_trust_controller.go:459] Starting cluster_authentication_trust_controller controller
+2025-08-23T20:03:25.89679765Z stderr F I0823 20:03:25.896761       1 shared_informer.go:350] "Waiting for caches to sync" controller="cluster_authentication_trust_controller"
+2025-08-23T20:03:25.913263511Z stderr F I0823 20:03:25.910218       1 shared_informer.go:357] "Caches are synced" controller="*generic.policySource[*k8s.io/api/admissionregistration/v1.ValidatingAdmissionPolicy,*k8s.io/api/admissionregistration/v1.ValidatingAdmissionPolicyBinding,k8s.io/apiserver/pkg/admission/plugin/policy/validating.Validator]"
+2025-08-23T20:03:25.913279301Z stderr F I0823 20:03:25.910248       1 policy_source.go:240] refreshing policies
+2025-08-23T20:03:25.965781195Z stderr F I0823 20:03:25.965655       1 cache.go:39] Caches are synced for RemoteAvailability controller
+2025-08-23T20:03:25.966870489Z stderr F I0823 20:03:25.966743       1 shared_informer.go:357] "Caches are synced" controller="crd-autoregister"
+2025-08-23T20:03:25.967309503Z stderr F I0823 20:03:25.967080       1 aggregator.go:171] initial CRD sync complete...
+2025-08-23T20:03:25.96934874Z stderr F I0823 20:03:25.969247       1 autoregister_controller.go:144] Starting autoregister controller
+2025-08-23T20:03:25.970000423Z stderr F I0823 20:03:25.968037       1 apf_controller.go:382] Running API Priority and Fairness config worker
+2025-08-23T20:03:25.970005983Z stderr F I0823 20:03:25.969436       1 apf_controller.go:385] Running API Priority and Fairness periodic rebalancing process
+2025-08-23T20:03:25.970008768Z stderr F I0823 20:03:25.969508       1 cache.go:32] Waiting for caches to sync for autoregister controller
+2025-08-23T20:03:25.970011534Z stderr F I0823 20:03:25.969515       1 cache.go:39] Caches are synced for autoregister controller
+2025-08-23T20:03:25.982160593Z stderr F I0823 20:03:25.981992       1 shared_informer.go:357] "Caches are synced" controller="ipallocator-repair-controller"
+2025-08-23T20:03:25.985941008Z stderr F I0823 20:03:25.985824       1 shared_informer.go:357] "Caches are synced" controller="configmaps"
+2025-08-23T20:03:25.991567066Z stderr F I0823 20:03:25.990330       1 shared_informer.go:357] "Caches are synced" controller="kubernetes-service-cidr-controller"
+2025-08-23T20:03:25.99157982Z stderr F I0823 20:03:25.990355       1 default_servicecidr_controller.go:165] Creating default ServiceCIDR with CIDRs: [10.96.0.0/16]
+2025-08-23T20:03:25.993824294Z stderr F I0823 20:03:25.993699       1 cache.go:39] Caches are synced for LocalAvailability controller
+2025-08-23T20:03:25.996456201Z stderr F I0823 20:03:25.996365       1 cache.go:39] Caches are synced for APIServiceRegistrationController controller
+2025-08-23T20:03:25.997264568Z stderr F I0823 20:03:25.996928       1 shared_informer.go:357] "Caches are synced" controller="cluster_authentication_trust_controller"
+2025-08-23T20:03:25.997571404Z stderr F I0823 20:03:25.997509       1 controller.go:667] quota admission added evaluator for: namespaces
+2025-08-23T20:03:26.00101668Z stderr F I0823 20:03:26.000905       1 shared_informer.go:357] "Caches are synced" controller="node_authorizer"
+2025-08-23T20:03:26.001950096Z stderr F I0823 20:03:26.001191       1 handler_discovery.go:451] Starting ResourceDiscoveryManager
+2025-08-23T20:03:26.009282933Z stderr F I0823 20:03:26.009155       1 cidrallocator.go:301] created ClusterIP allocator for Service CIDR 10.96.0.0/16
+2025-08-23T20:03:26.009964331Z stderr F I0823 20:03:26.009882       1 default_servicecidr_controller.go:214] Setting default ServiceCIDR condition Ready to True
+2025-08-23T20:03:26.019292357Z stderr F I0823 20:03:26.019133       1 cidrallocator.go:277] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+2025-08-23T20:03:26.021613553Z stderr F I0823 20:03:26.021526       1 default_servicecidr_controller.go:136] Shutting down kubernetes-service-cidr-controller
+2025-08-23T20:03:26.058264479Z stderr F I0823 20:03:26.057387       1 controller.go:667] quota admission added evaluator for: leases.coordination.k8s.io
+2025-08-23T20:03:26.870139126Z stderr F I0823 20:03:26.869845       1 storage_scheduling.go:95] created PriorityClass system-node-critical with value 2000001000
+2025-08-23T20:03:26.874845904Z stderr F I0823 20:03:26.874752       1 storage_scheduling.go:95] created PriorityClass system-cluster-critical with value 2000000000
+2025-08-23T20:03:26.874856724Z stderr F I0823 20:03:26.874768       1 storage_scheduling.go:111] all system priority classes are created successfully or already exist.
+2025-08-23T20:03:27.385247699Z stderr F I0823 20:03:27.382591       1 controller.go:667] quota admission added evaluator for: roles.rbac.authorization.k8s.io
+2025-08-23T20:03:27.4346069Z stderr F I0823 20:03:27.434447       1 controller.go:667] quota admission added evaluator for: rolebindings.rbac.authorization.k8s.io
+2025-08-23T20:03:27.573072553Z stderr F I0823 20:03:27.572787       1 alloc.go:328] "allocated clusterIPs" service="default/kubernetes" clusterIPs={"IPv4":"10.96.0.1"}
+2025-08-23T20:03:27.589259304Z stderr F W0823 20:03:27.587687       1 lease.go:265] Resetting endpoints for master service "kubernetes" to [172.18.0.2]
+2025-08-23T20:03:27.5892785Z stderr F I0823 20:03:27.588644       1 controller.go:667] quota admission added evaluator for: endpoints
+2025-08-23T20:03:27.595401831Z stderr F I0823 20:03:27.595294       1 controller.go:667] quota admission added evaluator for: endpointslices.discovery.k8s.io
+2025-08-23T20:03:29.344077835Z stderr F I0823 20:03:29.342965       1 controller.go:667] quota admission added evaluator for: serviceaccounts
+2025-08-23T20:03:32.820124332Z stderr F I0823 20:03:32.820024       1 controller.go:667] quota admission added evaluator for: deployments.apps
+2025-08-23T20:03:32.839308756Z stderr F I0823 20:03:32.836686       1 alloc.go:328] "allocated clusterIPs" service="kube-system/kube-dns" clusterIPs={"IPv4":"10.96.0.10"}
+2025-08-23T20:03:32.862497383Z stderr F I0823 20:03:32.860366       1 controller.go:667] quota admission added evaluator for: daemonsets.apps
+2025-08-23T20:03:34.398784193Z stderr F I0823 20:03:34.398658       1 cidrallocator.go:277] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+2025-08-23T20:03:34.407418784Z stderr F I0823 20:03:34.405396       1 cidrallocator.go:277] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+2025-08-23T20:03:35.090362828Z stderr F I0823 20:03:35.090224       1 controller.go:667] quota admission added evaluator for: replicasets.apps
+2025-08-23T20:03:35.185245279Z stderr F I0823 20:03:35.185111       1 controller.go:667] quota admission added evaluator for: controllerrevisions.apps
+2025-08-23T20:03:54.138888145Z stderr F I0823 20:03:54.138630       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1beta1 to ResourceManager
+2025-08-23T20:03:54.161567905Z stderr F I0823 20:03:54.161445       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1alpha2 to ResourceManager
+2025-08-23T20:03:54.270281578Z stderr F I0823 20:03:54.270133       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1alpha3 to ResourceManager
+2025-08-23T20:03:54.328687561Z stderr F I0823 20:03:54.328535       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1 to ResourceManager
+2025-08-23T20:03:54.328773552Z stderr F I0823 20:03:54.328726       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1beta1 to ResourceManager
+2025-08-23T20:03:54.369655034Z stderr F I0823 20:03:54.369515       1 handler.go:288] Adding GroupVersion gateway.networking.x-k8s.io v1alpha1 to ResourceManager
+2025-08-23T20:03:54.380834373Z stderr F I0823 20:03:54.380114       1 handler.go:288] Adding GroupVersion gateway.networking.x-k8s.io v1alpha1 to ResourceManager
+2025-08-23T20:03:54.400736624Z stderr F I0823 20:03:54.400601       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1alpha2 to ResourceManager
+2025-08-23T20:03:54.426945196Z stderr F I0823 20:03:54.422103       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1alpha2 to ResourceManager
+2025-08-23T20:03:54.618339195Z stderr F I0823 20:03:54.616110       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1 to ResourceManager
+2025-08-23T20:03:54.665625461Z stderr F I0823 20:03:54.662594       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1 to ResourceManager
+2025-08-23T20:03:54.665771695Z stderr F I0823 20:03:54.662656       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1beta1 to ResourceManager
+2025-08-23T20:03:54.880219066Z stderr F I0823 20:03:54.880000       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1 to ResourceManager
+2025-08-23T20:03:54.880288456Z stderr F I0823 20:03:54.880242       1 handler.go:288] Adding GroupVersion gateway.networking.k8s.io v1beta1 to ResourceManager
+2025-08-23T20:03:54.897261473Z stderr F I0823 20:03:54.896550       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:54.953673265Z stderr F I0823 20:03:54.953531       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:55.034485247Z stderr F I0823 20:03:55.034373       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:55.074899452Z stderr F I0823 20:03:55.074678       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:55.097733753Z stderr F I0823 20:03:55.097613       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:56.14756955Z stderr F I0823 20:03:56.147348       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:56.158295068Z stderr F I0823 20:03:56.157052       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:03:56.249244313Z stderr F I0823 20:03:56.249068       1 handler.go:288] Adding GroupVersion gateway.envoyproxy.io v1alpha1 to ResourceManager
+2025-08-23T20:04:01.085069704Z stderr F I0823 20:04:01.084930       1 controller.go:667] quota admission added evaluator for: jobs.batch
+2025-08-23T20:04:01.106929925Z stderr F W0823 20:04:01.106748       1 dispatcher.go:210] Failed calling webhook, failing open topology.webhook.gateway.envoyproxy.io: failed calling webhook "topology.webhook.gateway.envoyproxy.io": failed to call webhook: Post "https://envoy-gateway.envoy-gateway-system.svc:9443/inject-pod-topology?timeout=10s": service "envoy-gateway" not found
+2025-08-23T20:04:01.106956855Z stderr F E0823 20:04:01.106797       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"topology.webhook.gateway.envoyproxy.io\": failed to call webhook: Post \"https://envoy-gateway.envoy-gateway-system.svc:9443/inject-pod-topology?timeout=10s\": service \"envoy-gateway\" not found" logger="UnhandledError"
+2025-08-23T20:04:51.010220337Z stderr F W0823 20:04:51.009063       1 dispatcher.go:210] Failed calling webhook, failing open topology.webhook.gateway.envoyproxy.io: failed calling webhook "topology.webhook.gateway.envoyproxy.io": failed to call webhook: Post "https://envoy-gateway.envoy-gateway-system.svc:9443/inject-pod-topology?timeout=10s": service "envoy-gateway" not found
+2025-08-23T20:04:51.010245454Z stderr F E0823 20:04:51.009102       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"topology.webhook.gateway.envoyproxy.io\": failed to call webhook: Post \"https://envoy-gateway.envoy-gateway-system.svc:9443/inject-pod-topology?timeout=10s\": service \"envoy-gateway\" not found" logger="UnhandledError"
