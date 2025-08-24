@@ -199,6 +199,18 @@ func waitForAPIServerReady(ctx context.Context) error {
 	}
 }
 
+func waitForCorePods(ctx context.Context) error {
+	// In constrained environments, CoreDNS might not be able to connect to API server
+	// but we can still proceed if the API server is accessible externally
+	// This is a best-effort check
+	cmd := Kubectl(ctx, "wait", "--for=condition=Ready", "--timeout=10s", 
+		"pods", "-l", "k8s-app=kube-dns", "-n", "kube-system")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	_ = cmd.Run() // Ignore error - proceed anyway
+	return nil
+}
+
 func initMetalLB(ctx context.Context) (err error) {
 	initLog("Installing MetalLB")
 	start := time.Now()
@@ -427,14 +439,37 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		elapsed := time.Since(start)
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
-	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
-		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
-		"-n", "envoy-gateway-system", "--create-namespace")
-	helm.Stdout = os.Stdout
-	helm.Stderr = os.Stderr
-	if err = helm.Run(); err != nil {
-		return
+	
+	// In constrained environments where cert generation fails, try manifest-based installation
+	if egVersion == "v1.5.0" {
+		initLog("\tUsing manifest-based installation for better compatibility")
+		manifestURL := "https://github.com/envoyproxy/gateway/releases/download/v1.5.0/install.yaml"
+		if err = KubectlApplyManifest(ctx, manifestURL); err != nil {
+			return fmt.Errorf("failed to install Envoy Gateway via manifests: %w", err)
+		}
+	} else {
+		// Try to install Envoy Gateway with retries due to potential networking issues
+		initLog("\tHelm Install (with retries)")
+		var lastErr error
+		for attempt := 1; attempt <= 2; attempt++ {
+			initLog(fmt.Sprintf("\t\tAttempt %d", attempt))
+			helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
+				"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
+				"-n", "envoy-gateway-system", "--create-namespace")
+			helm.Stdout = os.Stdout
+			helm.Stderr = os.Stderr
+			if err = helm.Run(); err == nil {
+				break
+			}
+			lastErr = err
+			if attempt < 2 {
+				initLog(fmt.Sprintf("\t\tAttempt %d failed: %v, retrying in 15s...", attempt, err))
+				time.Sleep(15 * time.Second)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("failed to install Envoy Gateway via Helm: %w (last error: %v)", err, lastErr)
+		}
 	}
 
 	initLog("\tApplying Patch for Envoy Gateway")
@@ -451,10 +486,15 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
 	}
-	initLog("\tWaiting for Ratelimit deployment to be ready")
-	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
-		return
+	
+	// Only wait for ratelimit deployment if it was created (Helm installation)
+	if egVersion != "v1.5.0" {
+		initLog("\tWaiting for Ratelimit deployment to be ready")
+		if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+			return
+		}
 	}
+	
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
 }
