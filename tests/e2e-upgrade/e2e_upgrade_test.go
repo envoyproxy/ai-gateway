@@ -7,10 +7,10 @@ package e2e
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 func TestMain(m *testing.M) {
@@ -138,20 +137,16 @@ func waitForFirstSuccess(t *testing.T, url string) {
 
 // makeTestRequest makes a single test request and returns whether it was successful.
 func makeTestRequest(t *testing.T, url string) bool {
-	req, err := http.NewRequest("POST", url, nil)
+	req, err := http.NewRequest("POST", url, strings.NewReader(
+		`{"model":"some-cool-model","messages":[{"role":"user","content":"Hello!"}]}`,
+	))
 	if err != nil {
 		t.Logf("Failed to create request: %v", err)
 		return false
 	}
-
-	// Set required headers for the test upstream.
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-ai-eg-model", "some-cool-model")
-	req.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
-		base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Logf("Request error: %v", err)
 		return false
