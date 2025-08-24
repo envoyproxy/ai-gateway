@@ -178,6 +178,12 @@ test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local
 	@echo "Run E2E tests for inference extension"
 	@go test -v ./tests/e2e-inference-extension/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
+# This runs the end-to-end upgrade tests with a local kind cluster.
+.PHONY: test-e2e-upgrade
+test-e2e-upgrade: build-e2e ## Run the end-to-end upgrade tests from v0.3.0 to local version.
+	@echo "Run E2E upgrade tests"
+	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
 ##@ Common
 
 # This builds a binary for the given command under the internal/cmd directory.

@@ -48,12 +48,22 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
+// TestMainConfig contains configuration for TestMain setup.
+type TestMainConfig struct {
+	// AIGatewayHelmFlags are additional flags for the AI Gateway Helm chart.
+	AIGatewayHelmFlags []string
+	// InferenceExtension indicates whether to install inference extension components.
+	InferenceExtension bool
+	// RegistryVersion specifies the version to install from registry. If empty, installs from local charts.
+	RegistryVersion string
+}
+
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
 // and installs the AI Gateway. It can be called with additional flags for the AI Gateway Helm chart.
 //
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
-func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool) {
+func TestMain(m *testing.M, config TestMainConfig) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
@@ -76,7 +86,7 @@ func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool
 		panic(err)
 	}
 
-	if inferenceExtension {
+	if config.InferenceExtension {
 		if err := initMetalLB(ctx); err != nil {
 			cancel()
 			panic(err)
@@ -86,17 +96,25 @@ func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool
 			panic(err)
 		}
 	}
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+	if err := initEnvoyGateway(ctx, config.InferenceExtension); err != nil {
 		cancel()
 		panic(err)
 	}
 
-	if err := initAIGateway(ctx, aiGatewayHelmFlags); err != nil {
-		cancel()
-		panic(err)
+	// Install AI Gateway based on the configured version
+	if len(config.RegistryVersion) != 0 {
+		if err := initAIGatewayFromRegistry(ctx, config.RegistryVersion); err != nil {
+			cancel()
+			panic(err)
+		}
+	} else {
+		if err := initAIGateway(ctx, config.AIGatewayHelmFlags); err != nil {
+			cancel()
+			panic(err)
+		}
 	}
 
-	if !inferenceExtension {
+	if !config.InferenceExtension {
 		if err := initPrometheus(ctx); err != nil {
 			cancel()
 			panic(err)
@@ -163,7 +181,7 @@ func initMetalLB(ctx context.Context) (err error) {
 	initLog("\tApplying MetalLB manifests")
 	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/metallb/metallb/%s/config/manifests/metallb-native.yaml", metallbVersion)
 	if err = KubectlApplyManifest(ctx, manifestURL); err != nil {
-		return fmt.Errorf("failed to apply MetalLB manifests: %w", err)
+		return
 	}
 
 	// Create memberlist secret if it doesn't exist.
@@ -446,6 +464,84 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+// initAIGatewayFromRegistry installs AI Gateway from the registry using the specified version.
+// This is used for upgrade testing to install a specific released version.
+func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) {
+	initLog("Installing AI Gateway from registry")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+
+	initLog("\tHelm Install CRDs from registry")
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"oci://registry-1.docker.io/envoyproxy/ai-gateway-crds-helm", "--version", version,
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
+		return
+	}
+
+	initLog("\tHelm Install AI Gateway from registry")
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg",
+		"oci://registry-1.docker.io/envoyproxy/ai-gateway-helm", "--version", version,
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	initLog("\tWaiting for AI Gateway controller to be ready")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+}
+
+// UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
+// This is used for upgrade testing to simulate upgrading from a released version to a new version.
+func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
+	initLog("Upgrading AI Gateway to local charts")
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
+	}()
+
+	initLog("\tUpgrading CRDs to local charts")
+	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+		"../../manifests/charts/ai-gateway-crds-helm",
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
+	helmCRD.Stdout = os.Stdout
+	helmCRD.Stderr = os.Stderr
+	if err = helmCRD.Run(); err != nil {
+		return
+	}
+
+	initLog("\tUpgrading AI Gateway to local charts")
+	args := []string{
+		"tool", "helm", "upgrade", "-i", "ai-eg",
+		"../../manifests/charts/ai-gateway-helm",
+		"-n", "envoy-ai-gateway-system", "--create-namespace",
+	}
+	args = append(args, aiGatewayHelmFlags...)
+
+	helm := exec.CommandContext(ctx, "go", args...)
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	initLog("\tRestarting AI Gateway controller")
+	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+		return
+	}
+
+	initLog("\tWaiting for AI Gateway controller to be ready")
 	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 

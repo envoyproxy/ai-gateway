@@ -12,9 +12,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	e2elib.TestMain(m,
+	e2elib.TestMain(m, e2elib.TestMainConfig{
 		// Configure the additional prometheus metrics label for user ID.
-		[]string{"--set", "controller.metricsRequestHeaderLabels=x-user-id:" + userIDMetricsLabel},
-		false,
-	)
+		AIGatewayHelmFlags: []string{"--set", "controller.metricsRequestHeaderLabels=x-user-id:" + userIDMetricsLabel},
+		InferenceExtension: false,
+	})
 }
