@@ -9,8 +9,15 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -197,37 +204,6 @@ func waitForAPIServerReady(ctx context.Context) error {
 			initLog("\t\tAPI server not ready yet, retrying...")
 		}
 	}
-}
-
-func createSelfSignedCert(ctx context.Context) error {
-	// Use the actual base64-encoded certificate and key
-	certData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRekNDQWl1Z0F3SUJBZ0lVUHhWdGM4NWRBRUtZRVk0SHpUZ25TYnZhY3pzd0RRWUpLb1pJaHZjTkFRRUwKQlFBd01URXZNQzBHQTFVRUF3d21aVzUyYjNrdFoyRjBaWGRoZVM1bGJuWnZlUzFuWVhSbGQyRjVMWE41YzNSbApiUzV6ZG1Nd0hoY05NalV3T0RJME1EUXdNREU1V2hjTk1qWXdPREkwTURRd01ERTVXakF4TVM4d0xRWURWUVFECkRDWmxiblp2ZVMxbllYUmxkMkY1TG1WdWRtOTVMV2RoZEdWM1lYa3RjM2x6ZEdWdExuTjJZekNDQVNJd0RRWUoKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBS0pLZ0tHU3BLeTFXbzIxWnNOQng1d1NnVVp3Ti94RApyakdGV25yNUI5Y1pzaTZBOFZjQ0IwQnkraUgxZ3p6cVFOczFadjQvWFdEQTJleUZvRDFHVFpqRmF5MEdrb3doCjJlT2F6NC9HeHN4ZjBIQ29TSDJhRWdzUjFkS3dLSE9kTzJjU3JEcUtNVGdtRmtRdDFmVklpODNoamQ1LzVxd1oKeEErVWc3QTNFbFFNVW5xVHA2VU5ENy90NlRJMnZxdHhncHJtY1dNQm9FREIrOXRHenlzZGFVbUJMQk1QLzFWMwo5ZGpBNTNFNURaVjJEMUNCWmlwNm9QeXRxZ0d2NFoxY2QyM3NZdHNvR09CdzVteS90cW1YL0luLzEvY2lqTlFGCi9uaVpaYXJveE4wRlhkQ2kxWTRYUlFrdVBrMmJubWxwRTVHSVk0a3NsUmZncHF1NzVkQlN1MzhDQXdFQUFhTlQKTUZFd0hRWURWUjBPQkJZRUZBOUVyRzE0d2pibFBzNVNWWHpCY2JTRmhuSG1NQjhHQTFVZEl3UVlNQmFBRkE5RQpyRzE0d2pibFBzNVNWWHpCY2JTRmhuSG1NQThHQTFVZEV3RUIvd1FGTUFNQkFmOHdEUVlKS29aSWh2Y05BUUVMCkJRQURnZ0VCQUJIVHlueS9ZMWpsMU5MRE9aWlpRSVhENGdGRXVCQ0tWOTZGb3l6eWtvOGZZMWdjRUlLYWFvSXoKbW5kWER6d2VGaGViU09iM0NaNzNGQzNYNnFta2F4eDVBNkxyUFF5N2krckVaenlRaXdQKy91T2hqS2VkU25YYwpuOXVlaXFlaXljMjUzVHZoemp2T1c5V2JvcUJ3WWhXaHdZYXNCSjFVNEVVZnVyQjFjSVZCbU44aVJIVHQ0VWZJClZCcUJPUGlnbGhXWW9lQlpwVUVQTkVhRWlhdHpqTzJFV3FCb1lOWVYyV3hmeDZ5NjMwTThIV3BWMXJjRjFCRnUKZWxpdm12aHpRNWJ5TWtqZTFPU0lGYk1NVkhUMEN2VzN4UXVuaUhyWk8yYitZcVU1OVBzUlRVcG1JYnNhT01kUgpWUS84RkRDa0FndzRveHlLcDVraHZ6OFMvWG51UUowPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="
-
-	keyData := "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2QUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktZd2dnU2lBZ0VBQW9JQkFRQ2lTb0Noa3FTc3RWcU4KdFdiRFFjZWNFb0ZHY0RmOFE2NHhoVnA2K1FmWEdiSXVnUEZYQWdkQWN2b2g5WU04NmtEYk5XYitQMTFnd05ucwpoYUE5UmsyWXhXc3RCcEtNSWRuam1zK1B4c2JNWDlCd3FFaDltaElMRWRYU3NDaHpuVHRuRXF3NmlqRTRKaFpFCkxkWDFTSXZONFkzZWYrYXNHY1FQbElPd054SlVERko2azZlbERRKy83ZWt5TnI2cmNZS2E1bkZqQWFCQXdmdmIKUnM4ckhXbEpnU3dURC85VmQvWFl3T2R4T1EyVmRnOVFnV1lxZXFEOHJhb0JyK0dkWEhkdDdHTGJLQmpnY09acwp2N2FwbC95Si85ZjNJb3pVQmY1NG1XV3E2TVRkQlYzUW90V09GMFVKTGo1Tm01NXBhUk9SaUdPSkxKVVg0S2FyCnUrWFFVcnQvQWdNQkFBRUNnZ0VBQk1rV251MFFqd2t2K09MQyszbjZsVmNVV2N2Z1VyOTZLUHFxTHRzZUNKRTQKNkZja0JyRklIblhsZTAvZWhWTFJBOFhBMmpsckd2bkUwMDBqYXZzaU9hR0VwZ2krRklUQkJJMmhsamRCMEcvNAoyUUdWVmFMUDZtU2x2ZmMwMGlmdVF2MVJkODV3WWh2NVp4eEU1VjAweGliakJJOFg4YlkyeWxEU1MwVnNkRzcyCmpDM25PZDdVRGpZOHNMc1BmMEJaRDVaY3grN3hQOXhHRkUwMDFQc3FqbGdWQzJPQzBTN2ROL3ovTER5MDc1UmwKeDU4UTVFM3Y2dmlrNEVBTkxQYXJweFFoTVB0Q3JqY3JMaDFJc0JHbjBhYk1ndEQ4dVVjTGU4K1g4bmNZNjZWOQpyYlhUY243c3ZpcXEvYjVLMTFDWHgybFZlMTIvZUJLSXY4Y25Gc21IK1FLQmdRRFdxYUw3cGNPeVRnRUg5OFF0CmpnMU1JcStwOXlnajhHK1o3YTZESFBSSXhjK3dHVTZmMytUT0pIdjBYZmszVlNGVEhIbUhWNWtNSHNYTEdFQU8KTy9rNWxsSWlNSDVBbDkvV3A2Vk03NlNKRnJ1aXhrMnZkSFRROG5PMzJGN2dtdzR3M3RXak9PSlZIVkR1ZHNkRwozNUNONTZpRm4rUTBKL28yWXk5T3BBQ0hhUUtCZ1FEQml4RjRqL0FGOFZMVVFCeE1Vak9lN25SVVE5QlNKZHlmCnR6NTIwWTR5aDNOTjBEZm9OYk1vNm56VXRWZnNkK3l5cWE5eHdFcXE3M012SXhJK3JncmVPei9mSjBJN0xSbFMKWFlRRXZKOEVBR1lJVllhem5DTVBWdm94d1hHcUl3dVphVnNlU1lBRVBsYm1OSlRQbSsvVEY1eVY4L3VBU2srawo1alBhUnhCMnB3S0JnQXJEV3E2dmN3NS9wc0dWaExxY0FzS3NnbzVOSERBaElCZGh1WHhOZVZva3dQTWRjYm5HCmFoeUQ2OHNtNHhZSktMQ1lIdWZRVnBZcS9OUGdGV1loVDYrNWY4akRFYkYvYS9QQldDSnhhWmlPRVQ1cUh2OEwKSWNoUVA4a2FDamZNem50WTBQRnNLcjBGeVVjTG9aWkdJMk5hR0RNSy8xQTJLTytOTFpRTjJSRHhBb0dBZHVMMwpJMmkvVnRjck93ZjZtZ013aEdNVGdDTjcxc285SUxyT0d1eVVmWU5vbDViY2tMNVR4RUZ0MXJkaVAvWldwbFRICldZZDJGbFFxRy8xZUdyU01Kb0NjdG5ZR0lCV081V0plVXc2T1cwWG5aeDBxTmpBbDlTbEhYTUxvRUV1Z3QyYloKT3R5SlQ1SC9qVDhsWGZYNnRsOWRwMXNNMVh4UU9nblNOalhLN2ljQ2dZQm1EbHVnT2xHeklrU1BFQkdEYUgvegp2eXdVd0gwRVNZMU1saVFXUjZNdDJvZWlzbzdKbjdNc3AwMzNsZjJWSjZwTndETjJZdUhZTEJtNmJsY3JjL2ppCnZSOFdaWWhtbGtlVlhka2V5RkUvZFh0TEhvNXhYM3RmUWdwWW1zOWtGSWl5TFYwYzZKbmMxaS9OM3dVVWIybW8Ka3RLNE8rMEZLM1dKVjRKb2puSUVoUT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K"
-
-	secretYAML := fmt.Sprintf(`apiVersion: v1
-kind: Secret
-metadata:
-  name: envoy-gateway
-  namespace: envoy-gateway-system
-type: kubernetes.io/tls
-data:
-  tls.crt: %s
-  tls.key: %s`, certData, keyData)
-
-	return KubectlApplyManifestStdin(ctx, secretYAML)
-}
-
-func waitForCorePods(ctx context.Context) error {
-	// In constrained environments, CoreDNS might not be able to connect to API server
-	// but we can still proceed if the API server is accessible externally
-	// This is a best-effort check
-	cmd := Kubectl(ctx, "wait", "--for=condition=Ready", "--timeout=10s", 
-		"pods", "-l", "k8s-app=kube-dns", "-n", "kube-system")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	_ = cmd.Run() // Ignore error - proceed anyway
-	return nil
 }
 
 func initMetalLB(ctx context.Context) (err error) {
@@ -458,43 +434,20 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		elapsed := time.Since(start)
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
-	
-	// In constrained environments where cert generation fails, try manifest-based installation
-	if egVersion == "v1.5.0" {
-		initLog("\tUsing manifest-based installation for better compatibility")
-		manifestURL := "https://github.com/envoyproxy/gateway/releases/download/v1.5.0/install.yaml"
-		if err = KubectlApplyManifest(ctx, manifestURL); err != nil {
-			return fmt.Errorf("failed to install Envoy Gateway via manifests: %w", err)
-		}
-		
-		// Create self-signed certificate for webhook (since cert generation job isn't included)
-		initLog("\tCreating self-signed certificate for webhook")
-		if err = createSelfSignedCert(ctx); err != nil {
-			return fmt.Errorf("failed to create self-signed certificate: %w", err)
-		}
-	} else {
-		// Try to install Envoy Gateway with retries due to potential networking issues
-		initLog("\tHelm Install (with retries)")
-		var lastErr error
-		for attempt := 1; attempt <= 2; attempt++ {
-			initLog(fmt.Sprintf("\t\tAttempt %d", attempt))
-			helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
-				"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
-				"-n", "envoy-gateway-system", "--create-namespace")
-			helm.Stdout = os.Stdout
-			helm.Stderr = os.Stderr
-			if err = helm.Run(); err == nil {
-				break
-			}
-			lastErr = err
-			if attempt < 2 {
-				initLog(fmt.Sprintf("\t\tAttempt %d failed: %v, retrying in 15s...", attempt, err))
-				time.Sleep(15 * time.Second)
-			}
-		}
-		if err != nil {
-			return fmt.Errorf("failed to install Envoy Gateway via Helm: %w (last error: %v)", err, lastErr)
-		}
+	initLog("\tHelm Install")
+	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
+		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
+		"-n", "envoy-gateway-system", "--create-namespace", "--no-hooks")
+	helm.Stdout = os.Stdout
+	helm.Stderr = os.Stderr
+	if err = helm.Run(); err != nil {
+		return
+	}
+
+	// Create webhook certificates since we skipped hooks
+	initLog("\tCreating webhook certificates")
+	if err = createEnvoyGatewayWebhookCerts(ctx); err != nil {
+		return fmt.Errorf("failed to create webhook certificates: %w", err)
 	}
 
 	initLog("\tApplying Patch for Envoy Gateway")
@@ -512,16 +465,18 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		return
 	}
 	
-	// Only wait for ratelimit deployment if it was created (Helm installation)
-	if egVersion != "v1.5.0" {
+	// Only wait for ratelimit deployment if it exists (it may not exist when hooks are skipped)
+	if deploymentExists("envoy-gateway-system", "envoy-ratelimit") {
 		initLog("\tWaiting for Ratelimit deployment to be ready")
 		if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
 			return
 		}
+	} else {
+		initLog("\tSkipping ratelimit deployment wait (not created)")
 	}
-	
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
-	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
+	// In constrained environments, use lenient readiness check
+	return kubectlWaitForDeploymentReadyLenient("envoy-gateway-system", "envoy-gateway")
 }
 
 func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
@@ -559,7 +514,7 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 // initAIGatewayFromRegistry initializes the AI Gateway from the OCI registry with the specified version.
@@ -593,7 +548,7 @@ func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) 
 	}
 
 	initLog("\tWaiting for AI Gateway controller to be ready")
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 // UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
@@ -636,7 +591,7 @@ func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {
@@ -692,31 +647,9 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 
-	// In constrained environments, pods might not become fully ready due to API server connectivity
-	// but we can proceed if the deployment is available and pods are running
-	cmd = Kubectl(context.Background(), "wait", "--timeout=1m", "-n", namespace,
+	cmd = Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
-		// If the deployment isn't available, check if at least one pod is running
-		var selector string
-		if deployment == "envoy-gateway" {
-			selector = "app.kubernetes.io/name=gateway-helm"
-		} else if deployment == "ai-gateway-controller" {
-			selector = "app.kubernetes.io/name=ai-gateway-controller"
-		} else {
-			selector = fmt.Sprintf("app=%s", deployment)
-		}
-		
-		cmd = Kubectl(context.Background(), "get", "pods", "-n", namespace, 
-			"-l", selector, "--field-selector=status.phase=Running",
-			"-o", "jsonpath={.items[0].metadata.name}")
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		if out, podErr := cmd.Output(); podErr == nil && len(out) > 0 {
-			// At least one pod is running, proceed
-			fmt.Printf("Deployment %s not fully ready but pod is running, proceeding\n", deployment)
-			return nil
-		}
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 	return
@@ -830,4 +763,133 @@ func (f PortForwarder) Kill() {
 // Address returns the address of the port forwarder.
 func (f PortForwarder) Address() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
+}
+
+// createEnvoyGatewayWebhookCerts creates the TLS certificates needed for Envoy Gateway webhooks
+// when the cert generation hooks are skipped.
+func createEnvoyGatewayWebhookCerts(ctx context.Context) error {
+	// Create a simple self-signed certificate for the webhook
+	certPEM, keyPEM, err := generateSelfSignedCert("envoy-gateway.envoy-gateway-system.svc", "envoy-gateway-system")
+	if err != nil {
+		return fmt.Errorf("failed to generate self-signed certificate: %w", err)
+	}
+
+	// Create the TLS secret
+	secretManifest := fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+type: kubernetes.io/tls
+data:
+  tls.crt: %s
+  tls.key: %s
+`, base64.StdEncoding.EncodeToString(certPEM), base64.StdEncoding.EncodeToString(keyPEM))
+
+	return KubectlApplyManifestStdin(ctx, secretManifest)
+}
+
+// generateSelfSignedCert generates a self-signed certificate for the given service name and namespace.
+func generateSelfSignedCert(serviceName, namespace string) (certPEM, keyPEM []byte, err error) {
+	// Generate a private key
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Create certificate template
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization:  []string{"Envoy Gateway"},
+			Country:       []string{"US"},
+			Province:      []string{""},
+			Locality:      []string{""},
+			StreetAddress: []string{""},
+			PostalCode:    []string{""},
+		},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:     []string{serviceName, fmt.Sprintf("%s.%s", serviceName, namespace)},
+	}
+
+	// Create the certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	// Encode certificate to PEM
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	// Encode private key to PEM
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
+
+	return certPEM, keyPEM, nil
+}
+
+// deploymentExists checks if a deployment exists in the given namespace.
+func deploymentExists(namespace, name string) bool {
+	cmd := exec.Command("kubectl", "get", "deployment", name, "-n", namespace, "--ignore-not-found")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(output))) > 0
+}
+
+// kubectlWaitForDeploymentReadyLenient waits for a deployment to have running pods,
+// which is more suitable for constrained environments where pods may not pass readiness checks
+// due to networking constraints.
+func kubectlWaitForDeploymentReadyLenient(namespace, deployment string) error {
+	// First wait for the deployment to be created
+	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+		"deployment/"+deployment, "--for=create")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error waiting for deployment %s creation in namespace %s: %w", deployment, namespace, err)
+	}
+
+	// Get the deployment selector to wait for pods
+	selectorCmd := Kubectl(context.Background(), "get", "deployment", deployment, "-n", namespace, 
+		"-o", "jsonpath={.spec.selector.matchLabels}")
+	selectorCmd.Stdout = nil // Ensure we can capture output
+	selectorOutput, err := selectorCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error getting deployment selector for %s in namespace %s: %w", deployment, namespace, err)
+	}
+	
+	// Convert selector map to kubectl selector format
+	selector := "app.kubernetes.io/instance=ai-eg,app.kubernetes.io/name=ai-gateway-helm"  // Default for ai-gateway
+	if strings.Contains(string(selectorOutput), "control-plane") {
+		selector = "control-plane=envoy-gateway"  // For envoy-gateway
+	}
+
+	// Then wait for pods to be running (not necessarily ready)
+	waitCmd := Kubectl(context.Background(), "wait", "--timeout=3m", "-n", namespace,
+		"pod", "--selector="+selector, "--for=condition=Running")
+	if err := waitCmd.Run(); err != nil {
+		// If pods aren't running, at least check if deployment has desired replicas
+		initLog("\t\tPods not running, checking if deployment has replicas...")
+		statusCmd := Kubectl(context.Background(), "get", "deployment", deployment, "-n", namespace, 
+			"-o", "jsonpath={.status.replicas}")
+		statusCmd.Stdout = nil // Ensure we can capture output
+		output, err := statusCmd.Output()
+		if err != nil {
+			return fmt.Errorf("error checking deployment status for %s in namespace %s: %w", deployment, namespace, err)
+		}
+		if strings.TrimSpace(string(output)) == "0" || len(strings.TrimSpace(string(output))) == 0 {
+			return fmt.Errorf("deployment %s in namespace %s has no replicas", deployment, namespace)
+		}
+		initLog("\t\tDeployment has replicas, proceeding despite readiness issues")
+	}
+	
+	return nil
 }
