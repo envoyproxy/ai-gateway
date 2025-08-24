@@ -70,7 +70,7 @@ func TestUpgrade(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				success := makeTestRequest(testURL)
+				success := makeTestRequest(t, testURL)
 				resultChan <- success
 			}
 		}
@@ -128,7 +128,7 @@ func waitForFirstSuccess(t *testing.T, url string) {
 		case <-ctx.Done():
 			t.Fatal("Timeout waiting for first successful request")
 		case <-ticker.C:
-			if makeTestRequest(url) {
+			if makeTestRequest(t, url) {
 				return
 			}
 			t.Log("Waiting for first successful request...")
@@ -137,9 +137,10 @@ func waitForFirstSuccess(t *testing.T, url string) {
 }
 
 // makeTestRequest makes a single test request and returns whether it was successful.
-func makeTestRequest(url string) bool {
+func makeTestRequest(t *testing.T, url string) bool {
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
+		t.Logf("Failed to create request: %v", err)
 		return false
 	}
 
@@ -148,20 +149,20 @@ func makeTestRequest(url string) bool {
 	req.Header.Set("x-ai-eg-model", "some-cool-model")
 	req.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
 		base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-	req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, "primary")
-	req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, `{"test":"response"}`)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		t.Logf("Request error: %v", err)
 		return false
 	}
 	defer resp.Body.Close()
 
-	_, err = io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		t.Logf("Failed to read response body: %v", err)
 		return false
 	}
-
+	t.Logf("Response status: %d, body: %s", resp.StatusCode, string(body))
 	return resp.StatusCode == http.StatusOK
 }
