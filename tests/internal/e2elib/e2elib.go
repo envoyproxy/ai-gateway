@@ -9,15 +9,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -71,7 +64,7 @@ type TestMainConfig struct {
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
 func TestMain(m *testing.M, config TestMainConfig) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Minute))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
@@ -160,11 +153,6 @@ func initKindCluster(ctx context.Context) (err error) {
 		return
 	}
 
-	initLog("\tWaiting for API server to be ready")
-	if err = waitForAPIServerReady(ctx); err != nil {
-		return
-	}
-
 	initLog("\tLoading Docker images into kind cluster")
 	for _, image := range []string{
 		"docker.io/envoyproxy/ai-gateway-controller:latest",
@@ -179,31 +167,6 @@ func initKindCluster(ctx context.Context) (err error) {
 		}
 	}
 	return nil
-}
-
-func waitForAPIServerReady(ctx context.Context) error {
-	initLog("\t\tWaiting for API server to be available")
-	
-	// Try for up to 2 minutes
-	timeout := time.After(2 * time.Minute)
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("timeout waiting for API server to be ready")
-		case <-ticker.C:
-			cmd := Kubectl(ctx, "cluster-info")
-			cmd.Stdout = nil
-			cmd.Stderr = nil
-			if err := cmd.Run(); err == nil {
-				initLog("\t\tAPI server is ready")
-				return nil
-			}
-			initLog("\t\tAPI server not ready yet, retrying...")
-		}
-	}
 }
 
 func initMetalLB(ctx context.Context) (err error) {
@@ -437,17 +400,11 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	initLog("\tHelm Install")
 	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
-		"-n", "envoy-gateway-system", "--create-namespace", "--no-hooks")
+		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
 		return
-	}
-
-	// Create webhook certificates since we skipped hooks
-	initLog("\tCreating webhook certificates")
-	if err = createEnvoyGatewayWebhookCerts(ctx); err != nil {
-		return fmt.Errorf("failed to create webhook certificates: %w", err)
 	}
 
 	initLog("\tApplying Patch for Envoy Gateway")
@@ -464,19 +421,12 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
 	}
-	
-	// Only wait for ratelimit deployment if it exists (it may not exist when hooks are skipped)
-	if deploymentExists("envoy-gateway-system", "envoy-ratelimit") {
-		initLog("\tWaiting for Ratelimit deployment to be ready")
-		if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
-			return
-		}
-	} else {
-		initLog("\tSkipping ratelimit deployment wait (not created)")
+	initLog("\tWaiting for Ratelimit deployment to be ready")
+	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+		return
 	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
-	// In constrained environments, use lenient readiness check
-	return kubectlWaitForDeploymentReadyLenient("envoy-gateway-system", "envoy-gateway")
+	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
 }
 
 func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
@@ -514,11 +464,11 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
-// initAIGatewayFromRegistry initializes the AI Gateway from the OCI registry with the specified version.
-// This is used for upgrade testing where we start with a released version and upgrade to local charts.
+// initAIGatewayFromRegistry installs AI Gateway from the registry using the specified version.
+// This is used for upgrade testing to install a specific released version.
 func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) {
 	initLog("Installing AI Gateway from registry")
 	start := time.Now()
@@ -548,7 +498,7 @@ func initAIGatewayFromRegistry(ctx context.Context, version string) (err error) 
 	}
 
 	initLog("\tWaiting for AI Gateway controller to be ready")
-	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 // UpgradeAIGatewayToLocal upgrades the AI Gateway from registry version to local charts.
@@ -558,24 +508,24 @@ func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (
 	start := time.Now()
 	defer func() {
 		elapsed := time.Since(start)
-		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
+		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 
-	initLog("\tHelm Upgrade CRDs to local")
+	initLog("\tUpgrading CRDs to local charts")
 	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
 		"../../manifests/charts/ai-gateway-crds-helm",
-		"-n", "envoy-ai-gateway-system")
+		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helmCRD.Stdout = os.Stdout
 	helmCRD.Stderr = os.Stderr
 	if err = helmCRD.Run(); err != nil {
 		return
 	}
 
-	initLog("\tHelm Upgrade AI Gateway to local")
+	initLog("\tUpgrading AI Gateway to local charts")
 	args := []string{
 		"tool", "helm", "upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
-		"-n", "envoy-ai-gateway-system",
+		"-n", "envoy-ai-gateway-system", "--create-namespace",
 	}
 	args = append(args, aiGatewayHelmFlags...)
 
@@ -586,12 +536,13 @@ func UpgradeAIGatewayToLocal(ctx context.Context, aiGatewayHelmFlags []string) (
 		return
 	}
 
-	// Restart the controller to pick up the new changes in the AI Gateway.
-	initLog("\tRestart AI Gateway controller")
+	initLog("\tRestarting AI Gateway controller")
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReadyLenient("envoy-ai-gateway-system", "ai-gateway-controller")
+
+	initLog("\tWaiting for AI Gateway controller to be ready")
+	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {
@@ -763,133 +714,4 @@ func (f PortForwarder) Kill() {
 // Address returns the address of the port forwarder.
 func (f PortForwarder) Address() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
-}
-
-// createEnvoyGatewayWebhookCerts creates the TLS certificates needed for Envoy Gateway webhooks
-// when the cert generation hooks are skipped.
-func createEnvoyGatewayWebhookCerts(ctx context.Context) error {
-	// Create a simple self-signed certificate for the webhook
-	certPEM, keyPEM, err := generateSelfSignedCert("envoy-gateway.envoy-gateway-system.svc", "envoy-gateway-system")
-	if err != nil {
-		return fmt.Errorf("failed to generate self-signed certificate: %w", err)
-	}
-
-	// Create the TLS secret
-	secretManifest := fmt.Sprintf(`
-apiVersion: v1
-kind: Secret
-metadata:
-  name: envoy-gateway
-  namespace: envoy-gateway-system
-type: kubernetes.io/tls
-data:
-  tls.crt: %s
-  tls.key: %s
-`, base64.StdEncoding.EncodeToString(certPEM), base64.StdEncoding.EncodeToString(keyPEM))
-
-	return KubectlApplyManifestStdin(ctx, secretManifest)
-}
-
-// generateSelfSignedCert generates a self-signed certificate for the given service name and namespace.
-func generateSelfSignedCert(serviceName, namespace string) (certPEM, keyPEM []byte, err error) {
-	// Generate a private key
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
-	}
-
-	// Create certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization:  []string{"Envoy Gateway"},
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{""},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-		DNSNames:     []string{serviceName, fmt.Sprintf("%s.%s", serviceName, namespace)},
-	}
-
-	// Create the certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create certificate: %w", err)
-	}
-
-	// Encode certificate to PEM
-	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	// Encode private key to PEM
-	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal private key: %w", err)
-	}
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
-
-	return certPEM, keyPEM, nil
-}
-
-// deploymentExists checks if a deployment exists in the given namespace.
-func deploymentExists(namespace, name string) bool {
-	cmd := exec.Command("kubectl", "get", "deployment", name, "-n", namespace, "--ignore-not-found")
-	output, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-	return len(strings.TrimSpace(string(output))) > 0
-}
-
-// kubectlWaitForDeploymentReadyLenient waits for a deployment to have running pods,
-// which is more suitable for constrained environments where pods may not pass readiness checks
-// due to networking constraints.
-func kubectlWaitForDeploymentReadyLenient(namespace, deployment string) error {
-	// First wait for the deployment to be created
-	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
-		"deployment/"+deployment, "--for=create")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error waiting for deployment %s creation in namespace %s: %w", deployment, namespace, err)
-	}
-
-	// Get the deployment selector to wait for pods
-	selectorCmd := Kubectl(context.Background(), "get", "deployment", deployment, "-n", namespace, 
-		"-o", "jsonpath={.spec.selector.matchLabels}")
-	selectorCmd.Stdout = nil // Ensure we can capture output
-	selectorOutput, err := selectorCmd.Output()
-	if err != nil {
-		return fmt.Errorf("error getting deployment selector for %s in namespace %s: %w", deployment, namespace, err)
-	}
-	
-	// Convert selector map to kubectl selector format
-	selector := "app.kubernetes.io/instance=ai-eg,app.kubernetes.io/name=ai-gateway-helm"  // Default for ai-gateway
-	if strings.Contains(string(selectorOutput), "control-plane") {
-		selector = "control-plane=envoy-gateway"  // For envoy-gateway
-	}
-
-	// Then wait for pods to be running (not necessarily ready)
-	waitCmd := Kubectl(context.Background(), "wait", "--timeout=3m", "-n", namespace,
-		"pod", "--selector="+selector, "--for=condition=Running")
-	if err := waitCmd.Run(); err != nil {
-		// If pods aren't running, at least check if deployment has desired replicas
-		initLog("\t\tPods not running, checking if deployment has replicas...")
-		statusCmd := Kubectl(context.Background(), "get", "deployment", deployment, "-n", namespace, 
-			"-o", "jsonpath={.status.replicas}")
-		statusCmd.Stdout = nil // Ensure we can capture output
-		output, err := statusCmd.Output()
-		if err != nil {
-			return fmt.Errorf("error checking deployment status for %s in namespace %s: %w", deployment, namespace, err)
-		}
-		if strings.TrimSpace(string(output)) == "0" || len(strings.TrimSpace(string(output))) == 0 {
-			return fmt.Errorf("deployment %s in namespace %s has no replicas", deployment, namespace)
-		}
-		initLog("\t\tDeployment has replicas, proceeding despite readiness issues")
-	}
-	
-	return nil
 }
