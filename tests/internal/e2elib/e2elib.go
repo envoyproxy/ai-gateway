@@ -181,7 +181,7 @@ func initMetalLB(ctx context.Context) (err error) {
 	initLog("\tApplying MetalLB manifests")
 	manifestURL := fmt.Sprintf("https://raw.githubusercontent.com/metallb/metallb/%s/config/manifests/metallb-native.yaml", metallbVersion)
 	if err = KubectlApplyManifest(ctx, manifestURL); err != nil {
-		return fmt.Errorf("failed to apply MetalLB manifests: %w", err)
+		return
 	}
 
 	// Create memberlist secret if it doesn't exist.
