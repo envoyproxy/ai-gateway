@@ -39,3 +39,8 @@ site/temp
 
 # auto generated conformance report
 inference-extension-conformance-test-report.yaml
+
+# Claude Code settings and generated files
+.claude/
+.env
+.mcp.json
