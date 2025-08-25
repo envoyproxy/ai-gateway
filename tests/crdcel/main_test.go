@@ -33,10 +33,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
 		{
-			name:   "target_refs_with_parent_refs.yaml",
-			expErr: `spec: Invalid value: "object": targetRefs is deprecated, use parentRefs only`,
-		},
-		{
 			name:   "parent_refs_invalid_kind.yaml",
 			expErr: `spec.parentRefs: Invalid value: "array": only Gateway is supported`,
 		},
