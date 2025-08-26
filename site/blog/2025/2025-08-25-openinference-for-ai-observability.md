@@ -93,7 +93,7 @@ This deployment consistency simplifies your observability integration throughout
 
 ## Looking Ahead: AI Applications Evolve Fast, and Infrastructure and Observability with it
 
-The new tracing capability is available with the **v0.3 Envoy AI Gateway release**. For complete configuration details and integration examples, see the **[tracing documentation](https://github.com/envoyproxy/ai-gateway/blob/main/site/docs/capabilities/observability/tracing.md)** to get started.
+The new tracing capability is available with the **v0.3 Envoy AI Gateway release**. For complete configuration details and integration examples, see the **[tracing documentation](/docs/capabilities/observability/tracing)** to get started.
 
 As AI infrastructure continues to evolve, comprehensive observability becomes essential for managing operational complexity and ensuring application quality. **OpenTelemetry tracing with OpenInference conventions** provides the foundation teams need to build reliable, observable AI systems.
 
