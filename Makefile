@@ -132,7 +132,7 @@ test: ## Run the unit tests for the codebase. This doesn't run the integration t
 .PHONY: test-coverage
 test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@mkdir -p $(OUTPUT_DIR)
-	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... -count=1 $(GO_TEST_ARGS)"
 	@go tool go-test-coverage --config=.testcoverage.yml
 
 ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
