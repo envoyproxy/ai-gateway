@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	openaigo "github.com/openai/openai-go"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // convertSSEToJSON converts a complete SSE stream to a single JSON-encoded

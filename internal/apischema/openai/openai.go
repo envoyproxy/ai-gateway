@@ -855,41 +855,6 @@ type LogProbs struct {
 	Content []LogProb `json:"content"`
 }
 
-// ChatCompletionResponse represents a response from /v1/chat/completions.
-// https://platform.openai.com/docs/api-reference/chat/object
-type ChatCompletionResponse struct {
-	// ID is a unique identifier for the chat completion.
-	ID string `json:"id,omitempty"`
-	// Choices are described in the OpenAI API documentation:
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
-	Choices []ChatCompletionResponseChoice `json:"choices,omitempty"`
-
-	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created JSONUNIXTime `json:"created,omitzero"`
-
-	// Model is the model used for the chat completion.
-	Model string `json:"model,omitempty"`
-
-	// ServiceTier is the service tier used for the completion.
-	ServiceTier string `json:"service_tier,omitempty"`
-
-	// SystemFingerprint represents the backend configuration that the model runs with.
-	SystemFingerprint string `json:"system_fingerprint,omitempty"`
-
-	// Object is always "chat.completion" for completions.
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-object
-	Object string `json:"object,omitempty"`
-
-	// Usage is described in the OpenAI API documentation:
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
-	Usage ChatCompletionResponseUsage `json:"usage,omitzero"`
-
-	// Obfuscation are random characters that normalize payload sizes as a
-	// mitigation to certain side-channel attacks.
-	// https://platform.openai.com/docs/api-reference/responses/get#responses_get-include_obfuscation
-	Obfuscation string `json:"obfuscation,omitempty"`
-}
-
 // ChatCompletionChoicesFinishReason The reason the model stopped generating tokens. This will be `stop` if the model
 // hit a natural stop point or a provided stop sequence, `length` if the maximum
 // number of tokens specified in the request was reached, `content_filter` if

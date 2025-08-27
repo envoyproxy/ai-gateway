@@ -11,13 +11,14 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaigo "github.com/openai/openai-go"
 	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 const (

@@ -448,22 +448,22 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockStopReasonToOpenAIStopReason(
 	stopReason *string,
-) openai.ChatCompletionChoicesFinishReason {
+) openaigo.CompletionChoiceFinishReason {
 	if stopReason == nil {
-		return openai.ChatCompletionChoicesFinishReasonStop
+		return openaigo.CompletionChoiceFinishReasonStop
 	}
 
 	switch *stopReason {
 	case awsbedrock.StopReasonStopSequence, awsbedrock.StopReasonEndTurn:
-		return openai.ChatCompletionChoicesFinishReasonStop
+		return openaigo.CompletionChoiceFinishReasonStop
 	case awsbedrock.StopReasonMaxTokens:
-		return openai.ChatCompletionChoicesFinishReasonLength
+		return openaigo.CompletionChoiceFinishReasonLength
 	case awsbedrock.StopReasonContentFiltered:
-		return openai.ChatCompletionChoicesFinishReasonContentFilter
+		return openaigo.CompletionChoiceFinishReasonContentFilter
 	case awsbedrock.StopReasonToolUse:
-		return openai.ChatCompletionChoicesFinishReasonToolCalls
+		return openaigo.CompletionChoiceFinishReason(openaigo.RunStepTypeToolCalls)
 	default:
-		return openai.ChatCompletionChoicesFinishReasonStop
+		return openaigo.CompletionChoiceFinishReasonStop
 	}
 }
 
@@ -733,7 +733,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				Role:    o.role,
 				Content: ptr.To(emptyString),
 			},
-			FinishReason: o.bedrockStopReasonToOpenAIStopReason(event.StopReason),
+			FinishReason: openai.ChatCompletionChoicesFinishReason(o.bedrockStopReasonToOpenAIStopReason(event.StopReason)),
 		})
 	default:
 		return chunk, false

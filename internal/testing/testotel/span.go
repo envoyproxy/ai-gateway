@@ -6,8 +6,9 @@
 package testotel
 
 import (
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	openaigo "github.com/openai/openai-go"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 // MockSpan is a mock implementation of api.ChatCompletionSpan for testing purposes.

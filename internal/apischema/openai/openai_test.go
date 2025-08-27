@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -680,32 +682,33 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, *req.MaxTokens, *decoded.MaxTokens)
 }
 
+// TODO: test custom struct that will replace this.
 func TestChatCompletionResponse(t *testing.T) {
 	testCases := []struct {
 		name     string
-		response ChatCompletionResponse
+		response openaigo.ChatCompletion
 		expected string
 	}{
 		{
 			name: "basic response with new fields",
-			response: ChatCompletionResponse{
+			response: openaigo.ChatCompletion{
 				ID:                "chatcmpl-test123",
-				Created:           JSONUNIXTime(time.Unix(1735689600, 0)),
+				Created:           time.Unix(1735689600, 0).Unix(),
 				Model:             "gpt-4.1-nano",
 				ServiceTier:       "default",
 				SystemFingerprint: "",
 				Object:            "chat.completion",
-				Choices: []ChatCompletionResponseChoice{
+				Choices: []openaigo.ChatCompletionChoice{
 					{
 						Index:        0,
-						FinishReason: ChatCompletionChoicesFinishReasonStop,
-						Message: ChatCompletionResponseChoiceMessage{
-							Role:    "assistant",
-							Content: ptr.To("Hello!"),
+						FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+						Message: openaigo.ChatCompletionMessage{
+							Role:    openAIconstant.Assistant(openaigo.MessageRoleAssistant),
+							Content: "Hello!",
 						},
 					},
 				},
-				Usage: ChatCompletionResponseUsage{
+				Usage: openaigo.CompletionUsage{
 					CompletionTokens: 1,
 					PromptTokens:     5,
 					TotalTokens:      6,
@@ -734,33 +737,33 @@ func TestChatCompletionResponse(t *testing.T) {
 		},
 		{
 			name: "response with web search annotations",
-			response: ChatCompletionResponse{
+			response: openaigo.ChatCompletion{
 				ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
-				Created: JSONUNIXTime(time.Unix(1755135425, 0)),
+				Created: time.Unix(1755135425, 0).Unix(),
 				Model:   "gpt-4o-mini-search-preview-2025-03-11",
 				Object:  "chat.completion",
-				Choices: []ChatCompletionResponseChoice{
+				Choices: []openaigo.ChatCompletionChoice{
 					{
 						Index:        0,
-						FinishReason: ChatCompletionChoicesFinishReasonStop,
-						Message: ChatCompletionResponseChoiceMessage{
+						FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+						Message: openaigo.ChatCompletionMessage{
 							Role:    "assistant",
-							Content: ptr.To("Check out httpbin.org"),
-							Annotations: ptr.To([]Annotation{
+							Content: "Check out httpbin.org",
+							Annotations: []openaigo.ChatCompletionMessageAnnotation{
 								{
 									Type: "url_citation",
-									URLCitation: &URLCitation{
+									URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
 										EndIndex:   21,
 										StartIndex: 10,
 										Title:      "httpbin.org",
 										URL:        "https://httpbin.org/?utm_source=openai",
 									},
 								},
-							}),
+							},
 						},
 					},
 				},
-				Usage: ChatCompletionResponseUsage{
+				Usage: openaigo.CompletionUsage{
 					CompletionTokens: 192,
 					PromptTokens:     14,
 					TotalTokens:      206,
@@ -805,12 +808,12 @@ func TestChatCompletionResponse(t *testing.T) {
 			require.JSONEq(t, tc.expected, string(jsonData))
 
 			// Unmarshal back and verify round-trip
-			var decoded ChatCompletionResponse
+			var decoded openaigo.ChatCompletion
 			err = json.Unmarshal(jsonData, &decoded)
 			require.NoError(t, err)
 			require.Equal(t, tc.response.ID, decoded.ID)
 			require.Equal(t, tc.response.Model, decoded.Model)
-			require.Equal(t, time.Time(tc.response.Created).Unix(), time.Time(decoded.Created).Unix())
+			require.Equal(t, tc.response.Created, decoded.Created)
 		})
 	}
 }
@@ -1564,21 +1567,29 @@ func TestWebSearchOptions(t *testing.T) {
 // the same results after round trip.
 func TestChatCompletionResponseChoiceMessage_annotations_round_trip(t *testing.T) {
 	orig := []byte(`{"annotations": []}`)
-	var msg ChatCompletionResponseChoiceMessage
+	var msg openaigo.ChatCompletionMessage
 	err := json.Unmarshal(orig, &msg)
 	require.NoError(t, err)
-	require.NotNil(t, msg.Annotations)
 	marshaled, err := json.Marshal(msg)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"annotations":[]}`, string(marshaled))
+	var marshaledData map[string]interface{}
+	err = json.Unmarshal(marshaled, &marshaledData)
+	require.NoError(t, err)
+	require.Contains(t, marshaledData, "annotations")
+	require.NotNil(t, marshaledData["annotations"], "Value should be an empty slice, not nil")
+	require.Empty(t, marshaledData["annotations"], "Value should be an empty slice")
 
-	var msg2 ChatCompletionResponseChoiceMessage
+	var msg2 openaigo.ChatCompletionMessage
 	err = json.Unmarshal([]byte(`{}`), &msg2)
 	require.NoError(t, err)
 	require.Nil(t, msg2.Annotations)
 	marshaled, err = json.Marshal(msg2)
 	require.NoError(t, err)
-	require.JSONEq(t, `{}`, string(marshaled))
+	var marshaledData2 map[string]interface{}
+	err = json.Unmarshal(marshaled, &marshaledData2)
+	require.NoError(t, err)
+	require.Contains(t, marshaledData2, "annotations")
+	require.Nil(t, marshaledData2["annotations"], "When omitted, the marshaled value should be nil (json null)")
 }
 
 // This tests ensures to use a pointer to the slice since otherwise for "annotations" field to maintain

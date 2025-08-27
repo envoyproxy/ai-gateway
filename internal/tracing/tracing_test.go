@@ -13,17 +13,18 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 )
 
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name

@@ -667,18 +667,17 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]
 			// convert toolCalls to [] ChatCompletionMessageToolCallParam
 			// TODO: when refactored to use openaigo, use extractToolCallsFromGeminiParts directly.
 			var streamingToolCalls []openai.ChatCompletionMessageToolCallParam
-			if toolCalls != nil {
-				for _, tc := range toolCalls {
-					streamingToolCalls = append(streamingToolCalls, openai.ChatCompletionMessageToolCallParam{
-						// TODO: for streaming, index is required... what should index be here?
-						ID: &tc.ID,
-						Function: openai.ChatCompletionMessageToolCallFunctionParam{
-							Arguments: tc.Function.Arguments,
-							Name:      tc.Function.Name,
-						},
-					})
-				}
+			for _, tc := range toolCalls {
+				streamingToolCalls = append(streamingToolCalls, openai.ChatCompletionMessageToolCallParam{
+					// TODO: for streaming, index is required... what should index be here?
+					ID: &tc.ID,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Arguments: tc.Function.Arguments,
+						Name:      tc.Function.Name,
+					},
+				})
 			}
+
 			delta.ToolCalls = streamingToolCalls
 
 			choice.Delta = delta
