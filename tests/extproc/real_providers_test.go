@@ -210,10 +210,12 @@ func TestWithRealProviders(t *testing.T) {
 		}
 	})
 
-	t.Run("Bedrock uses tool in response", func(t *testing.T) {
+	t.Run("uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
+			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -241,7 +243,6 @@ func TestWithRealProviders(t *testing.T) {
 								},
 							},
 						},
-						Seed:  openai.Int(0),
 						Model: tc.modelName,
 					}
 					completion, err := client.Chat.Completions.New(context.Background(), params)
