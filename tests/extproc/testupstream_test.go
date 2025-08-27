@@ -190,7 +190,7 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:       http.StatusOK,
 		},
 		{
-			name:            "azure-openai - /v1/chat/completions - tool call results",
+			name:            "azure-openai - /v1/chat/completions",
 			backend:         "azure-openai",
 			path:            "/v1/chat/completions",
 			method:          http.MethodPost,
