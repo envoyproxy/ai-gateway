@@ -282,7 +282,7 @@ func TestWithRealProviders(t *testing.T) {
 							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log.
 						}
 					}
-					if getWeatherCalled == false {
+					if !getWeatherCalled {
 						t.Logf("get_weather tool not specified in chat completion response")
 						return false
 					}
