@@ -36,7 +36,7 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 - Azure OpenAI (with automatic translation)
 - GCP VertexAI (with automatic translation)
 - GCP Anthropic (with automatic translation)
-- Any OpenAI-compatible provider (Groq, Together AI, Mistral, etc.)
+- Any OpenAI-compatible provider (Groq, Together AI, Mistral, Tetrate Agent Router Service, etc.)
 
 **Example:**
 ```bash
@@ -157,6 +157,7 @@ The following table summarizes which providers support which endpoints:
 | [DeepSeek](https://api-docs.deepseek.com/)                                                            |        ⚠️        |     ❌      | Via OpenAI-compatible API                          |
 | [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️     | Via OpenAI-compatible API                          |
 | [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      | Via OpenAI-compatible API                          |
+| [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/)              |         ⚠️         |      ⚠️      | Via OpenAI-compatible API                          |
 | [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅         |     🚧     | Via OpenAI-compatible API                          |
 | [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅         |     🚧     | Via OpenAI-compatible API and Native Anthropic API |
 | [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅         |     ✅      | Via OpenAI-compatible API                          |                                                                                                                                                        |

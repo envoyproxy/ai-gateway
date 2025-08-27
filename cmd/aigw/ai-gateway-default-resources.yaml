@@ -7,8 +7,9 @@
 # This is the default configuration run by `aigw run` command. You can customize this file to
 # suit your needs. `aigw run <path/to/your/config.yaml>` will run the configuration at the specified path.
 #
-# This routes requests to three backends:
+# This routes requests to four backends:
 #
+# * Tetrate Agent Router Service (TARS): The API key is expected to be provided via the TARS_API_KEY environment variable.
 # * OpenAI: The API key is expected to be provided via the OPENAI_API_KEY environment variable.
 # * AWS Bedrock (us-east-1): The AWS credentials are expected to be provided via the conventional ~/.aws/credentials file.
 # * ollama: The ollama service is expected to be running on localhost:11434 which is the default as per # https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network.
@@ -101,6 +102,16 @@ spec:
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:
+    # Special rule to unconditionally route to the Tetrate Agent Router Service (TARS) backend regardless of the model.
+    - matches:
+        - headers:
+            - type: Exact
+              name: aigw-backend-selector
+              value: tars
+      backendRefs:
+        - name: tars
+      timeouts:
+        request: 120s
     # Special rule to unconditionally route to the OpenAI backend regardless of the model.
     - matches:
         - headers:
@@ -109,7 +120,6 @@ spec:
               value: openai
       backendRefs:
         - name: openai
-          namespace: default
       timeouts:
         request: 120s
     # Special rule to unconditionally route to the AWS Bedrock backend regardless of the model.
@@ -120,7 +130,6 @@ spec:
               value: aws
       backendRefs:
         - name: aws
-          namespace: default
       timeouts:
         request: 120s
     # Special rule to unconditionally route to the ollama backend regardless of the model.
@@ -131,7 +140,6 @@ spec:
               value: ollama
       backendRefs:
         - name: ollama
-          namespace: default
       timeouts:
         request: 120s
     # A Model-specific rule, routing to the OpenAI backend if the model is gpt-4o-mini.
@@ -142,7 +150,6 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai
-          namespace: default
       timeouts:
         request: 120s
     # A Model-specific rule, routing to the AWS Bedrock backend if the model is us.meta.llama3-2-1b-instruct-v1:0.
@@ -153,7 +160,6 @@ spec:
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
         - name: aws
-          namespace: default
       timeouts:
         request: 120s
     # A Model-specific rule, routing to the Ollama backend if the model is qwen3:0.6b.
@@ -164,7 +170,6 @@ spec:
               value: qwen3:0.6b
       backendRefs:
         - name: ollama
-          namespace: default
       timeouts:
         request: 120s
     # Fallback any other request to the OpenAI backend if no other rules match.
@@ -175,9 +180,23 @@ spec:
               value: .*
       backendRefs:
         - name: openai
-          namespace: default
       timeouts:
         request: 120s
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: tars
+  namespace: default
+spec:
+  timeouts:
+    request: 3m
+  schema:
+    name: OpenAI
+  backendRef:
+    name: tars
+    kind: Backend
+    group: gateway.envoyproxy.io
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -193,7 +212,6 @@ spec:
     name: openai
     kind: Backend
     group: gateway.envoyproxy.io
-    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -209,7 +227,6 @@ spec:
     name: aws
     kind: Backend
     group: gateway.envoyproxy.io
-    namespace: default
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -225,7 +242,21 @@ spec:
     name: ollama
     kind: Backend
     group: gateway.envoyproxy.io
-    namespace: default
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: tars-apikey
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: tars
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: tars-apikey
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -258,6 +289,17 @@ spec:
     credentialsFile:
       secretRef:
         name: aws-credentials
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: tars
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.router.tetrate.ai
+        port: 443
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
@@ -296,6 +338,20 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
+  name: tars-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: tars
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.router.tetrate.ai
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
   name: openai-tls
   namespace: default
 spec:
@@ -320,6 +376,20 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: bedrock-runtime.us-east-1.amazonaws.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tars-apikey
+  namespace: default
+  annotations:
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable TARS_API_KEY.
+    substitution.aigw.run/env/apiKey: TARS_API_KEY
+type: Opaque
+stringData:
+  # This will be replaced with the environment variable TARS_API_KEY.
+  apiKey: NOT_A_REAL_TARS_API_KEY
 ---
 apiVersion: v1
 kind: Secret
