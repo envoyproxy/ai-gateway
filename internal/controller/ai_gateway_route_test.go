@@ -472,3 +472,86 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
 	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }
+
+func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Create test backends.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+		},
+	}
+	require.NoError(t, c.Create(context.Background(), backend))
+
+	// Create an AIGatewayRoute with custom labels and annotations.
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+			Labels: map[string]string{
+				"custom-label-1": "value-1",
+				"custom-label-2": "value-2",
+			},
+			Annotations: map[string]string{
+				"custom-annotation-1": "ann-value-1",
+				"custom-annotation-2": "ann-value-2",
+			},
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "test-backend", Weight: ptr.To[int32](100)},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c}
+
+	// Test initial HTTPRoute creation with labels and annotations.
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+		},
+	}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	// Verify that all labels from AIGatewayRoute are copied to HTTPRoute.
+	require.NotNil(t, httpRoute.Labels)
+	require.Equal(t, "value-1", httpRoute.Labels["custom-label-1"])
+	require.Equal(t, "value-2", httpRoute.Labels["custom-label-2"])
+
+	// Verify that all annotations from AIGatewayRoute are copied to HTTPRoute.
+	require.NotNil(t, httpRoute.Annotations)
+	require.Equal(t, "ann-value-1", httpRoute.Annotations["custom-annotation-1"])
+	require.Equal(t, "ann-value-2", httpRoute.Annotations["custom-annotation-2"])
+
+	// Verify that controller-specific annotations are also present.
+	require.Equal(t, "true", httpRoute.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication])
+
+	// Test updating existing HTTPRoute with new labels and annotations.
+	aiGatewayRoute.Labels["new-label"] = "new-value"
+	aiGatewayRoute.Labels["custom-label-1"] = "new-value-1"
+	aiGatewayRoute.Annotations["new-annotation"] = "new-ann-value"
+	aiGatewayRoute.Annotations["custom-annotation-1"] = "new-ann-value-1"
+
+	err = controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	// Verify new labels and annotations are propagated.
+	require.Equal(t, "new-value", httpRoute.Labels["new-label"])
+	require.Equal(t, "new-ann-value", httpRoute.Annotations["new-annotation"])
+	require.Equal(t, "new-value-1", httpRoute.Labels["custom-label-1"])
+	require.Equal(t, "new-ann-value-1", httpRoute.Annotations["custom-annotation-1"])
+
+	// Verify old labels and annotations are still present.
+	require.Equal(t, "value-2", httpRoute.Labels["custom-label-2"])
+	require.Equal(t, "ann-value-2", httpRoute.Annotations["custom-annotation-2"])
+}

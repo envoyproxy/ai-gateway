@@ -188,10 +188,22 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      aiGatewayRoute.Name,
-				Namespace: aiGatewayRoute.Namespace,
+				Name:        aiGatewayRoute.Name,
+				Namespace:   aiGatewayRoute.Namespace,
+				Labels:      make(map[string]string),
+				Annotations: make(map[string]string),
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
+		}
+
+		// Copy labels from AIGatewayRoute to HTTPRoute.
+		for k, v := range aiGatewayRoute.Labels {
+			httpRoute.Labels[k] = v
+		}
+
+		// Copy non-controller annotations from AIGatewayRoute to HTTPRoute.
+		for k, v := range aiGatewayRoute.Annotations {
+			httpRoute.Annotations[k] = v
 		}
 		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
 			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
@@ -299,9 +311,24 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Rules = rules
 
+	// Initialize labels and annotations maps if they don't exist.
+	if dst.Labels == nil {
+		dst.Labels = make(map[string]string)
+	}
 	if dst.Annotations == nil {
 		dst.Annotations = make(map[string]string)
 	}
+
+	// Copy labels from AIGatewayRoute to HTTPRoute.
+	for k, v := range aiGatewayRoute.Labels {
+		dst.Labels[k] = v
+	}
+
+	// Copy non-controller annotations from AIGatewayRoute to HTTPRoute.
+	for k, v := range aiGatewayRoute.Annotations {
+		dst.Annotations[k] = v
+	}
+
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	dst.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
