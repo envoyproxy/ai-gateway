@@ -38,14 +38,13 @@ type (
 		Debug       bool   `help:"Enable debug logging emitted to stderr."`
 		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
 		ShowDefault bool   `help:"Show the default configuration, and exit."`
-		udsPath     string // Private. UDS path used in tests.
 	}
 )
 
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
-	runFn           subCmdFn[cmdRun]
+	runFn           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
 )
 
 func main() {
@@ -85,7 +84,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 			log.Fatalf("Error translating: %v", err)
 		}
 	case "run", "run <path>":
-		err = rf(ctx, c.Run, stdout, stderr)
+		err = rf(ctx, c.Run, runOpts{}, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}

@@ -47,7 +47,7 @@ func TestRun(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, runOpts{}, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() {
@@ -164,10 +164,8 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	)
 
 	go func() {
-		errChan <- run(t.Context(), cmdRun{
-			udsPath: "/dev/null", // Force a UDS path that will make the extproc fail to start.
-			Debug:   true,
-			Path:    resourcePath,
+		errChan <- run(t.Context(), cmdRun{Debug: true, Path: resourcePath}, runOpts{
+			udsPath: "/dev/null", // This will cause the external processor to fail to start.
 		}, os.Stdout, os.Stderr)
 	}()
 
@@ -175,7 +173,7 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatalf("expected extproc start process to fail and return")
 	case err := <-errChan:
-		require.ErrorIs(t, err, ErrExtProcRun)
+		require.ErrorIs(t, err, errExtProcRun)
 	}
 }
 
