@@ -29,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
@@ -69,6 +68,8 @@ type runCmdContext struct {
 	tmpdir string
 	// udsPath is the path to the UDS socket used by the AI Gateway extproc.
 	udsPath string
+	// extProcLauncher is the function used to launch the external processor.
+	extProcLauncher func(ctx context.Context, args []string, w io.Writer) error
 	// fakeClientSet is the fake client set for the k8s resources. The objects are written to this client set and updated
 	// during the translation.
 	fakeClientSet *fake.Clientset
@@ -76,8 +77,8 @@ type runCmdContext struct {
 
 // runOpts are the options for the run command.
 type runOpts struct {
-	// udsPath is the path to the UDS socket used by the AI Gateway extproc.
-	udsPath string
+	// extProcLauncher is the function used to launch the external processor.
+	extProcLauncher func(ctx context.Context, args []string, w io.Writer) error
 }
 
 // run starts the AI Gateway locally for a given configuration.
@@ -134,15 +135,19 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	// Write the Envoy Gateway resources into a file under resourcesTmpdir.
 	resourceYamlPath := filepath.Join(resourcesTmpdir, "config.yaml")
 	stderrLogger.Info("Creating Envoy Gateway resource file", "path", resourceYamlPath)
-	udsPath := o.udsPath
-	if udsPath == "" {
-		udsPath = filepath.Join(tmpdir, "uds.sock")
-		_ = os.Remove(udsPath)
-	}
+	udsPath := filepath.Join(tmpdir, "uds.sock")
+	_ = os.Remove(udsPath)
 
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	resourcesBuf := &bytes.Buffer{}
-	runCtx := &runCmdContext{envoyGatewayResourcesOut: resourcesBuf, stderrLogger: stderrLogger, udsPath: udsPath, tmpdir: tmpdir, isDebug: c.Debug}
+	runCtx := &runCmdContext{
+		envoyGatewayResourcesOut: resourcesBuf,
+		stderrLogger:             stderrLogger,
+		udsPath:                  udsPath,
+		extProcLauncher:          o.extProcLauncher,
+		tmpdir:                   tmpdir,
+		isDebug:                  c.Debug,
+	}
 	aiGatewayResourcesYaml, err := readConfig(c.Path)
 	if err != nil {
 		return err
@@ -326,7 +331,7 @@ func (runCtx *runCmdContext) mustStartExtProc(
 
 	done := make(chan error)
 	go func() {
-		if err := mainlib.Main(ctx, args, os.Stderr); err != nil {
+		if err := runCtx.extProcLauncher(ctx, args, os.Stderr); err != nil {
 			runCtx.stderrLogger.Error("Failed to run external processor", "error", err)
 			done <- fmt.Errorf("%w: %w", errExtProcRun, err)
 		}
