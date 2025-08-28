@@ -38,6 +38,7 @@ type (
 		Debug       bool   `help:"Enable debug logging emitted to stderr."`
 		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
 		ShowDefault bool   `help:"Show the default configuration, and exit."`
+		udsPath     string // Private. UDS path used in tests.
 	}
 )
 
