@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	openaigo "github.com/openai/openai-go"
 	"google.golang.org/genai"
 )
 
@@ -65,6 +66,17 @@ const (
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
 )
+
+// CustomFields holds all non-standard fields that we add to the chat completion response.
+type CustomFields struct {
+	Obfuscation string `json:"obfuscation,omitempty"`
+}
+
+// CustomChatCompletion is an extensible openaigo.ChatCompletion object.
+type CustomChatCompletion struct {
+	openaigo.ChatCompletion
+	CustomFields
+}
 
 // ChatCompletionContentPartTextParam Learn about
 // [text inputs](https://platform.openai.com/docs/guides/text-generation).

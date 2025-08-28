@@ -28,7 +28,7 @@ import (
 // TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
-func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.ChatCompletion {
+func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.CustomChatCompletion {
 	var (
 		firstChunk   *openai.ChatCompletionResponseChunk
 		content      strings.Builder
@@ -80,17 +80,19 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.Ch
 		if finishReason == "" {
 			finishReason = openaigo.CompletionChoiceFinishReasonStop
 		}
-		return &openaigo.ChatCompletion{
-			ID:     "",
-			Object: "chat.completion.chunk",
-			Model:  "",
-			Choices: []openaigo.ChatCompletionChoice{{
-				Index:        0,
-				FinishReason: string(finishReason),
-				Message: openaigo.ChatCompletionMessage{
-					Role: openAIconstant.Assistant(role),
-				},
-			}},
+		return &openai.CustomChatCompletion{
+			ChatCompletion: openaigo.ChatCompletion{
+				ID:     "",
+				Object: "chat.completion.chunk",
+				Model:  "",
+				Choices: []openaigo.ChatCompletionChoice{{
+					Index:        0,
+					FinishReason: string(finishReason),
+					Message: openaigo.ChatCompletionMessage{
+						Role: openAIconstant.Assistant(role),
+					},
+				}},
+			},
 		}
 	}
 
@@ -121,25 +123,27 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.Ch
 	}
 
 	// Create a ChatCompletion with all accumulated content.
-	_ = obfuscation
-	response := &openaigo.ChatCompletion{
-		ID:                firstChunk.ID,
-		Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
-		Created:           time.Time(firstChunk.Created).Unix(),
-		Model:             firstChunk.Model,
-		ServiceTier:       openaigo.ChatCompletionServiceTier(firstChunk.ServiceTier),
-		SystemFingerprint: firstChunk.SystemFingerprint,
-		// Obfuscation:       obfuscation,
-		// TODO: obfuscation is not a response type - not a chat completion field. we should not include it.
-		Choices: []openaigo.ChatCompletionChoice{{
-			Message: openaigo.ChatCompletionMessage{
-				Role:        openAIconstant.Assistant(role),
-				Content:     contentStr,
-				Annotations: annotationsPtr,
-			},
-			Index:        0,
-			FinishReason: string(finishReason),
-		}},
+	response := &openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:                firstChunk.ID,
+			Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
+			Created:           time.Time(firstChunk.Created).Unix(),
+			Model:             firstChunk.Model,
+			ServiceTier:       openaigo.ChatCompletionServiceTier(firstChunk.ServiceTier),
+			SystemFingerprint: firstChunk.SystemFingerprint,
+			Choices: []openaigo.ChatCompletionChoice{{
+				Message: openaigo.ChatCompletionMessage{
+					Role:        openAIconstant.Assistant(role),
+					Content:     contentStr,
+					Annotations: annotationsPtr,
+				},
+				Index:        0,
+				FinishReason: string(finishReason),
+			}},
+		},
+		CustomFields: openai.CustomFields{
+			Obfuscation: obfuscation,
+		},
 	}
 
 	if usage != nil {

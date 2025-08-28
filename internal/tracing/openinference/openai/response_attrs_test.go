@@ -18,81 +18,87 @@ import (
 )
 
 var (
-	basicResp = &openaigo.ChatCompletion{
-		ID:      "chatcmpl-123",
-		Object:  "chat.completion",
-		Created: time.Unix(1234567890, 0).Unix(),
-		Model:   openai.ModelGPT5Nano,
-		Choices: []openaigo.ChatCompletionChoice{{
-			Index: 0,
-			Message: openaigo.ChatCompletionMessage{
-				Role:    "assistant",
-				Content: "Hello! How can I help you today?",
+	basicResp = &openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:      "chatcmpl-123",
+			Object:  "chat.completion",
+			Created: time.Unix(1234567890, 0).Unix(),
+			Model:   openai.ModelGPT5Nano,
+			Choices: []openaigo.ChatCompletionChoice{{
+				Index: 0,
+				Message: openaigo.ChatCompletionMessage{
+					Role:    "assistant",
+					Content: "Hello! How can I help you today?",
+				},
+				FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+			}},
+			Usage: openaigo.CompletionUsage{
+				PromptTokens:     20,
+				CompletionTokens: 10,
+				TotalTokens:      30,
 			},
-			FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
-		}},
-		Usage: openaigo.CompletionUsage{
-			PromptTokens:     20,
-			CompletionTokens: 10,
-			TotalTokens:      30,
 		},
 	}
 	basicRespBody = mustJSON(basicResp)
 
-	toolsResp = &openaigo.ChatCompletion{
-		ID:    "chatcmpl-123",
-		Model: openai.ModelGPT5Nano,
-		Choices: []openaigo.ChatCompletionChoice{{
-			Index: 0,
-			Message: openaigo.ChatCompletionMessage{
-				Role:    "assistant",
-				Content: "I can help you with that.",
-				ToolCalls: []openaigo.ChatCompletionMessageToolCall{{
-					ID:   "call_123",
-					Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
-					Function: openaigo.ChatCompletionMessageToolCallFunction{
-						Name:      "get_weather",
-						Arguments: `{"location":"NYC"}`,
-					},
-				}},
+	toolsResp = &openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:    "chatcmpl-123",
+			Model: openai.ModelGPT5Nano,
+			Choices: []openaigo.ChatCompletionChoice{{
+				Index: 0,
+				Message: openaigo.ChatCompletionMessage{
+					Role:    "assistant",
+					Content: "I can help you with that.",
+					ToolCalls: []openaigo.ChatCompletionMessageToolCall{{
+						ID:   "call_123",
+						Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+						Function: openaigo.ChatCompletionMessageToolCallFunction{
+							Name:      "get_weather",
+							Arguments: `{"location":"NYC"}`,
+						},
+					}},
+				},
+				FinishReason: string(openai.ChatCompletionChoicesFinishReasonToolCalls),
+			}},
+			Usage: openaigo.CompletionUsage{
+				PromptTokens:     10,
+				CompletionTokens: 20,
+				TotalTokens:      30,
 			},
-			FinishReason: string(openai.ChatCompletionChoicesFinishReasonToolCalls),
-		}},
-		Usage: openaigo.CompletionUsage{
-			PromptTokens:     10,
-			CompletionTokens: 20,
-			TotalTokens:      30,
 		},
 	}
 
-	detailedResp = &openaigo.ChatCompletion{
-		ID:                "chatcmpl-Bx5kNovDsMvLVkXYomgZvfV95lhEd",
-		Object:            "chat.completion",
-		Created:           time.Unix(1753423143, 0).Unix(),
-		Model:             "gpt-4.1-nano-2025-04-14",
-		ServiceTier:       "default",
-		SystemFingerprint: "fp_38343a2f8f",
-		Choices: []openaigo.ChatCompletionChoice{{
-			Index: 0,
-			Message: openaigo.ChatCompletionMessage{
-				Role:    "assistant",
-				Content: "Hello! How can I assist you today?",
-			},
-			FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
-		}},
-		Usage: openaigo.CompletionUsage{
-			PromptTokens:     9,
-			CompletionTokens: 9,
-			TotalTokens:      18,
-			PromptTokensDetails: openaigo.CompletionUsagePromptTokensDetails{
-				AudioTokens:  0,
-				CachedTokens: 0,
-			},
-			CompletionTokensDetails: openaigo.CompletionUsageCompletionTokensDetails{
-				AcceptedPredictionTokens: 0,
-				AudioTokens:              0,
-				ReasoningTokens:          0,
-				RejectedPredictionTokens: 0,
+	detailedResp = &openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:                "chatcmpl-Bx5kNovDsMvLVkXYomgZvfV95lhEd",
+			Object:            "chat.completion",
+			Created:           time.Unix(1753423143, 0).Unix(),
+			Model:             "gpt-4.1-nano-2025-04-14",
+			ServiceTier:       "default",
+			SystemFingerprint: "fp_38343a2f8f",
+			Choices: []openaigo.ChatCompletionChoice{{
+				Index: 0,
+				Message: openaigo.ChatCompletionMessage{
+					Role:    "assistant",
+					Content: "Hello! How can I assist you today?",
+				},
+				FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+			}},
+			Usage: openaigo.CompletionUsage{
+				PromptTokens:     9,
+				CompletionTokens: 9,
+				TotalTokens:      18,
+				PromptTokensDetails: openaigo.CompletionUsagePromptTokensDetails{
+					AudioTokens:  0,
+					CachedTokens: 0,
+				},
+				CompletionTokensDetails: openaigo.CompletionUsageCompletionTokensDetails{
+					AcceptedPredictionTokens: 0,
+					AudioTokens:              0,
+					ReasoningTokens:          0,
+					RejectedPredictionTokens: 0,
+				},
 			},
 		},
 	}
@@ -101,7 +107,7 @@ var (
 func TestBuildResponseAttributes(t *testing.T) {
 	tests := []struct {
 		name          string
-		resp          *openaigo.ChatCompletion
+		resp          *openai.CustomChatCompletion
 		expectedAttrs []attribute.KeyValue
 	}{
 		{

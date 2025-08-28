@@ -103,7 +103,7 @@ data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test"
 
 data: [DONE]
 `,
-			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"logprobs":{"content":null,"refusal":null},"message":{"content":"Hello world","role":"assistant","annotations":null,"audio":{"data":"","expires_at":0,"id":"","transcript":""},"function_call":{"arguments":"","name":""},"refusal":"","tool_calls":null}}],"created":123,"model":"test","object":"chat.completion.chunk","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
+			expected: `{"id":"test","obfuscation":"XQdNwPP14L3TH0","choices":[{"finish_reason":"stop","index":0,"logprobs":{"content":null,"refusal":null},"message":{"content":"Hello world","role":"assistant","annotations":null,"audio":{"data":"","expires_at":0,"id":"","transcript":""},"function_call":{"arguments":"","name":""},"refusal":"","tool_calls":null}}],"created":123,"model":"test","object":"chat.completion.chunk","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 		},
 		{
 			name: "response with finish_reason length",

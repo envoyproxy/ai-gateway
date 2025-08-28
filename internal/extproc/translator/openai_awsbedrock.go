@@ -584,9 +584,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	openAIResp := &openaigo.ChatCompletion{
-		Object:  "chat.completion",
-		Choices: make([]openaigo.ChatCompletionChoice, 0),
+	openAIResp := openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			Object:  "chat.completion",
+			Choices: make([]openaigo.ChatCompletionChoice, 0),
+		},
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {

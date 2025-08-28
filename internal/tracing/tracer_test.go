@@ -42,18 +42,20 @@ var (
 )
 
 func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
-	respBody := &openaigo.ChatCompletion{
-		ID:     "chatcmpl-abc123",
-		Object: "chat.completion",
-		Model:  "gpt-4.1-nano",
-		Choices: []openaigo.ChatCompletionChoice{
-			{
-				Index: 0,
-				Message: openaigo.ChatCompletionMessage{
-					Role:    "assistant",
-					Content: "hello world",
+	respBody := openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:     "chatcmpl-abc123",
+			Object: "chat.completion",
+			Model:  "gpt-4.1-nano",
+			Choices: []openaigo.ChatCompletionChoice{
+				{
+					Index: 0,
+					Message: openaigo.ChatCompletionMessage{
+						Role:    "assistant",
+						Content: "hello world",
+					},
+					FinishReason: "stop",
 				},
-				FinishReason: "stop",
 			},
 		},
 	}
@@ -133,7 +135,7 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			require.IsType(t, &chatCompletionSpan{}, span)
 
 			// End the span to export it.
-			span.RecordResponse(respBody)
+			span.RecordResponse(&respBody)
 			span.EndSpan()
 
 			spans := exporter.GetSpans()
@@ -282,7 +284,7 @@ func (testChatCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai
 	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openaigo.ChatCompletion) {
+func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.CustomChatCompletion) {
 	span.SetAttributes(attribute.Int("statusCode", 200))
 	body, err := json.Marshal(resp)
 	if err != nil {

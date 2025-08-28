@@ -6,7 +6,6 @@
 package tracing
 
 import (
-	openaigo "github.com/openai/openai-go"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -28,7 +27,7 @@ func (s *chatCompletionSpan) RecordResponseChunk(resp *openai.ChatCompletionResp
 }
 
 // RecordResponse invokes [tracing.ChatCompletionRecorder.RecordResponse].
-func (s *chatCompletionSpan) RecordResponse(resp *openaigo.ChatCompletion) {
+func (s *chatCompletionSpan) RecordResponse(resp *openai.CustomChatCompletion) {
 	s.recorder.RecordResponse(s.span, resp)
 }
 

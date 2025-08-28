@@ -6,13 +6,13 @@
 package openai
 
 import (
-	openaigo "github.com/openai/openai-go"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
-func buildResponseAttributes(resp *openaigo.ChatCompletion, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildResponseAttributes(resp *openai.CustomChatCompletion, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.LLMModelName, resp.Model),
 	}

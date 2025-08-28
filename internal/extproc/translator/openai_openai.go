@@ -15,7 +15,6 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	openaigo "github.com/openai/openai-go"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -132,7 +131,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		}
 		return
 	}
-	resp := &openaigo.ChatCompletion{}
+	resp := &openai.CustomChatCompletion{}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
