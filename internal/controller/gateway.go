@@ -227,6 +227,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 						if err != nil {
 							return fmt.Errorf("failed to create backend auth: %w", err)
 						}
+						b.SensitiveHeaders = bsp.Spec.SensitiveHeaders
 					}
 				}
 

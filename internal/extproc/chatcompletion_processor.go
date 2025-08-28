@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -177,6 +178,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
+	sensitiveHeaders       []string
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
 	translator             translator.OpenAIChatCompletionTranslator
@@ -192,6 +194,8 @@ type chatCompletionProcessorUpstreamFilter struct {
 	forcedStreamOptionIncludeUsage bool
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.ChatCompletionSpan
+	// getOrignalHeaders Callback to get removed sensitive headers from the router filter.
+	getOrignalHeaders func() map[string]string
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -239,13 +243,41 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
+
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
-	} else {
-		for _, h := range headerMutation.SetHeaders {
-			c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	// Removes sensitive headers before sending to backend.
+	removedHeadersSet := make(map[string]struct{}, len(c.sensitiveHeaders))
+	for _, h := range c.sensitiveHeaders {
+		key := strings.ToLower(h)
+		removedHeadersSet[key] = struct{}{}
+		if _, ok := c.requestHeaders[key]; ok {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, h)
+			delete(c.requestHeaders, key)
 		}
 	}
+
+	// Restore original headers on retry, only if not being removed and not already present.
+	if c.onRetry && c.getOrignalHeaders != nil {
+		for h, v := range c.getOrignalHeaders() {
+			key := strings.ToLower(h)
+			_, isRemoved := removedHeadersSet[key]
+			_, exists := c.requestHeaders[key]
+			if !isRemoved && !exists {
+				c.requestHeaders[h] = v
+				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+					Header: &corev3.HeaderValue{Key: h, RawValue: []byte(v)},
+				})
+			}
+		}
+	}
+
+	for _, h := range headerMutation.SetHeaders {
+		c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
 	if h := c.handler; h != nil {
 		if err = h.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
@@ -428,6 +460,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
+	c.sensitiveHeaders = b.SensitiveHeaders
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
@@ -438,6 +471,9 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		}
 	}
 	rp.upstreamFilter = c
+	c.getOrignalHeaders = func() map[string]string {
+		return rp.requestHeaders
+	}
 	c.forcedStreamOptionIncludeUsage = rp.forcedStreamOptionIncludeUsage
 	c.span = rp.span
 	return

@@ -128,6 +128,8 @@ type Backend struct {
 	Schema VersionedAPISchema `json:"schema"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	Auth *BackendAuth `json:"auth,omitempty"`
+	// Sensitive Headers to be removed from the request before sending to the backend. Optional.
+	SensitiveHeaders []string `json:"sensitiveHeaders,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
