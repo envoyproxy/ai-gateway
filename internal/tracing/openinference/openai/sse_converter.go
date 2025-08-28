@@ -107,12 +107,15 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.Ch
 		annotationsPtr = make([]openaigo.ChatCompletionMessageAnnotation, len(annotations))
 		for i, a := range annotations {
 			annotationsPtr[i] = openaigo.ChatCompletionMessageAnnotation{
-				URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
+				Type: openAIconstant.URLCitation(a.Type),
+			}
+			if a.URLCitation != nil {
+				annotationsPtr[i].URLCitation = openaigo.ChatCompletionMessageAnnotationURLCitation{
 					EndIndex:   int64(a.URLCitation.EndIndex),
 					StartIndex: int64(a.URLCitation.StartIndex),
 					Title:      a.URLCitation.Title,
 					URL:        a.URLCitation.URL,
-				},
+				}
 			}
 		}
 	}
@@ -146,16 +149,21 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openaigo.Ch
 			CompletionTokens: int64(usage.CompletionTokens),
 			PromptTokens:     int64(usage.PromptTokens),
 			TotalTokens:      int64(usage.TotalTokens),
-			CompletionTokensDetails: openaigo.CompletionUsageCompletionTokensDetails{
+		}
+
+		if usage.CompletionTokensDetails != nil {
+			response.Usage.CompletionTokensDetails = openaigo.CompletionUsageCompletionTokensDetails{
 				AudioTokens:              int64(usage.CompletionTokensDetails.AudioTokens),
 				ReasoningTokens:          int64(usage.CompletionTokensDetails.ReasoningTokens),
 				AcceptedPredictionTokens: int64(usage.CompletionTokensDetails.AcceptedPredictionTokens),
 				RejectedPredictionTokens: int64(usage.CompletionTokensDetails.RejectedPredictionTokens),
-			},
-			PromptTokensDetails: openaigo.CompletionUsagePromptTokensDetails{
+			}
+		}
+		if usage.PromptTokensDetails != nil {
+			response.Usage.PromptTokensDetails = openaigo.CompletionUsagePromptTokensDetails{
 				AudioTokens:  int64(usage.PromptTokensDetails.AudioTokens),
 				CachedTokens: int64(usage.PromptTokensDetails.CachedTokens),
-			},
+			}
 		}
 	}
 

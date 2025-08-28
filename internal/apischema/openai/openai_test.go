@@ -720,18 +720,27 @@ func TestChatCompletionResponse(t *testing.T) {
 				"created": 1735689600,
 				"model": "gpt-4.1-nano",
 				"service_tier": "default",
+				"system_fingerprint": "",
 				"choices": [{
 					"index": 0,
 					"message": {
 						"role": "assistant",
-						"content": "Hello!"
+						"content": "Hello!",
+						"annotations": null,
+						"audio": {"data":"","expires_at":0,"id":"","transcript":""},
+						"function_call": {"arguments":"","name":""},
+						"refusal": "",
+						"tool_calls": null
 					},
-					"finish_reason": "stop"
+					"finish_reason": "stop",
+					"logprobs": {"content":null,"refusal":null}
 				}],
 				"usage": {
 					"prompt_tokens": 5,
 					"completion_tokens": 1,
-					"total_tokens": 6
+					"total_tokens": 6,
+					"completion_tokens_details": {"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},
+					"prompt_tokens_details": {"audio_tokens":0,"cached_tokens":0}
 				}
 			}`,
 		},
@@ -774,6 +783,8 @@ func TestChatCompletionResponse(t *testing.T) {
 				"object": "chat.completion",
 				"created": 1755135425,
 				"model": "gpt-4o-mini-search-preview-2025-03-11",
+				"service_tier": "",
+				"system_fingerprint": "",
 				"choices": [{
 					"index": 0,
 					"message": {
@@ -787,14 +798,21 @@ func TestChatCompletionResponse(t *testing.T) {
 								"title": "httpbin.org",
 								"url": "https://httpbin.org/?utm_source=openai"
 							}
-						}]
+						}],
+						"audio": {"data":"","expires_at":0,"id":"","transcript":""},
+						"function_call": {"arguments":"","name":""},
+						"refusal": "",
+						"tool_calls": null
 					},
-					"finish_reason": "stop"
+					"finish_reason": "stop",
+					"logprobs": {"content":null,"refusal":null}
 				}],
 				"usage": {
 					"prompt_tokens": 14,
 					"completion_tokens": 192,
-					"total_tokens": 206
+					"total_tokens": 206,
+					"completion_tokens_details": {"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},
+					"prompt_tokens_details": {"audio_tokens":0,"cached_tokens":0}
 				}
 			}`,
 		},
