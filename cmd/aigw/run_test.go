@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -47,7 +49,8 @@ func TestRun(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, runOpts{}, os.Stdout, os.Stderr))
+		opts := runOpts{extProcLauncher: mainlib.Main}
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, opts, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() {
@@ -161,11 +164,14 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	var (
 		resourcePath, _ = setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 		errChan         = make(chan error)
+		errExtProcMock  = errors.New("mock extproc error")
 	)
 
 	go func() {
 		errChan <- run(t.Context(), cmdRun{Debug: true, Path: resourcePath}, runOpts{
-			udsPath: "/dev/null", // This will cause the external processor to fail to start.
+			extProcLauncher: func(context.Context, []string, io.Writer) error {
+				return errExtProcMock
+			},
 		}, os.Stdout, os.Stderr)
 	}()
 
@@ -174,6 +180,7 @@ func TestRunExtprocStartFailure(t *testing.T) {
 		t.Fatalf("expected extproc start process to fail and return")
 	case err := <-errChan:
 		require.ErrorIs(t, err, errExtProcRun)
+		require.ErrorIs(t, err, errExtProcMock)
 	}
 }
 
@@ -183,6 +190,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
+		extProcLauncher:          mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
 		udsPath: filepath.Join("/tmp", "run.sock"),
@@ -202,7 +210,8 @@ func Test_mustStartExtProc(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	runCtx := &runCmdContext{
-		tmpdir: t.TempDir(),
+		tmpdir:          t.TempDir(),
+		extProcLauncher: mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
 		udsPath:      filepath.Join("/tmp", "run.sock"),
