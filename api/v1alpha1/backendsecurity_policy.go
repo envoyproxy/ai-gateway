@@ -41,7 +41,7 @@ type BackendSecurityPolicy struct {
 // Only one mechanism to access a backend(s) can be specified.
 //
 // Only one type of BackendSecurityPolicy can be defined.
-// +kubebuilder:validation:MaxProperties=3
+// +kubebuilder:validation:MaxProperties=4
 // +kubebuilder:validation:XValidation:rule="self.type == 'APIKey' ? (has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is APIKey, only apiKey field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AWSCredentials' ? (has(self.awsCredentials) && !has(self.apiKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AWSCredentials, only awsCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.gcpCredentials)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
@@ -60,6 +60,12 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
 	Type BackendSecurityPolicyType `json:"type"`
+
+	// Sensitive headers will be removed while sending request to upstream.
+	// These headers will be added back to the request if request fails upstream
+	//
+	// +optional
+	SensitiveHeaders []string `json:"sensitiveHeaders,omitempty"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
 	//

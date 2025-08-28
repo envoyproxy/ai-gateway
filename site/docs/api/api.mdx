@@ -947,6 +947,11 @@ Only one type of BackendSecurityPolicy can be defined.
   required="true"
   description="Type specifies the type of the backend security policy."
 /><ApiField
+  name="sensitiveHeaders"
+  type="string array"
+  required="false"
+  description="Sensitive headers will be removed while sending request to upstream.<br />These headers will be added back to the request if request fails upstream"
+/><ApiField
   name="apiKey"
   type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
   required="false"

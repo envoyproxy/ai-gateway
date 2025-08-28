@@ -64,7 +64,8 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	err := fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
-			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			Type:             aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			SensitiveHeaders: []string{"X-foo"},
 			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"},
 			},

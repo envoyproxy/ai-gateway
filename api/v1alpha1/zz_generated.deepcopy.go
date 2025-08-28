@@ -626,6 +626,11 @@ func (in *BackendSecurityPolicySpec) DeepCopyInto(out *BackendSecurityPolicySpec
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.SensitiveHeaders != nil {
+		in, out := &in.SensitiveHeaders, &out.SensitiveHeaders
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.APIKey != nil {
 		in, out := &in.APIKey, &out.APIKey
 		*out = new(BackendSecurityPolicyAPIKey)
