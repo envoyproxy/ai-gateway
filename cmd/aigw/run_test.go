@@ -47,7 +47,7 @@ func TestRun(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, runOpts{}, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() {
@@ -157,6 +157,26 @@ func TestRun(t *testing.T) {
 	})
 }
 
+func TestRunExtprocStartFailure(t *testing.T) {
+	var (
+		resourcePath, _ = setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
+		errChan         = make(chan error)
+	)
+
+	go func() {
+		errChan <- run(t.Context(), cmdRun{Debug: true, Path: resourcePath}, runOpts{
+			udsPath: "/dev/null", // This will cause the external processor to fail to start.
+		}, os.Stdout, os.Stderr)
+	}()
+
+	select {
+	case <-time.After(10 * time.Second):
+		t.Fatalf("expected extproc start process to fail and return")
+	case err := <-errChan:
+		require.ErrorIs(t, err, errExtProcRun)
+	}
+}
+
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	runCtx := &runCmdContext{
@@ -170,17 +190,17 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
-	_, err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
+	_, done, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
 	// Wait for the external processor to stop.
-	time.Sleep(1 * time.Second)
+	require.NoError(t, <-done)
 }
 
 func Test_mustStartExtProc(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 	runCtx := &runCmdContext{
 		tmpdir: t.TempDir(),
 		// UNIX doesn't like a long UDS path, so we use a short one.
@@ -188,11 +208,11 @@ func Test_mustStartExtProc(t *testing.T) {
 		udsPath:      filepath.Join("/tmp", "run.sock"),
 		stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 	}
-	runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
+	done := runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
 	time.Sleep(1 * time.Second)
 	cancel()
 	// Wait for the external processor to stop.
-	time.Sleep(1 * time.Second)
+	require.NoError(t, <-done)
 }
 
 // checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.
