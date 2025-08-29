@@ -129,7 +129,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
 			expRequestBody:  `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			expResponseBody: `{"id":"","choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"response","refusal":"","role":"assistant","annotations":null,"audio":{"id":"","data":"","expires_at":0,"transcript":""},"function_call":{"arguments":"","name":""},"tool_calls":null}}],"created":0,"model":"","object":"chat.completion","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 		},
 		{
 			name:            "openai - /v1/chat/completions",
@@ -186,7 +186,7 @@ func TestWithTestUpstream(t *testing.T) {
 			requestBody:     toolCallResultsRequestBody,
 			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"List the files in the /tmp directory","type":"text"}],"role":"user"},{"content":[{"id":"call_abc123","input":{"path":"/tmp"},"name":"list_files","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"call_abc123","is_error":false,"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]","type":"text"}],"type":"tool_result"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
 			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
+			expResponseBody: `{"id":"","choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Hello from Anthropic!","refusal":"","role":"assistant","annotations":null,"audio":{"id":"","data":"","expires_at":0,"transcript":""},"function_call":{"arguments":"","name":""},"tool_calls":null}}],"created":0,"model":"","object":"chat.completion","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 			expStatus:       http.StatusOK,
 		},
 		{
@@ -213,7 +213,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
+			expResponseBody: `{"id":"","choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"This is a test response from Gemini.","refusal":"","role":"assistant","annotations":null,"audio":{"id":"","data":"","expires_at":0,"transcript":""},"function_call":{"arguments":"","name":""},"tool_calls":null}}],"created":0,"model":"","object":"chat.completion","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 		},
 		{
 			name:            "gcp-vertexai - /v1/chat/completions - tool use",
@@ -243,7 +243,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
+			expResponseBody: `{"id":"","choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Hello from Anthropic!","refusal":"","role":"assistant","annotations":null,"audio":{"id":"","data":"","expires_at":0,"transcript":""},"function_call":{"arguments":"","name":""},"tool_calls":null}}],"created":0,"model":"","object":"chat.completion","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
