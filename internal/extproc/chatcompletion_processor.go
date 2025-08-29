@@ -440,9 +440,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
-	if b.HeaderMutation != nil {
-		c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, func() map[string]string { return rp.requestHeaders })
-	}
+	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, func() map[string]string { return rp.requestHeaders })
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
