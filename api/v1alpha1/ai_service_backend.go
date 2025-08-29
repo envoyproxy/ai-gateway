@@ -103,7 +103,7 @@ type HTTPHeaderMutation struct {
 	// +listType=map
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=16
-	Set []HTTPHeader `json:"set,omitempty"`
+	Set []gwapiv1.HTTPHeader `json:"set,omitempty"`
 
 	// Remove the given header(s) from the HTTP request before the action. The
 	// value of Remove is a list of HTTP header names. Note that the header
@@ -127,25 +127,4 @@ type HTTPHeaderMutation struct {
 	// +listType=set
 	// +kubebuilder:validation:MaxItems=16
 	Remove []string `json:"remove,omitempty"`
-}
-
-// HTTPHeader represents an HTTP Header name and value as defined by RFC 7230.
-type HTTPHeader struct {
-	// Name is the name of the HTTP Header to be matched. Name matching MUST be
-	// case-insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-	//
-	// If multiple entries specify equivalent header names, the first entry with
-	// an equivalent name MUST be considered for a match. Subsequent entries
-	// with an equivalent header name MUST be ignored. Due to the
-	// case-insensitivity of header names, "foo" and "Foo" are considered
-	// equivalent.
-	// +required
-	Name string `json:"name"`
-
-	// Value is the value of HTTP Header to be matched.
-	//
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=4096
-	// +required
-	Value string `json:"value"`
 }

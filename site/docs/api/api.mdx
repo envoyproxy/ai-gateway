@@ -314,7 +314,6 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
-- [HTTPHeader](#httpheader)
 - [HTTPHeaderMutation](#httpheadermutation)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
@@ -1146,32 +1145,6 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 
-#### HTTPHeader
-
-
-
-**Appears in:**
-- [HTTPHeaderMutation](#httpheadermutation)
-
-HTTPHeader represents an HTTP Header name and value as defined by RFC 7230.
-
-##### Fields
-
-
-
-<ApiField
-  name="name"
-  type="string"
-  required="true"
-  description="Name is the name of the HTTP Header to be matched. Name matching MUST be<br />case-insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).<br />If multiple entries specify equivalent header names, the first entry with<br />an equivalent name MUST be considered for a match. Subsequent entries<br />with an equivalent header name MUST be ignored. Due to the<br />case-insensitivity of header names, `foo` and `Foo` are considered<br />equivalent."
-/><ApiField
-  name="value"
-  type="string"
-  required="true"
-  description="Value is the value of HTTP Header to be matched."
-/>
-
-
 #### HTTPHeaderMutation
 
 
@@ -1187,7 +1160,7 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 
 <ApiField
   name="set"
-  type="[HTTPHeader](#httpheader) array"
+  type="HTTPHeader array"
   required="false"
   description="Set overwrites/adds the request with the given header (name, value)<br />before the action.<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header: foo<br />Config:<br />  set:<br />  - name: `my-header`<br />    value: `bar`<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header: bar"
 /><ApiField

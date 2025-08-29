@@ -186,7 +186,7 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	ret := &filterapi.HTTPHeaderMutation{}
 	ret.Remove = append(ret.Remove, m.Remove...)
 	for _, h := range m.Set {
-		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: h.Name, Value: h.Value})
+		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: string(h.Name), Value: h.Value})
 	}
 	return ret
 }

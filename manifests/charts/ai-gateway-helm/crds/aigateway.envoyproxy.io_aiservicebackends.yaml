@@ -226,6 +226,9 @@ spec:
                             with an equivalent header name MUST be ignored. Due to the
                             case-insensitivity of header names, "foo" and "Foo" are considered
                             equivalent.
+                          maxLength: 256
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                           type: string
                         value:
                           description: Value is the value of HTTP Header to be matched.

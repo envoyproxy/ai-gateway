@@ -214,7 +214,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef:     gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
-				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []aigv1a1.HTTPHeader{{Name: "x-foo", Value: "foo"}}, Remove: []string{"x-bar"}},
+				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{{Name: "x-foo", Value: "foo"}}, Remove: []string{"x-bar"}},
 			},
 		},
 		{
