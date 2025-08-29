@@ -66,14 +66,18 @@ yamllint: $(YAMLLINT) ## Lint yaml files.
 	@echo "yamllint => ./..."
 	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
+# Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
+# git command to find the files ensures that only relevant files are formatted and that git-ignored
+# files do not get in the way.
+GO_FILES=$(shell git ls-files --cached --others --exclude-standard | grep '\.go$$')
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
 format: ## Format the codebase.
 	@echo "format => *.go"
-	@find . -type f -name '*.go' | xargs gofmt -s -w
-	@find . -type f -name '*.go' | xargs go tool gofumpt -l -w
+	@gofmt -s -w $(GO_FILES)
+	@go tool gofumpt -l -w $(GO_FILES)
 	@echo "gci => *.go"
-	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
+	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
 	@echo "licenses => **"
 	@go tool license-eye header fix
 
