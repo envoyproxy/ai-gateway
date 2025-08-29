@@ -291,15 +291,17 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 				}},
 			}
 			reqBody := []byte(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello, sensitive data!"}]}`)
-			respBody := &openaigo.ChatCompletion{
-				ID:     "chatcmpl-abc123",
-				Object: "chat.completion",
-				Choices: []openaigo.ChatCompletionChoice{{
-					Message: openaigo.ChatCompletionMessage{
-						Role:    "assistant",
-						Content: "Response with sensitive data",
-					},
-				}},
+			respBody := &openai.CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:     "chatcmpl-abc123",
+					Object: "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{{
+						Message: openaigo.ChatCompletionMessage{
+							Role:    "assistant",
+							Content: "Response with sensitive data",
+						},
+					}},
+				},
 			}
 
 			// Start a span and record request/response.

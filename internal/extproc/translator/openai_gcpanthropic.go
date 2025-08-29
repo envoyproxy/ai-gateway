@@ -687,7 +687,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	openAIResp := openai.CustomChatCompletion{
+	openAIResp := &openai.CustomChatCompletion{
 		ChatCompletion: openaigo.ChatCompletion{
 			Object:  "chat.completion",
 			Choices: make([]openaigo.ChatCompletionChoice, 0),

@@ -216,10 +216,12 @@ data: [DONE]
 		t.Run("valid body", func(t *testing.T) {
 			s := &testotel.MockSpan{}
 
-			expectedResp := openaigo.ChatCompletion{
-				Object: "chat.completion",
-				Usage: openaigo.CompletionUsage{
-					TotalTokens: 42,
+			expectedResp := openai.CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					Object: "chat.completion",
+					Usage: openaigo.CompletionUsage{
+						TotalTokens: 42,
+					},
 				},
 			}
 			body, err := json.Marshal(expectedResp)

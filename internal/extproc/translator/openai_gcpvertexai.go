@@ -315,7 +315,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	}
 }
 
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openaigo.ChatCompletion, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openai.CustomChatCompletion, error) {
 	// Convert candidates to OpenAI choices.
 	choices, err := geminiCandidatesToOpenAIChoices(gcr.Candidates)
 	if err != nil {
@@ -323,10 +323,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	}
 
 	// Set up the OpenAI response.
-	openaiResp := &openaigo.ChatCompletion{
-		Choices: choices,
-		Object:  "chat.completion",
-		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),
+	openaiResp := &openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			Choices: choices,
+			Object:  "chat.completion",
+			Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),
+		},
 	}
 
 	return openaiResp, nil

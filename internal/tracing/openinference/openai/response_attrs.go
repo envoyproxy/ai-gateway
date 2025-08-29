@@ -6,9 +6,9 @@
 package openai
 
 import (
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 

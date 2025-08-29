@@ -32,7 +32,7 @@ func TestChatCompletionSpan_RecordResponseChunk(t *testing.T) {
 }
 
 func TestChatCompletionSpan_RecordResponse(t *testing.T) {
-	resp := &openaigo.ChatCompletion{ID: "chatcmpl-abc123"}
+	resp := &openai.CustomChatCompletion{ChatCompletion: openaigo.ChatCompletion{ID: "chatcmpl-abc123"}}
 	respBytes, err := json.Marshal(resp)
 	require.NoError(t, err)
 	s := &chatCompletionSpan{recorder: testChatCompletionRecorder{}}

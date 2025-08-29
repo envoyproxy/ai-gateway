@@ -631,7 +631,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
 	if span != nil {
-		span.RecordResponse(openAIResp)
+		span.RecordResponse(&openAIResp)
 	}
 	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
 }
