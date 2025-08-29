@@ -28,15 +28,7 @@ metadata:
   name: envoy-ai-gateway-token-ratelimit
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  # parentRefs:
-  #   - name: envoy-ai-gateway-token-ratelimit
-  #     kind: Gateway
-  #     group: gateway.networking.k8s.io
-  # Use parentRefs above instead of targetRefs below, targetRefs will be deprecated in the next version.
-  # Here, we use targetRefs just for the reference as well as to ensure there's an upgrade path.
-  targetRefs:
+  parentRefs:
     - name: envoy-ai-gateway-token-ratelimit
       kind: Gateway
       group: gateway.networking.k8s.io

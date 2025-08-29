@@ -65,10 +65,6 @@ func (c *AIBackendController) Reconcile(ctx context.Context, req reconcile.Reque
 // syncAIServiceBackend is the main logic for reconciling the AIServiceBackend resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
 func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBackend *aigv1a1.AIServiceBackend) error {
-	if aiBackend.Spec.BackendSecurityPolicyRef != nil {
-		c.logger.Info("backendSecurityPolicyRef is deprecated. Use BackendSecurityPolicy.spec.targetRefs instead.")
-	}
-
 	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", aiBackend.Name, aiBackend.Namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(aiBackend.Namespace),
