@@ -207,15 +207,13 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 }
 
 func Test_mustStartExtProc(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 	mockerr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
 		tmpdir:          t.TempDir(),
 		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockerr },
 		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 	}
-	done := runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
+	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
 	require.ErrorIs(t, <-done, mockerr)
 }
 
