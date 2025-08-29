@@ -178,6 +178,19 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPI
 	return ret
 }
 
+// headerMutationToFilterAPI converts an aigv1a1.HTTPHeaderMutation to filterapi.HTTPHeaderMutation.
+func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHeaderMutation {
+	if m == nil {
+		return nil
+	}
+	ret := &filterapi.HTTPHeaderMutation{}
+	ret.Remove = append(ret.Remove, m.Remove...)
+	for _, h := range m.Set {
+		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: h.Name, Value: h.Value})
+	}
+	return ret
+}
+
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, configSecretName, configSecretNamespace string, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
@@ -221,13 +234,13 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 					if err != nil {
 						return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
 					}
+					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 						if err != nil {
 							return fmt.Errorf("failed to create backend auth: %w", err)
 						}
-						b.SensitiveHeaders = bsp.Spec.SensitiveHeaders
 					}
 				}
 

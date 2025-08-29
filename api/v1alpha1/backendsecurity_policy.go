@@ -61,12 +61,6 @@ type BackendSecurityPolicySpec struct {
 	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
-	// Sensitive headers will be removed while sending request to upstream.
-	// These headers will be added back to the request if request fails upstream
-	//
-	// +optional
-	SensitiveHeaders []string `json:"sensitiveHeaders,omitempty"`
-
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
 	//
 	// +optional

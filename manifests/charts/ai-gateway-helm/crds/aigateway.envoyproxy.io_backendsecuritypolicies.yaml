@@ -4358,13 +4358,6 @@ spec:
                     must be specified
                   rule: (has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig))
                     || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))
-              sensitiveHeaders:
-                description: |-
-                  Sensitive headers will be removed while sending request to upstream.
-                  These headers will be added back to the request if request fails upstream
-                items:
-                  type: string
-                type: array
               targetRefs:
                 description: |-
                   TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
