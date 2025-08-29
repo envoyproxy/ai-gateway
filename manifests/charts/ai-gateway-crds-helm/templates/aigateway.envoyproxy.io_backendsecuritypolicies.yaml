@@ -55,7 +55,7 @@ spec:
               Only one mechanism to access a backend(s) can be specified.
 
               Only one type of BackendSecurityPolicy can be defined.
-            maxProperties: 4
+            maxProperties: 3
             properties:
               apiKey:
                 description: APIKey is a mechanism to access a backend(s). The API
