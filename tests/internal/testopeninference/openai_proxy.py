@@ -74,6 +74,15 @@ async def handle_openai_request(
 
     except Exception as e:
         logger.exception("Error processing request")
+        # Check if this is an OpenAI API error with a specific status code
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            # Pass through the original error status and response
+            return Response(
+                content=e.response.content,
+                status_code=e.response.status_code,
+                headers=dict(e.response.headers)
+            )
+        # For other exceptions, return 500
         error_response = json.dumps({"error": str(e)})
         return Response(content=error_response, status_code=500, media_type="application/json")
 

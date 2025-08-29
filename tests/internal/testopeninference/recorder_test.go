@@ -258,6 +258,21 @@ func TestRecordSpan_Errors(t *testing.T) {
 			startProxy:  mockErrorProxy,
 			expectError: "mock proxy error",
 		},
+		{
+			name:        "conflict status",
+			startProxy:  mockConflictProxy,
+			expectError: "failed to call proxy (status 409): Cassette mismatch error",
+		},
+		{
+			name:        "internal server error",
+			startProxy:  mockInternalErrorProxy,
+			expectError: "failed to call proxy (status 500): Internal server error",
+		},
+		{
+			name:        "internal server error empty body",
+			startProxy:  mockInternalErrorEmptyProxy,
+			expectError: "failed to call proxy (status 500): <empty body>",
+		},
 	}
 
 	for _, tt := range tests {
@@ -334,12 +349,10 @@ func mustMarshal(t *testing.T, msg proto.Message) []byte {
 func mockProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
-		if r.URL.Path == "/v1/chat/completions" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"test"}}]}`))
-			go sendSpan(otlp, &tracev1.Span{Name: "ChatCompletion", Kind: tracev1.Span_SPAN_KIND_INTERNAL})
-		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"test"}}]}`))
+		sendSpan(otlp, &tracev1.Span{Name: "ChatCompletion", Kind: tracev1.Span_SPAN_KIND_INTERNAL})
 	}))
 	return srv.URL + "/v1", srv.Close, nil
 }
@@ -347,15 +360,13 @@ func mockProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, f
 func mockStreamingProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
-		if r.URL.Path == "/v1/chat/completions" {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("data: {\"id\":\"1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"))
-			w.(http.Flusher).Flush()
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-			w.(http.Flusher).Flush()
-			go sendSpan(otlp, &tracev1.Span{Name: "ChatCompletion", Kind: tracev1.Span_SPAN_KIND_INTERNAL})
-		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"id\":\"1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"))
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		w.(http.Flusher).Flush()
+		sendSpan(otlp, &tracev1.Span{Name: "ChatCompletion", Kind: tracev1.Span_SPAN_KIND_INTERNAL})
 	}))
 	return srv.URL + "/v1", srv.Close, nil
 }
@@ -371,6 +382,33 @@ func mockNoSpansProxy(_ context.Context, logger *log.Logger, _, _ string) (strin
 
 func mockErrorProxy(_ context.Context, _ *log.Logger, _, _ string) (string, func(), error) {
 	return "", nil, fmt.Errorf("mock proxy error")
+}
+
+func mockConflictProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte("Cassette mismatch error"))
+	}))
+	return srv.URL + "/v1", srv.Close, nil
+}
+
+func mockInternalErrorProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Internal server error"))
+	}))
+	return srv.URL + "/v1", srv.Close, nil
+}
+
+func mockInternalErrorEmptyProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+		// Don't write any body.
+	}))
+	return srv.URL + "/v1", srv.Close, nil
 }
 
 func sendSpan(otlp string, span *tracev1.Span) {

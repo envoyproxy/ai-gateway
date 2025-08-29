@@ -73,6 +73,7 @@ jobs:
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
         run: make test-coverage
       - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5.4.3
         with:
           fail_ci_if_error: true
@@ -258,7 +259,7 @@ jobs:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
+    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e, test_e2e_inference_extension]
     uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 

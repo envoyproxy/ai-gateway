@@ -338,6 +338,10 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	e.handler = backendHandler
+	// Sync header with backend model so header-derived labels/CEL use the actual model.
+	if e.modelNameOverride != "" {
+		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride
+	}
 	e.originalRequestBody = rp.originalRequestBody
 	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	e.onRetry = rp.upstreamFilterCount > 1

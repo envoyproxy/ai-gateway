@@ -96,6 +96,16 @@ func (r *spanRecorder) recordSpan(ctx context.Context, cassette testopenai.Casse
 	}
 	defer resp.Body.Close()
 
+	// Check for error responses that indicate cassette problems.
+	if resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusInternalServerError {
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := strings.TrimSpace(string(body))
+		if bodyStr == "" {
+			bodyStr = "<empty body>"
+		}
+		return nil, fmt.Errorf("failed to call proxy (status %d): %s", resp.StatusCode, bodyStr)
+	}
+
 	if isStreaming {
 		r.logger.Printf("Reading streaming response...")
 		// For streaming, we need to consume the entire SSE stream until we see [DONE].

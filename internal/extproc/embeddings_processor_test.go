@@ -238,6 +238,29 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	mm.RequireSelectedBackend(t, "some-backend")
 }
 
+func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
+	headers := map[string]string{":path": "/foo", "x-model-name": "some-model"}
+	mm := &mockEmbeddingsMetrics{}
+	p := &embeddingsProcessorUpstreamFilter{
+		config:         &processorConfig{modelNameHeaderKey: "x-model-name"},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
+	}
+	rp := &embeddingsProcessorRouterFilter{
+		originalRequestBody: &openai.EmbeddingRequest{},
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "openai",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		ModelNameOverride: "override-model",
+	}, nil, rp)
+	require.NoError(t, err)
+	mm.RequireSelectedBackend(t, "openai")
+	require.Equal(t, "override-model", p.requestHeaders["x-model-name"])
+	require.NotNil(t, p.translator)
+}
+
 func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	const modelKey = "x-ai-gateway-model-key"
 	t.Run("translator error", func(t *testing.T) {
