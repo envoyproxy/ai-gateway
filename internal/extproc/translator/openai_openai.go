@@ -131,7 +131,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		}
 		return
 	}
-	resp := &openai.ChatCompletionResponse{}
+	resp := &openai.CustomChatCompletion{}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}

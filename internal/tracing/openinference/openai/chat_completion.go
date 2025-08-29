@@ -75,7 +75,7 @@ func (r *ChatCompletionRecorder) RecordResponseOnError(span trace.Span, statusCo
 }
 
 // RecordResponse implements the same method as defined in tracing.ChatCompletionRecorder.
-func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse) {
+func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.CustomChatCompletion) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
 	attrs = buildResponseAttributes(resp, r.traceConfig)

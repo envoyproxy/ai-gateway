@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	openaigo "github.com/openai/openai-go"
 	"google.golang.org/genai"
 )
 
@@ -68,6 +69,38 @@ const (
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
 )
+
+// CustomFields holds all non-standard fields that we add to the chat completion response.
+type CustomFields struct {
+	Obfuscation string `json:"obfuscation,omitempty"`
+}
+
+// CustomChatCompletion is an extensible openaigo.ChatCompletion object.
+type CustomChatCompletion struct {
+	openaigo.ChatCompletion
+	CustomFields
+}
+
+// UnmarshalJSON implements a custom unmarshaler for the CustomChatCompletion struct.
+// This is necessary because the embedded openaigo.ChatCompletion has its own custom
+// JSON handling that would otherwise ignore our CustomFields. This method ensures
+// that both the standard SDK fields and our custom fields are populated from the
+// same JSON source.
+func (c *CustomChatCompletion) UnmarshalJSON(data []byte) error {
+	// 1. Unmarshal into the embedded ChatCompletion struct.
+	if err := json.Unmarshal(data, &c.ChatCompletion); err != nil {
+		return err
+	}
+
+	// 2. Unmarshal the same data into the CustomFields part.
+	// The json decoder will ignore fields that don't match CustomFields
+	// and only populate the ones that do.
+	if err := json.Unmarshal(data, &c.CustomFields); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // ChatCompletionContentPartTextParam Learn about
 // [text inputs](https://platform.openai.com/docs/guides/text-generation).
@@ -863,41 +896,6 @@ type LogProb struct {
 type LogProbs struct {
 	// Content is a list of message content tokens with log probability information.
 	Content []LogProb `json:"content"`
-}
-
-// ChatCompletionResponse represents a response from /v1/chat/completions.
-// https://platform.openai.com/docs/api-reference/chat/object
-type ChatCompletionResponse struct {
-	// ID is a unique identifier for the chat completion.
-	ID string `json:"id,omitempty"`
-	// Choices are described in the OpenAI API documentation:
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices
-	Choices []ChatCompletionResponseChoice `json:"choices,omitempty"`
-
-	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
-	Created JSONUNIXTime `json:"created,omitzero"`
-
-	// Model is the model used for the chat completion.
-	Model string `json:"model,omitempty"`
-
-	// ServiceTier is the service tier used for the completion.
-	ServiceTier string `json:"service_tier,omitempty"`
-
-	// SystemFingerprint represents the backend configuration that the model runs with.
-	SystemFingerprint string `json:"system_fingerprint,omitempty"`
-
-	// Object is always "chat.completion" for completions.
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-object
-	Object string `json:"object,omitempty"`
-
-	// Usage is described in the OpenAI API documentation:
-	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
-	Usage ChatCompletionResponseUsage `json:"usage,omitzero"`
-
-	// Obfuscation are random characters that normalize payload sizes as a
-	// mitigation to certain side-channel attacks.
-	// https://platform.openai.com/docs/api-reference/responses/get#responses_get-include_obfuscation
-	Obfuscation string `json:"obfuscation,omitempty"`
 }
 
 // ChatCompletionChoicesFinishReason The reason the model stopped generating tokens. This will be `stop` if the model

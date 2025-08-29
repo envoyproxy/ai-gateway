@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -688,32 +690,34 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 func TestChatCompletionResponse(t *testing.T) {
 	testCases := []struct {
 		name     string
-		response ChatCompletionResponse
+		response CustomChatCompletion
 		expected string
 	}{
 		{
 			name: "basic response with new fields",
-			response: ChatCompletionResponse{
-				ID:                "chatcmpl-test123",
-				Created:           JSONUNIXTime(time.Unix(1735689600, 0)),
-				Model:             "gpt-4.1-nano",
-				ServiceTier:       "default",
-				SystemFingerprint: "",
-				Object:            "chat.completion",
-				Choices: []ChatCompletionResponseChoice{
-					{
-						Index:        0,
-						FinishReason: ChatCompletionChoicesFinishReasonStop,
-						Message: ChatCompletionResponseChoiceMessage{
-							Role:    "assistant",
-							Content: ptr.To("Hello!"),
+			response: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:                "chatcmpl-test123",
+					Created:           time.Unix(1735689600, 0).Unix(),
+					Model:             "gpt-4.1-nano",
+					ServiceTier:       "default",
+					SystemFingerprint: "",
+					Object:            "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{
+						{
+							Index:        0,
+							FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+							Message: openaigo.ChatCompletionMessage{
+								Role:    openAIconstant.Assistant(openaigo.MessageRoleAssistant),
+								Content: "Hello!",
+							},
 						},
 					},
-				},
-				Usage: ChatCompletionResponseUsage{
-					CompletionTokens: 1,
-					PromptTokens:     5,
-					TotalTokens:      6,
+					Usage: openaigo.CompletionUsage{
+						CompletionTokens: 1,
+						PromptTokens:     5,
+						TotalTokens:      6,
+					},
 				},
 			},
 			expected: `{
@@ -722,53 +726,64 @@ func TestChatCompletionResponse(t *testing.T) {
 				"created": 1735689600,
 				"model": "gpt-4.1-nano",
 				"service_tier": "default",
+				"system_fingerprint": "",
 				"choices": [{
 					"index": 0,
 					"message": {
 						"role": "assistant",
-						"content": "Hello!"
+						"content": "Hello!",
+						"annotations": null,
+						"audio": {"data":"","expires_at":0,"id":"","transcript":""},
+						"function_call": {"arguments":"","name":""},
+						"refusal": "",
+						"tool_calls": null
 					},
-					"finish_reason": "stop"
+					"finish_reason": "stop",
+					"logprobs": {"content":null,"refusal":null}
 				}],
 				"usage": {
 					"prompt_tokens": 5,
 					"completion_tokens": 1,
-					"total_tokens": 6
+					"total_tokens": 6,
+					"completion_tokens_details": {"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},
+					"prompt_tokens_details": {"audio_tokens":0,"cached_tokens":0}
 				}
 			}`,
 		},
 		{
 			name: "response with web search annotations",
-			response: ChatCompletionResponse{
-				ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
-				Created: JSONUNIXTime(time.Unix(1755135425, 0)),
-				Model:   "gpt-4o-mini-search-preview-2025-03-11",
-				Object:  "chat.completion",
-				Choices: []ChatCompletionResponseChoice{
-					{
-						Index:        0,
-						FinishReason: ChatCompletionChoicesFinishReasonStop,
-						Message: ChatCompletionResponseChoiceMessage{
-							Role:    "assistant",
-							Content: ptr.To("Check out httpbin.org"),
-							Annotations: ptr.To([]Annotation{
-								{
-									Type: "url_citation",
-									URLCitation: &URLCitation{
-										EndIndex:   21,
-										StartIndex: 10,
-										Title:      "httpbin.org",
-										URL:        "https://httpbin.org/?utm_source=openai",
+			response: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
+					Created: time.Unix(1755135425, 0).Unix(),
+					Model:   "gpt-4o-mini-search-preview-2025-03-11",
+					Object:  "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{
+						{
+							Index:        0,
+							FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+							Message: openaigo.ChatCompletionMessage{
+								Role:    "assistant",
+								Content: "Check out httpbin.org",
+								Annotations: []openaigo.ChatCompletionMessageAnnotation{
+									{
+										Type: "url_citation",
+										URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
+											EndIndex:   21,
+											StartIndex: 10,
+											Title:      "httpbin.org",
+											URL:        "https://httpbin.org/?utm_source=openai",
+										},
 									},
 								},
-							}),
+							},
 						},
 					},
-				},
-				Usage: ChatCompletionResponseUsage{
-					CompletionTokens: 192,
-					PromptTokens:     14,
-					TotalTokens:      206,
+					Usage: openaigo.CompletionUsage{
+						CompletionTokens: 192,
+						PromptTokens:     14,
+						TotalTokens:      206,
+					},
 				},
 			},
 			expected: `{
@@ -776,6 +791,8 @@ func TestChatCompletionResponse(t *testing.T) {
 				"object": "chat.completion",
 				"created": 1755135425,
 				"model": "gpt-4o-mini-search-preview-2025-03-11",
+				"service_tier": "",
+				"system_fingerprint": "",
 				"choices": [{
 					"index": 0,
 					"message": {
@@ -789,14 +806,21 @@ func TestChatCompletionResponse(t *testing.T) {
 								"title": "httpbin.org",
 								"url": "https://httpbin.org/?utm_source=openai"
 							}
-						}]
+						}],
+						"audio": {"data":"","expires_at":0,"id":"","transcript":""},
+						"function_call": {"arguments":"","name":""},
+						"refusal": "",
+						"tool_calls": null
 					},
-					"finish_reason": "stop"
+					"finish_reason": "stop",
+					"logprobs": {"content":null,"refusal":null}
 				}],
 				"usage": {
 					"prompt_tokens": 14,
 					"completion_tokens": 192,
-					"total_tokens": 206
+					"total_tokens": 206,
+					"completion_tokens_details": {"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},
+					"prompt_tokens_details": {"audio_tokens":0,"cached_tokens":0}
 				}
 			}`,
 		},
@@ -810,12 +834,12 @@ func TestChatCompletionResponse(t *testing.T) {
 			require.JSONEq(t, tc.expected, string(jsonData))
 
 			// Unmarshal back and verify round-trip
-			var decoded ChatCompletionResponse
+			var decoded openaigo.ChatCompletion
 			err = json.Unmarshal(jsonData, &decoded)
 			require.NoError(t, err)
 			require.Equal(t, tc.response.ID, decoded.ID)
 			require.Equal(t, tc.response.Model, decoded.Model)
-			require.Equal(t, time.Time(tc.response.Created).Unix(), time.Time(decoded.Created).Unix())
+			require.Equal(t, tc.response.Created, decoded.Created)
 		})
 	}
 }
@@ -1569,21 +1593,29 @@ func TestWebSearchOptions(t *testing.T) {
 // the same results after round trip.
 func TestChatCompletionResponseChoiceMessage_annotations_round_trip(t *testing.T) {
 	orig := []byte(`{"annotations": []}`)
-	var msg ChatCompletionResponseChoiceMessage
+	var msg openaigo.ChatCompletionMessage
 	err := json.Unmarshal(orig, &msg)
 	require.NoError(t, err)
-	require.NotNil(t, msg.Annotations)
 	marshaled, err := json.Marshal(msg)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"annotations":[]}`, string(marshaled))
+	var marshaledData map[string]interface{}
+	err = json.Unmarshal(marshaled, &marshaledData)
+	require.NoError(t, err)
+	require.Contains(t, marshaledData, "annotations")
+	require.NotNil(t, marshaledData["annotations"], "Value should be an empty slice, not nil")
+	require.Empty(t, marshaledData["annotations"], "Value should be an empty slice")
 
-	var msg2 ChatCompletionResponseChoiceMessage
+	var msg2 openaigo.ChatCompletionMessage
 	err = json.Unmarshal([]byte(`{}`), &msg2)
 	require.NoError(t, err)
 	require.Nil(t, msg2.Annotations)
 	marshaled, err = json.Marshal(msg2)
 	require.NoError(t, err)
-	require.JSONEq(t, `{}`, string(marshaled))
+	var marshaledData2 map[string]interface{}
+	err = json.Unmarshal(marshaled, &marshaledData2)
+	require.NoError(t, err)
+	require.Contains(t, marshaledData2, "annotations")
+	require.Nil(t, marshaledData2["annotations"], "When omitted, the marshaled value should be nil (json null)")
 }
 
 // This tests ensures to use a pointer to the slice since otherwise for "annotations" field to maintain
@@ -1605,4 +1637,38 @@ func TestChatCompletionResponseChunkChoiceDelta_annotations_round_trip(t *testin
 	marshaled, err = json.Marshal(msg2)
 	require.NoError(t, err)
 	require.JSONEq(t, `{}`, string(marshaled))
+}
+
+func TestCustomChatCompletion_CustomFields_UnmarshalJSON(t *testing.T) {
+	// 1. Define an input JSON string that includes both standard SDK fields
+	// and our custom field(s).
+	inputJSON := `{
+		"id": "chatcmpl-123",
+		"object": "chat.completion",
+		"created": 1234567890,
+		"model": "gpt-5-nano",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": "Hello!"
+			},
+			"finish_reason": "stop"
+		}],
+		"obfuscation": "test-obfuscation-value"
+	}`
+
+	var result CustomChatCompletion
+	err := json.Unmarshal([]byte(inputJSON), &result)
+	require.NoError(t, err)
+
+	// 4. Assert that both standard and custom fields were populated correctly.
+	// Check a standard field from the embedded openaigo.ChatCompletion.
+	require.Equal(t, "chatcmpl-123", result.ID)
+	require.Equal(t, "gpt-5-nano", result.Model)
+	require.Len(t, result.Choices, 1)
+	require.Equal(t, "Hello!", result.Choices[0].Message.Content)
+
+	// Check our custom field from the embedded CustomFields.
+	require.Equal(t, "test-obfuscation-value", result.Obfuscation)
 }

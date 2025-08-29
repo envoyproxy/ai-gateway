@@ -67,7 +67,7 @@ type ChatCompletionSpan interface {
 	RecordResponseChunk(resp *openai.ChatCompletionResponseChunk)
 
 	// RecordResponse records the response attributes to the span for non-streaming response.
-	RecordResponse(resp *openai.ChatCompletionResponse)
+	RecordResponse(resp *openai.CustomChatCompletion)
 
 	// EndSpanOnError finalizes and ends the span with an error status.
 	EndSpanOnError(statusCode int, body []byte)
@@ -100,7 +100,7 @@ type ChatCompletionRecorder interface {
 	RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk)
 
 	// RecordResponse records response attributes to the span for non-streaming response.
-	RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse)
+	RecordResponse(span trace.Span, resp *openai.CustomChatCompletion)
 
 	// RecordResponseOnError ends recording the span with an error status.
 	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
