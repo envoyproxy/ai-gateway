@@ -6,7 +6,6 @@
 package testopeninference
 
 import (
-	"context"
 	"io"
 	"testing"
 	"testing/fstest"
@@ -68,7 +67,7 @@ func TestGetSpan(t *testing.T) {
 			if tt.expectSpan != nil && tt.recordSpans != "" {
 				s.recorder.startProxy = mockProxy
 			}
-			span, err := s.getSpan(context.Background(), testopenai.CassetteChatBasic)
+			span, err := s.getSpan(t.Context(), testopenai.CassetteChatBasic)
 			if tt.expectError != "" {
 				require.EqualError(t, err, tt.expectError)
 				return

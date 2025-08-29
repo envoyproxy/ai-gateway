@@ -428,6 +428,10 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
+	// Sync header with backend model so header-derived labels/CEL use the actual model.
+	if c.modelNameOverride != "" {
+		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
+	}
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1

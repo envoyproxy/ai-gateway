@@ -107,12 +107,12 @@ Flags:
 		{
 			name: "run no arg",
 			args: []string{"run"},
-			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
 			name: "run help",
 			args: []string{"run", "--help"},
-			rf:   func(_ context.Context, _ cmdRun, _, _ io.Writer) error { return nil },
+			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
 			expOut: `Usage: aigw run [<path>] [flags]
 
 Run the AI Gateway locally for given configuration.
@@ -133,7 +133,7 @@ Flags:
 		{
 			name: "run show default",
 			args: []string{"run", "--show-default"},
-			rf: func(_ context.Context, c cmdRun, _, _ io.Writer) error {
+			rf: func(_ context.Context, c cmdRun, _ runOpts, _, _ io.Writer) error {
 				require.True(t, c.ShowDefault)
 				return nil
 			},
@@ -141,7 +141,7 @@ Flags:
 		{
 			name: "run with path",
 			args: []string{"run", "./path"},
-			rf: func(_ context.Context, c cmdRun, _, _ io.Writer) error {
+			rf: func(_ context.Context, c cmdRun, _ runOpts, _, _ io.Writer) error {
 				abs, err := filepath.Abs("./path")
 				require.NoError(t, err)
 				require.Equal(t, abs, c.Path)

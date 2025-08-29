@@ -350,6 +350,33 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
 }
 
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		config: &processorConfig{
+			modelNameHeaderKey: modelKey,
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
+	}
+	rp := &chatCompletionProcessorRouterFilter{
+		originalRequestBody: &openai.ChatCompletionRequest{Stream: true},
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "openai",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		ModelNameOverride: "ai_gateway_llm",
+	}, nil, rp)
+	require.NoError(t, err)
+	mm.RequireSelectedBackend(t, "openai")
+	require.Equal(t, "ai_gateway_llm", p.requestHeaders[modelKey])
+	require.True(t, p.stream)
+	require.NotNil(t, p.translator)
+}
+
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	const modelKey = "x-ai-gateway-model-key"
 	for _, tc := range []struct {

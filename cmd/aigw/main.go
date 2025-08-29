@@ -15,6 +15,7 @@ import (
 	"github.com/alecthomas/kong"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -44,7 +45,7 @@ type (
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
-	runFn           subCmdFn[cmdRun]
+	runFn           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
 )
 
 func main() {
@@ -84,7 +85,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 			log.Fatalf("Error translating: %v", err)
 		}
 	case "run", "run <path>":
-		err = rf(ctx, c.Run, stdout, stderr)
+		err = rf(ctx, c.Run, runOpts{extProcLauncher: mainlib.Main}, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}
