@@ -281,7 +281,7 @@ jobs:
           make helm-push HELM_CHART_VERSION=v0.0.0-${{ github.sha }} TAG=${{ github.sha }}
           make helm-push HELM_CHART_VERSION=0.0.0-${{ github.sha }} TAG=${{ github.sha }}
 
-    # Aggregate all the required jobs and make it easier to customize CI required jobs
+  # Aggregate all the required jobs and make it easier to customize CI required jobs
   ci-required:
     runs-on: ubuntu-latest
     needs:
