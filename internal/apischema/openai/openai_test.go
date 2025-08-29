@@ -682,36 +682,37 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, *req.MaxTokens, *decoded.MaxTokens)
 }
 
-// TODO: test custom struct that will replace this.
 func TestChatCompletionResponse(t *testing.T) {
 	testCases := []struct {
 		name     string
-		response openaigo.ChatCompletion
+		response CustomChatCompletion
 		expected string
 	}{
 		{
 			name: "basic response with new fields",
-			response: openaigo.ChatCompletion{
-				ID:                "chatcmpl-test123",
-				Created:           time.Unix(1735689600, 0).Unix(),
-				Model:             "gpt-4.1-nano",
-				ServiceTier:       "default",
-				SystemFingerprint: "",
-				Object:            "chat.completion",
-				Choices: []openaigo.ChatCompletionChoice{
-					{
-						Index:        0,
-						FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
-						Message: openaigo.ChatCompletionMessage{
-							Role:    openAIconstant.Assistant(openaigo.MessageRoleAssistant),
-							Content: "Hello!",
+			response: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:                "chatcmpl-test123",
+					Created:           time.Unix(1735689600, 0).Unix(),
+					Model:             "gpt-4.1-nano",
+					ServiceTier:       "default",
+					SystemFingerprint: "",
+					Object:            "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{
+						{
+							Index:        0,
+							FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+							Message: openaigo.ChatCompletionMessage{
+								Role:    openAIconstant.Assistant(openaigo.MessageRoleAssistant),
+								Content: "Hello!",
+							},
 						},
 					},
-				},
-				Usage: openaigo.CompletionUsage{
-					CompletionTokens: 1,
-					PromptTokens:     5,
-					TotalTokens:      6,
+					Usage: openaigo.CompletionUsage{
+						CompletionTokens: 1,
+						PromptTokens:     5,
+						TotalTokens:      6,
+					},
 				},
 			},
 			expected: `{
@@ -746,36 +747,38 @@ func TestChatCompletionResponse(t *testing.T) {
 		},
 		{
 			name: "response with web search annotations",
-			response: openaigo.ChatCompletion{
-				ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
-				Created: time.Unix(1755135425, 0).Unix(),
-				Model:   "gpt-4o-mini-search-preview-2025-03-11",
-				Object:  "chat.completion",
-				Choices: []openaigo.ChatCompletionChoice{
-					{
-						Index:        0,
-						FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
-						Message: openaigo.ChatCompletionMessage{
-							Role:    "assistant",
-							Content: "Check out httpbin.org",
-							Annotations: []openaigo.ChatCompletionMessageAnnotation{
-								{
-									Type: "url_citation",
-									URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
-										EndIndex:   21,
-										StartIndex: 10,
-										Title:      "httpbin.org",
-										URL:        "https://httpbin.org/?utm_source=openai",
+			response: CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:      "chatcmpl-bf3e7207-9819-40a2-9225-87e8666fe23d",
+					Created: time.Unix(1755135425, 0).Unix(),
+					Model:   "gpt-4o-mini-search-preview-2025-03-11",
+					Object:  "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{
+						{
+							Index:        0,
+							FinishReason: string(openaigo.CompletionChoiceFinishReasonStop),
+							Message: openaigo.ChatCompletionMessage{
+								Role:    "assistant",
+								Content: "Check out httpbin.org",
+								Annotations: []openaigo.ChatCompletionMessageAnnotation{
+									{
+										Type: "url_citation",
+										URLCitation: openaigo.ChatCompletionMessageAnnotationURLCitation{
+											EndIndex:   21,
+											StartIndex: 10,
+											Title:      "httpbin.org",
+											URL:        "https://httpbin.org/?utm_source=openai",
+										},
 									},
 								},
 							},
 						},
 					},
-				},
-				Usage: openaigo.CompletionUsage{
-					CompletionTokens: 192,
-					PromptTokens:     14,
-					TotalTokens:      206,
+					Usage: openaigo.CompletionUsage{
+						CompletionTokens: 192,
+						PromptTokens:     14,
+						TotalTokens:      206,
+					},
 				},
 			},
 			expected: `{
@@ -1629,4 +1632,38 @@ func TestChatCompletionResponseChunkChoiceDelta_annotations_round_trip(t *testin
 	marshaled, err = json.Marshal(msg2)
 	require.NoError(t, err)
 	require.JSONEq(t, `{}`, string(marshaled))
+}
+
+func TestCustomChatCompletion_CustomFields_UnmarshalJSON(t *testing.T) {
+	// 1. Define an input JSON string that includes both standard SDK fields
+	// and our custom field(s).
+	inputJSON := `{
+		"id": "chatcmpl-123",
+		"object": "chat.completion",
+		"created": 1234567890,
+		"model": "gpt-5-nano",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": "Hello!"
+			},
+			"finish_reason": "stop"
+		}],
+		"obfuscation": "test-obfuscation-value"
+	}`
+
+	var result CustomChatCompletion
+	err := json.Unmarshal([]byte(inputJSON), &result)
+	require.NoError(t, err)
+
+	// 4. Assert that both standard and custom fields were populated correctly.
+	// Check a standard field from the embedded openaigo.ChatCompletion.
+	require.Equal(t, "chatcmpl-123", result.ID)
+	require.Equal(t, "gpt-5-nano", result.Model)
+	require.Len(t, result.Choices, 1)
+	require.Equal(t, "Hello!", result.Choices[0].Message.Content)
+
+	// Check our custom field from the embedded CustomFields.
+	require.Equal(t, "test-obfuscation-value", result.Obfuscation)
 }

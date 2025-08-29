@@ -78,6 +78,27 @@ type CustomChatCompletion struct {
 	CustomFields
 }
 
+// UnmarshalJSON implements a custom unmarshaler for the CustomChatCompletion struct.
+// This is necessary because the embedded openaigo.ChatCompletion has its own custom
+// JSON handling that would otherwise ignore our CustomFields. This method ensures
+// that both the standard SDK fields and our custom fields are populated from the
+// same JSON source.
+func (c *CustomChatCompletion) UnmarshalJSON(data []byte) error {
+	// 1. Unmarshal into the embedded ChatCompletion struct.
+	if err := json.Unmarshal(data, &c.ChatCompletion); err != nil {
+		return err
+	}
+
+	// 2. Unmarshal the same data into the CustomFields part.
+	// The json decoder will ignore fields that don't match CustomFields
+	// and only populate the ones that do.
+	if err := json.Unmarshal(data, &c.CustomFields); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ChatCompletionContentPartTextParam Learn about
 // [text inputs](https://platform.openai.com/docs/guides/text-generation).
 type ChatCompletionContentPartTextParam struct {

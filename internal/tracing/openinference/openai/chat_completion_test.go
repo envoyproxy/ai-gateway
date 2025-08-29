@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -96,6 +97,31 @@ func TestChatCompletionRecorder_RecordRequest(t *testing.T) {
 }
 
 func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
+	customRespWithObfuscation := openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:      "chatcmpl-123",
+			Object:  "chat.completion",
+			Created: 1234567890,
+			Model:   openai.ModelGPT5Nano,
+			Choices: []openaigo.ChatCompletionChoice{{
+				Index: 0,
+				Message: openaigo.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleAssistant,
+					Content: "Hello! How can I help you today?",
+				},
+				FinishReason: string(openai.ChatCompletionChoicesFinishReasonStop),
+			}},
+			Usage: openaigo.CompletionUsage{
+				PromptTokens:     20,
+				CompletionTokens: 10,
+				TotalTokens:      30,
+			},
+		},
+		CustomFields: openai.CustomFields{
+			Obfuscation: "test-obfuscation-123",
+		},
+	}
+	customRespBodyWithObfuscation := mustJSON(customRespWithObfuscation)
 	tests := []struct {
 		name           string
 		respBody       []byte
@@ -119,6 +145,26 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.String(openinference.OutputValue, string(basicRespBody)),
+			},
+			expectedEvents: nil,
+			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
+		},
+		{
+			name:     "successful response with custom fields",
+			respBody: customRespBodyWithObfuscation,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I help you today?"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 20),
+				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+				attribute.String(openinference.OutputValue, string(customRespBodyWithObfuscation)),
 			},
 			expectedEvents: nil,
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
