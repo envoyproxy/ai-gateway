@@ -213,7 +213,8 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				BackendRef:     gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{{Name: "x-foo", Value: "foo"}}, Remove: []string{"x-bar"}},
 			},
 		},
 		{
@@ -247,6 +248,12 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
+
+		require.Len(t, fc.Backends[0].HeaderMutation.Set, 1)
+		require.Len(t, fc.Backends[0].HeaderMutation.Remove, 1)
+		require.Equal(t, "x-foo", fc.Backends[0].HeaderMutation.Set[0].Name)
+		require.Equal(t, "foo", fc.Backends[0].HeaderMutation.Set[0].Value)
+		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
 	}
 }
 

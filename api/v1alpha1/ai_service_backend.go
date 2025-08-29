@@ -72,6 +72,59 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPolicyRef,omitempty"`
 
+	// HeaderMutation defines the mutation of HTTP headers that will be applied to the request
+	// before sending it to the backend.
+	// +optional
+	HeaderMutation *HTTPHeaderMutation `json:"headerMutation,omitempty"`
+
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
+}
+
+// HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
+type HTTPHeaderMutation struct {
+	// Set overwrites/adds the request with the given header (name, value)
+	// before the action.
+	//
+	// Input:
+	//   GET /foo HTTP/1.1
+	//   my-header: foo
+	//
+	// Config:
+	//   set:
+	//   - name: "my-header"
+	//     value: "bar"
+	//
+	// Output:
+	//   GET /foo HTTP/1.1
+	//   my-header: bar
+	//
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=16
+	Set []gwapiv1.HTTPHeader `json:"set,omitempty"`
+
+	// Remove the given header(s) from the HTTP request before the action. The
+	// value of Remove is a list of HTTP header names. Note that the header
+	// names are case-insensitive (see
+	// https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+	//
+	// Input:
+	//   GET /foo HTTP/1.1
+	//   my-header1: foo
+	//   my-header2: bar
+	//   my-header3: baz
+	//
+	// Config:
+	//   remove: ["my-header1", "my-header3"]
+	//
+	// Output:
+	//   GET /foo HTTP/1.1
+	//   my-header2: bar
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=16
+	Remove []string `json:"remove,omitempty"`
 }
