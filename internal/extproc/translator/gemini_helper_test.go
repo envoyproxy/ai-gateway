@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go"
+	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -1040,12 +1042,12 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    genai.LogprobsResult
-		expected openai.ChatCompletionChoicesLogprobs
+		expected openaigo.ChatCompletionChoiceLogprobs
 	}{
 		{
 			name:     "empty logprobs result",
 			input:    genai.LogprobsResult{},
-			expected: openai.ChatCompletionChoicesLogprobs{},
+			expected: openaigo.ChatCompletionChoiceLogprobs{},
 		},
 		{
 			name: "single chosen candidate without top candidates",
@@ -1057,8 +1059,8 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 					},
 				},
 			},
-			expected: openai.ChatCompletionChoicesLogprobs{
-				Content: []openai.ChatCompletionTokenLogprob{
+			expected: openaigo.ChatCompletionChoiceLogprobs{
+				Content: []openaigo.ChatCompletionTokenLogprob{
 					{
 						Token:       "hello",
 						Logprob:     -0.5,
@@ -1096,12 +1098,12 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 					},
 				},
 			},
-			expected: openai.ChatCompletionChoicesLogprobs{
-				Content: []openai.ChatCompletionTokenLogprob{
+			expected: openaigo.ChatCompletionChoiceLogprobs{
+				Content: []openaigo.ChatCompletionTokenLogprob{
 					{
 						Token:   "hello",
 						Logprob: -0.5,
-						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+						TopLogprobs: []openaigo.ChatCompletionTokenLogprobTopLogprob{
 							{Token: "hello", Logprob: -0.5},
 							{Token: "hi", Logprob: -1.2},
 							{Token: "hey", Logprob: -1.5},
@@ -1110,7 +1112,7 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 					{
 						Token:   "world",
 						Logprob: -0.3,
-						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+						TopLogprobs: []openaigo.ChatCompletionTokenLogprobTopLogprob{
 							{Token: "world", Logprob: -0.3},
 							{Token: "earth", Logprob: -1.1},
 						},
@@ -1131,8 +1133,8 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 					nil,
 				},
 			},
-			expected: openai.ChatCompletionChoicesLogprobs{
-				Content: []openai.ChatCompletionTokenLogprob{
+			expected: openaigo.ChatCompletionChoiceLogprobs{
+				Content: []openaigo.ChatCompletionTokenLogprob{
 					{
 						Token:       "test",
 						Logprob:     -0.8,
@@ -1156,8 +1158,8 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 					},
 				},
 			},
-			expected: openai.ChatCompletionChoicesLogprobs{
-				Content: []openai.ChatCompletionTokenLogprob{
+			expected: openaigo.ChatCompletionChoiceLogprobs{
+				Content: []openaigo.ChatCompletionTokenLogprob{
 					{
 						Token:       "empty",
 						Logprob:     -0.2,
@@ -1171,9 +1173,19 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := geminiLogprobsToOpenAILogprobs(tt.input)
-			// Use cmp.Equal with EquateApprox for float comparison due to float32->float64 conversion.
-			if !cmp.Equal(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)) {
-				t.Errorf("geminiLogprobsToOpenAILogprobs() diff:\n%s", cmp.Diff(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)))
+			require.Len(t, result.Content, len(tt.expected.Content))
+
+			for i, expectedContent := range tt.expected.Content {
+				actualContent := result.Content[i]
+				require.Equal(t, expectedContent.Token, actualContent.Token)
+				require.InEpsilon(t, expectedContent.Logprob, actualContent.Logprob, 0.0001)
+
+				require.Len(t, actualContent.TopLogprobs, len(expectedContent.TopLogprobs))
+				for j, expectedTopLogprob := range expectedContent.TopLogprobs {
+					actualTopLogprob := actualContent.TopLogprobs[j]
+					require.Equal(t, expectedTopLogprob.Token, actualTopLogprob.Token)
+					require.InEpsilon(t, expectedTopLogprob.Logprob, actualTopLogprob.Logprob, 0.0001)
+				}
 			}
 		})
 	}
@@ -1183,7 +1195,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []*genai.Part
-		expected []openai.ChatCompletionMessageToolCallParam
+		expected []openaigo.ChatCompletionMessageToolCall
 		wantErr  bool
 	}{
 		{
@@ -1218,11 +1230,11 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expected: []openai.ChatCompletionMessageToolCallParam{
+			expected: []openaigo.ChatCompletionMessageToolCall{
 				{
-					ID:   ptr.To("0"),
-					Type: openai.ChatCompletionMessageToolCallTypeFunction,
-					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					ID:   "0",
+					Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+					Function: openaigo.ChatCompletionMessageToolCallFunction{
 						Name:      "get_weather",
 						Arguments: `{"location":"San Francisco","unit":"celsius"}`,
 					},
@@ -1246,19 +1258,19 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expected: []openai.ChatCompletionMessageToolCallParam{
+			expected: []openaigo.ChatCompletionMessageToolCall{
 				{
-					ID:   ptr.To("0"),
-					Type: openai.ChatCompletionMessageToolCallTypeFunction,
-					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					ID:   "0",
+					Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+					Function: openaigo.ChatCompletionMessageToolCallFunction{
 						Name:      "function1",
 						Arguments: `{"param1":"value1"}`,
 					},
 				},
 				{
-					ID:   ptr.To("1"),
-					Type: openai.ChatCompletionMessageToolCallTypeFunction,
-					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					ID:   "1",
+					Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
+					Function: openaigo.ChatCompletionMessageToolCallFunction{
 						Name:      "function2",
 						Arguments: `{"param2":42}`,
 					},
@@ -1280,7 +1292,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 			// Normalize IDs since they're generated.
 			for i := range calls {
-				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
+				calls[i].ID = fmt.Sprintf("%d", i)
 			}
 
 			require.Equal(t, tt.expected, calls)
@@ -1292,17 +1304,17 @@ func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    genai.FinishReason
-		expected openai.ChatCompletionChoicesFinishReason
+		expected openaigo.CompletionChoiceFinishReason
 	}{
 		{
 			name:     "stop reason",
 			input:    genai.FinishReasonStop,
-			expected: openai.ChatCompletionChoicesFinishReasonStop,
+			expected: openaigo.CompletionChoiceFinishReasonStop,
 		},
 		{
 			name:     "max tokens reason",
 			input:    genai.FinishReasonMaxTokens,
-			expected: openai.ChatCompletionChoicesFinishReasonLength,
+			expected: openaigo.CompletionChoiceFinishReasonLength,
 		},
 		{
 			name:     "empty reason for streaming",
@@ -1312,22 +1324,22 @@ func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 		{
 			name:     "safety reason",
 			input:    genai.FinishReasonSafety,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected: openaigo.CompletionChoiceFinishReasonContentFilter,
 		},
 		{
 			name:     "recitation reason",
 			input:    genai.FinishReasonRecitation,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected: openaigo.CompletionChoiceFinishReasonContentFilter,
 		},
 		{
 			name:     "other reason",
 			input:    genai.FinishReasonOther,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected: openaigo.CompletionChoiceFinishReasonContentFilter,
 		},
 		{
 			name:     "unknown reason",
 			input:    genai.FinishReason("unknown_reason"),
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected: openaigo.CompletionChoiceFinishReasonContentFilter,
 		},
 	}
 

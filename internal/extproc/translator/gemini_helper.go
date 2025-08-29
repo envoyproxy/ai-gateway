@@ -549,13 +549,13 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openaigo.ChatComple
 		// Generate a random ID for the tool call.
 		toolCallID := uuid.New().String()
 
-		// TODO: for streaming, index is required... what should index be here?
 		toolCall := openaigo.ChatCompletionMessageToolCall{
 			ID: toolCallID,
 			Function: openaigo.ChatCompletionMessageToolCallFunction{
 				Name:      part.FunctionCall.Name,
 				Arguments: string(args),
 			},
+			Type: openAIconstant.Function(openaigo.AssistantToolChoiceTypeFunction),
 		}
 
 		toolCalls = append(toolCalls, toolCall)
@@ -663,7 +663,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
-			// convert toolCalls to [] ChatCompletionMessageToolCallParam
+			// convert toolCalls to [] ChatCompletionMessageToolCallParam.
 			// TODO: when refactored to use openaigo, use extractToolCallsFromGeminiParts directly.
 			var streamingToolCalls []openai.ChatCompletionMessageToolCallParam
 			for _, tc := range toolCalls {
