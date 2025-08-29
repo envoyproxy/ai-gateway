@@ -6,14 +6,15 @@
 package testopeninference
 
 import (
+	"cmp"
 	"encoding/json"
 	"reflect"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
@@ -44,7 +45,7 @@ func RequireSpanEqual(t testing.TB, expected, actual *tracev1.Span) {
 	normalizeSpanForComparison(expectedCopy)
 	normalizeSpanForComparison(actualCopy)
 
-	if diff := cmp.Diff(expectedCopy, actualCopy, protocmp.Transform()); diff != "" {
+	if diff := gocmp.Diff(expectedCopy, actualCopy, protocmp.Transform()); diff != "" {
 		t.Fatalf("spans are not equal (-expected +actual):\n%s", diff)
 	}
 }
@@ -243,7 +244,7 @@ func normalizeErrorMessage(s string) string {
 
 // sortAttributes sorts key-value pairs by key.
 func sortAttributes(attrs []*commonv1.KeyValue) {
-	sort.Slice(attrs, func(i, j int) bool {
-		return attrs[i].Key < attrs[j].Key
+	slices.SortFunc(attrs, func(a, b *commonv1.KeyValue) int {
+		return cmp.Compare(a.Key, b.Key)
 	})
 }

@@ -61,7 +61,7 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 
 // EvaluateProgram evaluates the given CEL program with the given variables.
 func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, outputTokens, totalTokens uint32) (uint64, error) {
-	out, _, err := prog.Eval(map[string]interface{}{
+	out, _, err := prog.Eval(map[string]any{
 		celModelNameKey:    modelName,
 		celBackendKey:      backend,
 		celInputTokensKey:  inputTokens,

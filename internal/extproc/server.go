@@ -190,7 +190,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 						Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 							ImmediateResponse: &extprocv3.ImmediateResponse{
 								Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-								Body:       []byte(fmt.Sprintf("unsupported path: %s", path)),
+								Body:       fmt.Appendf(nil, "unsupported path: %s", path),
 								GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
 							},
 						},

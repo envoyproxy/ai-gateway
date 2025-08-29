@@ -55,8 +55,8 @@ func createTestAwsSecret(t *testing.T, client client.Client, bspName string, acc
 		profile = awsProfileName
 	}
 	data := map[string][]byte{
-		AwsCredentialsKey: []byte(fmt.Sprintf("[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
-			profile, accessKey, secretKey, sessionToken, awsRegion)),
+		AwsCredentialsKey: fmt.Appendf(nil, "[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\naws_session_token = %s\nregion = %s\n",
+			profile, accessKey, secretKey, sessionToken, awsRegion),
 	}
 	err := client.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

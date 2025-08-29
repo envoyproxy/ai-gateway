@@ -58,7 +58,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
-	env := startTestEnvironment(t, string(configBytes), true)
+	env := startTestEnvironment(t, string(configBytes), true, false)
 
 	listenerPort := env.EnvoyListenerPort()
 	metricsPort := env.ExtProcMetricsPort()
@@ -153,6 +153,41 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "openai - /v1/chat/completions - tool call results",
+			backend:         "openai",
+			path:            "/v1/chat/completions",
+			expPath:         "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     toolCallResultsRequestBody,
+			expRequestBody:  toolCallResultsRequestBody,
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+		},
+		{
+			name:           "aws-bedrock - /v1/chat/completions - tool call results",
+			backend:        "aws-bedrock",
+			path:           "/v1/chat/completions",
+			expPath:        "/model/gpt-4-0613/converse",
+			method:         http.MethodPost,
+			requestBody:    toolCallResultsRequestBody,
+			expRequestBody: `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
+			responseBody:   `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expStatus:      http.StatusOK,
+		},
+		{
+			name:            "gcp-anthropic - /v1/chat/completions - tool call results",
+			backend:         "gcp-anthropicai",
+			path:            "/v1/chat/completions",
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/gpt-4-0613:rawPredict",
+			method:          http.MethodPost,
+			requestBody:     toolCallResultsRequestBody,
+			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"List the files in the /tmp directory","type":"text"}],"role":"user"},{"content":[{"id":"call_abc123","input":{"path":"/tmp"},"name":"list_files","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"call_abc123","is_error":false,"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]","type":"text"}],"type":"tool_result"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
+			expStatus:       http.StatusOK,
 		},
 		{
 			name:            "azure-openai - /v1/chat/completions",
@@ -870,3 +905,31 @@ func checkModels(want openai.ModelList) func(t require.TestingT, body []byte) {
 		require.Equal(t, want, models)
 	}
 }
+
+const (
+	toolCallResultsRequestBody = `{
+  "model": "gpt-4-0613",
+  "max_completion_tokens":1024,
+  "messages": [
+    {"role": "user","content": "List the files in the /tmp directory"},
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_abc123",
+          "type": "function",
+          "function": {
+            "name": "list_files",
+            "arguments": "{ \"path\": \"/tmp\" }"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_abc123",
+      "content": "[\"foo.txt\", \"bar.log\", \"data.csv\"]"
+    }
+  ]
+}`
+)

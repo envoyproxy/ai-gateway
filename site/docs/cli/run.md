@@ -21,12 +21,14 @@ Currently, `aigw run` supports Linux and macOS.
 By default, `aigw run` runs the AI Gateway with a default configuration that includes a proxy that listens on port `1975`.
 
 It also includes a few default backend services:
+* [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/): The API key is expected to be provided via the `TARS_API_KEY` environment variable.
 * [OpenAI](https://platform.openai.com/docs/api-reference): The API key is expected to be provided via the `OPENAI_API_KEY` environment variable.
 * [AWS Bedrock](https://aws.amazon.com/bedrock/)(us-east-1): The AWS credentials are expected to be provided via the conventional `~/.aws/credentials` file.
 * [Ollama](https://ollama.com/): The Ollama service is expected to be running on `localhost:11434` which is the default as per [the official documentation](https://github.com/Ollama/Ollama/blob/main/docs/faq.md#how-can-i-expose-Ollama-on-my-network).
 
 The routing configuration is as follows:
 * The special header `aigw-backend-selector` can be used to select the backend regardless of the "model" field in the request body.
+  * `aigw-backend-selector: tars` header will route to Tetrate Agent Router Service,
   * `aigw-backend-selector: openai` header will route to OpenAI,
   * `aigw-backend-selector: aws` will route to AWS Bedrock, and
   * `aigw-backend-selector: ollama` will route to Ollama.
@@ -94,6 +96,22 @@ Next, let's say change the `mistral:latest` model to `deepseek-r1:1.5b` and save
                name: x-ai-eg-model
 -              value: mistral:latest
 +              value: deepseek-r1:1.5b
+```
+
+You can also use environment variable substitution (`envsubst`) to allow small
+changes without needing to copy a file. For example, you could use this syntax
+instead, to default the model to the `CHAT_MODEL` variable.
+
+```diff
+--- default.yaml        2025-03-26 11:27:30
++++ custom.yaml 2025-03-26 11:28:55
+@@ -115,9 +115,9 @@
+     - matches:
+         - headers:
+             - type: Exact
+               name: x-ai-eg-model
+-              value: mistral:latest
++              value: ${CHAT_MODEL:=deepseek-r1:1.5b}
 ```
 
 ### Run with the Custom Configuration

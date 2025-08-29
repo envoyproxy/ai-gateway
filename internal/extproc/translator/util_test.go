@@ -189,7 +189,7 @@ func TestProcessStopToStringPointers(t *testing.T) {
 
 	testCases := []struct {
 		name        string
-		input       interface{}
+		input       any
 		expected    []*string
 		expectError bool
 	}{

@@ -3,8 +3,8 @@
     "version": "v0.2",
     "title": "Envoy AI Gateway v0.2.x",
     "subtitle": "Release version introducing Azure OpenAI integration, sidecar architecture, cross-backend failover, and a CLI tool.",
-    "badge": "Latest",
-    "badgeType": "milestone"
+    "badge": "Stable",
+    "badgeType": "stable"
   },
   "releases": [
     {
@@ -183,6 +183,7 @@
     }
   ],
   "navigation": {
-    "previous": { "version": "v0.1.x Series", "path": "/release-notes/v0.1" }
+    "previous": { "version": "v0.1.x Series", "path": "/release-notes/v0.1" },
+    "next": { "version": "v0.3.x Series", "path": "/release-notes/v0.3" }
   }
 }

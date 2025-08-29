@@ -8,9 +8,10 @@ package anthropic
 
 // MessagesRequest represents a request to the Anthropic Messages API.
 // Uses a dictionary approach to handle any JSON structure flexibly.
-type MessagesRequest map[string]interface{}
+type MessagesRequest map[string]any
 
 // Helper methods to extract common fields from the dictionary
+
 func (m MessagesRequest) GetModel() string {
 	if model, ok := m["model"].(string); ok {
 		return model

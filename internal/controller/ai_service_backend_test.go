@@ -98,7 +98,7 @@ func TestAIServiceBackendController_Reconcile_error_with_multiple_bsps(t *testin
 
 	const backendName, namespace = "mybackend", "default"
 	// Create Multiple Backend Security Policies that target the same backend.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		bsp := &aigv1a1.BackendSecurityPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bsp-%d", i), Namespace: namespace},
 			Spec: aigv1a1.BackendSecurityPolicySpec{

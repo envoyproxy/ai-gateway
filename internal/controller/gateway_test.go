@@ -297,10 +297,25 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
 			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
-				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+					CredentialsFile: &aigv1a1.GCPCredentialsFile{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "gcp-sa-key-file"},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-wif", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+					WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
+						OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{},
+					},
+				},
 			},
 		},
 	} {
@@ -324,7 +339,11 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			StringData: map[string]string{rotators.AzureAccessTokenKey: "thisisazurecredentials"},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp"), Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
+			StringData: map[string]string{rotators.GCPServiceAccountJSON: "{}"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp-wif"), Namespace: namespace},
 			StringData: map[string]string{rotators.GCPAccessTokenKey: "thisisgcpcredentials"},
 		},
 	} {
@@ -361,7 +380,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
-			bspName: "gcp",
+			bspName: "gcp-wif",
 			exp: &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
 			},

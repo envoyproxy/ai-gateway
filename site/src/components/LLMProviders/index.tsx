@@ -78,7 +78,7 @@ const LLMProvidersList: LLMProvider[] = [
   {
     name: 'Vertex AI',
     logoUrl: '/img/providers/vertex-ai.svg',
-    status: 'in-progress',
+    status: 'supported',
   },
 ];
 

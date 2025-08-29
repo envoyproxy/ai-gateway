@@ -35,7 +35,7 @@ func RequireAttributesEqual(t *testing.T, expected, actual []attribute.KeyValue)
 		valStr := expVal.AsString()
 		if len(valStr) > 0 && (valStr[0] == '{' || valStr[0] == '[') {
 			// Try to parse as JSON, but if it fails, fall back to string comparison.
-			var expectedJSON interface{}
+			var expectedJSON any
 			if err := json.Unmarshal([]byte(valStr), &expectedJSON); err == nil {
 				require.JSONEq(t, valStr, attr.Value.AsString(), "attribute %s does not match expected JSON", attr.Key)
 			} else {

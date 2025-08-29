@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -442,7 +443,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message"},
+					Response: map[string]any{"output": "This is a tool message"},
 				},
 			},
 		},
@@ -468,7 +469,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message. And this is another part"},
+					Response: map[string]any{"output": "This is a tool message. And this is another part"},
 				},
 			},
 		},
@@ -785,7 +786,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseFormat: &openai.ChatCompletionResponseFormat{
 					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: map[string]interface{}{
+						Schema: map[string]any{
 							"type": "string",
 						},
 					},
@@ -975,7 +976,7 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     interface{}
+		input     any
 		expected  *genai.ToolConfig
 		expectErr string
 	}{
@@ -1031,6 +1032,309 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 					t.Errorf("ToolConfig mismatch (-want +got):\n%s", diff)
 				}
 			}
+		})
+	}
+}
+
+func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    genai.LogprobsResult
+		expected openai.ChatCompletionChoicesLogprobs
+	}{
+		{
+			name:     "empty logprobs result",
+			input:    genai.LogprobsResult{},
+			expected: openai.ChatCompletionChoicesLogprobs{},
+		},
+		{
+			name: "single chosen candidate without top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "hello",
+						LogProbability: -0.5,
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "hello",
+						Logprob:     -0.5,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+		{
+			name: "multiple chosen candidates with top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "hello",
+						LogProbability: -0.5,
+					},
+					{
+						Token:          "world",
+						LogProbability: -0.3,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					{
+						Candidates: []*genai.LogprobsResultCandidate{
+							{Token: "hello", LogProbability: -0.5},
+							{Token: "hi", LogProbability: -1.2},
+							{Token: "hey", LogProbability: -1.5},
+						},
+					},
+					{
+						Candidates: []*genai.LogprobsResultCandidate{
+							{Token: "world", LogProbability: -0.3},
+							{Token: "earth", LogProbability: -1.1},
+						},
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:   "hello",
+						Logprob: -0.5,
+						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+							{Token: "hello", Logprob: -0.5},
+							{Token: "hi", Logprob: -1.2},
+							{Token: "hey", Logprob: -1.5},
+						},
+					},
+					{
+						Token:   "world",
+						Logprob: -0.3,
+						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+							{Token: "world", Logprob: -0.3},
+							{Token: "earth", Logprob: -1.1},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "chosen candidates with nil top candidates entry",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "test",
+						LogProbability: -0.8,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					nil,
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "test",
+						Logprob:     -0.8,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+		{
+			name: "chosen candidates with empty top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "empty",
+						LogProbability: -0.2,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					{
+						Candidates: []*genai.LogprobsResultCandidate{},
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "empty",
+						Logprob:     -0.2,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := geminiLogprobsToOpenAILogprobs(tt.input)
+			// Use cmp.Equal with EquateApprox for float comparison due to float32->float64 conversion.
+			if !cmp.Equal(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)) {
+				t.Errorf("geminiLogprobsToOpenAILogprobs() diff:\n%s", cmp.Diff(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)))
+			}
+		})
+	}
+}
+
+func TestExtractToolCallsFromGeminiParts(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []*genai.Part
+		expected []openai.ChatCompletionMessageToolCallParam
+		wantErr  bool
+	}{
+		{
+			name:     "nil parts",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "empty parts",
+			input:    []*genai.Part{},
+			expected: nil,
+		},
+		{
+			name: "parts without function calls",
+			input: []*genai.Part{
+				{Text: "some text"},
+				nil,
+				{Text: "more text"},
+			},
+			expected: nil,
+		},
+		{
+			name: "single function call",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{
+							"location": "San Francisco",
+							"unit":     "celsius",
+						},
+					},
+				},
+			},
+			expected: []openai.ChatCompletionMessageToolCallParam{
+				{
+					ID:   ptr.To("0"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "get_weather",
+						Arguments: `{"location":"San Francisco","unit":"celsius"}`,
+					},
+				},
+			},
+		},
+		{
+			name: "multiple function calls",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function1",
+						Args: map[string]any{"param1": "value1"},
+					},
+				},
+				{Text: "some text between"},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function2",
+						Args: map[string]any{"param2": float64(42)},
+					},
+				},
+			},
+			expected: []openai.ChatCompletionMessageToolCallParam{
+				{
+					ID:   ptr.To("0"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "function1",
+						Arguments: `{"param1":"value1"}`,
+					},
+				},
+				{
+					ID:   ptr.To("1"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "function2",
+						Arguments: `{"param2":42}`,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls, err := extractToolCallsFromGeminiParts(tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Normalize IDs since they're generated.
+			for i := range calls {
+				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
+			}
+
+			require.Equal(t, tt.expected, calls)
+		})
+	}
+}
+
+func TestGeminiFinishReasonToOpenAI(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    genai.FinishReason
+		expected openai.ChatCompletionChoicesFinishReason
+	}{
+		{
+			name:     "stop reason",
+			input:    genai.FinishReasonStop,
+			expected: openai.ChatCompletionChoicesFinishReasonStop,
+		},
+		{
+			name:     "max tokens reason",
+			input:    genai.FinishReasonMaxTokens,
+			expected: openai.ChatCompletionChoicesFinishReasonLength,
+		},
+		{
+			name:     "empty reason for streaming",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "safety reason",
+			input:    genai.FinishReasonSafety,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "recitation reason",
+			input:    genai.FinishReasonRecitation,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "other reason",
+			input:    genai.FinishReasonOther,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "unknown reason",
+			input:    genai.FinishReason("unknown_reason"),
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := geminiFinishReasonToOpenAI(tt.input)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

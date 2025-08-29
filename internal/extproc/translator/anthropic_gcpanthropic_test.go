@@ -78,7 +78,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
 
 			// Check that model field is removed from body (since it's in the path).
-			var modifiedReq map[string]interface{}
+			var modifiedReq map[string]any
 			err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
 			require.NoError(t, err)
 			_, hasModel := modifiedReq["model"]
@@ -125,8 +125,8 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 				Description: anthropic.String("Get current weather information"),
 				InputSchema: anthropic.ToolInputSchemaParam{
 					Type: "object",
-					Properties: map[string]interface{}{
-						"location": map[string]interface{}{
+					Properties: map[string]any{
+						"location": map[string]any{
 							"type":        "string",
 							"description": "City name",
 						},
@@ -145,7 +145,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.NotNil(t, headerMutation)
 	require.NotNil(t, bodyMutation)
 
-	var outputReq map[string]interface{}
+	var outputReq map[string]any
 	err = json.Unmarshal(bodyMutation.GetBody(), &outputReq)
 	require.NoError(t, err)
 
@@ -154,7 +154,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.Contains(t, outputReq, "anthropic_version", "should add anthropic_version for GCP")
 	require.Equal(t, "2023-06-01", outputReq["anthropic_version"])
 
-	messages, ok := outputReq["messages"].([]interface{})
+	messages, ok := outputReq["messages"].([]any)
 	require.True(t, ok, "messages should be an array")
 	require.Len(t, messages, 3, "should have 3 messages")
 
@@ -165,17 +165,17 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.Equal(t, 0.95, outputReq["top_p"])
 	require.Equal(t, "You are a helpful weather assistant.", outputReq["system"])
 
-	stopSeq, ok := outputReq["stop_sequences"].([]interface{})
+	stopSeq, ok := outputReq["stop_sequences"].([]any)
 	require.True(t, ok, "stop_sequences should be an array")
 	require.Len(t, stopSeq, 2)
 	require.Equal(t, "Human:", stopSeq[0])
 	require.Equal(t, "Assistant:", stopSeq[1])
 
-	tools, ok := outputReq["tools"].([]interface{})
+	tools, ok := outputReq["tools"].([]any)
 	require.True(t, ok, "tools should be an array")
 	require.Len(t, tools, 1)
 
-	toolChoice, ok := outputReq["tool_choice"].(map[string]interface{})
+	toolChoice, ok := outputReq["tool_choice"].(map[string]any)
 	require.True(t, ok, "tool_choice should be an object")
 
 	require.NotEmpty(t, toolChoice)
@@ -241,7 +241,7 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 			require.NoError(t, err)
 			require.NotNil(t, bodyMutation)
 
-			var outputReq map[string]interface{}
+			var outputReq map[string]any
 			err = json.Unmarshal(bodyMutation.GetBody(), &outputReq)
 			require.NoError(t, err)
 
@@ -254,7 +254,7 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing.T) {
 	tests := []struct {
 		name              string
-		stream            interface{}
+		stream            any
 		expectedSpecifier string
 	}{
 		{
@@ -283,9 +283,9 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
 
-			reqBody := map[string]interface{}{
+			reqBody := map[string]any{
 				"model":    "claude-3-sonnet-20240229",
-				"messages": []map[string]interface{}{{"role": "user", "content": "Test"}},
+				"messages": []map[string]any{{"role": "user", "content": "Test"}},
 			}
 
 			if tt.stream != nil {
@@ -362,21 +362,21 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 				Description: anthropic.String("Get weather info"),
 				InputSchema: anthropic.ToolInputSchemaParam{
 					Type: "object",
-					Properties: map[string]interface{}{
-						"location": map[string]interface{}{"type": "string"},
+					Properties: map[string]any{
+						"location": map[string]any{"type": "string"},
 					},
 				},
 			},
 		},
-		"tool_choice": map[string]interface{}{"type": "auto"},
-		"metadata":    map[string]interface{}{"user_id": "test123"},
+		"tool_choice": map[string]any{"type": "auto"},
+		"metadata":    map[string]any{"user_id": "test123"},
 	}
 
 	_, bodyMutation, err := translator.RequestBody(nil, parsedReq, false)
 	require.NoError(t, err)
 	require.NotNil(t, bodyMutation)
 
-	var modifiedReq map[string]interface{}
+	var modifiedReq map[string]any
 	err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
 	require.NoError(t, err)
 
@@ -390,7 +390,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, float64(40), modifiedReq["top_k"])
 
 	// Arrays become []interface{} by JSON unmarshalling.
-	stopSeq, ok := modifiedReq["stop_sequences"].([]interface{})
+	stopSeq, ok := modifiedReq["stop_sequences"].([]any)
 	require.True(t, ok)
 	require.Len(t, stopSeq, 2)
 	require.Equal(t, "Human:", stopSeq[0])

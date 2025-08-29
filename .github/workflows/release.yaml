@@ -7,7 +7,7 @@ on:
 jobs:
   docker_push:
     name: Push Docker Images
-    uses: ./.github/workflows/docker_builds_template.yaml
+    uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
   release:

@@ -61,3 +61,12 @@ xunzhuo:
   socials:
     github: Xunzhuo
     linkedin: https://www.linkedin.com/in/bitliu/
+codefromthecrypt:
+  name: Adrian Cole
+  title: Principal Engineer - Tetrate
+  url: https://github.com/codefromthecrypt
+  image_url: https://github.com/codefromthecrypt.png
+  page: true
+  socials:
+    github: codefromthecrypt
+    linkedin: https://www.linkedin.com/in/adrianfcole/

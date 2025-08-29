@@ -149,3 +149,5 @@ helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
+
+> If you are experiencing network issues with `docker.io` , you can follow the [Install from Source Code](https://github.com/envoyproxy/gateway/tree/main/charts/gateway-helm#install-from-source-code) instructions.

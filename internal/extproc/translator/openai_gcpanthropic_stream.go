@@ -163,14 +163,14 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 	var eventType []byte
 	var eventData []byte
 
-	lines := bytes.Split(eventBlock, []byte("\n"))
-	for _, line := range lines {
-		if bytes.HasPrefix(line, sseEventPrefix) {
-			eventType = bytes.TrimSpace(bytes.TrimPrefix(line, sseEventPrefix))
-		} else if bytes.HasPrefix(line, sseDataPrefix) {
+	lines := bytes.SplitSeq(eventBlock, []byte("\n"))
+	for line := range lines {
+		if after, ok := bytes.CutPrefix(line, sseEventPrefix); ok {
+			eventType = bytes.TrimSpace(after)
+		} else if after, ok := bytes.CutPrefix(line, sseDataPrefix); ok {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
-			data := bytes.TrimSpace(bytes.TrimPrefix(line, sseDataPrefix))
+			data := bytes.TrimSpace(after)
 			eventData = append(eventData, data...)
 		}
 	}

@@ -47,7 +47,7 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: []byte(fmt.Sprintf(pathTemplate, modelName, o.apiVersion)),
+				RawValue: fmt.Appendf(nil, pathTemplate, modelName, o.apiVersion),
 			}},
 		},
 	}

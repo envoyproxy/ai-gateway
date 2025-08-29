@@ -132,7 +132,7 @@ func TestRecordNewInteraction(t *testing.T) {
 	require.NoError(t, err)
 
 	// Parse and verify the JSON response.
-	var respData map[string]interface{}
+	var respData map[string]any
 	err = json.Unmarshal(respBody, &respData)
 	require.NoError(t, err)
 	require.Equal(t, "chatcmpl-123", respData["id"])
@@ -195,11 +195,11 @@ func TestRecordNewInteraction_ServerError(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var errResp map[string]interface{}
+	var errResp map[string]any
 	err = json.Unmarshal(respBody, &errResp)
 	require.NoError(t, err)
-	require.Equal(t, map[string]interface{}{
-		"error": map[string]interface{}{
+	require.Equal(t, map[string]any{
+		"error": map[string]any{
 			"message": "Internal server error",
 			"type":    "server_error",
 		},

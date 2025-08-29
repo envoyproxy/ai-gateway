@@ -335,7 +335,6 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
-		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -344,8 +343,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			GCPAuth: &filterapi.GCPAuth{
 				AccessToken: gcpAccessToken,
-				Region:      gcpCreds.Region,
-				ProjectName: gcpCreds.ProjectName,
+				Region:      backendSecurityPolicy.Spec.GCPCredentials.Region,
+				ProjectName: backendSecurityPolicy.Spec.GCPCredentials.ProjectName,
 			},
 		}, nil
 	default:
@@ -442,9 +441,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
 		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
-			[]byte(fmt.Sprintf(
+			fmt.Appendf(nil,
 				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
-			), metav1.PatchOptions{})
+			metav1.PatchOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
 		}
@@ -454,9 +453,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		for _, dep := range deployments {
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
 			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
-				[]byte(fmt.Sprintf(
+				fmt.Appendf(nil,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-				), metav1.PatchOptions{})
+				metav1.PatchOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
@@ -465,9 +464,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		for _, daemonSet := range daemonSets {
 			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
 			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
-				[]byte(fmt.Sprintf(
+				fmt.Appendf(nil,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-				), metav1.PatchOptions{})
+				metav1.PatchOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 			}

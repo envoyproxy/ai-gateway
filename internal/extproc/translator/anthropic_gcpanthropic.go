@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -39,10 +40,8 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 	modelName := body.GetModel()
 
 	// Work directly with the map since MessagesRequest is already map[string]interface{}.
-	anthropicReq := make(map[string]interface{})
-	for k, v := range *body {
-		anthropicReq[k] = v
-	}
+	anthropicReq := make(map[string]any)
+	maps.Copy(anthropicReq, *body)
 
 	// Apply model name override if configured.
 	if a.modelNameOverride != "" {
@@ -99,10 +98,10 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 	// For streaming chunks, try to extract token usage from message_delta events.
 	if !endOfStream {
 		// Try to parse as a message_delta event to extract usage.
-		var eventData map[string]interface{}
+		var eventData map[string]any
 		if unmarshalErr := json.Unmarshal(bodyBytes, &eventData); unmarshalErr == nil {
 			if eventType, ok := eventData["type"].(string); ok && eventType == "message_delta" {
-				if usageData, ok := eventData["usage"].(map[string]interface{}); ok {
+				if usageData, ok := eventData["usage"].(map[string]any); ok {
 					// Extract token usage from the message_delta event.
 					if outputTokens, ok := usageData["output_tokens"].(float64); ok {
 						tokenUsage = LLMTokenUsage{

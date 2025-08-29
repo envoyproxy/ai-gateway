@@ -54,13 +54,13 @@ spec:
 
 Different providers require different schema configurations:
 
-| Provider | Schema Configuration |
-|----------|---------------------|
-| OpenAI | `{"name":"OpenAI","version":"v1"}` |
-| AWS Bedrock | `{"name":"AWSBedrock"}` |
-| Azure OpenAI | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}` |
-| GCP Vertex AI | `{"name":"GCPVertexAI"}` |
-| GCP Anthropic | `{"name":"GCPAnthropic"}` |
+| Provider                   | Schema Configuration                                      |
+|----------------------------|-----------------------------------------------------------|
+| OpenAI                     | `{"name":"OpenAI","version":"v1"}`                        |
+| AWS Bedrock                | `{"name":"AWSBedrock"}`                                   |
+| Azure OpenAI               | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}`   |
+| GCP Vertex AI              | `{"name":"GCPVertexAI"}`                                  |
+| GCP Anthropic on Vertex AI | `{"name":"GCPAnthropic", "version": "vertex-2023-10-16"}` |
 
 :::tip
 Many providers offer OpenAI-compatible APIs, which allows them to use the OpenAI schema configuration with provider-specific version paths.
@@ -145,6 +145,30 @@ The secret must contain the Azure client secret with the key name `"client-secre
 
 ##### GCP Credentials
 Used for connecting to GCP Vertex AI and Anthropic on GCP
+
+1. Service Account Key Files:
+A service account key file is a JSON file containing a private key that authenticates as a service account.
+You create a service account in GCP, generate a key file, download it, and then store it in the k8s secret referenced by BackendSecurityPolicy.
+Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-auth-service-account-key
+  namespace: default
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
+    region: GCP_REGION  # Replace with your GCP region
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-gcp-service-account-key-file
+```
+
+2. Workload Identity Federation:
+Workload Identity Federation is a modern, keyless authentication method that allows workloads running outside of GCP to impersonate a service account using their own native identity.
+It leverages a trust relationship between GCP and an external identity provider such as OIDC.
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1

@@ -373,7 +373,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			requestBody := &anthropicschema.MessagesRequest{
 				"model":      "claude-3-sonnet",
 				"max_tokens": 1000,
-				"messages":   []interface{}{map[string]interface{}{"role": "user", "content": "Hello"}},
+				"messages":   []any{map[string]any{"role": "user", "content": "Hello"}},
 			}
 			requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "max_tokens": 1000, "messages": [{"role": "user", "content": "Hello"}]}`)
 
@@ -519,4 +519,28 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		logger: slog.Default(),
 	})
 	require.ErrorContains(t, err, "only supports backends that return native Anthropic format")
+}
+
+func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
+	const modelKey = "x-model-name"
+	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "claude"}
+	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	p := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        chatMetrics,
+	}
+	rp := &messagesProcessorRouterFilter{
+		originalRequestBody: &anthropicschema.MessagesRequest{"model": "claude", "stream": true},
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "gcp",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"},
+		ModelNameOverride: "claude-vertex",
+	}, nil, rp)
+	require.NoError(t, err)
+	require.Equal(t, "claude-vertex", p.requestHeaders[modelKey])
+	require.True(t, p.stream)
+	require.NotNil(t, p.translator)
 }

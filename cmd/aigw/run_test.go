@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -43,11 +45,12 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 
 func TestRun(t *testing.T) {
 	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, os.Stdout, os.Stderr))
+		opts := runOpts{extProcLauncher: mainlib.Main}
+		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, opts, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() {
@@ -157,42 +160,61 @@ func TestRun(t *testing.T) {
 	})
 }
 
+func TestRunExtprocStartFailure(t *testing.T) {
+	var (
+		resourcePath, _ = setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
+		errChan         = make(chan error)
+		errExtProcMock  = errors.New("mock extproc error")
+	)
+
+	go func() {
+		errChan <- run(t.Context(), cmdRun{Debug: true, Path: resourcePath}, runOpts{
+			extProcLauncher: func(context.Context, []string, io.Writer) error {
+				return errExtProcMock
+			},
+		}, os.Stdout, os.Stderr)
+	}()
+
+	select {
+	case <-time.After(10 * time.Second):
+		t.Fatalf("expected extproc start process to fail and return")
+	case err := <-errChan:
+		require.ErrorIs(t, err, errExtProcRun)
+		require.ErrorIs(t, err, errExtProcMock)
+	}
+}
+
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
 	runCtx := &runCmdContext{
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
+		extProcLauncher:          mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
 		udsPath: filepath.Join("/tmp", "run.sock"),
 	}
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
-	ctx, cancel := context.WithCancel(context.Background())
-	_, err = runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
+	ctx, cancel := context.WithCancel(t.Context())
+	_, done, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
 	// Wait for the external processor to stop.
-	time.Sleep(1 * time.Second)
+	require.NoError(t, <-done)
 }
 
 func Test_mustStartExtProc(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	mockerr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
-		tmpdir: t.TempDir(),
-		// UNIX doesn't like a long UDS path, so we use a short one.
-		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-		udsPath:      filepath.Join("/tmp", "run.sock"),
-		stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
+		tmpdir:          t.TempDir(),
+		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockerr },
+		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 	}
-	runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
-	time.Sleep(1 * time.Second)
-	cancel()
-	// Wait for the external processor to stop.
-	time.Sleep(1 * time.Second)
+	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
+	require.ErrorIs(t, <-done, mockerr)
 }
 
 // checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.
