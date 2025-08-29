@@ -1,355 +1,80 @@
 ---
 version: 2
 interactions:
-    - id: 0
-      request:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 119
-        host: api.openai.com
-        body: |-
-            {
-              "dimensions": 256,
-              "input": "Generate embeddings with specific dimensions",
-              "model": "text-embedding-3-small"
-            }
-        headers:
-            Accept-Encoding:
-                - gzip
-            Content-Length:
-                - "119"
-            Content-Type:
-                - application/json
-            User-Agent:
-                - Go-http-client/1.1
-        url: https://api.openai.com/v1/embeddings
-        method: POST
-      response:
-        proto: HTTP/2.0
-        proto_major: 2
-        proto_minor: 0
-        content_length: 5648
-        body: |-
-            {
-              "data": [
-                {
-                  "embedding": [
-                    0.02042738,
-                    -0.07188792,
-                    0.1478896,
-                    -0.05856963,
-                    -0.064534575,
-                    -0.06777416,
-                    0.030184697,
-                    0.01822909,
-                    -0.06643719,
-                    -0.0087545905,
-                    -0.06772274,
-                    -0.12053311,
-                    0.0015980985,
-                    -0.04926225,
-                    -0.047256794,
-                    -0.06042082,
-                    -0.00932666,
-                    -0.026482316,
-                    0.05188477,
-                    0.032421555,
-                    -0.039260678,
-                    -0.059752334,
-                    0.031084582,
-                    0.03154738,
-                    -0.033758525,
-                    0.0943079,
-                    0.06828838,
-                    0.041446112,
-                    0.17781718,
-                    0.009506637,
-                    -0.016017945,
-                    -0.035558295,
-                    -0.022342848,
-                    -0.13544548,
-                    -0.014025344,
-                    -0.04671686,
-                    -0.007430475,
-                    0.11076293,
-                    -0.082378,
-                    0.11189421,
-                    0.12937768,
-                    -0.014269598,
-                    -0.07589883,
-                    0.03938923,
-                    -0.023885507,
-                    0.11950467,
-                    -0.06705426,
-                    -0.0205945,
-                    -0.015593713,
-                    0.1572484,
-                    -0.055124354,
-                    -0.0072633536,
-                    -0.07548746,
-                    0.03537832,
-                    -0.08520621,
-                    0.0042712376,
-                    -0.06952251,
-                    -0.088754326,
-                    -0.0016149713,
-                    0.01720065,
-                    0.05036782,
-                    -0.10186693,
-                    0.033038616,
-                    0.06417462,
-                    0.028230663,
-                    0.0028780235,
-                    -0.15262042,
-                    0.050676353,
-                    0.009918013,
-                    0.05502151,
-                    0.030776052,
-                    0.007970406,
-                    0.0012285031,
-                    -0.021558663,
-                    0.1308175,
-                    0.018601898,
-                    0.021674361,
-                    0.0482081,
-                    -0.061809212,
-                    0.0020183125,
-                    0.008915285,
-                    0.05497009,
-                    -0.078367084,
-                    -0.025093922,
-                    -0.05165337,
-                    -0.023101322,
-                    0.06844264,
-                    -0.055638574,
-                    -0.06520306,
-                    -0.08006401,
-                    -0.037049532,
-                    -0.09513065,
-                    -0.105620734,
-                    -0.0973418,
-                    -0.037563752,
-                    0.12032742,
-                    0.07024241,
-                    -0.053787384,
-                    -0.038129393,
-                    0.055689998,
-                    0.008201805,
-                    0.084023505,
-                    -0.023834085,
-                    -0.008304649,
-                    -0.010586498,
-                    -0.0547644,
-                    -0.058826737,
-                    0.019758893,
-                    -0.05527862,
-                    0.074664705,
-                    -0.12588099,
-                    -0.0896285,
-                    0.016095078,
-                    0.066231504,
-                    0.032755796,
-                    -0.028539196,
-                    -0.06417462,
-                    0.06777416,
-                    0.0024505784,
-                    -0.0056435615,
-                    -0.06489453,
-                    -0.055844262,
-                    0.08824011,
-                    0.039466366,
-                    -0.028282085,
-                    0.008208233,
-                    -0.03630391,
-                    -0.12906915,
-                    -0.07718438,
-                    -0.012154869,
-                    -0.0012598383,
-                    -0.009712325,
-                    0.11220275,
-                    0.03959492,
-                    -0.14521565,
-                    -0.11611082,
-                    -0.048696607,
-                    0.075230345,
-                    0.026919402,
-                    -0.013986777,
-                    -0.0061224285,
-                    0.07502466,
-                    0.070036724,
-                    -0.043657254,
-                    -0.034992654,
-                    0.12187008,
-                    -0.08782873,
-                    0.037718017,
-                    -0.034915518,
-                    0.05471298,
-                    -0.05805541,
-                    -0.11549375,
-                    -0.04846521,
-                    -0.024926802,
-                    -0.05445587,
-                    -0.105723575,
-                    -0.0008267689,
-                    0.04635691,
-                    0.10407808,
-                    -0.11148284,
-                    -0.03332144,
-                    0.047231082,
-                    0.01174992,
-                    -0.013523979,
-                    0.00583318,
-                    -0.0049686483,
-                    -0.015439447,
-                    -0.029130548,
-                    -0.08068108,
-                    -0.16485885,
-                    0.026263773,
-                    -0.08618323,
-                    -0.061654948,
-                    -0.019437507,
-                    0.0057464056,
-                    0.020388812,
-                    -0.07111659,
-                    -0.1032039,
-                    -0.015143771,
-                    -0.105415046,
-                    -0.06741421,
-                    0.105055094,
-                    -0.06818554,
-                    0.028256373,
-                    -0.07780144,
-                    0.100684226,
-                    -0.016982106,
-                    0.00022055206,
-                    0.040263403,
-                    0.06659146,
-                    -0.11055724,
-                    0.028693462,
-                    0.040520515,
-                    0.031161716,
-                    -0.015028072,
-                    -0.04378581,
-                    0.09261097,
-                    -0.030801762,
-                    0.059546646,
-                    -0.04090618,
-                    -0.04250026,
-                    0.05260468,
-                    -0.056975547,
-                    0.020003147,
-                    0.05682128,
-                    -0.042860214,
-                    -0.060009442,
-                    -0.07471613,
-                    -0.032395843,
-                    -0.033038616,
-                    0.015735123,
-                    -0.022471402,
-                    0.071630806,
-                    0.00009375471,
-                    -0.04463427,
-                    0.10726624,
-                    -0.04638262,
-                    -0.028539196,
-                    -0.040443383,
-                    -0.03748662,
-                    -0.028487774,
-                    0.08839437,
-                    0.064586,
-                    -0.028359218,
-                    -0.07831567,
-                    -0.060112286,
-                    0.004390151,
-                    -0.10114702,
-                    0.01865332,
-                    0.09096547,
-                    -0.0064823823,
-                    -0.011595655,
-                    -0.018331934,
-                    -0.02410405,
-                    -0.005007215,
-                    0.043888655,
-                    0.045739844,
-                    0.002032775,
-                    -0.002257746,
-                    -0.036278203,
-                    -0.051447686,
-                    -0.08134956,
-                    0.045277048,
-                    0.051627662,
-                    -0.016596442,
-                    0.05080491,
-                    0.0052161166,
-                    -0.100684226,
-                    -0.019000418,
-                    -0.032138735,
-                    -0.029799033,
-                    -0.02558243,
-                    0.004518706,
-                    -0.0010951273,
-                    0.02866775,
-                    0.05036782
-                  ],
-                  "index": 0,
-                  "object": "embedding"
-                }
-              ],
-              "model": "text-embedding-3-small",
-              "object": "list",
-              "usage": {
-                "prompt_tokens": 5,
-                "total_tokens": 5
-              }
-            }
-        headers:
-            Access-Control-Allow-Origin:
-                - '*'
-            Access-Control-Expose-Headers:
-                - X-Request-ID
-            Alt-Svc:
-                - h3=":443"; ma=86400
-            Cf-Cache-Status:
-                - DYNAMIC
-            Cf-Ray:
-                - 96fc535fb8293c6e-KUL
-            Content-Type:
-                - application/json
-            Date:
-                - Fri, 15 Aug 2025 23:03:31 GMT
-            Openai-Model:
-                - text-embedding-3-small
-            Openai-Processing-Ms:
-                - "74"
-            Openai-Project:
-                - proj_KYenqYOfeZsnXEVK8dXVBhez
-            Openai-Version:
-                - "2020-10-01"
-            Server:
-                - cloudflare
-            Strict-Transport-Security:
-                - max-age=31536000; includeSubDomains; preload
-            Via:
-                - envoy-router-6c7b5f74f-v5n99
-            X-Content-Type-Options:
-                - nosniff
-            X-Envoy-Upstream-Service-Time:
-                - "347"
-            X-Ratelimit-Limit-Requests:
-                - "3000"
-            X-Ratelimit-Limit-Tokens:
-                - "1000000"
-            X-Ratelimit-Remaining-Requests:
-                - "2999"
-            X-Ratelimit-Remaining-Tokens:
-                - "999989"
-            X-Ratelimit-Reset-Requests:
-                - 20ms
-            X-Ratelimit-Reset-Tokens:
-                - 0s
-            X-Request-Id:
-                - req_1e3d536610354c92885c682ed66b90af
-        status: 200 OK
-        code: 200
-        duration: 1.245925833s
+- id: 0
+  request:
+    proto: HTTP/1.1
+    proto_major: 1
+    proto_minor: 1
+    content_length: 150
+    host: api.openai.com
+    body: "{\n  \"dimensions\": 256,\n  \"encoding_format\": \"base64\",\n  \"input\": \"Generate embeddings with specific dimensions\",\n  \"model\": \"text-embedding-3-small\"\n}"
+    headers:
+      Accept-Encoding:
+      - gzip
+      Content-Length:
+      - "150"
+      Content-Type:
+      - application/json
+      User-Agent:
+      - Go-http-client/1.1
+    url: https://api.openai.com/v1/embeddings
+    method: POST
+  response:
+    proto: HTTP/2.0
+    proto_major: 2
+    proto_minor: 0
+    content_length: 1589
+    body: "{\n  \"data\": [\n    {\n      \"embedding\": \"UlenPPk5k71fcBc+teZvvbQqhL0uzYq95kX3PCxVlTw5EIi9am8PvDiyir0Q2va9SnfROjfHSb1XkEG90nt3vdnOGLxx8di8IIVUPXfMBD3OzyC93b50vRil/jzTNwE9YUYKvYAkwT3H2os9ZsMpPbUVNj66wRs8ETiDvJOlEb1ZCLe8OLIKvo7KZbwuWj+9WHvzu63X4j3Mtai9yyjlPZV7BD4Iy2m82XCbvZpWIT2Kq8O83b70Pb5Tib3Mtai8xnx/vLkFIT4TymG9bQHuuyuZmr3b6BA9mICuvb31izvRYY691MS1vXKt07ph6Iw8fU5OPZyf0L2AUwc9/G2DPf5D5zw5nTw7h0gcvgKSTz0pfyI8PF5hPQ8e/DxOlgI8uQWhOsubsLwG9QU+AmOYPG6OsTzbdUU9qCt9vapFBDtqERI8UShhPex+oL3Fkc28fJJTvfw+vbyoK4w9RuVjvS+Jhb2a+KO9QMEXvdzTwr2vT9i9I1vHvXPcGb05bvY9QduPPSlQXL2RLRy9MhtkPd1gBjyEFKw9sz/DvDkQCLz+ci28o1BgvU70cL1n3aE81mtivc/pmD3y5gC+Jo+3vdPZgzxipIc98SoGPQjL6bz8bYO9Ls2KPeKZIDug7bi7bOeEvfS8ZL07t7Q9fKchPdWv57zTewY8abMUvbQqBL7YEp69NyVHvCkhpbpyIB+8jsrlPUguIj1psxS+gsvtvRh2R71eEpo9FIbcPMsoZbynnsi7h6aZPWpvjz3z0TK9dVQPvQWX+T2N37O9NX4aPZMDD724GmA9gsttvf2H7L11g0a9SzPMvB4NX72ahdi9hrtYur7gPT3jJtU9HVHkvRB8CL1hdUE9vYJAPK6TXbxDJL87C9Ciu7z1fLwwo+68HzylvcLQKL4gJ9c81YCwveaJfL1oO5+8WEy8O3AGpzyTpZG9kVzTvZQdeLzY49e9dhCKvSAn1z3cpIu96XnnPF1Wn72IM849Dx6LvP5DZzk96yQ9GmGIPdZr4r2NDus81/glPdtG/zxNOHa8wFgzvdKqvT36U/y8L+dzPT2NJ73BFC69AXhXPTFfab2k3aM8br1oPTGOL712zHW9xQSZvYGxBL2AUwe98uaAPPIVuLwss5I9LZ7EOG3SNr1nrts9tPs9vQjL6bz2pyW9kosZvTFf6bwcCLU9qkWEPZdR6Lz3Y6C9TTh2vUHbjzsrJs+92c6YPBtMuj0qatS7tPs9vNoslrzbdcW8kBOku5fEMz20WTs9TjgFO7H2E7t0mBS9z7pSvZmapr1tdDk9h3dTPUP1h7zPGFA99euqO4gzzr3Eppu86KMDvRod9Lw/ktG8pxGUO2CKj7qh2Oo8fU5OPQ==\",\n      \"index\": 0,\n      \"object\": \"embedding\"\n    }\n  ],\n  \"model\": \"text-embedding-3-small\",\n  \"object\": \"list\",\n  \"usage\": {\n    \"prompt_tokens\": 5,\n    \"total_tokens\": 5\n  }\n}"
+    headers:
+      Access-Control-Allow-Origin:
+      - "*"
+      Access-Control-Expose-Headers:
+      - X-Request-ID
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 97698da9aed1d89d-KUL
+      Content-Length:
+      - "1589"
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 29 Aug 2025 05:12:26 GMT
+      Openai-Model:
+      - text-embedding-3-small
+      Openai-Processing-Ms:
+      - "65"
+      Openai-Project:
+      - proj_KYenqYOfeZsnXEVK8dXVBhez
+      Openai-Version:
+      - "2020-10-01"
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      Via:
+      - envoy-router-7bd86b7654-vfglf
+      X-Content-Type-Options:
+      - nosniff
+      X-Envoy-Upstream-Service-Time:
+      - "69"
+      X-Ratelimit-Limit-Requests:
+      - "3000"
+      X-Ratelimit-Limit-Tokens:
+      - "1000000"
+      X-Ratelimit-Remaining-Requests:
+      - "2999"
+      X-Ratelimit-Remaining-Tokens:
+      - "999989"
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Ratelimit-Reset-Tokens:
+      - 0s
+      X-Request-Id:
+      - req_4fa303916a1b4744b98d0d787a049d2a
+    status: 200 OK
+    code: 200
+    duration: 360.329042ms
