@@ -63,10 +63,9 @@ func TestOtelOpenAIEmbeddings_metrics(t *testing.T) {
 			_, err = io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			// TODO: we have no span yet for embeddings, so compare against OpenInference python
-			// See https://github.com/envoyproxy/ai-gateway/issues/1085
-			span, err := testopeninference.GetSpan(t.Context(), io.Discard, tc.cassette)
-			require.NoError(t, err)
+			// Get the span to extract actual token counts and duration.
+			span := env.collector.TakeSpan()
+			require.NotNil(t, span)
 
 			// Collect all metrics within the timeout period.
 			// Embeddings should have 2 metrics: token usage + request duration

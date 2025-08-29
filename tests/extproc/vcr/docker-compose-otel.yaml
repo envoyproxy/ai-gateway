@@ -80,6 +80,7 @@ services:
     build:
       context: ../../internal/testopeninference
       dockerfile: Dockerfile.openai_client
+      target: chat-completion
     container_name: openai-client
     profiles: ["test"]
     env_file:
@@ -91,6 +92,3 @@ services:
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_BSP_SCHEDULE_DELAY=100
       - OTEL_METRIC_EXPORT_INTERVAL=100
-    depends_on:
-      envoy:
-        condition: service_started

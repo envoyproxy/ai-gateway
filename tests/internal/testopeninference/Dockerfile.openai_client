@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # Use glibc-based image with pre-compiled wheels for psutil
-FROM python:3.13-slim
+FROM python:3.13-slim AS base
 
 RUN python -m pip install --upgrade pip
 
@@ -16,5 +16,13 @@ RUN pip install openai \
     openinference-instrumentation-openai
 
 ENTRYPOINT ["sh", "-c"]
+
+# For chat completion, use the OpenAI CLI
+FROM base AS chat-completion
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
 CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none openai api chat.completions.create -t 0 -m ${CHAT_MODEL} --message user 'Answer in up to 3 words: Which ocean contains Bouvet Island?'"]
+
+# For create embeddings, use the OpenAI SDK because the CLI does not support it
+FROM base AS create-embeddings
+# OpenInference only uses spans, not metrics or logs - disable them via CLI args
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().embeddings.create(input=\"What is RAG?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]

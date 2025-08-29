@@ -50,9 +50,6 @@ services:
     profiles: ["test"]
     env_file:
       - ../../.env.ollama
-    depends_on:
-      aigw:
-        condition: service_started
     command:
       - sh
       - -c
@@ -62,5 +59,24 @@ services:
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
           -d "{\"model\":\"$$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]}"
+    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+
+  # create-embeddings is a simple curl-based test client for sending embeddings requests to aigw.
+  create-embeddings:
+    image: golang:1.25
+    container_name: create-embeddings
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/embeddings \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$EMBEDDINGS_MODEL\",\"input\":\"What is RAG?\"}"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"

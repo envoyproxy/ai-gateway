@@ -21,6 +21,7 @@ import (
 // chat completions.
 type Tracing interface {
 	ChatCompletionTracer() ChatCompletionTracer
+	EmbeddingsTracer() EmbeddingsTracer
 	Shutdown(context.Context) error
 }
 
@@ -29,6 +30,7 @@ type TracingConfig struct {
 	Tracer                 trace.Tracer
 	Propagator             propagation.TextMapPropagator
 	ChatCompletionRecorder ChatCompletionRecorder
+	EmbeddingsRecorder     EmbeddingsRecorder
 }
 
 // NoopTracing is a Tracing that doesn't do anything.
@@ -37,6 +39,11 @@ type NoopTracing struct{}
 // ChatCompletionTracer implements Tracing.ChatCompletionTracer.
 func (NoopTracing) ChatCompletionTracer() ChatCompletionTracer {
 	return NoopChatCompletionTracer{}
+}
+
+// EmbeddingsTracer implements Tracing.EmbeddingsTracer.
+func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
+	return NoopEmbeddingsTracer{}
 }
 
 // Shutdown implements Tracing.Shutdown.
@@ -53,7 +60,7 @@ type ChatCompletionTracer interface {
 	//   - ctx: might include a parent span context.
 	//   - headers: Incoming HTTP headers used to extract parent trace context.
 	//   - headerMutation: The new LLM Span will have its context written to
-	//     these headers unless NoopTracer is used.
+	//     these headers unless NoopTracing is used.
 	//   - req: The OpenAI chat completion request. Used to detect streaming
 	//     and record request attributes.
 	//
@@ -111,5 +118,68 @@ type NoopChatCompletionTracer struct{}
 
 // StartSpanAndInjectHeaders implements ChatCompletionTracer.StartSpanAndInjectHeaders.
 func (NoopChatCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ChatCompletionRequest, []byte) ChatCompletionSpan {
+	return nil
+}
+
+// EmbeddingsTracer creates spans for OpenAI embeddings requests.
+type EmbeddingsTracer interface {
+	// StartSpanAndInjectHeaders starts a span and injects trace context into
+	// the header mutation.
+	//
+	// Parameters:
+	//   - ctx: might include a parent span context.
+	//   - headers: Incoming HTTP headers used to extract parent trace context.
+	//   - headerMutation: The new Embeddings Span will have its context
+	//     written to these headers unless NoopTracing is used.
+	//   - req: The OpenAI embeddings request. Used to record request attributes.
+	//
+	// Returns nil unless the span is sampled.
+	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.EmbeddingRequest, body []byte) EmbeddingsSpan
+}
+
+// EmbeddingsSpan represents an OpenAI embeddings request.
+type EmbeddingsSpan interface {
+	// RecordResponse records the response attributes to the span.
+	RecordResponse(resp *openai.EmbeddingResponse)
+
+	// EndSpanOnError finalizes and ends the span with an error status.
+	EndSpanOnError(statusCode int, body []byte)
+
+	// EndSpan finalizes and ends the span.
+	EndSpan()
+}
+
+// EmbeddingsRecorder records attributes to a span according to a semantic
+// convention.
+type EmbeddingsRecorder interface {
+	// StartParams returns the name and options to start the span with.
+	//
+	// Parameters:
+	//   - req: contains the embeddings request
+	//   - body: contains the complete request body.
+	//
+	// Note: Do not do any expensive data conversions as the span might not be
+	// sampled.
+	StartParams(req *openai.EmbeddingRequest, body []byte) (spanName string, opts []trace.SpanStartOption)
+
+	// RecordRequest records request attributes to the span.
+	//
+	// Parameters:
+	//   - req: contains the embeddings request
+	//   - body: contains the complete request body.
+	RecordRequest(span trace.Span, req *openai.EmbeddingRequest, body []byte)
+
+	// RecordResponse records response attributes to the span.
+	RecordResponse(span trace.Span, resp *openai.EmbeddingResponse)
+
+	// RecordResponseOnError ends recording the span with an error status.
+	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
+}
+
+// NoopEmbeddingsTracer is an EmbeddingsTracer that doesn't do anything.
+type NoopEmbeddingsTracer struct{}
+
+// StartSpanAndInjectHeaders implements EmbeddingsTracer.StartSpanAndInjectHeaders.
+func (NoopEmbeddingsTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.EmbeddingRequest, []byte) EmbeddingsSpan {
 	return nil
 }

@@ -67,9 +67,6 @@ services:
     profiles: ["test"]
     env_file:
       - ../../../.env.ollama
-    depends_on:
-      envoy:
-        condition: service_started
     command:
       - sh
       - -c

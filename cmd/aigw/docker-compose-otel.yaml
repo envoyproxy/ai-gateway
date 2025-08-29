@@ -75,13 +75,30 @@ services:
     build:
       context: ../../tests/internal/testopeninference
       dockerfile: Dockerfile.openai_client
+      target: chat-completion
     container_name: chat-completion
+    profiles: ["test"]
     env_file:
       - ../../.env.ollama
       - .env.otel.${COMPOSE_PROFILES:-console}
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
-    depends_on:
-      aigw:
-        condition: service_started
+
+  # create-embeddings is the standard OpenAI client (`openai` in pip), instrumented
+  # with the following OpenTelemetry instrumentation libraries:
+  # - openinference-instrumentation-openai (embeddings spans)
+  # - opentelemetry-instrumentation-httpx (HTTP client spans and trace headers)
+  create-embeddings:
+    build:
+      context: ../../tests/internal/testopeninference
+      dockerfile: Dockerfile.openai_client
+      target: create-embeddings
+    container_name: create-embeddings
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+      - .env.otel.${COMPOSE_PROFILES:-console}
+    environment:
+      - OPENAI_BASE_URL=http://aigw:1975/v1
+      - OPENAI_API_KEY=unused
