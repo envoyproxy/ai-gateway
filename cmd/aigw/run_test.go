@@ -207,21 +207,14 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 }
 
 func Test_mustStartExtProc(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
+	mockerr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
 		tmpdir:          t.TempDir(),
-		extProcLauncher: mainlib.Main,
-		// UNIX doesn't like a long UDS path, so we use a short one.
-		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-		udsPath:      filepath.Join("/tmp", "run.sock"),
-		stderrLogger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
+		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockerr },
+		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
 	}
-	done := runCtx.mustStartExtProc(ctx, filterapi.MustLoadDefaultConfig())
-	time.Sleep(1 * time.Second)
-	cancel()
-	// Wait for the external processor to stop.
-	require.NoError(t, <-done)
+	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
+	require.ErrorIs(t, <-done, mockerr)
 }
 
 // checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.

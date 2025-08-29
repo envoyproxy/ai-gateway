@@ -22,9 +22,45 @@
       }
     },
     {
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"data\":[{\"embedding\":\"UlenPPk5k71fcBc+teZvvbQqhL0uzYq95kX3PCxVlTw5EIi9am8PvDiyir0Q2va9SnfROjfHSb1XkEG90nt3vdnOGLxx8di8IIVUPXfMBD3OzyC93b50vRil/jzTNwE9YUYKvYAkwT3H2os9ZsMpPbUVNj66wRs8ETiDvJOlEb1ZCLe8OLIKvo7KZbwuWj+9WHvzu63X4j3Mtai9yyjlPZV7BD4Iy2m82XCbvZpWIT2Kq8O83b70Pb5Tib3Mtai8xnx/vLkFIT4TymG9bQHuuyuZmr3b6BA9mICuvb31izvRYY691MS1vXKt07ph6Iw8fU5OPZyf0L2AUwc9/G2DPf5D5zw5nTw7h0gcvgKSTz0pfyI8PF5hPQ8e/DxOlgI8uQWhOsubsLwG9QU+AmOYPG6OsTzbdUU9qCt9vapFBDtqERI8UShhPex+oL3Fkc28fJJTvfw+vbyoK4w9RuVjvS+Jhb2a+KO9QMEXvdzTwr2vT9i9I1vHvXPcGb05bvY9QduPPSlQXL2RLRy9MhtkPd1gBjyEFKw9sz/DvDkQCLz+ci28o1BgvU70cL1n3aE81mtivc/pmD3y5gC+Jo+3vdPZgzxipIc98SoGPQjL6bz8bYO9Ls2KPeKZIDug7bi7bOeEvfS8ZL07t7Q9fKchPdWv57zTewY8abMUvbQqBL7YEp69NyVHvCkhpbpyIB+8jsrlPUguIj1psxS+gsvtvRh2R71eEpo9FIbcPMsoZbynnsi7h6aZPWpvjz3z0TK9dVQPvQWX+T2N37O9NX4aPZMDD724GmA9gsttvf2H7L11g0a9SzPMvB4NX72ahdi9hrtYur7gPT3jJtU9HVHkvRB8CL1hdUE9vYJAPK6TXbxDJL87C9Ciu7z1fLwwo+68HzylvcLQKL4gJ9c81YCwveaJfL1oO5+8WEy8O3AGpzyTpZG9kVzTvZQdeLzY49e9dhCKvSAn1z3cpIu96XnnPF1Wn72IM849Dx6LvP5DZzk96yQ9GmGIPdZr4r2NDus81/glPdtG/zxNOHa8wFgzvdKqvT36U/y8L+dzPT2NJ73BFC69AXhXPTFfab2k3aM8br1oPTGOL712zHW9xQSZvYGxBL2AUwe98uaAPPIVuLwss5I9LZ7EOG3SNr1nrts9tPs9vQjL6bz2pyW9kosZvTFf6bwcCLU9qkWEPZdR6Lz3Y6C9TTh2vUHbjzsrJs+92c6YPBtMuj0qatS7tPs9vNoslrzbdcW8kBOku5fEMz20WTs9TjgFO7H2E7t0mBS9z7pSvZmapr1tdDk9h3dTPUP1h7zPGFA99euqO4gzzr3Eppu86KMDvRod9Lw/ktG8pxGUO2CKj7qh2Oo8fU5OPQ==\",\"index\":0,\"object\":\"embedding\"}],\"model\":\"text-embedding-3-small\",\"object\":\"list\",\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}"
+      }
+    },
+    {
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
       "key": "llm.invocation_parameters",
       "value": {
         "stringValue": "{\"model\": \"text-embedding-3-small\", \"dimensions\": 256, \"encoding_format\": \"base64\"}"
+      }
+    },
+    {
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "5"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "5"
+      }
+    },
+    {
+      "key": "embedding.model_name",
+      "value": {
+        "stringValue": "text-embedding-3-small"
+      }
+    },
+    {
+      "key": "embedding.embeddings.0.embedding.text",
+      "value": {
+        "stringValue": "Generate embeddings with specific dimensions"
       }
     },
     {
@@ -34,39 +70,7 @@
       }
     }
   ],
-  "events": [
-    {
-      "name": "exception",
-      "attributes": [
-        {
-          "key": "exception.type",
-          "value": {
-            "stringValue": "openai.ConflictError"
-          }
-        },
-        {
-          "key": "exception.message",
-          "value": {
-            "stringValue": "TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-dimensions.yaml and re-run with OPENAI_API_KEY set."
-          }
-        },
-        {
-          "key": "exception.stacktrace",
-          "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-dimensions.yaml and re-run with OPENAI_API_KEY set.\n"
-          }
-        },
-        {
-          "key": "exception.escaped",
-          "value": {
-            "stringValue": "False"
-          }
-        }
-      ]
-    }
-  ],
   "status": {
-    "message": "ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-dimensions.yaml and re-run with OPENAI_API_KEY set.",
-    "code": "STATUS_CODE_ERROR"
+    "code": "STATUS_CODE_OK"
   }
 }

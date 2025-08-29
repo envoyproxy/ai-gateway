@@ -25,6 +25,8 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 		Input: openai.StringOrArray{
 			Value: "hello world",
 		},
+		// Python SDK coerces to base64 when NumPy is installed. Make sure float works.
+		EncodingFormat: ptr.To("float"),
 	},
 	CassetteEmbeddingsBase64: {
 		Model: openai.ModelTextEmbedding3Small,
@@ -39,25 +41,29 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 			// Between 0 and maximum value 100257 (inclusive).
 			Value: []int{1, 5678, 91011, 100257},
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsLargeText: {
 		Model: openai.ModelTextEmbedding3Small,
 		Input: openai.StringOrArray{
 			Value: "The quick brown fox jumps over the lazy dog. This pangram sentence contains every letter of the English alphabet at least once. It has been used since at least the late 19th century to test typewriters and computer keyboards, display examples of fonts, and other applications involving text where the use of all letters in the alphabet is desired. The phrase is commonly used for touch-typing practice, testing typewriters and computer keyboards, and displaying examples of fonts. It is also used in other applications involving all the letters in the English alphabet.",
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsUnknownModel: {
 		Model: "text-embedding-4-ultra", // Non-existent model.
 		Input: openai.StringOrArray{
 			Value: "Test with unknown model",
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsDimensions: {
 		Model: openai.ModelTextEmbedding3Small,
 		Input: openai.StringOrArray{
 			Value: "Generate embeddings with specific dimensions",
 		},
-		Dimensions: ptr.To(256), // Reduced dimensionality.
+		Dimensions:     ptr.To(256), // Reduced dimensionality.
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsMaxTokens: {
 		Model: openai.ModelTextEmbedding3Small,
@@ -65,6 +71,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 			// Near 8191 token limit for openai embeddings models.
 			Value: generateLongText(7500),
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsMixedBatch: {
 		Model: openai.ModelTextEmbedding3Small,
@@ -77,6 +84,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 				"🚀 Space emoji and symbols ✨ § ¶ †", // Special characters.
 			},
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsWhitespace: {
 		Model: openai.ModelTextEmbedding3Small,
@@ -89,6 +97,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 				"  \n  \t  ", // Only whitespace.
 			},
 		},
+		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsBadRequest: {
 		Model: openai.ModelTextEmbedding3Small,

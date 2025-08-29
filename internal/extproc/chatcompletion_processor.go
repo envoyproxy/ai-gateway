@@ -441,6 +441,10 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	}
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, func() map[string]string { return rp.requestHeaders })
+	// Sync header with backend model so header-derived labels/CEL use the actual model.
+	if c.modelNameOverride != "" {
+		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
+	}
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
