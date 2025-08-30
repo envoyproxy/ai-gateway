@@ -17,7 +17,7 @@ details about the LLM request, and can be extracted and included in the Envoy Ac
 ### AIGatewayRoute configuration
 
 The contents of the dynamic metadata are configured in the `AIGatewayRoute` resource under the `llmRequestCosts`
-field. The `llmRequestCosts` field configures a list of metadata keys to populate in teh Envoy filter metadata, to
+field. The `llmRequestCosts` field configures a list of metadata keys to populate in the Envoy filter metadata, to
 be later accessed in the access logs. For example:
 
 ```yaml
