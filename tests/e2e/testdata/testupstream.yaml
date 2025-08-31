@@ -67,6 +67,9 @@ spec:
     name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
+  headerMutation:
+    remove:
+      - x-remove-header
   # This is mainly to ensure backward compatibility in tests.
   backendSecurityPolicyRef:
     name: translation-testupstream-cool-model-backend-api-key
