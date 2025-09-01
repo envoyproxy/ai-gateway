@@ -281,3 +281,28 @@ jobs:
           make helm-push HELM_CHART_VERSION=0.0.0-latest
           make helm-push HELM_CHART_VERSION=v0.0.0-${{ github.sha }} TAG=${{ github.sha }}
           make helm-push HELM_CHART_VERSION=0.0.0-${{ github.sha }} TAG=${{ github.sha }}
+
+  # Aggregate all the required jobs and make it easier to customize CI required jobs
+  ci-required:
+    runs-on: ubuntu-latest
+    needs:
+      - unittest
+      - test_crdcel
+      - test_controller
+      - test_extproc
+      - test_e2e
+      - test_e2e_inference_extension
+    # We need this to run always to force-fail (and not skip) if any needed
+    # job has failed. Otherwise, a skipped job will not fail the workflow.
+    if: always()
+    steps:
+      - run: |
+          echo "CI required checks completed"
+          if [ "${{
+              contains(needs.*.result, 'failure') ||
+              contains(needs.*.result, 'cancelled') ||
+              contains(needs.*.result, 'skipped')
+            }}" == "true" ]; then
+            echo "Some required jobs have failed or were cancelled or skipped."
+            exit 1
+          fi
