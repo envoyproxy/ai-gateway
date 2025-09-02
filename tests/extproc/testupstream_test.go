@@ -167,15 +167,16 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:       http.StatusOK,
 		},
 		{
-			name:           "aws-bedrock - /v1/chat/completions - tool call results",
-			backend:        "aws-bedrock",
-			path:           "/v1/chat/completions",
-			expPath:        "/model/gpt-4-0613/converse",
-			method:         http.MethodPost,
-			requestBody:    toolCallResultsRequestBody,
-			expRequestBody: `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
-			responseBody:   `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
-			expStatus:      http.StatusOK,
+			name:            "aws-bedrock - /v1/chat/completions - tool call results",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			expPath:         "/model/gpt-4-0613/converse",
+			method:          http.MethodPost,
+			requestBody:     toolCallResultsRequestBody,
+			expRequestBody:  `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
+			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"","choices":[{"finish_reason":"stop","index":0,"logprobs": {"content": null, "refusal": null},"message":{"content":"response","refusal":"","role":"assistant","annotations":null,"audio":{"id":"","data":"","expires_at":0,"transcript":""},"function_call":{"arguments":"","name":""},"tool_calls":null}}],"created":0,"model":"","object":"chat.completion","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}}`,
 		},
 		{
 			name:            "gcp-anthropic - /v1/chat/completions - tool call results",
@@ -275,19 +276,19 @@ func TestWithTestUpstream(t *testing.T) {
 {"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
 `,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"Don","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77}}
+data: {"id":"","choices":null,"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77,"completion_tokens_details":null,"prompt_tokens_details":null}}
 
 data: [DONE]
 `,
@@ -427,19 +428,19 @@ data: [DONE]
 {"candidates":[{"content":{"parts":[{"text":" today"}],"role":"model"}}]}
 {"candidates":[{"content":{"parts":[{"text":"?"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":7,"totalTokenCount":17}}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"Hello","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":"! How","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"! How","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":" can I","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":" can I","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":" help","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":" help","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":" you","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":" you","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":" today","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":" today","role":"assistant"}}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":""}
 
-data: {"choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"completion_tokens":7,"prompt_tokens":10,"total_tokens":17}}
+data: {"id":"","choices":[{"index":0,"logprobs":null,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"created":0,"model":"","object":"chat.completion.chunk","service_tier":"","system_fingerprint":"","usage":{"completion_tokens":7,"prompt_tokens":10,"total_tokens":17,"completion_tokens_details":null,"prompt_tokens_details":null}}
 
 data: [DONE]
 `,
