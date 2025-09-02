@@ -1291,8 +1291,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: ptr.To("This is the final answer."),
-							ExtraFields: map[string]interface{}{
-								"reasoningContent": &awsbedrock.ReasoningContentBlock{
+							ResponseVendorFields: &openai.ResponseVendorFields{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
 									ReasoningText: &awsbedrock.ReasoningTextBlock{
 										Text: "This is the model's thought process.",
 									},

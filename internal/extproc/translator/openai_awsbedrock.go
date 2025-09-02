@@ -628,11 +628,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				choice.Message.Content = output.Text
 			}
 		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
-			// Populate the new ExtraFields map instead of a dedicated field.
-			if choice.Message.ExtraFields == nil {
-				choice.Message.ExtraFields = make(map[string]interface{})
+			if choice.Message.ResponseVendorFields == nil {
+				choice.Message.ResponseVendorFields = &openai.ResponseVendorFields{}
 			}
-			choice.Message.ExtraFields["reasoningContent"] = output.ReasoningContent
+			choice.Message.ResponseVendorFields.ReasoningContent = output.ReasoningContent
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
