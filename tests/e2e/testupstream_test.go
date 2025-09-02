@@ -87,6 +87,7 @@ func TestWithTestUpstream(t *testing.T) {
 				expHost:            "testupstream.default.svc.cluster.local",
 				fakeResponseBody:   `{"choices":[{"message":{"content":"This is a test."}}]}`,
 				nonexpectedHeaders: []string{"x-remove-header"},
+				reqHeaders:         map[string]string{"x-remove-header": "remove-me"},
 				expStatus:          200,
 			},
 		} {
