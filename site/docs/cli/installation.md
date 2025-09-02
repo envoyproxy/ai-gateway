@@ -12,7 +12,7 @@ They can be downloaded directly from the corresponding release in the
 
 ## Building the latest version
 
-To use the latest version, you can use the following commands to clone the repo and build hte CLI:
+To use the latest version, you can use the following commands to clone the repo and build the CLI:
 
 ```shell
 git clone https://github.com/envoyproxy/ai-gateway.git
@@ -21,8 +21,6 @@ go install ./cmd/aigw
 ```
 
 :::tip
-`git clone` step is a temporary workaround for the issue with `go install`. See the issue [#1064](https://github.com/envoyproxy/ai-gateway/issues/1064) for details.
-
 `go install` command installs a binary in the `$(go env GOPATH)/bin` directory.
 Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
 
