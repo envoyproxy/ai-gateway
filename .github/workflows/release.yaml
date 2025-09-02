@@ -29,21 +29,35 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
       - name: Push Helm chart
         run: |
           make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
           make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION_WITHOUT_V}
 
+      - name: Build CLI release binaries
+        run: |
+          make build.aigw GOOS_LIST="linux" GOARCH_LIST="amd64 arm64"
+          # amd64 for macos is not available on archive-envoy for the last few table versions
+          # which in turn is used by EG's standalone mode used by aigw, so we skip it
+          make build.aigw GOOS_LIST="darwin" GOARCH_LIST="arm64"
+
       - name: Create a release candidate
         if: ${{ contains(github.ref, '-rc') }}
         run: |
-          gh release create $TAG --prerelease --title $TAG --notes "Release candidate" ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release create $TAG --prerelease --title $TAG --notes "Release candidate" \
+            ./out/ai-gateway-crds-helm-${TAG}.tgz \
+            ./out/ai-gateway-helm-${TAG}.tgz \
+            ./out/aigw-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create a stable release
         if: ${{ !contains(github.ref, '-rc') }}
         run: |
-          gh release create $TAG --draft --title $TAG --notes "To be written by the release manager" ./out/ai-gateway-crds-helm-${TAG}.tgz ./out/ai-gateway-helm-${TAG}.tgz
+          gh release create $TAG --draft --title $TAG --notes "To be written by the release manager" \
+            ./out/ai-gateway-crds-helm-${TAG}.tgz \
+            ./out/ai-gateway-helm-${TAG}.tgz \
+            ./out/aigw-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
