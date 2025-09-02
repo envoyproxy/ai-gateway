@@ -4,8 +4,15 @@ title: Installation
 sidebar_position: 1
 ---
 
+## Official CLI binaries
 
-To install the `aigw` CLI, run the following command (This may take a while):
+Each release includes the binaries for the `aigw` CLI build for different platforms.<br/>
+They can be downloaded directly from the corresponding release in the
+[GitHub releases page](https://github.com/envoyproxy/ai-gateway/releases).
+
+## Building the latest version
+
+To use the latest version, you can use the following commands to clone the repo and build hte CLI:
 
 ```shell
 git clone https://github.com/envoyproxy/ai-gateway.git
@@ -60,4 +67,3 @@ The following sections provide more information about each of the CLI commands:
 
 - [aigw run](./run.md): Run the AI Gateway locally for a given configuration.
 - [aigw translate](./translate.md): Translate AI Gateway resources to Envoy Gateway and Kubernetes resources.
-
