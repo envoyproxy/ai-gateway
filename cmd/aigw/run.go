@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/a8m/envsubst"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
@@ -125,10 +126,19 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 
 	// Write the Envoy Gateway config which points to the resourcesTmpdir to tell Envoy Gateway where to find the resources.
 	stderrLogger.Info("Writing Envoy Gateway config", "path", egConfigPath)
-	err := os.WriteFile(egConfigPath, []byte(strings.ReplaceAll(
-		envoyGatewayConfigTemplate, "PLACEHOLDER_TMPDIR", resourcesTmpdir),
-	), 0o600)
+	tmpl := template.Must(template.New("eg-config").Parse(envoyGatewayConfigTemplate))
+	var buf bytes.Buffer
+	err := tmpl.Execute(&buf, struct {
+		TmpDir       string
+		EnvoyVersion string
+	}{
+		TmpDir:       resourcesTmpdir,
+		EnvoyVersion: c.EnvoyVersion,
+	})
 	if err != nil {
+		return fmt.Errorf("failed to render EG config template: %w", err)
+	}
+	if err = os.WriteFile(egConfigPath, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", egConfigPath, err)
 	}
 

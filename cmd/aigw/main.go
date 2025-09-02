@@ -36,9 +36,10 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug       bool   `help:"Enable debug logging emitted to stderr."`
-		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
-		ShowDefault bool   `help:"Show the default configuration, and exit."`
+		Debug        bool   `help:"Enable debug logging emitted to stderr."`
+		Path         string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
+		EnvoyVersion string `help:"Force the use of a concrete version of Envoy."`
+		ShowDefault  bool   `help:"Show the default configuration, and exit."`
 	}
 )
 

@@ -13,10 +13,11 @@ provider:
     resource:
       type: File
       file:
-        paths: ["PLACEHOLDER_TMPDIR"]
+        paths: ["{{ .TmpDir }}"]
     infrastructure:
       type: Host
-      host: {}
+      host:
+        envoyVersion: "{{ .EnvoyVersion }}"
 logging:
   level:
     default: error

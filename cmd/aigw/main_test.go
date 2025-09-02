@@ -123,10 +123,11 @@ Arguments:
               Use --show-default to check the default configuration's behavior
 
 Flags:
-  -h, --help            Show context-sensitive help.
+  -h, --help                    Show context-sensitive help.
 
-      --debug           Enable debug logging emitted to stderr.
-      --show-default    Show the default configuration, and exit.
+      --debug                   Enable debug logging emitted to stderr.
+      --envoy-version=STRING    Force the use of a concrete version of Envoy.
+      --show-default            Show the default configuration, and exit.
 `,
 			expPanicCode: ptr.To(0),
 		},
