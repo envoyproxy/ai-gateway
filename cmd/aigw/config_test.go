@@ -48,7 +48,7 @@ func TestReadConfig(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			config, err := readConfig(tt.path)
+			config, err := readConfig(tt.path, "")
 			require.NoError(t, err)
 			require.Contains(t, config, "hostname: "+tt.expectHostname)
 			require.Contains(t, config, "port: "+tt.expectPort)
@@ -60,16 +60,26 @@ func TestReadConfig(t *testing.T) {
 	// config to use in docker, ai-gateway-local.yaml. So, we leave this
 	// one alone.
 	t.Run("Default config uses 0.0.0.0 IP for Ollama", func(t *testing.T) {
-		config, err := readConfig("")
+		config, err := readConfig("", "")
 		require.NoError(t, err)
 		require.Contains(t, config, "address: 0.0.0.0")
 		require.Contains(t, config, "port: 11434")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
-		_, err := readConfig("/non/existent/file.yaml")
+		_, err := readConfig("/non/existent/file.yaml", "")
 		require.Error(t, err)
 		require.EqualError(t, err, "error reading config: open /non/existent/file.yaml: no such file or directory")
+	})
+
+	t.Run("custom envoy version", func(t *testing.T) {
+		config, err := readConfig("", "")
+		require.NoError(t, err)
+		require.Contains(t, config, "host:\n      envoyVersion: \"\"")
+
+		config, err = readConfig("", "1.2.3")
+		require.NoError(t, err)
+		require.Contains(t, config, "host:\n      envoyVersion: \"1.2.3\"")
 	})
 }
 
