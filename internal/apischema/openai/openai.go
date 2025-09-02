@@ -18,8 +18,9 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 )
 
 // Chat message role defined by the OpenAI API.

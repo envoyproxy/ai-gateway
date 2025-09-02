@@ -618,6 +618,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	}
 
 	for _, output := range bedrockResp.Output.Message.Content {
+		// The AWS Content Block data type is a UNION,
+		// so only one of the members can be specified when used or returned.
+		// see: https: //docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlock.html
 		switch {
 		case output.ToolUse != nil:
 			toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse)
@@ -631,7 +634,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if choice.Message.ResponseVendorFields == nil {
 				choice.Message.ResponseVendorFields = &openai.ResponseVendorFields{}
 			}
-			choice.Message.ResponseVendorFields.ReasoningContent = output.ReasoningContent
+			choice.Message.ReasoningContent = output.ReasoningContent
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
