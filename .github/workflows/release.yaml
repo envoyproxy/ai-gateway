@@ -38,6 +38,8 @@ jobs:
       - name: Build CLI release binaries
         run: |
           make build.aigw GOOS_LIST="linux" GOARCH_LIST="amd64 arm64"
+          # amd64 for macos is not available on archive-envoy for the last few table versions
+          # which in turn is used by EG's standalone mode used by aigw, so we skip it
           make build.aigw GOOS_LIST="darwin" GOARCH_LIST="arm64"
 
       - name: Create a release candidate
