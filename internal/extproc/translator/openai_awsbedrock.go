@@ -83,11 +83,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	}
 
 	// Handle Anthropic vendor fields if present. Currently only supports thinking fields.
-	if openAIReq.AnthropicVendorFields != nil && openAIReq.Thinking != nil {
+	if openAIReq.AnthropicVendorFields.Thinking != nil && openAIReq.Thinking != nil {
 		if bedrockReq.AdditionalModelRequestFields == nil {
 			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
 		}
-		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.Thinking
+		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.AnthropicVendorFields.Thinking
 	}
 
 	// Convert Chat Completion messages.
@@ -631,8 +631,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				choice.Message.Content = output.Text
 			}
 		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
-			if choice.Message.ResponseVendorFields == nil {
-				choice.Message.ResponseVendorFields = &openai.ResponseVendorFields{}
+			if choice.Message.AnthropicResponseVendorFields == nil {
+				choice.Message.AnthropicResponseVendorFields = &openai.AnthropicResponseVendorFields{}
 			}
 			choice.Message.ReasoningContent = output.ReasoningContent
 		}
