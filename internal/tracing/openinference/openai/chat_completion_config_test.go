@@ -130,11 +130,12 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			respBody: basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
-				// No OutputMimeType when output is hidden.
-				// No output messages when HideOutputs is true.
-				// Token counts are still included as metadata.
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
+				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.String(openinference.OutputValue, openinference.RedactedValue),
 			},
@@ -149,9 +150,12 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
-				// No output messages when HideOutputMessages is true.
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
+				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.String(openinference.OutputValue, string(basicRespBody)),
 			},
@@ -169,7 +173,11 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
+				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.String(openinference.OutputValue, string(basicRespBody)),
 			},
@@ -182,7 +190,7 @@ func TestChatCompletionRecorder_WithConfig_HideOutputs(t *testing.T) {
 			recorder := NewChatCompletionRecorder(tt.config)
 
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				resp := &openai.ChatCompletionResponse{}
+				resp := &openai.CustomChatCompletion{}
 				err := json.Unmarshal(tt.respBody, resp)
 				require.NoError(t, err)
 				recorder.RecordResponse(span, resp)
@@ -430,7 +438,7 @@ func TestChatCompletionRecorder_ConfigFromEnvironment(t *testing.T) {
 
 	// Response test.
 	respSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-		resp := &openai.ChatCompletionResponse{}
+		resp := &openai.CustomChatCompletion{}
 		err := json.Unmarshal(basicRespBody, resp)
 		require.NoError(t, err)
 		recorder.RecordResponse(span, resp)

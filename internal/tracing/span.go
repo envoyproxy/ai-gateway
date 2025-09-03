@@ -27,7 +27,7 @@ func (s *chatCompletionSpan) RecordResponseChunk(resp *openai.ChatCompletionResp
 }
 
 // RecordResponse invokes [tracing.ChatCompletionRecorder.RecordResponse].
-func (s *chatCompletionSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+func (s *chatCompletionSpan) RecordResponse(resp *openai.CustomChatCompletion) {
 	s.recorder.RecordResponse(s.span, resp)
 }
 

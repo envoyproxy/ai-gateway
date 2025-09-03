@@ -14,11 +14,11 @@ import (
 	"testing"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -291,15 +291,17 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 				}},
 			}
 			reqBody := []byte(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"Hello, sensitive data!"}]}`)
-			respBody := &openai.ChatCompletionResponse{
-				ID:     "chatcmpl-abc123",
-				Object: "chat.completion",
-				Choices: []openai.ChatCompletionResponseChoice{{
-					Message: openai.ChatCompletionResponseChoiceMessage{
-						Role:    "assistant",
-						Content: ptr.To("Response with sensitive data"),
-					},
-				}},
+			respBody := &openai.CustomChatCompletion{
+				ChatCompletion: openaigo.ChatCompletion{
+					ID:     "chatcmpl-abc123",
+					Object: "chat.completion",
+					Choices: []openaigo.ChatCompletionChoice{{
+						Message: openaigo.ChatCompletionMessage{
+							Role:    "assistant",
+							Content: "Response with sensitive data",
+						},
+					}},
+				},
 			}
 
 			// Start a span and record request/response.

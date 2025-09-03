@@ -13,6 +13,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,7 +21,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -42,18 +42,20 @@ var (
 )
 
 func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
-	respBody := &openai.ChatCompletionResponse{
-		ID:     "chatcmpl-abc123",
-		Object: "chat.completion",
-		Model:  "gpt-4.1-nano",
-		Choices: []openai.ChatCompletionResponseChoice{
-			{
-				Index: 0,
-				Message: openai.ChatCompletionResponseChoiceMessage{
-					Role:    "assistant",
-					Content: ptr.To("hello world"),
+	respBody := openai.CustomChatCompletion{
+		ChatCompletion: openaigo.ChatCompletion{
+			ID:     "chatcmpl-abc123",
+			Object: "chat.completion",
+			Model:  "gpt-4.1-nano",
+			Choices: []openaigo.ChatCompletionChoice{
+				{
+					Index: 0,
+					Message: openaigo.ChatCompletionMessage{
+						Role:    "assistant",
+						Content: "hello world",
+					},
+					FinishReason: "stop",
 				},
-				FinishReason: "stop",
 			},
 		},
 	}
@@ -133,7 +135,7 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			require.IsType(t, &chatCompletionSpan{}, span)
 
 			// End the span to export it.
-			span.RecordResponse(respBody)
+			span.RecordResponse(&respBody)
 			span.EndSpan()
 
 			spans := exporter.GetSpans()
@@ -282,7 +284,7 @@ func (testChatCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai
 	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.ChatCompletionResponse) {
+func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.CustomChatCompletion) {
 	span.SetAttributes(attribute.Int("statusCode", 200))
 	body, err := json.Marshal(resp)
 	if err != nil {

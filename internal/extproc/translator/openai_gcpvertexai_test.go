@@ -16,6 +16,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -589,16 +590,17 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	tests := []struct {
-		name              string
-		modelNameOverride string
-		respHeaders       map[string]string
-		body              string
-		stream            bool
-		endOfStream       bool
-		wantError         bool
-		wantHeaderMut     *extprocv3.HeaderMutation
-		wantBodyMut       *extprocv3.BodyMutation
-		wantTokenUsage    LLMTokenUsage
+		name               string
+		modelNameOverride  string
+		respHeaders        map[string]string
+		body               string
+		stream             bool
+		endOfStream        bool
+		wantError          bool
+		wantHeaderMut      *extprocv3.HeaderMutation
+		wantBodyMut        *extprocv3.BodyMutation  // For streaming tests.
+		wantOpenAIResponse *openaigo.ChatCompletion // For non-streaming tests.
+		wantTokenUsage     LLMTokenUsage
 	}{
 		{
 			name: "successful response",
@@ -610,18 +612,12 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 					{
 						"content": {
 							"parts": [
-								{
-									"text": "AI Gateways act as intermediaries between clients and LLM services."
-								}
+								{ "text": "AI Gateways act as intermediaries between clients and LLM services." }
 							]
 						},
-						"finishReason": "STOP",
-						"safetyRatings": []
+						"finishReason": "STOP"
 					}
 				],
-				"promptFeedback": {
-					"safetyRatings": []
-				},
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
@@ -632,29 +628,25 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:   false,
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("256")},
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("715")},
 				}},
 			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{
-    "choices": [
-        {
-            "finish_reason": "stop",
-            "index": 0,
-            "message": {
-                "content": "AI Gateways act as intermediaries between clients and LLM services.",
-                "role": "assistant"
-            }
-        }
-    ],
-    "object": "chat.completion",
-    "usage": {
-        "completion_tokens": 15,
-        "prompt_tokens": 10,
-        "total_tokens": 25
-    }
-}`),
+			wantOpenAIResponse: &openaigo.ChatCompletion{
+				Object: "chat.completion",
+				Choices: []openaigo.ChatCompletionChoice{
+					{
+						Index:        0,
+						FinishReason: "stop",
+						Message: openaigo.ChatCompletionMessage{
+							Role:    "assistant",
+							Content: "AI Gateways act as intermediaries between clients and LLM services.",
+						},
+					},
+				},
+				Usage: openaigo.CompletionUsage{
+					PromptTokens:     10,
+					CompletionTokens: 15,
+					TotalTokens:      25,
 				},
 			},
 			wantTokenUsage: LLMTokenUsage{
@@ -674,13 +666,17 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{
 					{
-						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("28")},
+						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("372")},
 					},
 				},
 			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{"object":"chat.completion"}`),
+			wantOpenAIResponse: &openaigo.ChatCompletion{
+				Object:  "chat.completion",
+				Choices: []openaigo.ChatCompletionChoice{},
+				Usage: openaigo.CompletionUsage{
+					PromptTokens:     0,
+					CompletionTokens: 0,
+					TotalTokens:      0,
 				},
 			},
 			wantTokenUsage: LLMTokenUsage{},
@@ -693,10 +689,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			body: `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3,"totalTokenCount":8}}
 
 `,
-			stream:        true,
-			endOfStream:   true,
-			wantError:     false,
-			wantHeaderMut: nil,
+			stream:      true,
+			endOfStream: true,
+			wantError:   false,
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
 					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
@@ -731,8 +726,16 @@ data: [DONE]
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
-			if diff := cmp.Diff(tc.wantBodyMut, bodyMut, bodyMutTransformer(t)); diff != "" {
-				t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
+			if tc.stream {
+				if diff := cmp.Diff(tc.wantBodyMut, bodyMut, bodyMutTransformer(t)); diff != "" {
+					t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
+				}
+			} else {
+				require.NotNil(t, bodyMut, "body mutation should not be nil for non-streaming response")
+				actualBody := bodyMut.GetBody()
+				expectedBody, err := json.Marshal(tc.wantOpenAIResponse)
+				require.NoError(t, err)
+				require.JSONEq(t, string(expectedBody), string(actualBody))
 			}
 
 			if diff := cmp.Diff(tc.wantTokenUsage, tokenUsage); diff != "" {
