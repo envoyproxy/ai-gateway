@@ -31,4 +31,8 @@ type GenerateContentRequest struct {
 	//
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L858
 	SystemInstruction *genai.Content `json:"system_instruction,omitempty"`
+	// Optional: Safety settings in the request to block unsafe content in the response.
+	//
+	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1057
+	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitempty"`
 }

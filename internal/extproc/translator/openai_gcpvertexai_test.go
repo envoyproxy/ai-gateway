@@ -132,6 +132,43 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         }
     }
 }`)
+
+	wantBdyWithSafetySettingFields := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with standard fields"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "test_function",
+                    "description": "A test function",
+                    "parametersJsonSchema": {
+                        "type": "object",
+                        "properties": {
+                            "param1": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+        "temperature": 0.7
+    },
+    "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"}]
+}`)
+
 	tests := []struct {
 		name              string
 		modelNameOverride string
@@ -361,7 +398,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 		},
 		{
-			name: "Request with gcp vendor specific fields",
+			name: "Request with gcp thinking fields",
 			input: openai.ChatCompletionRequest{
 				Model:       "gemini-1.5-pro",
 				Temperature: ptr.To(0.7),
@@ -422,6 +459,71 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantBody: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
 					Body: wantBdyWithVendorFields,
+				},
+			},
+		},
+		{
+			name: "Request with gcp safety setting fields",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with standard fields"},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "test_function",
+							Description: "A test function",
+							Parameters: map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"param1": map[string]interface{}{
+										"type": "string",
+									},
+								},
+							},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  "HARM_CATEGORY_HARASSMENT",
+							Threshold: "BLOCK_ONLY_HIGH",
+						},
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{
+					{
+						Header: &corev3.HeaderValue{
+							Key:      ":path",
+							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
+						},
+					},
+					{
+						Header: &corev3.HeaderValue{
+							Key:      "Content-Length",
+							RawValue: []byte("406"),
+						},
+					},
+				},
+			},
+			wantBody: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: wantBdyWithSafetySettingFields,
 				},
 			},
 		},
