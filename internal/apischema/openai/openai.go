@@ -758,8 +758,11 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/guides/tools-web-search?api-mode=chat
 	WebSearchOptions *WebSearchOptions `json:"web_search_options,omitempty"` //nolint:tagliatelle //follow openai api
 
+	// GCPVertexAIVendorFields configures the GCP VertexAI specific fields during schema translation.
 	*GCPVertexAIVendorFields `json:",inline,omitempty"`
-	*AnthropicVendorFields   `json:",inline,omitempty"`
+
+	// AnthropicVendorFields configures the Anthropic specific fields during schema translation.
+	*AnthropicVendorFields `json:",inline,omitempty"`
 }
 
 type StreamOptions struct {
@@ -1313,6 +1316,11 @@ type GCPVertexAIVendorFields struct {
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
 	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitzero"`
+
+	// SafetySettings: Safety settings in the request to block unsafe content in the response.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/SafetySetting
+	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitzero"`
 }
 
 // GCPVertexAIGenerationConfig represents Gemini generation configuration options.
