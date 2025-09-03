@@ -255,9 +255,13 @@ docker-build.%: GOARCH_LIST = amd64 arm64
 docker-build.%: PLATFORMS = --platform linux/amd64,linux/arm64
 endif
 docker-build.%: ## Build a docker image for a given command.
-	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
-	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
-	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
+	$(eval IMAGE_NAME := $(if $(filter aigw,$(*)),cli,$(*)))
+	$(eval VARIANT := $(if $(filter aigw,$(*)),base-nossl,static))
+	@$(MAKE) build.$(*) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
+	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(IMAGE_NAME):$(TAG) \
+		--build-arg VARIANT=$(VARIANT) \
+		--build-arg COMMAND_NAME=$(*) \
+		$(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
 # This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
 #
