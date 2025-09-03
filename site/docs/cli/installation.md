@@ -13,7 +13,7 @@ They can be downloaded directly from the corresponding release in the
 ## Using the Docker image
 
 You can also use the official Docker images to run the CLI without installing it locally.
-The CLI images are available as: `docker.io/envoyproxy/ai-gateway-cli:<version>`.
+The CLI images are available at: https://hub.docker.com/r/envoyproxy/ai-gateway-cli/tags
 
 To run the CLI using Docker, you only need to expose the port where the standalone `aigw` listens to
 and configure the environment variables for the credentials. If you want to use a custom configuration file,
