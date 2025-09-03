@@ -39,7 +39,7 @@ var (
 	// This is the default configuration for the AI Gateway when <path> parameter is not given.
 	//
 	//go:embed ai-gateway-default-resources.yaml
-	aiGatewayDefaultResources string
+	aiGatewayDefaultResourcesTemplate string
 
 	// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
 	// directory where the resources are written to.
@@ -92,9 +92,13 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		stderr = io.Discard
 	}
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+
+	aiGatewayResourcesYaml, err := readConfig(c.Path, c.EnvoyVersion)
+	if err != nil {
+		return err
+	}
 	if c.ShowDefault {
-		_, err := stdout.Write([]byte(aiGatewayDefaultResources))
-		if err != nil {
+		if _, err = stdout.Write([]byte(aiGatewayResourcesYaml)); err != nil {
 			panic(fmt.Sprintf("BUG: failed to write default resources: %v", err))
 		}
 		return nil
@@ -110,35 +114,26 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	certGen.SetOut(certGenOut)
 	certGen.SetErr(certGenOut)
 	certGen.SetArgs([]string{"certgen", "--local"})
-	if err := certGen.ExecuteContext(ctx); err != nil {
+	if err = certGen.ExecuteContext(ctx); err != nil {
 		return fmt.Errorf("failed to execute certgen: %w: %s", err, certGenOut.String())
 	}
 
 	tmpdir := filepath.Join(os.TempDir(), "aigw-run")
-	if err := recreateDir(tmpdir); err != nil {
+	if err = recreateDir(tmpdir); err != nil {
 		return fmt.Errorf("failed to create temporary directory %s: %w", tmpdir, err)
 	}
 	egConfigPath := filepath.Join(tmpdir, "envoy-gateway-config.yaml")      // 1. The path to the Envoy Gateway config.
 	resourcesTmpdir := filepath.Join(tmpdir, "/envoy-ai-gateway-resources") // 2. The path to the resources.
-	if err := recreateDir(resourcesTmpdir); err != nil {
+	if err = recreateDir(resourcesTmpdir); err != nil {
 		return err
 	}
 
 	// Write the Envoy Gateway config which points to the resourcesTmpdir to tell Envoy Gateway where to find the resources.
 	stderrLogger.Info("Writing Envoy Gateway config", "path", egConfigPath)
-	tmpl := template.Must(template.New("eg-config").Parse(envoyGatewayConfigTemplate))
-	var buf bytes.Buffer
-	err := tmpl.Execute(&buf, struct {
-		TmpDir       string
-		EnvoyVersion string
-	}{
-		TmpDir:       resourcesTmpdir,
-		EnvoyVersion: c.EnvoyVersion,
-	})
+	err = os.WriteFile(egConfigPath, []byte(strings.ReplaceAll(
+		envoyGatewayConfigTemplate, "PLACEHOLDER_TMPDIR", resourcesTmpdir),
+	), 0o600)
 	if err != nil {
-		return fmt.Errorf("failed to render EG config template: %w", err)
-	}
-	if err = os.WriteFile(egConfigPath, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", egConfigPath, err)
 	}
 
@@ -158,16 +153,11 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		tmpdir:                   tmpdir,
 		isDebug:                  c.Debug,
 	}
-	aiGatewayResourcesYaml, err := readConfig(c.Path)
-	if err != nil {
-		return err
-	}
 	fakeClient, extProxDone, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return fmt.Errorf("failed to write envoy resources and run extproc: %w", err)
 	}
-	err = os.WriteFile(resourceYamlPath, resourcesBuf.Bytes(), 0o600)
-	if err != nil {
+	if err = os.WriteFile(resourceYamlPath, resourcesBuf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("failed to write file %s: %w", resourceYamlPath, err)
 	}
 
@@ -223,10 +213,16 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 
 // readConfig returns config from the given path, substituting ENV variables
 // similar to `envsubst`. If the path is empty the default config is returned.
-func readConfig(path string) (string, error) {
+func readConfig(path string, envoyVersion string) (string, error) {
 	if path == "" {
-		return aiGatewayDefaultResources, nil
+		var b bytes.Buffer
+		tmpl := template.Must(template.New("default").Parse(aiGatewayDefaultResourcesTemplate))
+		if err := tmpl.Execute(&b, struct{ EnvoyVersion string }{EnvoyVersion: envoyVersion}); err != nil {
+			return "", fmt.Errorf("failed to set custom Envoy version: %w", err)
+		}
+		return b.String(), nil
 	}
+
 	var yamlBytes []byte
 	yamlBytes, err := envsubst.ReadFile(path)
 	if err != nil {

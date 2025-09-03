@@ -24,6 +24,7 @@ func Test_doMain(t *testing.T) {
 		tf           translateFn
 		rf           runFn
 		expOut       string
+		expErr       string
 		expPanicCode *int
 	}{
 		{
@@ -85,6 +86,7 @@ Flags:
 			// Looks like the kong library follows the "semantic exit code" as in
 			// https://github.com/square/exit?tab=readme-ov-file#about
 			expPanicCode: ptr.To(80),
+			expErr:       "aigw: error: expected \"<path> ...\"\n",
 		},
 		{
 			name: "translate with help",
@@ -126,7 +128,10 @@ Flags:
   -h, --help                    Show context-sensitive help.
 
       --debug                   Enable debug logging emitted to stderr.
-      --envoy-version=STRING    Force the use of a concrete version of Envoy.
+      --envoy-version=STRING    Force the use of a concrete version of Envoy
+                                when using the default config. If you use your
+                                own config, you need to configure the version in
+                                a custom EnvoyProxy resource.
       --show-default            Show the default configuration, and exit.
 `,
 			expPanicCode: ptr.To(0),
@@ -150,18 +155,28 @@ Flags:
 				return nil
 			},
 		},
+		{
+			name:         "run with incompatible flags",
+			args:         []string{"run", "./path", "--envoy-version", "1.2.3"},
+			rf:           func(_ context.Context, _ cmdRun, _ runOpts, _, _ io.Writer) error { return nil },
+			expPanicCode: ptr.To(80),
+			expErr: "aigw: error: run: cannot use --envoy-version with custom config. " +
+				"To use a custom Envoy version in your configuration file, set it in the EnvoyProxy resource\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out := &bytes.Buffer{}
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
+					doMain(t.Context(), stdout, stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
+				doMain(t.Context(), stdout, stderr, tt.args, nil, tt.tf, tt.rf)
 			}
-			require.Equal(t, tt.expOut, out.String())
+			require.Equal(t, tt.expOut, stdout.String())
+			require.Equal(t, tt.expErr, stderr.String())
 		})
 	}
 }
