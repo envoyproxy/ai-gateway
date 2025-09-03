@@ -14,6 +14,8 @@ jobs:
             cmd_path_prefix: cmd
           - command_name: "extproc"
             cmd_path_prefix: cmd
+          - command_name: "aigw"
+            cmd_path_prefix: cmd
           - command_name: "testupstream"
             cmd_path_prefix: tests/internal/testupstreamlib
     steps:
@@ -56,10 +58,10 @@ jobs:
           else
             TAG="${{ github.sha }}"
           fi
-          make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
+          make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }} ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
 
       - name: Build and Push Image Latest
         run: |
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then
-            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
+            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }} ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
           fi

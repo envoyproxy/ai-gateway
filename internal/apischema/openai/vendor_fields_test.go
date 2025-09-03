@@ -39,7 +39,11 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"includeThoughts": true,
 						"thinkingBudget": 1000
 					}
-				}
+				},
+                "safetySettings": [{
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_ONLY_HIGH"
+                }]
 			}`),
 			expected: &ChatCompletionRequest{
 				Model: "gemini-1.5-pro",
@@ -57,6 +61,12 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
 							IncludeThoughts: true,
 							ThinkingBudget:  ptr.To(int32(1000)),
+						},
+					},
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  genai.HarmCategoryHarassment,
+							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
 						},
 					},
 				},

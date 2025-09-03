@@ -308,6 +308,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 			gcr.GenerationConfig.ThinkingConfig = vendorGenConfig.ThinkingConfig
 		}
 	}
+	if gcpVendorFields.SafetySettings != nil {
+		gcr.SafetySettings = gcpVendorFields.SafetySettings
+	}
 }
 
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openai.ChatCompletionResponse, error) {
