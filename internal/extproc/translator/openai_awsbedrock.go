@@ -87,7 +87,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		if bedrockReq.AdditionalModelRequestFields == nil {
 			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
 		}
-		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.AnthropicVendorFields.Thinking
+		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.Thinking
 	}
 
 	// Convert Chat Completion messages.
