@@ -73,7 +73,15 @@ and evaluation system. It has UX features for LLM spans formatted with
    # Invoke the OpenTelemetry instrumented chat completion
    docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
 
-   # Verify traces are being received by Phoenix
+   # Now check you have logs, metrics and traces!
+
+   # Logs: access logging has GenAI fields
+   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+
+   # Metrics: Prometheus endpoint has GenAI Metrics
+   curl -s localhost:1064/metrics | grep gen_ai_client_token_usage_token_sum
+
+   # Traces: Phoenix received spans sent in OpenInference format
    docker compose -f docker-compose-otel.yaml logs phoenix | grep "POST /v1/traces"
    ```
 

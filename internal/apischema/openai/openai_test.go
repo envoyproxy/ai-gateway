@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -295,7 +296,9 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				"max_completion_tokens": 1024,
 				"parallel_tool_calls": true,
 				"stop": ["\n", "stop"],
-				"service_tier": "flex"
+				"service_tier": "flex",
+                "verbosity": "low",
+                "reasoning_effort": "low"
 			}`),
 			out: &ChatCompletionRequest{
 				Model: "gpu-o4",
@@ -311,7 +314,9 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				MaxCompletionTokens: ptr.To[int64](1024),
 				ParallelToolCalls:   ptr.To(true),
 				Stop:                []any{"\n", "stop"},
-				ServiceTier:         ptr.To("flex"),
+				ServiceTier:         openai.ChatCompletionNewParamsServiceTierFlex,
+				Verbosity:           openai.ChatCompletionNewParamsVerbosityLow,
+				ReasoningEffort:     openai.ReasoningEffortLow,
 			},
 		},
 		{
