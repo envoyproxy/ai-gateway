@@ -304,8 +304,18 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx conte
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	recorded := false
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
+		if recorded {
+			return
+		}
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+			return
+		}
+		if body.EndOfStream {
+			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
+		}
 	}()
 	var br io.Reader
 	var isGzip bool
@@ -335,6 +345,9 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 			}
 			c.span.EndSpanOnError(code, b)
 		}
+		// Record failure for non-2xx status codes and suppress defer.
+		c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		recorded = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -413,7 +426,9 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 // SetBackend implements [Processor.SetBackend].
 func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		}
 	}()
 	pickedEndpoint, isEndpointPicker := c.requestHeaders[internalapi.EndpointPickerHeaderKey]
 	rp, ok := routeProcessor.(*chatCompletionProcessorRouterFilter)

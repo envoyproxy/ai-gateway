@@ -240,8 +240,18 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	recorded := false
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
+		if recorded {
+			return
+		}
+		if err != nil {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+			return
+		}
+		if body.EndOfStream {
+			e.metrics.RecordRequestCompletion(ctx, true, e.requestHeaders)
+		}
 	}()
 	var br io.Reader
 	var isGzip bool
@@ -264,6 +274,9 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		// Record failure for non-2xx status codes and suppress defer.
+		e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+		recorded = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -324,7 +337,9 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 // SetBackend implements [Processor.SetBackend].
 func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
+		if err != nil {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+		}
 	}()
 	rp, ok := routeProcessor.(*embeddingsProcessorRouterFilter)
 	if !ok {
