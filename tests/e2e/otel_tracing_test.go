@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
@@ -39,7 +40,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	t.Log("Upgrading AI Gateway with OTEL_TRACES_EXPORTER=console")
 
 	// Upgrade the existing "ai-eg" release with new env vars.
-	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "ai-eg", "--force",
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 		helmChartPath,
 		"--set", "controller.metricsRequestHeaderLabels=x-user-id:user_id", // Keep existing setting.
 		"--set", "extProc.extraEnvVars[0].name=OTEL_TRACES_EXPORTER",
@@ -59,10 +60,9 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		defer cancel()
 
 		// Re-install AI Gateway with default settings.
-		restoreHelm := exec.CommandContext(restoreCtx, "go", "tool", "helm", "upgrade", "ai-eg", "--force",
+		_, _ = testsinternal.RunGoToolContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 			helmChartPath,
 			"-n", "envoy-ai-gateway-system")
-		_ = restoreHelm.Run()
 
 		// Clean up the test manifest resources including namespace.
 		_ = e2elib.KubectlDeleteManifest(restoreCtx, manifest)
@@ -76,14 +76,12 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Restart controller to pick up new configuration.
 	restartCmd := exec.CommandContext(ctx, "kubectl", "rollout", "restart",
 		"deployment/ai-gateway-controller", "-n", "envoy-ai-gateway-system")
-	err := restartCmd.Run()
-	require.NoError(t, err)
+	require.NoError(t, restartCmd.Run())
 
 	// Wait for deployment to be ready.
 	waitCmd := exec.CommandContext(ctx, "kubectl", "wait", "--timeout=2m",
 		"-n", "envoy-ai-gateway-system", "deployment/ai-gateway-controller", "--for=condition=available")
-	err = waitCmd.Run()
-	require.NoError(t, err)
+	require.NoError(t, waitCmd.Run())
 
 	// Apply the test manifest which will trigger pod creation.
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -100,7 +98,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			"-o", "jsonpath={.items[0].metadata.name}")
 
 		var podNameBytes []byte
-		podNameBytes, err = getPodsCmd.Output()
+		podNameBytes, err := getPodsCmd.Output()
 		if err != nil {
 			t.Logf("Failed to get pod name: %v", err)
 			return false // Retry if command fails.
