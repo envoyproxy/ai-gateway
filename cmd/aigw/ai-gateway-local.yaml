@@ -83,17 +83,10 @@ metadata:
   name: aigw-run
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: aigw-run
       kind: Gateway
       group: gateway.networking.k8s.io
-  apis:
-    - path:
-        value: "/v1/chat/completions"
-        type: "Exact"
-      type: "OpenAI"
   # Simple rule: route everything to Ollama
   rules:
     - matches:
