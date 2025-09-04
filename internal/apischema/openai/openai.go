@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/openai/openai-go/v2"
 	"google.golang.org/genai"
 )
 
@@ -477,29 +478,26 @@ const (
 type ChatCompletionResponseFormat struct {
 	Type       ChatCompletionResponseFormatType        `json:"type,omitempty"`
 	JSONSchema *ChatCompletionResponseFormatJSONSchema `json:"json_schema,omitempty"` //nolint:tagliatelle //follow openai api
+	JSONObject any                                     `json:"json_object,omitempty"` //nolint:tagliatelle //follow openai api
 }
 
+// ChatCompletionResponseFormatJSONSchema Structured Outputs configuration options, including a JSON Schema.
 type ChatCompletionResponseFormatJSONSchema struct {
-	Name        string `json:"name"`
+	// The name of the response format. Must be a-z, A-Z, 0-9, or contain underscores
+	// and dashes, with a maximum length of 64.
+	Name string `json:"name"`
+	// A description of what the response format is for, used by the model to determine
+	// how to respond in the format.
 	Description string `json:"description,omitempty"`
-	Schema      any    `json:"schema"` // See detail in https://github.com/openai/openai-go/blob/28c93a9fa58bb622b5d23b3262af7d4fdd2ebde9/shared/shared.go#L519C6-L519C30
-	Strict      bool   `json:"strict"`
-}
-
-// Reasoning represents the reasoning options for o-series models.
-// Docs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
-type Reasoning struct {
-	// Effort constrains effort on reasoning for reasoning models.
-	// Supported values: "low", "medium", "high". Defaults to "medium".
-	Effort *string `json:"effort,omitempty"`
-
-	// GenerateSummary is deprecated. Use Summary instead.
-	// Supported values: "auto", "concise", "detailed".
-	GenerateSummary *string `json:"generate_summary,omitempty"`
-
-	// Summary of the reasoning performed by the model.
-	// Supported values: "auto", "concise", "detailed".
-	Summary *string `json:"summary,omitempty"`
+	// The schema for the response format, described as a JSON Schema object. Learn how
+	// to build JSON schemas [here](https://json-schema.org/).
+	Schema any `json:"schema"`
+	// Whether to enable strict schema adherence when generating the output. If set to
+	// true, the model will always follow the exact schema defined in the `schema`
+	// field. Only a subset of JSON Schema is supported when `strict` is `true`. To
+	// learn more, read the
+	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+	Strict bool `json:"strict,omitempty"`
 }
 
 // ChatCompletionModality represents the output types that the model can generate.
@@ -673,13 +671,16 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-presence_penalty
 	PresencePenalty *float32 `json:"presence_penalty,omitempty"` //nolint:tagliatelle //follow openai api
 
-	// Reasoning
-	// o-series models only
-	// refs: https://platform.openai.com/docs/api-reference/responses/create#responses-create-reasoning
-	Reasoning *Reasoning `json:"reasoning,omitempty"`
-
-	// ResponseFormat is only for GPT models.
-	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-response_format
+	// An object specifying the format that the model must output.
+	//
+	// Setting to `{ "type": "json_schema", "json_schema": {...} }` enables Structured
+	// Outputs which ensures the model will match your supplied JSON schema. Learn more
+	// in the
+	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+	//
+	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+	// ensures the message the model generates is valid JSON. Using `json_schema` is
+	// preferred for models that support it.
 	ResponseFormat *ChatCompletionResponseFormat `json:"response_format,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// Seed: This feature is in Beta. If specified, our system will make a best effort to
@@ -690,6 +691,15 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-seed
 	Seed *int `json:"seed,omitempty"`
 
+	// Constrains effort on reasoning for
+	// [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+	// supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+	// effort can result in faster responses and fewer tokens used on reasoning in a
+	// response.
+	//
+	// Any of "minimal", "low", "medium", "high".
+	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
+
 	// ServiceTier:string or null - Defaults to auto
 	// Specifies the processing type used for serving the request.
 	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
@@ -698,7 +708,15 @@ type ChatCompletionRequest struct {
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	ServiceTier *string `json:"service_tier,omitempty"`
+	// Any of "auto", "default", "flex", "scale", "priority".
+	ServiceTier openai.ChatCompletionNewParamsServiceTier `json:"service_tier,omitzero"`
+
+	// Constrains the verbosity of the model's response. Lower values will result in
+	// more concise responses, while higher values will result in more verbose
+	// responses. Currently supported values are `low`, `medium`, and `high`.
+	//
+	// Any of "low", "medium", "high".
+	Verbosity openai.ChatCompletionNewParamsVerbosity `json:"verbosity,omitzero"`
 
 	// Stop string / array / null Defaults to null
 	// Up to 4 sequences where the API will stop generating further tokens.
