@@ -9,19 +9,11 @@ on:
       #
       # See RELEASES.md for more details.
       - 'release/**'
-    paths-ignore:
-      - '**/*.md'
-      - 'site/**'
-      - 'netlify.toml'
 
   push:
     branches:
       - 'main'
       - 'release/**'
-    paths-ignore:
-      - '**/*.md'
-      - 'site/**'
-      - 'netlify.toml'
 
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
@@ -34,7 +26,26 @@ permissions:
   id-token: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!site/**'
+              - '!netlify.toml'
+          predicate-quantifier: every  # Make the filters be AND-ed
+          token: "" # don't use github api
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+
   unittest:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: Unit Test
     strategy:
       fail-fast: false
@@ -84,6 +95,8 @@ jobs:
           use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   test_crdcel:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: CRD CEL Validation Test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -108,6 +121,8 @@ jobs:
       - run: make test-crdcel
 
   test_controller:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: Controller Test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -132,6 +147,8 @@ jobs:
       - run: make test-controller
 
   test_extproc:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -185,6 +202,8 @@ jobs:
         run: make test-extproc
 
   test_e2e:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # Not all the cases in E2E require secrets, so we run for all the events.
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
@@ -224,6 +243,8 @@ jobs:
         run: make test-e2e
 
   test_e2e_inference_extension:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: E2E Test for Inference Extensions (Envoy Gateway ${{ matrix.name }})
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
@@ -300,8 +321,7 @@ jobs:
           echo "CI required checks completed"
           if [ "${{
               contains(needs.*.result, 'failure') ||
-              contains(needs.*.result, 'cancelled') ||
-              contains(needs.*.result, 'skipped')
+              contains(needs.*.result, 'cancelled')
             }}" == "true" ]; then
             echo "Some required jobs have failed or were cancelled or skipped."
             exit 1
