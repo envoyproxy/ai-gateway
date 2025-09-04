@@ -343,6 +343,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			metrics:         mm,
 			stream:          true,
 			responseHeaders: map[string]string{":status": "200"},
+			config:          &processorConfig{},
 		}
 		// First chunk (not end of stream) should not complete the request.
 		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}

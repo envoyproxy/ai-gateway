@@ -216,7 +216,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.NotNil(t, commonRes)
 		require.True(t, mt.responseErrorCalled)
-		// Ensure failure metric recorded for non-2xx
+		// Ensure failure metric recorded for non-2xx.
 		mm.RequireRequestFailure(t)
 	})
 

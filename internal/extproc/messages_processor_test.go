@@ -508,12 +508,12 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 	}
 
 	ctx := context.Background()
-	// Mid-stream
+	// Mid-stream.
 	_, err := processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("chunk"), EndOfStream: false})
 	require.NoError(t, err)
 	mm.RequireRequestNotCompleted(t)
 
-	// End-of-stream
+	// End-of-stream.
 	_, err = processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("final"), EndOfStream: true})
 	require.NoError(t, err)
 	mm.RequireRequestSuccess(t)
