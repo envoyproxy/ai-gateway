@@ -631,8 +631,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				choice.Message.Content = output.Text
 			}
 		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
-			if choice.Message.AnthropicResponseVendorFields == nil {
-				choice.Message.AnthropicResponseVendorFields = &openai.AnthropicResponseVendorFields{}
+			if choice.Message.AWSBedRockResponseVendorFields == nil {
+				choice.Message.AWSBedRockResponseVendorFields = &openai.AWSBedRockResponseVendorFields{}
 			}
 			choice.Message.ReasoningContent = output.ReasoningContent
 		}
