@@ -39,7 +39,7 @@ jobs:
               - '!site/**'
               - '!netlify.toml'
           predicate-quantifier: every  # Make the filters be AND-ed
-          token: "" # don't use github api
+          token: ""  # don't use github api
     outputs:
       code: ${{ steps.changes.outputs.code }}
 
