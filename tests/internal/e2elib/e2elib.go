@@ -430,13 +430,13 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	}
 
 	args := []string{
-		"tool", "helm", "upgrade", "-i", "ai-eg",
+		"upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace",
 	}
 	args = append(args, aiGatewayHelmFlags...)
 
-	helm := exec.CommandContext(ctx, "go", args...)
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", args...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
