@@ -440,7 +440,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
-	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, func() map[string]string { return rp.requestHeaders })
+	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if c.modelNameOverride != "" {
 		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride

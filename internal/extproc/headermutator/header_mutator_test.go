@@ -52,7 +52,7 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 			Remove: []string{"authorization"},
 			Set:    []filterapi.HTTPHeader{},
 		}
-		mutator := NewHeaderMutator(mutations, func() map[string]string { return originalHeaders })
+		mutator := NewHeaderMutator(mutations, originalHeaders)
 		mutation := mutator.Mutate(headers, true)
 
 		require.NotNil(t, mutation)

@@ -16,16 +16,16 @@ import (
 
 type HeaderMutator struct {
 	// getOrignalHeaders Callback to get removed sensitive headers from the router filter.
-	getOrignalHeaders func() map[string]string
+	originalHeaders map[string]string
 
 	// headerMutations is a list of header mutations to apply.
 	headerMutations *filterapi.HTTPHeaderMutation
 }
 
-func NewHeaderMutator(headerMutations *filterapi.HTTPHeaderMutation, getOrignalHeaders func() map[string]string) *HeaderMutator {
+func NewHeaderMutator(headerMutations *filterapi.HTTPHeaderMutation, originalHeaders map[string]string) *HeaderMutator {
 	return &HeaderMutator{
-		getOrignalHeaders: getOrignalHeaders,
-		headerMutations:   headerMutations,
+		originalHeaders: originalHeaders,
+		headerMutations: headerMutations,
 	}
 }
 
@@ -62,8 +62,8 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 	}
 
 	// Restore original headers on retry, only if not being removed, set or not already present.
-	if onRetry && h.getOrignalHeaders != nil {
-		for h, v := range h.getOrignalHeaders() {
+	if onRetry && h.originalHeaders != nil {
+		for h, v := range h.originalHeaders {
 			key := strings.ToLower(h)
 			_, isRemoved := removedHeadersSet[key]
 			_, isSet := setHeadersSet[key]

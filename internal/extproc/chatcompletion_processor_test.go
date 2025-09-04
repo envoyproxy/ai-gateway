@@ -640,7 +640,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 	t.Run("remove headers", func(t *testing.T) {
 		p := &chatCompletionProcessorUpstreamFilter{
 			requestHeaders: map[string]string{"authorization": "secret", "x-api-key": "key123", "other": "value"},
-			headerMutator:  headermutator.NewHeaderMutator(&headerMutation, func() map[string]string { return originalHeaders }),
+			headerMutator:  headermutator.NewHeaderMutator(&headerMutation, originalHeaders),
 			onRetry:        true,
 			metrics:        &mockChatCompletionMetrics{},
 			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
@@ -663,7 +663,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		// Simulate that sensitive headers were removed and now need to be restored.
 		p := &chatCompletionProcessorUpstreamFilter{
 			requestHeaders: map[string]string{"other": "value"},
-			headerMutator:  headermutator.NewHeaderMutator(&filterapi.HTTPHeaderMutation{Set: headerMutation.Set}, func() map[string]string { return originalHeaders }),
+			headerMutator:  headermutator.NewHeaderMutator(&filterapi.HTTPHeaderMutation{Set: headerMutation.Set}, originalHeaders),
 			onRetry:        true, // not a retry, so should restore.
 			metrics:        &mockChatCompletionMetrics{},
 			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
@@ -689,7 +689,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		p := &chatCompletionProcessorUpstreamFilter{
 			requestHeaders: map[string]string{"other": "value"},
 			onRetry:        true, // not a retry, so should restore.
-			headerMutator:  headermutator.NewHeaderMutator(nil, func() map[string]string { return originalHeaders }),
+			headerMutator:  headermutator.NewHeaderMutator(nil, originalHeaders),
 			metrics:        &mockChatCompletionMetrics{},
 			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			config:         &processorConfig{metadataNamespace: ""},
