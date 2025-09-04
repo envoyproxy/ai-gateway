@@ -73,6 +73,9 @@ and evaluation system. It has UX features for LLM spans formatted with
    # Invoke the OpenTelemetry instrumented chat completion
    docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
 
+   # Notice the GenAI augmented access logs in the gateway
+   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+
    # Verify traces are being received by Phoenix
    docker compose -f docker-compose-otel.yaml logs phoenix | grep "POST /v1/traces"
    ```
