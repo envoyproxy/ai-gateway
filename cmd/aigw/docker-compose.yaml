@@ -44,7 +44,8 @@ services:
     environment:
       - OPENAI_HOST=host.docker.internal
     ports:
-      - "1975:1975"
+      - "1975:1975"  # OpenAI compatible endpoint at /v1
+      - "1064:1064"  # Prometheus endpoint at /metrics
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
     volumes:

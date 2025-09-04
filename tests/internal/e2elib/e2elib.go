@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
 const (
@@ -120,15 +122,14 @@ func initKindCluster(ctx context.Context) (err error) {
 	}()
 
 	initLog(fmt.Sprintf("\tCreating kind cluster named %s", kindClusterName))
-	cmd := exec.CommandContext(ctx, "go", "tool", "kind", "create", "cluster", "--name", kindClusterName)
-	out, err := cmd.CombinedOutput()
-	if err != nil && !bytes.Contains(out, []byte("already exist")) {
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", kindClusterName)
+	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return
 	}
 
 	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", kindClusterName))
-	cmd = exec.CommandContext(ctx, "go", "tool", "kind", "export", "kubeconfig", "--name", kindClusterName)
+	cmd := testsinternal.GoToolCmdContext(ctx, "kind", "export", "kubeconfig", "--name", kindClusterName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -141,7 +142,7 @@ func initKindCluster(ctx context.Context) (err error) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 	} {
-		cmd := exec.CommandContext(ctx, "go", "tool", "kind", "load", "docker-image", image, "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -314,14 +315,14 @@ spec:
 func cleanupKindCluster(testsFailed bool) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
-		cmd := exec.Command("go", "tool", "kind", "export", "logs", "--name", kindClusterName, kindLogDir)
+		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", kindClusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		cmd := exec.Command("go", "tool", "kind", "delete", "cluster", "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", kindClusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
@@ -380,7 +381,7 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "eg",
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace")
 	helm.Stdout = os.Stdout
@@ -419,7 +420,7 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helmCRD := exec.CommandContext(ctx, "go", "tool", "helm", "upgrade", "-i", "ai-eg-crd",
+	helmCRD := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "ai-eg-crd",
 		"../../manifests/charts/ai-gateway-crds-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace")
 	helmCRD.Stdout = os.Stdout
@@ -429,13 +430,13 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	}
 
 	args := []string{
-		"tool", "helm", "upgrade", "-i", "ai-eg",
+		"upgrade", "-i", "ai-eg",
 		"../../manifests/charts/ai-gateway-helm",
 		"-n", "envoy-ai-gateway-system", "--create-namespace",
 	}
 	args = append(args, aiGatewayHelmFlags...)
 
-	helm := exec.CommandContext(ctx, "go", args...)
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", args...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
