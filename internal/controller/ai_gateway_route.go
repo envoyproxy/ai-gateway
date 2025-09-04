@@ -333,28 +333,12 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	dst.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
-	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
-	parentRefs := aiGatewayRoute.Spec.ParentRefs
-	for _, egRef := range aiGatewayRoute.Spec.TargetRefs {
-		egName := egRef.Name
-		var namespace *gwapiv1.Namespace
-		if egNs != "" { // This path is only for the `aigw translate`.
-			namespace = ptr.To(egNs)
-		}
-		parentRefs = append(parentRefs, gwapiv1.ParentReference{
-			Name:      egName,
-			Namespace: namespace,
-		})
-	}
-	dst.Spec.ParentRefs = parentRefs
+	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
 	return nil
 }
 
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
 func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	for _, t := range aiGatewayRoute.Spec.TargetRefs {
-		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(t.Name))
-	}
 	for _, p := range aiGatewayRoute.Spec.ParentRefs {
 		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(p.Name))
 	}
