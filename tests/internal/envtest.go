@@ -8,7 +8,6 @@ package testsinternal
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -40,11 +39,10 @@ func NewEnvTest(t *testing.T) (c client.Client, cfg *rest.Config, k kubernetes.I
 		k8sVersion = defaultK8sVersion
 	}
 	t.Logf("Using Kubernetes version %s", k8sVersion)
-	setupEnvTestCmd := exec.Command("go", "tool", "setup-envtest", "use", k8sVersion, "-p", "path")
-	output, err := setupEnvTestCmd.Output()
-	require.NoError(t, err, "Failed to setup envtest: %s", output)
-	t.Logf("Using envtest assets from %s", string(output))
-	t.Setenv("KUBEBUILDER_ASSETS", string(output))
+	output, err := RunGoTool("setup-envtest", "use", k8sVersion, "-p", "path")
+	require.NoError(t, err, "Failed to setup envtest: %s", err)
+	t.Logf("Using envtest assets from %s", output)
+	t.Setenv("KUBEBUILDER_ASSETS", output)
 
 	crds = append(crds, requireThirdPartyCRDDownloaded(t))
 	env := &envtest.Environment{CRDDirectoryPaths: crds}
@@ -74,14 +72,12 @@ func requireThirdPartyCRDDownloaded(t *testing.T) string {
 		}()
 		require.NoError(t, err, "Failed to create file for third-party CRD")
 
-		helm := exec.Command(
-			"go", "tool", "helm", "show", "crds", "oci://docker.io/envoyproxy/gateway-helm",
+		helm := GoToolCmd("helm", "show", "crds", "oci://docker.io/envoyproxy/gateway-helm",
 			"--version", "1.5.0",
 		)
 		helm.Stdout = f
 		helm.Stderr = os.Stderr
-		err = helm.Run()
-		require.NoError(t, err, "Failed to download third-party CRD")
+		require.NoError(t, helm.Run(), "Failed to download third-party CRD")
 	} else if err != nil {
 		panic(fmt.Sprintf("Failed to check if CRD exists: %v", err))
 	}

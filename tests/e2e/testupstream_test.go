@@ -50,6 +50,10 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus int
 			// expResponseBody is the expected response body for the test case. This is optional and can be empty.
 			expResponseBody string
+			// nonexpectedHeaders are the headers that should NOT be present in the request to the testupstream server.
+			nonexpectedHeaders []string
+			// reqHeaders are the headers to be included in the request to the AI Gateway.
+			reqHeaders map[string]string
 		}{
 			{
 				name:              "openai",
@@ -75,6 +79,17 @@ func TestWithTestUpstream(t *testing.T) {
 				expStatus:       404,
 				expResponseBody: `No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
 			},
+			{
+				name:               "openai-header-mutation",
+				modelName:          "some-cool-model",
+				expTestUpstreamID:  "primary",
+				expPath:            "/v1/chat/completions",
+				expHost:            "testupstream.default.svc.cluster.local",
+				fakeResponseBody:   `{"choices":[{"message":{"content":"This is a test."}}]}`,
+				nonexpectedHeaders: []string{"x-remove-header"},
+				reqHeaders:         map[string]string{"x-remove-header": "remove-me"},
+				expStatus:          200,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {
@@ -89,10 +104,17 @@ func TestWithTestUpstream(t *testing.T) {
 					req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 					req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID)
+					for k, v := range tc.reqHeaders {
+						req.Header.Set(k, v)
+					}
 					if tc.modelName == "some-cool-model" {
 						// TODO: remove after 0.3.0 release since this is for backward compatibility testing.
 						req.Header.Set(testupstreamlib.ExpectedHeadersKey,
 							base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer dummy-token")))
+					}
+
+					if len(tc.nonexpectedHeaders) > 0 {
+						req.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey, base64.StdEncoding.EncodeToString([]byte(strings.Join(tc.nonexpectedHeaders, ","))))
 					}
 
 					resp, err := http.DefaultClient.Do(req)

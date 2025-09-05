@@ -178,7 +178,7 @@ Matches []AIGatewayRouteRuleMatch `json:"matches,omitempty"`
 // This can be used to subtract the usage token from the usage quota in the rate limit filter when
 // the request completes combined with `apply_on_stream_done` and `hits_addend` fields of
 // the rate limit configuration https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#config-route-v3-ratelimit
-// which is introduced in Envoy 1.33 (to be released soon as of writing).
+// introduced in Envoy 1.33.
 type LLMRequestCost struct {
 // MetadataKey is the key of the metadata storing the request cost.
 MetadataKey string `json:"metadataKey"`

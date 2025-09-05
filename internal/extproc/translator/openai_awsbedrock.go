@@ -82,6 +82,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		bedrockReq.InferenceConfig.StopSequences = stopSequence
 	}
 
+	// Handle Anthropic vendor fields if present. Currently only supports thinking fields.
+	if openAIReq.AnthropicVendorFields != nil && openAIReq.Thinking != nil {
+		if bedrockReq.AdditionalModelRequestFields == nil {
+			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
+		}
+		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.Thinking
+	}
+
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {
@@ -608,14 +616,25 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		},
 		FinishReason: o.bedrockStopReasonToOpenAIStopReason(bedrockResp.StopReason),
 	}
+
 	for _, output := range bedrockResp.Output.Message.Content {
-		if toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse); toolCall != nil {
-			choice.Message.ToolCalls = []openai.ChatCompletionMessageToolCallParam{*toolCall}
-		} else if output.Text != nil {
-			// For the converse response the assumption is that there is only one text content block, we take the first one.
+		// The AWS Content Block data type is a UNION,
+		// so only one of the members can be specified when used or returned.
+		// see: https: //docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlock.html
+		switch {
+		case output.ToolUse != nil:
+			toolCall := o.bedrockToolUseToOpenAICalls(output.ToolUse)
+			choice.Message.ToolCalls = append(choice.Message.ToolCalls, *toolCall)
+		case output.Text != nil:
+			// We expect only one text content block in the response.
 			if choice.Message.Content == nil {
 				choice.Message.Content = output.Text
 			}
+		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
+			if choice.Message.AWSBedRockResponseVendorFields == nil {
+				choice.Message.AWSBedRockResponseVendorFields = &openai.AWSBedRockResponseVendorFields{}
+			}
+			choice.Message.ReasoningContent = output.ReasoningContent
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)

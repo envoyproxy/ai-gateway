@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
@@ -820,6 +821,45 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test thinking parameter for anthropic claude model",
+			input: openai.ChatCompletionRequest{
+				Model: "anthropic.claude-3-sonnet-20240229-v1:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "Hello",
+							},
+						},
+					},
+				},
+				AnthropicVendorFields: &openai.AnthropicVendorFields{
+					Thinking: &anthropic.ThinkingConfigParamUnion{
+						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
+							BudgetTokens: int64(1024),
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "enabled", "budget_tokens": float64(1024)},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("Hello"),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1220,6 +1260,49 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 		},
+		{
+			name: "response with reasoning content",
+			input: awsbedrock.ConverseResponse{
+				StopReason: ptr.To(awsbedrock.StopReasonEndTurn),
+				Output: &awsbedrock.ConverseOutput{
+					Message: awsbedrock.Message{
+						Role: awsbedrock.ConversationRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "This is the model's thought process.",
+									},
+								},
+							},
+							{
+								Text: ptr.To("This is the final answer."),
+							},
+						},
+					},
+				},
+			},
+			output: openai.ChatCompletionResponse{
+				Object: "chat.completion",
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+						Message: openai.ChatCompletionResponseChoiceMessage{
+							Role:    awsbedrock.ConversationRoleAssistant,
+							Content: ptr.To("This is the final answer."),
+							AWSBedRockResponseVendorFields: &openai.AWSBedRockResponseVendorFields{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "This is the model's thought process.",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1241,18 +1324,15 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
 			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
 
-			var openAIResp openai.ChatCompletionResponse
-			err = json.Unmarshal(newBody, &openAIResp)
+			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
+			require.JSONEq(t, string(expectedBody), string(newBody))
 			require.Equal(t,
 				LLMTokenUsage{
 					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
 					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
 					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
 				}, usedToken)
-			if !cmp.Equal(openAIResp, tt.output) {
-				t.Errorf("ConvertOpenAIToBedrock(), diff(got, expected) = %s\n", cmp.Diff(openAIResp, tt.output))
-			}
 		})
 	}
 }

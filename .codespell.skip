@@ -6,8 +6,8 @@
 ./site/npm-debug.log*
 ./site/yarn-debug.log*
 ./site/yarn-error.log*
-./go.mod
-./go.sum
+go.mod
+go.sum
 ./tests/e2e/logs
 *_for_tests.yaml
 ./tests/extproc/testdata/server.*
