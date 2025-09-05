@@ -241,7 +241,13 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Con
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+			return
+		}
+		if body.EndOfStream {
+			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
+		}
 	}()
 
 	// Simple passthrough: just pass the body as-is without any complex handling.
@@ -291,7 +297,9 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 // SetBackend implements [Processor.SetBackend].
 func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		c.metrics.RecordRequestCompletion(ctx, err == nil, c.requestHeaders)
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		}
 	}()
 	pickedEndpoint, isEndpointPicker := c.requestHeaders[internalapi.EndpointPickerHeaderKey]
 	rp, ok := routeProcessor.(*messagesProcessorRouterFilter)

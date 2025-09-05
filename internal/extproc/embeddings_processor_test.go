@@ -216,6 +216,37 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.NotNil(t, commonRes)
 		require.True(t, mt.responseErrorCalled)
+		// Ensure failure metric recorded for non-2xx.
+		mm.RequireRequestFailure(t)
+	})
+
+	// Success should be recorded only when EndOfStream is true.
+	t.Run("completion only at end", func(t *testing.T) {
+		mm := &mockEmbeddingsMetrics{}
+		mt := &mockEmbeddingTranslator{t: t}
+		p := &embeddingsProcessorUpstreamFilter{
+			translator:        mt,
+			logger:            slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			metrics:           mm,
+			config:            &processorConfig{},
+			backendName:       "some_backend",
+			modelNameOverride: "some_model",
+			responseHeaders:   map[string]string{":status": "200"},
+		}
+
+		// First chunk (not end of stream) should not complete the request.
+		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
+		mt.expResponseBody = chunk
+		_, err := p.ProcessResponseBody(t.Context(), chunk)
+		require.NoError(t, err)
+		mm.RequireRequestNotCompleted(t)
+
+		// Final chunk should mark success.
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		_, err = p.ProcessResponseBody(t.Context(), final)
+		require.NoError(t, err)
+		mm.RequireRequestSuccess(t)
 	})
 }
 

@@ -314,6 +314,52 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
 		require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["backend_name"].GetStringValue())
 	})
+
+	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
+	t.Run("non-2xx status failure once", func(t *testing.T) {
+		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
+		expHeadMut := &extprocv3.HeaderMutation{}
+		expBodyMut := &extprocv3.BodyMutation{}
+		mm := &mockChatCompletionMetrics{}
+		mt := &mockTranslator{t: t, expResponseBody: inBody, retHeaderMutation: expHeadMut, retBodyMutation: expBodyMut}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "500"},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		require.Equal(t, expBodyMut, commonRes.BodyMutation)
+		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		mm.RequireRequestFailure(t)
+	})
+
+	// Verify streaming only records completion on EndOfStream.
+	t.Run("streaming completion only at end", func(t *testing.T) {
+		mm := &mockChatCompletionMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			stream:          true,
+			responseHeaders: map[string]string{":status": "200"},
+			config:          &processorConfig{},
+		}
+		// First chunk (not end of stream) should not complete the request.
+		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
+		mt.expResponseBody = chunk
+		_, err := p.ProcessResponseBody(t.Context(), chunk)
+		require.NoError(t, err)
+		mm.RequireRequestNotCompleted(t)
+
+		// Final chunk should mark success.
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		_, err = p.ProcessResponseBody(t.Context(), final)
+		require.NoError(t, err)
+		mm.RequireRequestSuccess(t)
+	})
 }
 
 func bodyFromModel(t *testing.T, model string, stream bool, streamOptions *openai.StreamOptions) []byte {

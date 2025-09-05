@@ -465,6 +465,60 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 	require.NotNil(t, response)
 }
 
+func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure(t *testing.T) {
+	// Translator returns error; ensure failure is recorded.
+	mockTranslator := mockAnthropicTranslator{
+		t:      t,
+		retErr: errors.New("translate error"),
+	}
+
+	mm := &mockChatCompletionMetrics{}
+	processor := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: make(map[string]string),
+		logger:         slog.Default(),
+		metrics:        mm,
+		translator:     mockTranslator,
+	}
+
+	ctx := context.Background()
+	_, err := processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{})
+	require.Error(t, err)
+	mm.RequireRequestFailure(t)
+}
+
+func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd(t *testing.T) {
+	// Verify success is recorded only at EndOfStream by checking that no error occurs mid-stream
+	// and the call completes successfully at end.
+	mockTranslator := mockAnthropicTranslator{
+		t:                 t,
+		retHeaderMutation: &extprocv3.HeaderMutation{},
+		retBodyMutation:   &extprocv3.BodyMutation{},
+		retErr:            nil,
+	}
+
+	mm := &mockChatCompletionMetrics{}
+	processor := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: make(map[string]string),
+		logger:         slog.Default(),
+		metrics:        mm,
+		translator:     mockTranslator,
+		stream:         true,
+	}
+
+	ctx := context.Background()
+	// Mid-stream.
+	_, err := processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("chunk"), EndOfStream: false})
+	require.NoError(t, err)
+	mm.RequireRequestNotCompleted(t)
+
+	// End-of-stream.
+	_, err = processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("final"), EndOfStream: true})
+	require.NoError(t, err)
+	mm.RequireRequestSuccess(t)
+}
+
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
 	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
 	processor := &messagesProcessorUpstreamFilter{
