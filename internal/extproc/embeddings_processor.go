@@ -240,12 +240,9 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	recorded := false
+	recordRequestCompletionErr := false
 	defer func() {
-		if recorded {
-			return
-		}
-		if err != nil {
+		if err != nil || recordRequestCompletionErr {
 			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
 			return
 		}
@@ -274,9 +271,8 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
-		// Record failure for non-2xx status codes and suppress defer.
-		e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
-		recorded = true
+		// Mark so the deferred handler records failure.
+		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{

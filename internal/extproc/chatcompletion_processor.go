@@ -304,12 +304,9 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseHeaders(ctx conte
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
-	recorded := false
+	recordRequestCompletionErr := false
 	defer func() {
-		if recorded {
-			return
-		}
-		if err != nil {
+		if err != nil || recordRequestCompletionErr {
 			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
 			return
 		}
@@ -345,9 +342,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 			}
 			c.span.EndSpanOnError(code, b)
 		}
-		// Record failure for non-2xx status codes and suppress defer.
-		c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
-		recorded = true
+		// Mark so the deferred handler records failure.
+		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
