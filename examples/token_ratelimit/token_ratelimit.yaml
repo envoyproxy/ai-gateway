@@ -57,8 +57,8 @@ spec:
     - metadataKey: llm_total_token
       type: TotalToken
     # This configures the token limit based on the CEL expression.
-    # For a demonstration purpose, the CEL expression returns 100000000 only when the input token is 3,
-    # otherwise it returns 0 (no token usage).
+    # For a demonstration purpose, the CEL expression returns 100000000 only when the input token is 3.
+    # Otherwise, it returns 0 (no token usage).
     - metadataKey: llm_cel_calculated_token
       type: CEL
       cel: "input_tokens == uint(3) ? 100000000 : 0"

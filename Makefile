@@ -52,7 +52,7 @@ precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-t
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
-	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
+	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
 .PHONY: codespell
 CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
@@ -75,11 +75,11 @@ GO_FILES=$(shell git ls-files --cached --others --exclude-standard | grep '\.go$
 format: ## Format the codebase.
 	@echo "format => *.go"
 	@gofmt -s -w $(GO_FILES)
-	@go tool gofumpt -l -w $(GO_FILES)
+	@$(GO_TOOL) gofumpt -l -w $(GO_FILES)
 	@echo "gci => *.go"
-	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
+	@$(GO_TOOL) gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
 	@echo "licenses => **"
-	@go tool license-eye header fix
+	@$(GO_TOOL) license-eye header fix
 
 # This runs go mod tidy on every module.
 .PHONY: tidy
@@ -102,19 +102,19 @@ check: precommit ## Run all necessary steps to prepare for a commit and check fo
 # This runs the editorconfig-checker on the codebase.
 editorconfig:
 	@echo "running editorconfig-checker"
-	@go tool editorconfig-checker
+	@$(GO_TOOL) editorconfig-checker
 
 # This re-generates the CRDs for the API defined in the api/v1alpha1 directory.
 .PHONY: apigen
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
+	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
 apidoc: ## Generate API documentation for the API defined in the api directory.
-	@go tool crd-ref-docs \
+	@$(GO_TOOL) crd-ref-docs \
 		--source-path=api/v1alpha1 \
 		--config=site/crd-ref-docs/config-core.yaml \
 		--templates-dir=site/crd-ref-docs/templates \
@@ -137,7 +137,7 @@ test: ## Run the unit tests for the codebase. This doesn't run the integration t
 test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@mkdir -p $(OUTPUT_DIR)
 	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... -count=1 $(GO_TEST_ARGS)"
-	@go tool go-test-coverage --config=.testcoverage.yml
+	@$(GO_TOOL) go-test-coverage --config=.testcoverage.yml
 
 ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 
@@ -289,7 +289,7 @@ clean: ## Clears all built artifacts and installed binaries.
 .PHONY: helm-lint
 helm-lint: ## Lint envoy ai gateway relevant helm charts.
 	@echo "helm-lint => .${HELM_DIR}"
-	@go tool helm lint ${HELM_DIR}
+	@$(GO_TOOL) helm lint ${HELM_DIR}
 
 # This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
 # This must pass before `helm-push` can be run as well as on any commit.
@@ -299,7 +299,7 @@ helm-lint: ## Lint envoy ai gateway relevant helm charts.
 .PHONY: helm-package
 helm-package: helm-lint ## Package envoy ai gateway relevant helm charts.
 	@echo "helm-package => ${HELM_DIR}"
-	@go tool helm package ${HELM_DIR} --app-version ${TAG} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@$(GO_TOOL) helm package ${HELM_DIR} --app-version ${TAG} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 # This tests the helm chart, ensuring that the container images are set to have the correct version tag.
 .PHONY: helm-test
@@ -307,14 +307,14 @@ helm-test: HELM_CHART_VERSION = v9.9.9-latest
 helm-test: TAG = v9.9.9
 helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}.tgz
 helm-test: helm-package  ## Test the helm chart with a dummy version.
-	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
-	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
+	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
 helm-push: helm-package ## Push envoy ai gateway relevant helm charts to OCI registry
 	@echo "helm-push => .${HELM_DIR}"
-	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
-	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
