@@ -314,6 +314,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
+- [HTTPHeaderMutation](#httpheadermutation)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
 - [VersionedAPISchema](#versionedapischema)
@@ -598,6 +599,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
   required="false"
   description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to.<br />Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.<br />When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,<br />set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,<br />and then remove this field from the AIServiceBackend."
+/><ApiField
+  name="headerMutation"
+  type="[HTTPHeaderMutation](#httpheadermutation)"
+  required="false"
+  description="HeaderMutation defines the mutation of HTTP headers that will be applied to the request<br />before sending it to the backend."
 />
 
 
@@ -1137,6 +1143,32 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
+
+
+#### HTTPHeaderMutation
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#aiservicebackendspec)
+
+HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
+
+##### Fields
+
+
+
+<ApiField
+  name="set"
+  type="HTTPHeader array"
+  required="false"
+  description="Set overwrites/adds the request with the given header (name, value)<br />before the action.<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header: foo<br />Config:<br />  set:<br />  - name: `my-header`<br />    value: `bar`<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header: bar"
+/><ApiField
+  name="remove"
+  type="string array"
+  required="false"
+  description="Remove the given header(s) from the HTTP request before the action. The<br />value of Remove is a list of HTTP header names. Note that the header<br />names are case-insensitive (see<br />https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header1: foo<br />  my-header2: bar<br />  my-header3: baz<br />Config:<br />  remove: [`my-header1`, `my-header3`]<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header2: bar"
+/>
 
 
 #### LLMRequestCost
