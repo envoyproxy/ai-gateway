@@ -171,6 +171,21 @@ func TestParseExtraEnvVars(t *testing.T) {
 			},
 		},
 		{
+			name:  "single secret ref",
+			input: "OTEL_SERVICE_NAME=secretKeyRef {\"name\":\"foo\",\"key\":\"bar\"}",
+			want: []corev1.EnvVar{
+				{
+					Name: "OTEL_SERVICE_NAME",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "foo"},
+							Key:                  "bar",
+						},
+					},
+				},
+			},
+		},
+		{
 			name:  "multiple env vars",
 			input: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
 			want: []corev1.EnvVar{
@@ -178,6 +193,23 @@ func TestParseExtraEnvVars(t *testing.T) {
 				{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
 			},
 		},
+		{
+			name:  "multiple env vars with a secretkeyref",
+			input: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=secretKeyRef {\"name\":\"foo\",\"key\":\"bar\"}",
+			want: []corev1.EnvVar{
+				{Name: "OTEL_SERVICE_NAME", Value: "ai-gateway"},
+				{
+					Name: "OTEL_TRACES_EXPORTER",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "foo"},
+							Key:                  "bar",
+						},
+					},
+				},
+			},
+		},
+
 		{
 			name:  "env var with comma in value",
 			input: "OTEL_RESOURCE_ATTRIBUTES=service.name=gateway,service.version=1.0",
@@ -205,6 +237,21 @@ func TestParseExtraEnvVars(t *testing.T) {
 			input: "OTEL_SERVICE_NAME=ai-gateway;",
 			want: []corev1.EnvVar{
 				{Name: "OTEL_SERVICE_NAME", Value: "ai-gateway"},
+			},
+		},
+		{
+			name:  "trailing semicolon with secretkeyref",
+			input: "OTEL_SERVICE_NAME=secretKeyRef {\"name\":\"foo\",\"key\":\"bar\"};",
+			want: []corev1.EnvVar{
+				{
+					Name: "OTEL_SERVICE_NAME",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "foo"},
+							Key:                  "bar",
+						},
+					},
+				},
 			},
 		},
 		{
