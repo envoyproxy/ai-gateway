@@ -19,7 +19,6 @@ import (
 type chatCompletion struct {
 	baseMetrics
 	firstTokenSent    bool
-	lastTokenTime     time.Time
 	timeToFirstToken  float64
 	interTokenLatency float64
 	totalOutputTokens uint32

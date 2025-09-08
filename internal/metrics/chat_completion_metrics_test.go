@@ -254,19 +254,19 @@ func TestRecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.T) {
 		pm.SetModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
-		// First token (records TTFT)
+		// First token (records TTFT).
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 1, false, nil)
 
-		// Mid-stream cumulative usage appears (5 tokens)
+		// Mid-stream cumulative usage appears (5 tokens).
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 5, false, nil)
 
-		// A later event with a smaller number (simulate out-of-order/delta); should not reduce max
+		// A later event with a smaller number (simulate out-of-order/delta); should not reduce max.
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 3, false, nil)
 
-		// Final chunk without usage (0); should record using max seen (5)
+		// Final chunk without usage (0); should record using max seen (5).
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 0, true, nil)
 
@@ -293,15 +293,15 @@ func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 		pm.SetModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
-		// First token (records TTFT)
+		// First token (records TTFT).
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 0, false, nil)
 
-		// No usage mid-stream
+		// No usage mid-stream.
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 0, false, nil)
 
-		// Usage only at end-of-stream
+		// Usage only at end-of-stream.
 		time.Sleep(5 * time.Millisecond)
 		pm.RecordTokenLatency(t.Context(), 7, true, nil)
 
