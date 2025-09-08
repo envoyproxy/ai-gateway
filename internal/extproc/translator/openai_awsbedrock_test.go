@@ -958,6 +958,197 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test multi-turn with tool use and thinking content",
+			input: openai.ChatCompletionRequest{
+				Model: "unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "What's the weather in Paris?"},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID:   ptr.To("tool_call_123"),
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_weather",
+										Arguments: "{\"location\":\"Paris\"}",
+									},
+								},
+							},
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: []openai.ChatCompletionAssistantMessageParamContent{
+									{
+										Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+										Text: ptr.To("I need to call the get_weather tool for Paris."),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleTool,
+						Value: openai.ChatCompletionToolMessageParam{
+							Role:       openai.ChatMessageRoleTool,
+							ToolCallID: "tool_call_123",
+							Content:    openai.StringOrArray{Value: "{\"temperature\": 88}"},
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("What's the weather in Paris?")}},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "I need to call the get_weather tool for Paris.",
+									},
+								},
+							},
+							{
+								ToolUse: &awsbedrock.ToolUseBlock{
+									ToolUseID: "tool_call_123",
+									Name:      "get_weather",
+									Input:     map[string]any{"location": "Paris"},
+								},
+							},
+						},
+					},
+					{
+						Role: awsbedrock.ConversationRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ToolResult: &awsbedrock.ToolResultBlock{
+									ToolUseID: ptr.To("tool_call_123"),
+									Content: []*awsbedrock.ToolResultContentBlock{
+										{Text: ptr.To("{\"temperature\": 88}")},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test thinking enabled config",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+				},
+				AnthropicVendorFields: &openai.AnthropicVendorFields{
+					Thinking: &anthropic.ThinkingConfigParamUnion{
+						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
+							Type:         "enabled",
+							BudgetTokens: 1024,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "enabled", "budget_tokens": float64(1024)},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test thinking disabled config",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+				},
+				AnthropicVendorFields: &openai.AnthropicVendorFields{
+					Thinking: &anthropic.ThinkingConfigParamUnion{
+						OfDisabled: &anthropic.ThinkingConfigDisabledParam{
+							Type: "disabled",
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "disabled"},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test assistant message with mixed text and thinking content",
+			input: openai.ChatCompletionRequest{
+				Model: "unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: []openai.ChatCompletionAssistantMessageParamContent{
+									{
+										Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+										Text: ptr.To("This is a standard text part."),
+									},
+									{
+										Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+										Text: ptr.To("This is a thinking part."),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("This is a standard text part."),
+							},
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "This is a thinking part.",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1593,9 +1784,9 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							//ReasoningContent: map[string]interface{}{
-							//	"text": "thinking...",
-							//},
+							ReasoningContent: &openai.AWSBedRockStreamReasoningContent{
+								Text: "thinking...",
+							},
 						},
 					},
 				},
@@ -1612,4 +1803,215 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t *testing.T) {
+	inputEvents := []awsbedrock.ConverseStreamEvent{
+		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			ReasoningContent: &awsbedrock.ReasoningContentBlock{
+				ReasoningText: &awsbedrock.ReasoningTextBlock{Text: "Okay, 27 * 453. "},
+			},
+		}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			ReasoningContent: &awsbedrock.ReasoningContentBlock{
+				ReasoningText: &awsbedrock.ReasoningTextBlock{Text: "Let's do the math..."},
+			},
+		}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			Text: ptr.To("The result of 27 multiplied by 453 is "),
+		}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			Text: ptr.To("12231."),
+		}},
+		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	for _, event := range inputEvents {
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
+
+		// This header is a simplification; the real stream has more, but this is sufficient for the decoder.
+		err = encoder.Encode(buf, eventstream.Message{
+			Headers: eventstream.Headers{
+				{Name: ":event-type", Value: eventstream.StringValue("chunk")},
+			},
+			Payload: payload,
+		})
+		require.NoError(t, err)
+	}
+
+	// Process the entire encoded stream through the translator.
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
+	_, bm, _, err := o.ResponseBody(nil, buf, true, nil)
+	require.NoError(t, err)
+	require.NotNil(t, bm)
+
+	// Parse the translated SSE (Server-Sent Events) output.
+	outputBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
+	lines := strings.Split(string(outputBody), "\n")
+
+	var generationChunks []string
+	var reasoningChunks []string
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			if strings.Contains(data, "[DONE]") {
+				continue
+			}
+
+			var chunk openai.ChatCompletionResponseChunk
+			err := json.Unmarshal([]byte(data), &chunk)
+			require.NoError(t, err)
+
+			if len(chunk.Choices) > 0 {
+				delta := chunk.Choices[0].Delta
+				if delta != nil {
+					if delta.Content != nil && *delta.Content != "" {
+						generationChunks = append(generationChunks, *delta.Content)
+					}
+					if delta.ReasoningContent != nil && delta.ReasoningContent.Text != "" {
+						reasoningChunks = append(reasoningChunks, delta.ReasoningContent.Text)
+					}
+				}
+			}
+		}
+	}
+
+	generation := strings.Join(generationChunks, "")
+	reasoning := strings.Join(reasoningChunks, "")
+
+	require.Equal(t, "The result of 27 multiplied by 453 is 12231.", generation)
+	require.Equal(t, "Okay, 27 * 453. Let's do the math...", reasoning)
+
+	require.NotEmpty(t, generation, "Generation content should not be empty")
+	require.NotEmpty(t, reasoning, "Reasoning content should not be empty")
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning(t *testing.T) {
+	// Define a mock AWS Bedrock non-streaming response.
+	// This response contains two content blocks: one for reasoning and one for the final text answer.
+	mockBedrockResponse := awsbedrock.ConverseResponse{
+		Output: &awsbedrock.ConverseOutput{
+			Message: awsbedrock.Message{
+				Role: awsbedrock.ConversationRoleAssistant,
+				Content: []*awsbedrock.ContentBlock{
+					{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							ReasoningText: &awsbedrock.ReasoningTextBlock{
+								Text: "The user wants to compare two numbers. 9.11 is larger than 9.8.",
+							},
+						},
+					},
+					{
+						Text: ptr.To("9.11 is greater than 9.8."),
+					},
+				},
+			},
+		},
+		StopReason: ptr.To(awsbedrock.StopReasonEndTurn),
+	}
+
+	body, err := json.Marshal(mockBedrockResponse)
+	require.NoError(t, err)
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+	_, bm, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+	require.NoError(t, err)
+	require.NotNil(t, bm)
+
+	outputBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
+	var openAIResponse openai.ChatCompletionResponse
+	err = json.Unmarshal(outputBody, &openAIResponse)
+	require.NoError(t, err)
+
+	// Assert that the translated response contains both content and reasoning.
+	require.Len(t, openAIResponse.Choices, 1, "There should be exactly one choice in the response")
+	message := openAIResponse.Choices[0].Message
+
+	require.NotNil(t, message.Content, "Message content should not be nil")
+	require.NotEmpty(t, *message.Content, "Message content should not be an empty string")
+	require.Equal(t, "9.11 is greater than 9.8.", *message.Content)
+
+	require.NotNil(t, message.ReasoningContent, "Reasoning content should not be nil")
+	require.NotNil(t, message.ReasoningContent.ReasoningContent, "The nested reasoning content block should not be nil")
+	require.NotEmpty(t, message.ReasoningContent.ReasoningContent.ReasoningText.Text, "The reasoning text itself should not be empty")
+
+	var untypedResponse map[string]interface{}
+	err = json.Unmarshal(outputBody, &untypedResponse)
+	require.NoError(t, err)
+
+	// Traverse the map to verify the structure: reasoning_content["reasoningContent"].
+	choices, ok := untypedResponse["choices"].([]interface{})
+	require.True(t, ok, "JSON should have a 'choices' array")
+	require.Len(t, choices, 1)
+
+	choice, ok := choices[0].(map[string]interface{})
+	require.True(t, ok, "Choice item should be a map")
+
+	messageMap, ok := choice["message"].(map[string]interface{})
+	require.True(t, ok, "Choice should have a 'message' map")
+
+	reasoningContent, ok := messageMap["reasoning_content"].(map[string]interface{})
+	require.True(t, ok, "Message should have a 'reasoning_content' map")
+
+	_, ok = reasoningContent["reasoningContent"]
+	require.True(t, ok, "The 'reasoning_content' object should have a nested 'reasoningContent' key")
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedContent(t *testing.T) {
+	redactedBytes := []byte("a redacted thought")
+	inputEvents := []awsbedrock.ConverseStreamEvent{
+		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			ReasoningContent: &awsbedrock.ReasoningContentBlock{
+				RedactedContent: redactedBytes,
+			},
+		}},
+		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+			Text: ptr.To("This is the final answer."),
+		}},
+		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	for _, event := range inputEvents {
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
+		err = encoder.Encode(buf, eventstream.Message{
+			Headers: eventstream.Headers{{Name: ":event-type", Value: eventstream.StringValue("chunk")}},
+			Payload: payload,
+		})
+		require.NoError(t, err)
+	}
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
+	_, bm, _, err := o.ResponseBody(nil, buf, true, nil)
+	require.NoError(t, err)
+
+	lines := strings.Split(string(bm.Mutation.(*extprocv3.BodyMutation_Body).Body), "\n")
+	var foundReasoningChunk bool
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			if strings.Contains(data, "[DONE]") {
+				continue
+			}
+			var chunk openai.ChatCompletionResponseChunk
+			err := json.Unmarshal([]byte(data), &chunk)
+			require.NoError(t, err)
+
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil && chunk.Choices[0].Delta.ReasoningContent != nil {
+				reasoning := chunk.Choices[0].Delta.ReasoningContent
+				require.Equal(t, redactedBytes, reasoning.RedactedContent)
+				require.Empty(t, reasoning.Text)
+				foundReasoningChunk = true
+			}
+		}
+	}
+	require.True(t, foundReasoningChunk, "A reasoning chunk with redacted content should have been found")
 }

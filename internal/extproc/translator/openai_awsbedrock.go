@@ -250,39 +250,45 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	bedrockMessage := &awsbedrock.Message{Role: role}
 	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
 
-	// Handle string content
+	var contentParts []openai.ChatCompletionAssistantMessageParamContent
 	if v, ok := openAiMessage.Content.Value.(string); ok && len(v) > 0 {
-		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: &v})
-		// Handle array of content parts
-	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionAssistantMessageParamContent); ok {
-		for _, content := range contents {
-			switch content.Type {
-			case openai.ChatCompletionAssistantMessageParamContentTypeText:
-				if content.Text != nil {
-					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
-				}
-			case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
-				if content.Text != nil {
-					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-						ReasoningContent: &awsbedrock.ReasoningContentBlock{
-							ReasoningText: &awsbedrock.ReasoningTextBlock{
-								Text: *content.Text,
-							},
+		// Case 1: Content is a simple string.
+		contentParts = append(contentParts, openai.ChatCompletionAssistantMessageParamContent{Type: openai.ChatCompletionAssistantMessageParamContentTypeText, Text: &v})
+	} else if singleContent, ok := openAiMessage.Content.Value.(openai.ChatCompletionAssistantMessageParamContent); ok {
+		// Case 2: Content is a single object.
+		contentParts = append(contentParts, singleContent)
+	} else if sliceContent, ok := openAiMessage.Content.Value.([]openai.ChatCompletionAssistantMessageParamContent); ok {
+		// Case 3: Content is already a slice of objects.
+		contentParts = sliceContent
+	}
+
+	for _, content := range contentParts {
+		switch content.Type {
+		case openai.ChatCompletionAssistantMessageParamContentTypeText:
+			if content.Text != nil {
+				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
+			}
+		case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
+			if content.Text != nil {
+				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+					ReasoningContent: &awsbedrock.ReasoningContentBlock{
+						ReasoningText: &awsbedrock.ReasoningTextBlock{
+							Text: *content.Text,
 						},
-					})
-				}
-			case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
-				if content.RedactedContent != nil {
-					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-						ReasoningContent: &awsbedrock.ReasoningContentBlock{
-							RedactedContent: content.RedactedContent,
-						},
-					})
-				}
-			case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
-				if content.Refusal != nil {
-					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
-				}
+					},
+				})
+			}
+		case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
+			if content.RedactedContent != nil {
+				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+					ReasoningContent: &awsbedrock.ReasoningContentBlock{
+						RedactedContent: content.RedactedContent,
+					},
+				})
+			}
+		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
+			if content.Refusal != nil {
+				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
 			}
 		}
 	}
@@ -657,7 +663,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if choice.Message.Content == nil {
 				choice.Message.Content = output.Text
 			}
-		case output.ReasoningContent != nil && output.ReasoningContent.ReasoningText != nil:
+		case output.ReasoningContent != nil:
 			if choice.Message.AWSBedRockResponseVendorFields == nil {
 				choice.Message.AWSBedRockResponseVendorFields = &openai.AWSBedRockResponseVendorFields{}
 			}
@@ -729,7 +735,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		})
 		o.role = *event.Role
 	case event.Delta != nil:
-		if event.Delta.Text != nil {
+		switch {
+		case event.Delta.Text != nil:
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -737,7 +744,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 					Content: event.Delta.Text,
 				},
 			})
-		} else if event.Delta.ToolUse != nil {
+		case event.Delta.ToolUse != nil:
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -752,11 +759,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 					},
 				},
 			})
-		} else if event.Delta.ReasoningContent != nil {
-			// 1. Create an instance of our new, type-safe struct for the delta.
+		case event.Delta.ReasoningContent != nil:
 			reasoningDelta := &openai.AWSBedRockStreamReasoningContent{}
 
-			// 2. Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
+			// Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
 			if event.Delta.ReasoningContent.ReasoningText != nil {
 				reasoningDelta.Text = event.Delta.ReasoningContent.ReasoningText.Text
 				reasoningDelta.Signature = event.Delta.ReasoningContent.ReasoningText.Signature
@@ -765,7 +771,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				reasoningDelta.RedactedContent = event.Delta.ReasoningContent.RedactedContent
 			}
 
-			// 3. Add the complete, structured delta to the response chunk.
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
