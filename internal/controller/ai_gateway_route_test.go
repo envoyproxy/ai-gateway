@@ -47,9 +47,7 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	// Make sure the finalizer is added.
 	require.NoError(t, err)
 	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
-	current.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
-		{LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{Name: "mytarget"}},
-	}
+	current.Spec.ParentRefs = []gwapiv1a2.ParentReference{{Name: "mytarget"}}
 	err = fakeClient.Update(t.Context(), &current)
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
@@ -61,8 +59,8 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 
 	require.Equal(t, "myroute", updated.Name)
 	require.Equal(t, "default", updated.Namespace)
-	require.Len(t, updated.Spec.TargetRefs, 1)
-	require.Equal(t, "mytarget", string(updated.Spec.TargetRefs[0].Name))
+	require.Len(t, updated.Spec.ParentRefs, 1)
+	require.Equal(t, "mytarget", string(updated.Spec.ParentRefs[0].Name))
 
 	// Test the case where the AIGatewayRoute is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
@@ -213,11 +211,11 @@ func Test_newHTTPRoute(t *testing.T) {
 			aiGatewayRoute := &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					ParentRefs: []gwapiv1a2.ParentReference{
 						{
-							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-								Name: "gtw", Kind: "Gateway", Group: "gateway.networking.k8s.io",
-							},
+							Name:  "gtw",
+							Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 						},
 					},
 					Rules: []aigv1a1.AIGatewayRouteRule{
