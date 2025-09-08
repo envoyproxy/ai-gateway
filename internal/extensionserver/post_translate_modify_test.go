@@ -308,22 +308,6 @@ func Test_shouldAIGatewayExtProcBeInserted(t *testing.T) {
 			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {}},
 			expected: true,
 		},
-		{
-			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: "ai-eg-eep-test-gw"}},
-			expected: false,
-		},
-		{
-			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: "ai-eg-eep-test-gw"}, {}},
-			expected: false,
-		},
-		{
-			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: "ai-eg-eep-test-gw"}},
-			expected: false,
-		},
-		{
-			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: aiGatewayExtProcName}, {Name: "ai-eg-eep-test-gw"}, {}},
-			expected: false,
-		},
 	}
 
 	for _, tt := range tests {

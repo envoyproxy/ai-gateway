@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
@@ -52,18 +51,7 @@ type AIGatewayRouteList struct {
 }
 
 // AIGatewayRouteSpec details the AIGatewayRoute configuration.
-//
-// +kubebuilder:validation:XValidation:rule="!has(self.parentRefs) || !has(self.targetRefs) || size(self.targetRefs) == 0", message="targetRefs is deprecated, use parentRefs only"
 type AIGatewayRouteSpec struct {
-	// TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
-	//
-	// Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0.
-	//
-	// +kubebuilder:validation:MaxItems=128
-	//
-	// +optional
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName `json:"targetRefs,omitempty"`
-
 	// ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
 	// Cross namespace references are not supported. In other words, the Gateway resources must be in the
 	// same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway.
@@ -73,17 +61,6 @@ type AIGatewayRouteSpec struct {
 	//
 	// +optional
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
-
-	// APISchema specifies the API schema of the input that the target Gateway(s) will receive.
-	// Based on this schema, the ai-gateway will perform the necessary transformation to the
-	// output schema specified in the selected AIServiceBackend during the routing process.
-	//
-	// Currently, the supported schemas are OpenAI and Anthropic as input schemas.
-	//
-	// Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0.
-	//
-	// +optional
-	APISchema *VersionedAPISchema `json:"schema,omitempty"`
 
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).

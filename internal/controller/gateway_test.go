@@ -11,12 +11,10 @@ import (
 	"testing"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -65,18 +63,18 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		Spec:       gwapiv1.GatewaySpec{},
 	})
 	require.NoError(t, err)
-	targets := []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	targets := []gwapiv1a2.ParentReference{
 		{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-				Name: okGwName, Kind: "Gateway", Group: "gateway.networking.k8s.io",
-			},
+			Name:  okGwName,
+			Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+			Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 		},
 	}
 	for _, aigwRoute := range []*aigv1a1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 				},
@@ -85,7 +83,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
@@ -743,15 +741,17 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, backend)
 	require.Nil(t, bsp, "should not return BSP when backend exists without BSP")
 
-	// Create a new BSP for the existing backend.
+	// Create a new BSP for the existing backend, referencing the backend by name.
 	const bspName = "bsp-bar"
 	bspObj := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
-		Spec:       aigv1a1.BackendSecurityPolicySpec{},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+			},
+		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspObj))
-	// Update the backend to reference the BSP.
-	backend.Spec.BackendSecurityPolicyRef = &gwapiv1.LocalObjectReference{Name: bspName}
 	require.NoError(t, fakeClient.Update(t.Context(), backend))
 
 	// Check that we can retrieve the backend and BSP.
@@ -761,71 +761,19 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, bsp, "should return BSP when backend exists with BSP")
 	require.Equal(t, bspName, bsp.Name, "should return the correct BSP name")
 
-	// Create a new BSP that has targetRefs (new pattern) to the backend.
+	// Create a new BSP that has the same target ref, and one that does not exist.
 	bspWithTargetRefs := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+				{Name: gwapiv1.ObjectName("non-existent-backend")},
+			},
 		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
 
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.NoError(t, err, "should not error when backend exists with BSP using targetRefs")
-	require.NotNil(t, backend, "should return backend when it exists")
-	require.NotNil(t, bsp, "should return BSP when backend exists with BSP using targetRefs")
-	require.Equal(t, bspWithTargetRefs.Name, bsp.Name, "should return the correct BSP name when using targetRefs")
-
-	// Create yet another BSP that has targetRefs (new pattern) to the backend, which should be the error case.
-	bspWithTargetRefs2 := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs2", Namespace: backend.Namespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
-		},
-	}
-	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs2))
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs, but it should error out
-	// because there are multiple BSPs with targetRefs pointing to the same backend.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend",
-		"should indicate that multiple BSPs with targetRefs exist for the same backend")
-	require.Nil(t, backend, "should not return backend when multiple BSPs with targetRefs exist")
-	require.Nil(t, bsp, "should not return BSP when multiple BSPs with targetRefs exist for the same backend")
-}
-
-func TestGatewayController_cleanUpV02(t *testing.T) {
-	c := &GatewayController{
-		logger: ctrl.Log.WithName("test"),
-		client: requireNewFakeClientWithIndexes(t),
-	}
-
-	err := c.client.Create(t.Context(), &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
-		Name:      "ai-eg-eep-foo",
-		Namespace: "ns",
-	}})
-	require.NoError(t, err)
-	err = c.client.Create(t.Context(), &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
-		Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns",
-	}})
-	require.NoError(t, err)
-
-	c.cleanUpV02(t.Context(), &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns"},
-	})
-	// Check that the EEP and Backend are deleted.
-	err = c.client.Get(t.Context(), client.ObjectKey{Name: "ai-eg-eep-foo", Namespace: "ns"}, &egv1a1.EnvoyExtensionPolicy{})
-	require.True(t, apierrors.IsNotFound(err), "expected EEP to be deleted, but got: %v", err)
-	err = c.client.Get(t.Context(), client.ObjectKey{Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns"}, &egv1a1.Backend{})
-	require.True(t, apierrors.IsNotFound(err), "expected Backend to be deleted, but got: %v", err)
+	// Then it should result in the error due to multiple BSPs found.
+	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
 }

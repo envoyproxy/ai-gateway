@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -121,9 +120,6 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	// Clean up resources created by the v0.2 version of the controller but not used in v0.3+.
-	c.cleanUpV02(ctx, gw)
-
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
@@ -132,37 +128,6 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
-}
-
-// cleanUpV02 is to clean up resources created by the v0.2 version of the controller but not used in v0.3+.
-// More specifically, this deletes the EnvoyExtensionPolicy and Backend resources that were created in
-// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L111
-//
-// # These objects have become unnecessary since https://github.com/envoyproxy/ai-gateway/commit/7055df134e0df116690afb610e047c0657204072
-//
-// TODO: delete after v0.3 release.
-func (c *GatewayController) cleanUpV02(ctx context.Context, gw *gwapiv1.Gateway) {
-	// Delete the EnvoyExtensionPolicy.
-	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L133C2-L133C59
-	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
-		Name:      fmt.Sprintf("ai-eg-eep-%s", gw.Name),
-		Namespace: gw.Namespace,
-	}})
-	// Delete the Backend resource that existed per namespace.
-	// https://github.com/envoyproxy/ai-gateway/blob/36fc248b4845721e0258174ae1aff84b865d0f21/internal/controller/gateway.go#L108
-	ensureObjDeletion(ctx, c.logger, c.client, &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
-		Name: "envoy-ai-gateway-extproc-backend", Namespace: gw.Namespace,
-	}})
-}
-
-func ensureObjDeletion[obj client.Object](ctx context.Context, logger logr.Logger, c client.Client, object obj) {
-	name, namespace, kind := object.GetName(), object.GetNamespace(), object.GetObjectKind().GroupVersionKind().String()
-	err := c.Delete(ctx, object)
-	if err != nil && !apierrors.IsNotFound(err) {
-		logger.Error(err, "Failed to delete object", "name", name, "namespace", namespace, "kind", kind)
-	} else if err == nil {
-		logger.Info("Delete object", "name", name, "namespace", namespace, "kind", kind)
-	}
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
@@ -392,16 +357,6 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return
 	}
 
-	// Old Pattern using BackendSecurityPolicyRef. Prioritize this field over the new pattern as per the documentation.
-	if bspRef := backend.Spec.BackendSecurityPolicyRef; bspRef != nil {
-		bsp, err = c.backendSecurityPolicy(ctx, namespace, string(bspRef.Name))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get BackendSecurityPolicy %s: %w", bspRef.Name, err)
-		}
-		return
-	}
-
-	// New Pattern using BackendSecurityPolicy.
 	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
@@ -423,11 +378,6 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return
-}
-
-func (c *GatewayController) backendSecurityPolicy(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
-	backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
-	return backendSecurityPolicy, c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backendSecurityPolicy)
 }
 
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
