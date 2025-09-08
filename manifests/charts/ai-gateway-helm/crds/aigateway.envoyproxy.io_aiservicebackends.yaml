@@ -132,40 +132,6 @@ spec:
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
-              backendSecurityPolicyRef:
-                description: |-
-                  BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend
-                  is being attached to.
-
-                  Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.
-                  When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,
-                  set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,
-                  and then remove this field from the AIServiceBackend.
-                properties:
-                  group:
-                    description: |-
-                      Group is the group of the referent. For example, "gateway.networking.k8s.io".
-                      When unspecified or empty string, core API group is inferred.
-                    maxLength: 253
-                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                    type: string
-                  kind:
-                    description: Kind is kind of the referent. For example "HTTPRoute"
-                      or "Service".
-                    maxLength: 63
-                    minLength: 1
-                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
-                    type: string
-                  name:
-                    description: Name is the name of the referent.
-                    maxLength: 253
-                    minLength: 1
-                    type: string
-                required:
-                - group
-                - kind
-                - name
-                type: object
               headerMutation:
                 description: |-
                   HeaderMutation defines the mutation of HTTP headers that will be applied to the request
