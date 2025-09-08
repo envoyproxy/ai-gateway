@@ -247,21 +247,48 @@ func unmarshalToolCallArguments(arguments string) (map[string]any, error) {
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleAssistant(
 	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
-	var bedrockMessage *awsbedrock.Message
+	bedrockMessage := &awsbedrock.Message{Role: role}
 	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
+
+	// Handle string content
 	if v, ok := openAiMessage.Content.Value.(string); ok && len(v) > 0 {
 		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: &v})
-	} else if content, ok := openAiMessage.Content.Value.(openai.ChatCompletionAssistantMessageParamContent); ok {
-		if content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
-			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
-		} else if content.Text != nil {
-			contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
+		// Handle array of content parts
+	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionAssistantMessageParamContent); ok {
+		for _, content := range contents {
+			switch content.Type {
+			case openai.ChatCompletionAssistantMessageParamContentTypeText:
+				if content.Text != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
+				}
+			case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
+				if content.Text != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							ReasoningText: &awsbedrock.ReasoningTextBlock{
+								Text: *content.Text,
+							},
+						},
+					})
+				}
+			case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
+				if content.RedactedContent != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							RedactedContent: content.RedactedContent,
+						},
+					})
+				}
+			case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
+				if content.Refusal != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
+				}
+			}
 		}
 	}
-	bedrockMessage = &awsbedrock.Message{
-		Role:    role,
-		Content: contentBlocks,
-	}
+
+	bedrockMessage.Content = contentBlocks
+
 	for i := range openAiMessage.ToolCalls {
 		toolCall := &openAiMessage.ToolCalls[i]
 		input, err := unmarshalToolCallArguments(toolCall.Function.Arguments)
@@ -634,7 +661,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if choice.Message.AWSBedRockResponseVendorFields == nil {
 				choice.Message.AWSBedRockResponseVendorFields = &openai.AWSBedRockResponseVendorFields{}
 			}
-			choice.Message.ReasoningContent = output.ReasoningContent
+			choice.Message.ReasoningContent = &openai.AWSBedRockReasoningContent{ReasoningContent: output.ReasoningContent}
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
@@ -723,6 +750,27 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 							Type: openai.ChatCompletionMessageToolCallTypeFunction,
 						},
 					},
+				},
+			})
+		} else if event.Delta.ReasoningContent != nil {
+			// 1. Create an instance of our new, type-safe struct for the delta.
+			reasoningDelta := &openai.AWSBedRockStreamReasoningContent{}
+
+			// 2. Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
+			if event.Delta.ReasoningContent.ReasoningText != nil {
+				reasoningDelta.Text = event.Delta.ReasoningContent.ReasoningText.Text
+				reasoningDelta.Signature = event.Delta.ReasoningContent.ReasoningText.Signature
+			}
+			if event.Delta.ReasoningContent.RedactedContent != nil {
+				reasoningDelta.RedactedContent = event.Delta.ReasoningContent.RedactedContent
+			}
+
+			// 3. Add the complete, structured delta to the response chunk.
+			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
+				Index: 0,
+				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+					Role:             o.role,
+					ReasoningContent: reasoningDelta,
 				},
 			})
 		}

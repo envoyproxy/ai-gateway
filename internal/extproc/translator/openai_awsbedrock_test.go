@@ -860,6 +860,104 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test assistant message with thinking content",
+			input: openai.ChatCompletionRequest{
+				Model: "unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "How do I list prime numbers?"},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: []openai.ChatCompletionAssistantMessageParamContent{
+									{
+										Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+										Text: ptr.To("Let me think"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("How do I list prime numbers?")}},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text: "Let me think",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test assistant message with redacted thinking content",
+			input: openai.ChatCompletionRequest{
+				Model: "unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						Type: openai.ChatMessageRoleUser,
+						Value: openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "How do I list prime numbers?"},
+						},
+					},
+					{
+						Type: openai.ChatMessageRoleAssistant,
+						Value: openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							Content: openai.StringOrAssistantRoleContentUnion{
+								Value: []openai.ChatCompletionAssistantMessageParamContent{
+									{
+										Type:            openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking,
+										RedactedContent: []byte{104, 101, 108, 108, 111},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("How do I list prime numbers?")}},
+					},
+					{
+						Role: openai.ChatMessageRoleAssistant,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									RedactedContent: []byte{104, 101, 108, 108, 111},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1292,9 +1390,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: ptr.To("This is the final answer."),
 							AWSBedRockResponseVendorFields: &openai.AWSBedRockResponseVendorFields{
-								ReasoningContent: &awsbedrock.ReasoningContentBlock{
-									ReasoningText: &awsbedrock.ReasoningTextBlock{
-										Text: "This is the model's thought process.",
+								ReasoningContent: &openai.AWSBedRockReasoningContent{
+									ReasoningContent: &awsbedrock.ReasoningContentBlock{
+										ReasoningText: &awsbedrock.ReasoningTextBlock{
+											Text: "This is the model's thought process.",
+										},
 									},
 								},
 							},
@@ -1472,6 +1572,30 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 							Content: ptrOf("response"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "reasoning delta",
+			in: awsbedrock.ConverseStreamEvent{
+				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+					ReasoningContent: &awsbedrock.ReasoningContentBlock{
+						ReasoningText: &awsbedrock.ReasoningTextBlock{
+							Text: "thinking...",
+						},
+					},
+				},
+			},
+			out: &openai.ChatCompletionResponseChunk{
+				Object: "chat.completion.chunk",
+				Choices: []openai.ChatCompletionResponseChunkChoice{
+					{
+						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+							//ReasoningContent: map[string]interface{}{
+							//	"text": "thinking...",
+							//},
 						},
 					},
 				},
