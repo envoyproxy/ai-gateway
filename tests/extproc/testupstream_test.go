@@ -815,7 +815,6 @@ data: {"type": "message_stop"}
 				defer func() { _ = resp.Body.Close() }()
 				if resp.StatusCode != tc.expStatus {
 					t.Logf("unexpected status code: %d", resp.StatusCode)
-					t.Logf("err %v", resp.Body)
 					return false
 				}
 
