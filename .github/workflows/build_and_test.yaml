@@ -75,7 +75,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          sleep 10 # Wait for ollama to start. TODO: this is really hacky, so find a better way to wait for ollama to start. This can be a source of flakiness.
+          timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
           ollama pull qwen3:0.6b
 
       - env:

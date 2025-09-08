@@ -67,6 +67,9 @@ spec:
     name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
+  headerMutation:
+    remove:
+      - x-remove-header
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

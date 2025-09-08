@@ -319,7 +319,7 @@ func TestServer_setBackend(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
 				s, _ := requireNewServerWithMockProcessor(t)
-				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai"}}}
+				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
 
 				// Use the correct metadata field key based on isEndpointPicker.

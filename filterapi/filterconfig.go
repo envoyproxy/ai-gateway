@@ -128,6 +128,8 @@ type Backend struct {
 	Schema VersionedAPISchema `json:"schema"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	Auth *BackendAuth `json:"auth,omitempty"`
+	// Sensitive Headers to be removed from the request before sending to the backend. Optional.
+	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -176,6 +178,24 @@ type GCPAuth struct {
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
 	// This should be the project where Vertex AI APIs are enabled.
 	ProjectName string `json:"projectName"`
+}
+
+// HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
+type HTTPHeaderMutation struct {
+	// Set overwrites the request with the given header (name, value)
+	// before the action.
+	Set []HTTPHeader `json:"set,omitempty"`
+	// Remove the given header(s) from the HTTP request before the action. The
+	// value of Remove is a list of HTTP header names.
+	Remove []string `json:"remove,omitempty"`
+}
+
+// HTTPHeader represents an HTTP Header name and value as defined by RFC 7230.
+type HTTPHeader struct {
+	// Name is the name of the HTTP Header to be matched.
+	Name string `json:"name"`
+	// Value is the value of HTTP Header to be matched.
+	Value string `json:"value"`
 }
 
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.

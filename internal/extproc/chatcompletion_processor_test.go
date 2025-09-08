@@ -21,6 +21,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -622,5 +623,86 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 		require.NoError(t, err)
 		require.Equal(t, 500, span.ErrorStatus)
 		require.Equal(t, errorBody, span.ErrBody)
+	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestore(t *testing.T) {
+	headerMutation := filterapi.HTTPHeaderMutation{
+		Remove: []string{"authorization", "x-api-key"},
+		Set:    []filterapi.HTTPHeader{{Name: "x-new-header", Value: "new-value"}},
+	}
+	originalHeaders := map[string]string{
+		"authorization": "secret",
+		"x-api-key":     "key123",
+		"other":         "value",
+	}
+
+	t.Run("remove headers", func(t *testing.T) {
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{"authorization": "secret", "x-api-key": "key123", "other": "value"},
+			headerMutator:  headermutator.NewHeaderMutator(&headerMutation, originalHeaders),
+			onRetry:        true,
+			metrics:        &mockChatCompletionMetrics{},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:         &processorConfig{metadataNamespace: ""},
+			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+		}
+
+		resp, err := p.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+
+		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
+		require.NotNil(t, headerMutation)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
+		require.NotContains(t, p.requestHeaders, "authorization")
+		require.NotContains(t, p.requestHeaders, "x-api-key")
+		require.Equal(t, "value", p.requestHeaders["other"])
+	})
+
+	t.Run("set headers", func(t *testing.T) {
+		// Simulate that sensitive headers were removed and now need to be restored.
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{"other": "value"},
+			headerMutator:  headermutator.NewHeaderMutator(&filterapi.HTTPHeaderMutation{Set: headerMutation.Set}, originalHeaders),
+			onRetry:        true, // not a retry, so should restore.
+			metrics:        &mockChatCompletionMetrics{},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:         &processorConfig{metadataNamespace: ""},
+			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+		}
+
+		// Call the actual method to trigger restoration logic.
+		_, err := p.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+
+		// Now check that sensitive headers are restored.
+		require.Equal(t, "secret", p.requestHeaders["authorization"])
+		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
+		require.Equal(t, "value", p.requestHeaders["other"])
+
+		// Now check the set headers in the mutation.
+		require.Equal(t, "new-value", p.requestHeaders["x-new-header"])
+	})
+
+	t.Run("restore headers", func(t *testing.T) {
+		// Simulate that sensitive headers were removed and now need to be restored.
+		p := &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{"other": "value"},
+			onRetry:        true, // not a retry, so should restore.
+			headerMutator:  headermutator.NewHeaderMutator(nil, originalHeaders),
+			metrics:        &mockChatCompletionMetrics{},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:         &processorConfig{metadataNamespace: ""},
+			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+		}
+
+		// Call the actual method to trigger restoration logic.
+		_, err := p.ProcessRequestHeaders(context.Background(), nil)
+		require.NoError(t, err)
+
+		// Now check that sensitive headers are restored.
+		require.Equal(t, "secret", p.requestHeaders["authorization"])
+		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
+		require.Equal(t, "value", p.requestHeaders["other"])
 	})
 }
