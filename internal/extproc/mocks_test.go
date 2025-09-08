@@ -189,7 +189,7 @@ func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ 
 }
 
 // RecordTokenLatency implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ map[string]string) {
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ bool, _ map[string]string) {
 	m.tokenLatencyCount++
 }
 
