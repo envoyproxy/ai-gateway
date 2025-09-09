@@ -54,9 +54,6 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 				Name: gwapiv1.ObjectName("mybackend"),
 				Port: ptr.To[gwapiv1.PortNumber](8080),
 			},
-			BackendSecurityPolicyRef: &gwapiv1.LocalObjectReference{
-				Name: gwapiv1.ObjectName(backendSecurityPolicyName),
-			},
 		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), asb))
@@ -578,7 +575,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 	err := cl.Create(t.Context(), bsp)
 	require.NoError(t, err)
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: bspNamespace, Name: fmt.Sprintf("%s-OIDC", bspName)}})
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.Equal(t, time.Duration(0), res.RequeueAfter)
 }
 

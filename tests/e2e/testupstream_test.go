@@ -142,18 +142,6 @@ func TestWithTestUpstream(t *testing.T) {
 		}
 	})
 
-	// To make the non-llm-route work reliable, the controller must delete the old EnvoyExtensionProxy from v0.2.x.
-	// That happens during the reconciliation loop of AIGatewayRoute, so let's trigger it by updating the AIGatewayRoute.
-	// Sometimes this won't be necessary depending on the kubectl apply timing, but this ensures no flaky tests.
-	//
-	// TODO: delete this after 0.3.0 release since this is for backward compatibility testing.
-	e2elib.Kubectl(t.Context(),
-		"patch", "aigatewayroute", "translation-testupstream",
-		"-n", "default",
-		"--type=json",
-		"-p", `[{"op": "replace", "path": "/spec/rules/0/matches/0/headers/0/value", "value": "some-cool-model-2"}]`,
-	)
-
 	t.Run("non-llm-route", func(t *testing.T) {
 		// We should be able to make requests to /non-llm routes as well.
 		//

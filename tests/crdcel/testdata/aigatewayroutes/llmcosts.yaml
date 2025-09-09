@@ -9,7 +9,7 @@ metadata:
   name: llmcosts
   namespace: default
 spec:
-  targetRefs:
+  parentRefs:
     - name: some-gateway
       kind: Gateway
       group: gateway.networking.k8s.io
