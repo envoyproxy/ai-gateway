@@ -1875,6 +1875,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 					}
 					if delta.ReasoningContent != nil && delta.ReasoningContent.Text != "" {
 						reasoningChunks = append(reasoningChunks, delta.ReasoningContent.Text)
+
+						var untypedChunk map[string]interface{}
+						err = json.Unmarshal([]byte(data), &untypedChunk)
+						require.NoError(t, err)
+
+						choices, _ := untypedChunk["choices"].([]interface{})
+						choice, _ := choices[0].(map[string]interface{})
+						deltaMap, _ := choice["delta"].(map[string]interface{})
+						reasoningContent, ok := deltaMap["reasoning_content"].(map[string]interface{})
+						require.True(t, ok, "Delta should have a 'reasoning_content' map")
+						_, textOk := reasoningContent["text"]
+						require.True(t, textOk, "Reasoning content should have a 'text' key")
 					}
 				}
 			}
@@ -2010,6 +2022,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedCont
 				require.Equal(t, redactedBytes, reasoning.RedactedContent)
 				require.Empty(t, reasoning.Text)
 				foundReasoningChunk = true
+
+				var untypedChunk map[string]interface{}
+				err = json.Unmarshal([]byte(data), &untypedChunk)
+				require.NoError(t, err)
+
+				choices, _ := untypedChunk["choices"].([]interface{})
+				choice, _ := choices[0].(map[string]interface{})
+				deltaMap, _ := choice["delta"].(map[string]interface{})
+				reasoningContent, ok := deltaMap["reasoning_content"].(map[string]interface{})
+				require.True(t, ok, "Delta should have a 'reasoning_content' map")
+				_, redactedOk := reasoningContent["redactedContent"]
+				require.True(t, redactedOk, "Reasoning content should have a 'redactedContent' key")
 			}
 		}
 	}

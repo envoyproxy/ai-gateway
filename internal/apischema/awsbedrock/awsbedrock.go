@@ -404,9 +404,9 @@ type ConverseStreamEvent struct {
 // ConverseStreamEventContentBlockDelta is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ContentBlockDelta.html
 type ConverseStreamEventContentBlockDelta struct {
-	Text             *string            `json:"text,omitempty"`
-	ToolUse          *ToolUseBlockDelta `json:"toolUse,omitempty"`
-	ReasoningContent *ReasoningContentBlock
+	Text             *string                `json:"text,omitempty"`
+	ToolUse          *ToolUseBlockDelta     `json:"toolUse,omitempty"`
+	ReasoningContent *ReasoningContentBlock `json:"reasoningContent,omitempty"`
 }
 
 // ContentBlockStart is the start information.
