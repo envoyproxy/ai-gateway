@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -96,11 +97,11 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
 				Spec: aigv1a1.AIGatewayRouteSpec{
-					TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					ParentRefs: []gwapiv1a2.ParentReference{
 						{
-							LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-								Name: gwName, Kind: "Gateway", Group: "gateway.networking.k8s.io",
-							},
+							Name:  gwName,
+							Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 						},
 					},
 					Rules: []aigv1a1.AIGatewayRouteRule{

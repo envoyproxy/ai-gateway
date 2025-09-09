@@ -28,7 +28,7 @@ metadata:
   name: traffic-splitting-fallback
   namespace: default
 spec:
-  targetRefs:
+  parentRefs:
     - name: traffic-splitting-fallback
       kind: Gateway
       group: gateway.networking.k8s.io

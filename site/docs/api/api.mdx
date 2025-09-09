@@ -518,20 +518,10 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
 
 
 <ApiField
-  name="targetRefs"
-  type="[LocalPolicyTargetReferenceWithSectionName](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReferenceWithSectionName) array"
-  required="false"
-  description="TargetRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Deprecated: use the ParentRefs field instead. This field will be dropped in Envoy AI Gateway v0.4.0."
-/><ApiField
   name="parentRefs"
   type="ParentReference array"
   required="false"
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway."
-/><ApiField
-  name="schema"
-  type="[VersionedAPISchema](#versionedapischema)"
-  required="false"
-  description="APISchema specifies the API schema of the input that the target Gateway(s) will receive.<br />Based on this schema, the ai-gateway will perform the necessary transformation to the<br />output schema specified in the selected AIServiceBackend during the routing process.<br />Currently, the supported schemas are OpenAI and Anthropic as input schemas.<br />Deprecated: this field is no longer used. It will be dropped in Envoy AI Gateway v0.4.0."
 /><ApiField
   name="rules"
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
@@ -594,11 +584,6 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
-/><ApiField
-  name="backendSecurityPolicyRef"
-  type="[LocalObjectReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#localobjectreference)"
-  required="false"
-  description="BackendSecurityPolicyRef is the name of the BackendSecurityPolicy resources this backend<br />is being attached to.<br />Deprecated: Use BackendSecurityPolicy.spec.targetRefs instead. This field will be dropped after Envoy AI Gateway v0.3 release.<br />When this field is set, the BackendSecurityPolicy.spec.targetRefs will be ignored. To migrate to the new field,<br />set the targetRefs in the BackendSecurityPolicy to point to this AIServiceBackend first, apply the change,<br />and then remove this field from the AIServiceBackend."
 /><ApiField
   name="headerMutation"
   type="[HTTPHeaderMutation](#httpheadermutation)"
@@ -1241,7 +1226,6 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
 
 
 **Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
 - [AIServiceBackendSpec](#aiservicebackendspec)
 
 VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
