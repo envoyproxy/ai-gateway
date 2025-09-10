@@ -19,9 +19,9 @@ import (
 type chatCompletion struct {
 	baseMetrics
 	firstTokenSent    bool
-	lastTokenTime     time.Time
 	timeToFirstToken  float64
 	interTokenLatency float64
+	totalOutputTokens uint32
 }
 
 // ChatCompletionMetrics is the interface for the chat completion AI Gateway metrics.
@@ -39,7 +39,7 @@ type ChatCompletionMetrics interface {
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaderLabelMapping map[string]string)
+	RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaderLabelMapping map[string]string)
 	// GetTimeToFirstTokenMs returns the time to first token in stream mode in milliseconds.
 	GetTimeToFirstTokenMs() float64
 	// GetInterTokenLatencyMs returns the inter token latency in stream mode in milliseconds.
@@ -57,6 +57,7 @@ func NewChatCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]
 func (c *chatCompletion) StartRequest(headers map[string]string) {
 	c.baseMetrics.StartRequest(headers)
 	c.firstTokenSent = false
+	c.totalOutputTokens = 0
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
@@ -78,19 +79,27 @@ func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outp
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
-func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, requestHeaders map[string]string) {
+func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaders map[string]string) {
 	attrs := c.buildBaseAttributes(requestHeaders)
 
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
 		c.timeToFirstToken = time.Since(c.requestStart).Seconds()
 		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributeSet(attrs))
-	} else if tokens > 0 {
-		// Calculate time between tokens.
-		c.interTokenLatency = time.Since(c.lastTokenTime).Seconds() / float64(tokens)
+		return
+	}
+
+	// Track max cumulative tokens across the stream.
+	if tokens > c.totalOutputTokens {
+		c.totalOutputTokens = tokens
+	}
+
+	// Record once at end-of-stream using average from first token.
+	if endOfStream && c.totalOutputTokens > 0 {
+		firstTokenTime := c.requestStart.Add(time.Duration(c.timeToFirstToken * float64(time.Second)))
+		c.interTokenLatency = time.Since(firstTokenTime).Seconds() / float64(c.totalOutputTokens)
 		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributeSet(attrs))
 	}
-	c.lastTokenTime = time.Now()
 }
 
 // GetTimeToFirstTokenMs implements [x.ChatCompletionMetrics.GetTimeToFirstTokenMs].
