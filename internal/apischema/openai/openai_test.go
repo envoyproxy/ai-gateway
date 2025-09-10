@@ -94,6 +94,82 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatCompletionResponseFormatUnionUnmarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		in     []byte
+		out    *ChatCompletionResponseFormatUnion
+		expErr string
+	}{
+		{
+			name: "text",
+			in:   []byte(`{"type": "text"}`),
+			out: &ChatCompletionResponseFormatUnion{
+				OfText: &ChatCompletionResponseFormatTextParam{
+					Type: ChatCompletionResponseFormatTypeText,
+				},
+			},
+		},
+		{
+			name: "json schema",
+			in:   []byte(`{"json_schema": { "name": "math_response", "schema": { "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }, "strict": true }, "type":"json_schema"}`),
+			out: &ChatCompletionResponseFormatUnion{
+				OfJSONSchema: &ChatCompletionResponseFormatJSONSchema{
+					Type: "json_schema",
+					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
+						Name:   "math_response",
+						Strict: true,
+						Schema: map[string]any{
+							"additionalProperties": false,
+							"type":                 "object",
+							"properties": map[string]any{
+								"step": map[string]any{
+									"type": "string",
+								},
+							},
+							"required": []any{"steps"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "json object",
+			in:   []byte(`{"type": "json_object"}`),
+			out: &ChatCompletionResponseFormatUnion{
+				OfJSONObject: &ChatCompletionResponseFormatJSONObjectParam{
+					Type: "json_object",
+				},
+			},
+		},
+		{
+			name:   "type not exist",
+			in:     []byte(`{}`),
+			expErr: "response format does not have type",
+		},
+		{
+			name: "unknown type",
+			in: []byte(`{
+"type": "unknown"
+}`),
+			expErr: "unsupported ChatCompletionResponseFormatType",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var contentPart ChatCompletionResponseFormatUnion
+			err := json.Unmarshal(tc.in, &contentPart)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			if !cmp.Equal(&contentPart, tc.out) {
+				t.Errorf("UnmarshalOpenAIRequest(), diff(got, expected) = %s\n", cmp.Diff(&contentPart, tc.out))
+			}
+		})
+	}
+}
+
 func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -257,7 +333,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 		},
 		{
 			name: "response_format",
-			in:   []byte(`{ "model": "azure.gpt-4o", "messages": [ { "role": "user", "content": "Tell me a story" } ], "response_format": { "type": "json_schema", "json_schema": { "name": "math_response", "schema": { "type": "object", "properties": { "step": "test_step" }, "required": [ "steps"], "additionalProperties": false }, "strict": true } } }`),
+			in:   []byte(`{ "model": "azure.gpt-4o", "messages": [ { "role": "user", "content": "Tell me a story" } ], "response_format": { "type": "json_schema", "json_schema": { "name": "math_response", "schema": { "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }, "strict": true } } }`),
 			out: &ChatCompletionRequest{
 				Model: "azure.gpt-4o",
 				Messages: []ChatCompletionMessageParamUnion{
@@ -271,18 +347,22 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						Type: ChatMessageRoleUser,
 					},
 				},
-				ResponseFormat: &ChatCompletionResponseFormat{
-					Type: "json_schema",
-					JSONSchema: &ChatCompletionResponseFormatJSONSchema{
-						Name:   "math_response",
-						Strict: true,
-						Schema: map[string]any{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": map[string]any{
-								"step": "test_step",
+				ResponseFormat: &ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &ChatCompletionResponseFormatJSONSchema{
+						Type: "json_schema",
+						JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Name:   "math_response",
+							Strict: true,
+							Schema: map[string]any{
+								"additionalProperties": false,
+								"type":                 "object",
+								"properties": map[string]any{
+									"step": map[string]any{
+										"type": "string",
+									},
+								},
+								"required": []any{"steps"},
 							},
-							"required": []any{"steps"},
 						},
 					},
 				},
@@ -570,6 +650,65 @@ func TestStringOrAssistantRoleContentUnionMarshal(t *testing.T) {
 				},
 			},
 			expected: `{"type":"text","text":"Here is the answer"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := json.Marshal(tc.input)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(result))
+		})
+	}
+}
+
+func TestChatCompletionResponseFormatUnionMarshal(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    ChatCompletionResponseFormatUnion
+		expected string
+	}{
+		{
+			name: "text",
+			input: ChatCompletionResponseFormatUnion{
+				OfText: &ChatCompletionResponseFormatTextParam{
+					Type: "text",
+				},
+			},
+			expected: `{"type":"text"}`,
+		},
+		{
+			name: "json schema",
+			input: ChatCompletionResponseFormatUnion{
+				OfJSONSchema: &ChatCompletionResponseFormatJSONSchema{
+					Type: "json_schema",
+					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
+						Name:   "math_response",
+						Strict: true,
+						Schema: map[string]any{
+							"additionalProperties": false,
+							"type":                 "object",
+							"properties": map[string]any{
+								"step": map[string]any{
+									"type": "string",
+								},
+							},
+							"required": []any{"steps"},
+						},
+					},
+				},
+			},
+
+			expected: `{"json_schema": { "name": "math_response", "schema": { "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }, "strict": true }, "type":"json_schema"}`,
+		},
+		{
+			name: "json object",
+			input: ChatCompletionResponseFormatUnion{
+				OfJSONObject: &ChatCompletionResponseFormatJSONObjectParam{
+					Type: "json_object",
+				},
+			},
+			expected: `{"type":"json_object"}`,
 		},
 	}
 

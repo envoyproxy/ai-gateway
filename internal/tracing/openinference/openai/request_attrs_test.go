@@ -134,8 +134,10 @@ var (
 				Content: openai.StringOrUserRoleContentUnion{Value: "Generate a JSON object with three properties: name, age, and city."},
 			},
 		}},
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: "json_object",
+		ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+			OfJSONObject: &openai.ChatCompletionResponseFormatJSONObjectParam{
+				Type: "json_object",
+			},
 		},
 	}
 	jsonModeReqBody = mustJSON(jsonModeReq)
