@@ -1639,7 +1639,6 @@ func TestStringOrAssistantRoleContentUnionUnmarshal(t *testing.T) {
 			},
 		},
 		{
-			// This is the specific case your CI is likely missing.
 			name:  "single content object",
 			input: `{"type": "text", "text": "hello from single object"}`,
 			expected: StringOrAssistantRoleContentUnion{
