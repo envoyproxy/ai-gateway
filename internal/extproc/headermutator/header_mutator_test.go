@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
 )
 
 func TestHeaderMutator_Mutate(t *testing.T) {
