@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 

@@ -31,7 +31,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 var (

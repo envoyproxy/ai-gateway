@@ -26,8 +26,8 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )

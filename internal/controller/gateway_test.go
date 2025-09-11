@@ -27,7 +27,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 func TestGatewayController_Reconcile(t *testing.T) {

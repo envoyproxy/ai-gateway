@@ -14,7 +14,7 @@ import (
 	"github.com/google/cel-go/cel"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 

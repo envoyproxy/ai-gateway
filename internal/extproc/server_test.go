@@ -24,8 +24,8 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
