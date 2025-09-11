@@ -42,12 +42,7 @@
         <mxCell id="5ZmyMMEixGDpB4YJExST-3" value="Cloud Loadbalancer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;fontColor=#ffffff;strokeColor=#314354;" parent="1" vertex="1">
           <mxGeometry x="270.47" y="150" width="341.06" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="5ZmyMMEixGDpB4YJExST-4" value="&amp;nbsp;Semantic Cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="383.37494949494965" y="290" width="113.13131313131315" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="5ZmyMMEixGDpB4YJExST-5" value="MCP/A2A Support" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="520.748686868687" y="290" width="113.13131313131315" height="40" as="geometry" />
-        </mxCell>
+
         <mxCell id="5ZmyMMEixGDpB4YJExST-6" value="LLM Observability" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="246" y="290" width="113.13131313131315" height="40" as="geometry" />
         </mxCell>
@@ -146,9 +141,7 @@
         <mxCell id="k7bk-jx3exmMxuGghewi-6" value="Prefix Cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="260" y="478" width="113.13" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="k7bk-jx3exmMxuGghewi-7" value="P/D Disaggregation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;" parent="1" vertex="1">
-          <mxGeometry x="260" y="503" width="113.13" height="20" as="geometry" />
-        </mxCell>
+
         <mxCell id="k7bk-jx3exmMxuGghewi-10" value="Load Aware" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5CCFF;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="138.87" y="503" width="113.13" height="20" as="geometry" />
         </mxCell>
