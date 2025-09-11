@@ -163,7 +163,6 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
 
 	const gwNamespace = "ns"
@@ -173,7 +172,11 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "apple"},
+							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
+							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
+						},
 						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
@@ -221,10 +224,35 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp-backend", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
 	} {
 		err := fakeClient.Create(t.Context(), aigwRoute)
 		require.NoError(t, err)
 	}
+
+	// Create a BackendSecurityPolicy that is invalid (missing secret ref).
+	err := fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp", Namespace: gwNamespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+				SecretRef: &gwapiv1.SecretObjectReference{Name: "non-existent-secret"},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{
+					Kind:  "AIServiceBackend",
+					Group: "aigateway.envoyproxy.io",
+					Name:  "invalid-bsp-backend",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
 
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"

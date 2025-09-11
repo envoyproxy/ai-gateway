@@ -166,8 +166,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		spec := aiGatewayRoute.Spec
-		for i := range spec.Rules {
-			rule := &spec.Rules[i]
+		for ruleIndex := range spec.Rules {
+			rule := &spec.Rules[ruleIndex]
 			for _, m := range rule.Matches {
 				for _, h := range m.Headers {
 					// If explicitly set to something that is not an exact match, skip.
@@ -184,10 +184,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 					})
 				}
 			}
-			for j := range rule.BackendRefs {
-				backendRef := &rule.BackendRefs[j]
+			for backendRefIndex := range rule.BackendRefs {
+				backendRef := &rule.BackendRefs[backendRefIndex]
 				b := filterapi.Backend{}
-				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, i, j)
+				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
@@ -197,14 +197,20 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 					var bsp *aigv1a1.BackendSecurityPolicy
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
 					if err != nil {
-						return fmt.Errorf("failed to get AIServiceBackend %s: %w", b.Name, err)
+						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
+							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
+							"namespace", aiGatewayRoute.Namespace)
+						continue
 					}
 					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 						if err != nil {
-							return fmt.Errorf("failed to create backend auth: %w", err)
+							c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
+								"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
+								"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
+							continue
 						}
 					}
 				}

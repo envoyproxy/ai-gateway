@@ -149,8 +149,10 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+			OfJSONObject: &openai.ChatCompletionResponseFormatJSONObjectParam{
+				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			},
 		},
 	},
 	CassetteChatNoMessages: {
@@ -396,43 +398,45 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-			JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-				Name:   "final_output",
-				Strict: true,
-				Schema: map[string]interface{}{
-					"$defs": map[string]interface{}{
-						"FinancialSearchItem": map[string]interface{}{
-							"properties": map[string]interface{}{
-								"reason": map[string]interface{}{
-									"title": "Reason",
-									"type":  "string",
+		ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+			OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+				Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+				JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+					Name:   "final_output",
+					Strict: true,
+					Schema: map[string]interface{}{
+						"$defs": map[string]interface{}{
+							"FinancialSearchItem": map[string]interface{}{
+								"properties": map[string]interface{}{
+									"reason": map[string]interface{}{
+										"title": "Reason",
+										"type":  "string",
+									},
+									"query": map[string]interface{}{
+										"title": "Query",
+										"type":  "string",
+									},
 								},
-								"query": map[string]interface{}{
-									"title": "Query",
-									"type":  "string",
+								"required":             []string{"reason", "query"},
+								"title":                "FinancialSearchItem",
+								"type":                 "object",
+								"additionalProperties": false,
+							},
+						},
+						"properties": map[string]interface{}{
+							"searches": map[string]interface{}{
+								"items": map[string]interface{}{
+									"$ref": "#/$defs/FinancialSearchItem",
 								},
+								"title": "Searches",
+								"type":  "array",
 							},
-							"required":             []string{"reason", "query"},
-							"title":                "FinancialSearchItem",
-							"type":                 "object",
-							"additionalProperties": false,
 						},
+						"required":             []string{"searches"},
+						"title":                "FinancialSearchPlan",
+						"type":                 "object",
+						"additionalProperties": false,
 					},
-					"properties": map[string]interface{}{
-						"searches": map[string]interface{}{
-							"items": map[string]interface{}{
-								"$ref": "#/$defs/FinancialSearchItem",
-							},
-							"title": "Searches",
-							"type":  "array",
-						},
-					},
-					"required":             []string{"searches"},
-					"title":                "FinancialSearchPlan",
-					"type":                 "object",
-					"additionalProperties": false,
 				},
 			},
 		},

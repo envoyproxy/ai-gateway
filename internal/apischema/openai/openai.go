@@ -19,6 +19,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v2"
+	"github.com/tidwall/gjson"
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -142,15 +143,14 @@ type ChatCompletionContentPartUserUnionParam struct {
 }
 
 func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) error {
-	var chatContentPart map[string]any
-	if err := json.Unmarshal(data, &chatContentPart); err != nil {
-		return err
+	typeResult := gjson.GetBytes(data, "type")
+	if !typeResult.Exists() {
+		return errors.New("chat content does not have type")
 	}
-	var contentType string
-	var ok bool
-	if contentType, ok = chatContentPart["type"].(string); !ok {
-		return fmt.Errorf("chat content does not have type")
-	}
+
+	// Based on the 'type' field, unmarshal into the correct struct.
+	contentType := typeResult.String()
+
 	switch contentType {
 	case string(ChatCompletionContentPartTextTypeText):
 		var textContent ChatCompletionContentPartTextParam
@@ -297,18 +297,14 @@ type ChatCompletionMessageParamUnion struct {
 }
 
 func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
-	var chatMessage map[string]any
-	if err := json.Unmarshal(data, &chatMessage); err != nil {
-		return err
+	roleResult := gjson.GetBytes(data, "role")
+	if !roleResult.Exists() {
+		return errors.New("chat message does not have role")
 	}
-	if _, ok := chatMessage["role"]; !ok {
-		return fmt.Errorf("chat message does not have role")
-	}
-	var role string
-	var ok bool
-	if role, ok = chatMessage["role"].(string); !ok {
-		return fmt.Errorf("chat message role is not string: %s", role)
-	}
+
+	// Based on the 'role' field, unmarshal into the correct struct.
+	role := roleResult.String()
+
 	switch role {
 	case ChatMessageRoleUser:
 		var userMessage ChatCompletionUserMessageParam
@@ -484,20 +480,40 @@ type ChatCompletionMessageToolCallParam struct {
 
 type ChatCompletionResponseFormatType string
 
+// Constants for the different response formats.
 const (
-	ChatCompletionResponseFormatTypeJSONObject ChatCompletionResponseFormatType = "json_object"
-	ChatCompletionResponseFormatTypeJSONSchema ChatCompletionResponseFormatType = "json_schema"
 	ChatCompletionResponseFormatTypeText       ChatCompletionResponseFormatType = "text"
+	ChatCompletionResponseFormatTypeJSONSchema ChatCompletionResponseFormatType = "json_schema"
+	ChatCompletionResponseFormatTypeJSONObject ChatCompletionResponseFormatType = "json_object"
 )
 
-type ChatCompletionResponseFormat struct {
-	Type       ChatCompletionResponseFormatType        `json:"type,omitempty"`
-	JSONSchema *ChatCompletionResponseFormatJSONSchema `json:"json_schema,omitempty"` //nolint:tagliatelle //follow openai api
-	JSONObject any                                     `json:"json_object,omitempty"` //nolint:tagliatelle //follow openai api
+// Only one field can be non-empty.
+type ChatCompletionResponseFormatUnion struct {
+	OfText       *ChatCompletionResponseFormatTextParam       `json:",omitempty,inline"`
+	OfJSONSchema *ChatCompletionResponseFormatJSONSchema      `json:",omitempty,inline"`
+	OfJSONObject *ChatCompletionResponseFormatJSONObjectParam `json:",omitempty,inline"`
+}
+
+type ChatCompletionResponseFormatTextParam struct {
+	// The type of response format being defined. Always `text`.
+	Type ChatCompletionResponseFormatType `json:"type"`
+}
+
+// JSON Schema response format. Used to generate structured JSON responses. Learn
+// more about
+// [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs).
+// The properties JSONSchema, Type are required.
+type ChatCompletionResponseFormatJSONSchema struct {
+	// Structured Outputs configuration options, including a JSON Schema.
+	JSONSchema ChatCompletionResponseFormatJSONSchemaJSONSchema `json:"json_schema,omitzero"`
+	// The type of response format being defined. Always `json_schema`.
+	//
+	// This field can be elided, and will marshal its zero value as "json_schema".
+	Type ChatCompletionResponseFormatType `json:"type"`
 }
 
 // ChatCompletionResponseFormatJSONSchema Structured Outputs configuration options, including a JSON Schema.
-type ChatCompletionResponseFormatJSONSchema struct {
+type ChatCompletionResponseFormatJSONSchemaJSONSchema struct {
 	// The name of the response format. Must be a-z, A-Z, 0-9, or contain underscores
 	// and dashes, with a maximum length of 64.
 	Name string `json:"name"`
@@ -513,6 +529,64 @@ type ChatCompletionResponseFormatJSONSchema struct {
 	// learn more, read the
 	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
 	Strict bool `json:"strict,omitempty"`
+}
+
+// JSON object response format. An older method of generating JSON responses. Using
+// `json_schema` is recommended for models that support it. Note that the model
+// will not generate JSON without a system or user message instructing it to do so.
+type ChatCompletionResponseFormatJSONObjectParam struct {
+	// The type of response format being defined. Always `json_object`.
+	Type ChatCompletionResponseFormatType `json:"type"`
+}
+
+func (c ChatCompletionResponseFormatUnion) MarshalJSON() ([]byte, error) {
+	if c.OfText != nil {
+		return json.Marshal(c.OfText)
+	}
+	if c.OfJSONSchema != nil {
+		return json.Marshal(c.OfJSONSchema)
+	}
+	if c.OfJSONObject != nil {
+		return json.Marshal(c.OfJSONObject)
+	}
+	return nil, errors.New("no content to marshal")
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for ChatCompletionResponseFormatUnion.
+func (c *ChatCompletionResponseFormatUnion) UnmarshalJSON(data []byte) error {
+	typeResult := gjson.GetBytes(data, "type")
+	if !typeResult.Exists() {
+		return errors.New("response format does not have type")
+	}
+
+	// Based on the 'type' field, unmarshal into the correct struct.
+	responseFormatType := ChatCompletionResponseFormatType(typeResult.String())
+
+	switch responseFormatType {
+	case ChatCompletionResponseFormatTypeText:
+		var textParam ChatCompletionResponseFormatTextParam
+		if err := json.Unmarshal(data, &textParam); err != nil {
+			return err
+		}
+		c.OfText = &textParam
+	case ChatCompletionResponseFormatTypeJSONSchema:
+		var jsonSchemaParam ChatCompletionResponseFormatJSONSchema
+		if err := json.Unmarshal(data, &jsonSchemaParam); err != nil {
+			return err
+		}
+		c.OfJSONSchema = &jsonSchemaParam
+	case ChatCompletionResponseFormatTypeJSONObject:
+		var jsonObjectParam ChatCompletionResponseFormatJSONObjectParam
+		if err := json.Unmarshal(data, &jsonObjectParam); err != nil {
+			return err
+		}
+		c.OfJSONObject = &jsonObjectParam
+	default:
+		// If the type is unknown, return an error.
+		return errors.New("unsupported ChatCompletionResponseFormatType")
+	}
+
+	return nil
 }
 
 // ChatCompletionModality represents the output types that the model can generate.
@@ -696,7 +770,7 @@ type ChatCompletionRequest struct {
 	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
 	// ensures the message the model generates is valid JSON. Using `json_schema` is
 	// preferred for models that support it.
-	ResponseFormat *ChatCompletionResponseFormat `json:"response_format,omitempty"` //nolint:tagliatelle //follow openai api
+	ResponseFormat *ChatCompletionResponseFormatUnion `json:"response_format,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// Seed: This feature is in Beta. If specified, our system will make a best effort to
 	// sample deterministically, such that repeated requests with the same `seed` and
