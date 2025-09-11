@@ -120,13 +120,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 	for i := range openAIReq.Tools {
 		toolDefinition := &openAIReq.Tools[i]
 		if toolDefinition.Function != nil {
-			var toolName, toolDes string
-			toolName = toolDefinition.Function.Name
-			toolDes = toolDefinition.Function.Description
+			toolName := toolDefinition.Function.Name
+			var toolDesc *string
+			if toolDefinition.Function.Description != "" {
+				toolDesc = &toolDefinition.Function.Description
+			}
 			tool := &awsbedrock.Tool{
 				ToolSpec: &awsbedrock.ToolSpecification{
 					Name:        &toolName,
-					Description: &toolDes,
+					Description: toolDesc,
 					InputSchema: &awsbedrock.ToolInputSchema{
 						JSON: toolDefinition.Function.Parameters,
 					},
@@ -270,11 +272,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
 			if content.Text != nil {
+				reasoningText := &awsbedrock.ReasoningTextBlock{
+					Text: *content.Text,
+				}
+				if content.Signature != nil {
+					reasoningText.Signature = *content.Signature
+				}
 				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
 					ReasoningContent: &awsbedrock.ReasoningContentBlock{
-						ReasoningText: &awsbedrock.ReasoningTextBlock{
-							Text: *content.Text,
-						},
+						ReasoningText: reasoningText,
 					},
 				})
 			}
@@ -696,10 +702,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) extractAmazonEventStreamE
 	for {
 		msg, err := dec.Decode(r, nil)
 		if err != nil {
-			// When failed, we stop processing the events.
-			// Copy the unread bytes to the beginning of the buffer.
-			copy(o.bufferedBody, o.bufferedBody[lastRead:])
-			o.bufferedBody = o.bufferedBody[:len(o.bufferedBody)-int(lastRead)]
+			o.bufferedBody = o.bufferedBody[lastRead:]
 			return
 		}
 		var event awsbedrock.ConverseStreamEvent

@@ -987,8 +987,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: []openai.ChatCompletionAssistantMessageParamContent{
 									{
-										Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
-										Text: ptr.To("I need to call the get_weather tool for Paris."),
+										Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+										Text:      ptr.To("I need to call the get_weather tool for Paris."),
+										Signature: ptr.To("sig_12345"),
 									},
 								},
 							},
@@ -1017,7 +1018,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							{
 								ReasoningContent: &awsbedrock.ReasoningContentBlock{
 									ReasoningText: &awsbedrock.ReasoningTextBlock{
-										Text: "I need to call the get_weather tool for Paris.",
+										Text:      "I need to call the get_weather tool for Paris.",
+										Signature: "sig_12345",
 									},
 								},
 							},

@@ -504,7 +504,7 @@ type ToolInputSchema struct {
 // ToolSpecification The specification for the tool.
 type ToolSpecification struct {
 	// The description for the tool.
-	Description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitzero"`
 
 	// The schema for the tool in JSON format.
 	//
