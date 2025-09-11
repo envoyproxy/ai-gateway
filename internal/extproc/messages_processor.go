@@ -276,7 +276,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	// Update metrics with token usage.
 	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens, c.requestHeaders)
 	if c.stream {
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, c.requestHeaders)
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {

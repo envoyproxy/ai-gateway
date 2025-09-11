@@ -104,7 +104,7 @@ func testRecordTokenLatency(t *testing.T) {
 
 	// Test first token.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 1, nil)
+	pm.RecordTokenLatency(t.Context(), 1, false, nil)
 	assert.True(t, pm.firstTokenSent)
 	count, sum := getHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
 	assert.Equal(t, uint64(1), count)
@@ -112,14 +112,14 @@ func testRecordTokenLatency(t *testing.T) {
 
 	// Test subsequent tokens.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 5, nil)
+	pm.RecordTokenLatency(t.Context(), 5, true, nil)
 	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Greater(t, sum, 0.0)
 
 	// Test zero tokens case.
 	time.Sleep(10 * time.Millisecond)
-	pm.RecordTokenLatency(t.Context(), 0, nil)
+	pm.RecordTokenLatency(t.Context(), 0, false, nil)
 	count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Greater(t, sum, 0.0)
@@ -235,4 +235,78 @@ func getHistogramValues(t *testing.T, reader metric.Reader, metric string, attrs
 	require.Len(t, datapoints, 1, "found %d datapoints for attributes: %v", len(datapoints), attrs)
 
 	return datapoints[0].Count, datapoints[0].Sum
+}
+
+func TestRecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, func(t *testing.T) {
+		mr := metric.NewManualReader()
+		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm := NewChatCompletion(meter, nil).(*chatCompletion)
+
+		attrs := attribute.NewSet(
+			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+			attribute.Key(genaiAttributeSystemName).String(genAISystemAWSBedrock),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+		)
+
+		pm.StartRequest(nil)
+		pm.SetModel("test-model")
+		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
+
+		// First token (records TTFT).
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 1, false, nil)
+
+		// Mid-stream cumulative usage appears (5 tokens).
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 5, false, nil)
+
+		// A later event with a smaller number (simulate out-of-order/delta); should not reduce max.
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 3, false, nil)
+
+		// Final chunk without usage (0); should record using max seen (5).
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 0, true, nil)
+
+		count, sum := getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
+		assert.Equal(t, uint64(1), count)
+		assert.Greater(t, sum, 0.0)
+	})
+}
+
+func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, func(t *testing.T) {
+		mr := metric.NewManualReader()
+		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm := NewChatCompletion(meter, nil).(*chatCompletion)
+
+		attrs := attribute.NewSet(
+			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+			attribute.Key(genaiAttributeSystemName).String(genAISystemAWSBedrock),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+		)
+
+		pm.StartRequest(nil)
+		pm.SetModel("test-model")
+		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
+
+		// First token (records TTFT).
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 0, false, nil)
+
+		// No usage mid-stream.
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 0, false, nil)
+
+		// Usage only at end-of-stream.
+		time.Sleep(5 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 7, true, nil)
+
+		count, sum := getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
+		assert.Equal(t, uint64(1), count)
+		assert.Greater(t, sum, 0.0)
+	})
 }

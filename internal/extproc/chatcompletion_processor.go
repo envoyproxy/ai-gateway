@@ -406,7 +406,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	if c.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, c.requestHeaders)
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 
 		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
 		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
