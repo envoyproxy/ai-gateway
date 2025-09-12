@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -115,6 +116,16 @@ const (
 // environment variables. The input delimiter is a semicolon (';') to allow
 // values to contain commas without escaping.
 // Example: "OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp".
+//
+// Additionally, parse secretKeyRefs for handling secrets in ext_proc env vars:
+// Examples:
+//
+//		OTEL_EXPORTER_OTLP_HEADERS=secretKeyRef { "name": "SECRET_NAME", "key": "KEY" }
+//	 	OTEL_EXPORTER_OTLP_HEADERS=secretKeyRef {"name":"SECRET_NAME","key":"KEY"}
+//		OTEL_EXPORTER_OTLP_HEADERS=secretKeyRef{"name":"SECRET_NAME","key":"KEY"}
+//
+// then this will be parsed into an EnvVar whose ValueFrom.SecretKeyRef is set
+// accordingly. Quotes around the name/key are required for valid json parsing.
 func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
 	if s == "" {
 		return nil, nil
@@ -137,7 +148,34 @@ func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
 		if key == "" {
 			return nil, fmt.Errorf("empty env var name at position %d: %q", i+1, pair)
 		}
-		result = append(result, corev1.EnvVar{Name: key, Value: value})
+
+		// inline secretKeyRef dictionary parsing
+		if after, ok := strings.CutPrefix(strings.TrimSpace(value), "secretKeyRef"); ok {
+			jsonPart := after
+			var m map[string]string
+			if err := json.Unmarshal([]byte(jsonPart), &m); err != nil {
+				return nil, fmt.Errorf("failed to parse secretKeyRef json at position %d: %w", i+1, err)
+			}
+
+			secretName := strings.TrimSpace(m["name"])
+			secretKey := strings.TrimSpace(m["key"])
+			if secretName == "" || secretKey == "" {
+				return nil, fmt.Errorf("secretKeyRef missing name or key at position %d: %q :", i+1, value)
+			}
+
+			result = append(result, corev1.EnvVar{
+				Name: key,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+						Key:                  secretKey,
+					},
+				},
+			})
+		} else {
+			// Plain literal value -- preserve original spacing.
+			result = append(result, corev1.EnvVar{Name: key, Value: value})
+		}
 	}
 
 	if len(result) == 0 {
