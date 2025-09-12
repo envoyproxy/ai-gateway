@@ -6,12 +6,9 @@
 package extproc
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"strconv"
 
@@ -326,24 +323,18 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
 		}
 	}()
-	var br io.Reader
-	var isGzip bool
-	switch c.responseEncoding {
-	case "gzip":
-		br, err = gzip.NewReader(bytes.NewReader(body.Body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
-		}
-		isGzip = true
-	default:
-		br = bytes.NewReader(body.Body)
+
+	// Decompress the body if needed using common utility.
+	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
+	if err != nil {
+		return nil, err
 	}
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, br)
+		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
@@ -368,22 +359,13 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream, c.span)
+	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream, c.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
-	if bodyMutation != nil && isGzip {
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
-		// TODO: this is a hotfix, we should update this to recompress since its in the header
-		// If the response was gzipped, ensure we remove the content-encoding header.
-		//
-		// This is only needed when the transformation is actually modifying the body. When the backend
-		// is in OpenAI format (and it's the first try before any retry), the response body is not modified,
-		// so we don't need to remove the header in that case.
-		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
-	}
+
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{

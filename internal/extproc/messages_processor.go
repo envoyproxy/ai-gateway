@@ -6,7 +6,6 @@
 package extproc
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -134,6 +133,7 @@ type messagesProcessorUpstreamFilter struct {
 	config                 *processorConfig
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
+	responseEncoding       string
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
@@ -222,6 +222,9 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Con
 	}()
 
 	c.responseHeaders = headersToMap(headers)
+	if enc := c.responseHeaders["content-encoding"]; enc != "" {
+		c.responseEncoding = enc
+	}
 	headerMutation, err := c.translator.ResponseHeaders(c.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -250,13 +253,20 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		}
 	}()
 
-	// Simple passthrough: just pass the body as-is without any complex handling.
-	br := bytes.NewReader(body.Body)
+	// Decompress the body if needed using common utility.
+	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
+	if err != nil {
+		return nil, err
+	}
 
-	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream)
+	// headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream).
+	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
+
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
