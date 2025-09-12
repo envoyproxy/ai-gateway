@@ -25,6 +25,9 @@ func Test_Examples_Basic(t *testing.T) {
 	const manifestDir = "../../examples/basic"
 	const manifest = manifestDir + "/basic.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
