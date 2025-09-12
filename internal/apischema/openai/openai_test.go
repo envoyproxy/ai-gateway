@@ -1725,3 +1725,64 @@ func TestChatCompletionResponseChunkChoiceDelta_annotations_round_trip(t *testin
 	require.NoError(t, err)
 	require.JSONEq(t, `{}`, string(marshaled))
 }
+
+func TestStringOrAssistantRoleContentUnionUnmarshal(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected StringOrAssistantRoleContentUnion
+		expErr   string
+	}{
+		{
+			name:  "string value",
+			input: `"hello"`,
+			expected: StringOrAssistantRoleContentUnion{
+				Value: "hello",
+			},
+		},
+		{
+			name:  "array of content objects",
+			input: `[{"type": "text", "text": "hello from array"}]`,
+			expected: StringOrAssistantRoleContentUnion{
+				Value: []ChatCompletionAssistantMessageParamContent{
+					{
+						Type: ChatCompletionAssistantMessageParamContentTypeText,
+						Text: ptr.To("hello from array"),
+					},
+				},
+			},
+		},
+		{
+			name:  "single content object",
+			input: `{"type": "text", "text": "hello from single object"}`,
+			expected: StringOrAssistantRoleContentUnion{
+				Value: ChatCompletionAssistantMessageParamContent{
+					Type: ChatCompletionAssistantMessageParamContentTypeText,
+					Text: ptr.To("hello from single object"),
+				},
+			},
+		},
+		{
+			name:   "invalid json",
+			input:  `12345`,
+			expErr: "cannot unmarshal JSON data as string or assistant content parts",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var result StringOrAssistantRoleContentUnion
+			err := json.Unmarshal([]byte(tc.input), &result)
+
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+
+			require.NoError(t, err)
+			if !cmp.Equal(tc.expected, result) {
+				t.Errorf("Unmarshal diff(got, expected) = %s\n", cmp.Diff(result, tc.expected))
+			}
+		})
+	}
+}

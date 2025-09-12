@@ -239,6 +239,13 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	var singleContent ChatCompletionAssistantMessageParamContent
+	err = json.Unmarshal(data, &singleContent)
+	if err == nil {
+		s.Value = singleContent
+		return nil
+	}
+
 	return errors.New("cannot unmarshal JSON data as string or assistant content parts")
 }
 
@@ -448,8 +455,10 @@ type ChatCompletionAssistantMessageParamAudio struct {
 type ChatCompletionAssistantMessageParamContentType string
 
 const (
-	ChatCompletionAssistantMessageParamContentTypeText    ChatCompletionAssistantMessageParamContentType = "text"
-	ChatCompletionAssistantMessageParamContentTypeRefusal ChatCompletionAssistantMessageParamContentType = "refusal"
+	ChatCompletionAssistantMessageParamContentTypeText             ChatCompletionAssistantMessageParamContentType = "text"
+	ChatCompletionAssistantMessageParamContentTypeRefusal          ChatCompletionAssistantMessageParamContentType = "refusal"
+	ChatCompletionAssistantMessageParamContentTypeThinking         ChatCompletionAssistantMessageParamContentType = "thinking"
+	ChatCompletionAssistantMessageParamContentTypeRedactedThinking ChatCompletionAssistantMessageParamContentType = "redacted_thinking"
 )
 
 // ChatCompletionAssistantMessageParamContent Learn about
@@ -461,6 +470,10 @@ type ChatCompletionAssistantMessageParamContent struct {
 	Refusal *string `json:"refusal,omitempty"`
 	// The text content.
 	Text *string `json:"text,omitempty"`
+
+	// The signature for a thinking block.
+	Signature       *string `json:"signature,omitempty"`
+	RedactedContent []byte  `json:"redactedContent,omitempty"`
 }
 
 // ChatCompletionAssistantMessageParam Messages sent by the model in response to user messages.
@@ -1286,10 +1299,11 @@ type ChatCompletionResponseChunkChoice struct {
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content     *string                              `json:"content,omitempty"`
-	Role        string                               `json:"role,omitempty"`
-	ToolCalls   []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
-	Annotations *[]Annotation                        `json:"annotations,omitempty"`
+	Content          *string                              `json:"content,omitempty"`
+	Role             string                               `json:"role,omitempty"`
+	ToolCalls        []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
+	Annotations      *[]Annotation                        `json:"annotations,omitempty"`
+	ReasoningContent *AWSBedRockStreamReasoningContent    `json:"reasoning_content,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -1508,5 +1522,15 @@ type AWSBedRockResponseVendorFields struct {
 	// Note: This object is a Union. Only one member of this object can be specified or returned.
 	// Required: No
 	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
+	ReasoningContent *AWSBedRockReasoningContent `json:"reasoning_content,omitzero"`
+}
+
+type AWSBedRockReasoningContent struct {
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
+}
+
+type AWSBedRockStreamReasoningContent struct {
+	Text            string `json:"text,omitzero"`
+	Signature       string `json:"signature,omitzero"`
+	RedactedContent []byte `json:"redactedContent,omitzero"`
 }
