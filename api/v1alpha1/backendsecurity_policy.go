@@ -232,16 +232,20 @@ type BackendSecurityPolicyGCPCredentials struct {
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
-// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
-// neither are set.
+// One of ClientSecretRef, OIDCExchangeToken, or UseManagedIdentity must be specified.
+// When UseManagedIdentity is true, neither ClientSecretRef nor OIDCExchangeToken should be set.
+// Otherwise, exactly one of ClientSecretRef or OIDCExchangeToken must be specified.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
+// +kubebuilder:validation:XValidation:rule="has(self.useManagedIdentity) && self.useManagedIdentity ? (!has(self.clientSecretRef) && !has(self.oidcExchangeToken)) : ((has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken)))",message="When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified"
+// +kubebuilder:validation:XValidation:rule="has(self.useManagedIdentity) && self.useManagedIdentity && !has(self.clientID) ? true : has(self.clientID)",message="clientID is optional for system-assigned managed identity but required otherwise"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
+	// This field is optional when using system-assigned managed identity,
+	// but required for user-assigned managed identity and other authentication methods.
 	//
-	// +kubebuilder:validation:Required
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	ClientID string `json:"clientID"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// TenantId is a unique identifier for an Azure Active Directory instance.
 	//
@@ -261,6 +265,16 @@ type BackendSecurityPolicyAzureCredentials struct {
 	//
 	// +optional
 	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+
+	// UseManagedIdentity enables Azure Managed Identity authentication.
+	// When set to true, the gateway will use DefaultAzureCredential which supports:
+	// - Environment variables (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET, AZURE_FEDERATED_TOKEN_FILE)
+	// - AKS Workload Identity (via service account annotations)
+	// - System-assigned managed identity (when clientID is not specified)
+	// - User-assigned managed identity (when clientID is specified)
+	//
+	// +optional
+	UseManagedIdentity *bool `json:"useManagedIdentity,omitempty"`
 }
 
 // AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.

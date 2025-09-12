@@ -131,7 +131,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{
 			name:   "azure_credentials_missing_client_id.yaml",
-			expErr: "spec.azureCredentials.clientID in body should be at least 1 chars long",
+			expErr: "clientID is optional for system-assigned managed identity but required otherwise",
 		},
 		{
 			name:   "azure_credentials_missing_tenant_id.yaml",
@@ -139,11 +139,11 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{
 			name:   "azure_missing_auth.yaml",
-			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+			expErr: "When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified",
 		},
 		{
 			name:   "azure_multiple_auth.yaml",
-			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+			expErr: "When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified",
 		},
 		// CEL validation test cases - these should fail due to type mismatch.
 		{
@@ -174,8 +174,19 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "gcp_with_apikey.yaml",
 			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
 		},
+		{
+			name:   "azure_managed_identity_with_secret.yaml",
+			expErr: "When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		{
+			name:   "azure_managed_identity_with_oidc.yaml",
+			expErr: "When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified",
+		},
+		// Valid test cases - these should pass.
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
+		{name: "azure_managed_identity_user_assigned.yaml"},
+		{name: "azure_managed_identity_system_assigned.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 		{name: "gcp_oidc.yaml"},
