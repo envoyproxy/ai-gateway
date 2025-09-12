@@ -616,6 +616,15 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 			},
 		},
 		{
+			name:  "message_start with output_tokens > 0",
+			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":15,\"output_tokens\":5}}}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  15,
+				OutputTokens: 5,
+				TotalTokens:  20,
+			},
+		},
+		{
 			name:  "message_delta without usage field",
 			chunk: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
 			expectedUsage: LLMTokenUsage{
