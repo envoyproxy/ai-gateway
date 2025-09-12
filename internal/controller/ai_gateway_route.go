@@ -340,7 +340,11 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
 func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
 	for _, p := range aiGatewayRoute.Spec.ParentRefs {
-		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(p.Name))
+		gwNamespace := aiGatewayRoute.Namespace
+		if p.Namespace != nil {
+			gwNamespace = string(*p.Namespace)
+		}
+		c.syncGateway(ctx, gwNamespace, string(p.Name))
 	}
 	return nil
 }
