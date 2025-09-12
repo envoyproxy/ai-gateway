@@ -218,7 +218,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 	//
 	// +optional
 	// +kubebuilder:validation:MinLength=1
-	ClientID string `json:"clientID,omitempty"`
+	ClientID string `json:"clientID"`
 
 	// TenantId is a unique identifier for an Azure Active Directory instance.
 	//
