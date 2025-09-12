@@ -1,0 +1,17 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Valid user-assigned managed identity configuration
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: azure-managed-identity-user-assigned-policy
+  namespace: default
+spec:
+  type: AzureCredentials
+  azureCredentials:
+    clientID: user-assigned-mi-client-id
+    tenantID: dummy_azure_tenant_id
+    useManagedIdentity: true
