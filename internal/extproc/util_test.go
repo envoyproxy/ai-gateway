@@ -6,11 +6,10 @@
 package extproc
 
 import (
-	"testing"
-
 	"bytes"
 	"compress/gzip"
 	"io"
+	"testing"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
@@ -55,7 +54,10 @@ func TestDecodeContentIfNeeded(t *testing.T) {
 			body: func() []byte {
 				var b bytes.Buffer
 				w := gzip.NewWriter(&b)
-				w.Write([]byte("abc"))
+				_, err := w.Write([]byte("abc"))
+				if err != nil {
+					panic(err)
+				}
 				w.Close()
 				return b.Bytes()
 			}(),
@@ -81,13 +83,13 @@ func TestDecodeContentIfNeeded(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.wantEncoded, res.IsEncoded)
-			require.Equal(t, tt.wantEncoding, res.Encoding)
+			require.Equal(t, tt.wantEncoded, res.isEncoded)
+			require.Equal(t, tt.wantEncoding, res.encoding)
 			if !tt.wantEncoded {
-				out, _ := io.ReadAll(res.Reader)
+				out, _ := io.ReadAll(res.reader)
 				require.Equal(t, tt.body, out)
 			} else if tt.encoding == "gzip" && !tt.wantErr {
-				out, _ := io.ReadAll(res.Reader)
+				out, _ := io.ReadAll(res.reader)
 				require.Equal(t, []byte("abc"), out)
 			}
 		})

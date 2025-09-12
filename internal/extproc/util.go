@@ -14,33 +14,33 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 )
 
-// ContentDecodingResult contains the result of content decoding operation.
-type ContentDecodingResult struct {
-	Reader    io.Reader
-	IsEncoded bool
-	Encoding  string
+// contentDecodingResult contains the result of content decoding operation.
+type contentDecodingResult struct {
+	reader    io.Reader
+	isEncoded bool
+	encoding  string
 }
 
 // decodeContentIfNeeded decompresses the response body based on the content-encoding header.
 // Currently supports gzip encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
-func decodeContentIfNeeded(body []byte, contentEncoding string) (*ContentDecodingResult, error) {
+func decodeContentIfNeeded(body []byte, contentEncoding string) (*contentDecodingResult, error) {
 	switch contentEncoding {
 	case "gzip":
 		reader, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode gzip: %w", err)
 		}
-		return &ContentDecodingResult{
-			Reader:    reader,
-			IsEncoded: true,
-			Encoding:  "gzip",
+		return &contentDecodingResult{
+			reader:    reader,
+			isEncoded: true,
+			encoding:  "gzip",
 		}, nil
 	default:
-		return &ContentDecodingResult{
-			Reader:    bytes.NewReader(body),
-			IsEncoded: false,
-			Encoding:  "",
+		return &contentDecodingResult{
+			reader:    bytes.NewReader(body),
+			isEncoded: false,
+			encoding:  "",
 		}, nil
 	}
 }
