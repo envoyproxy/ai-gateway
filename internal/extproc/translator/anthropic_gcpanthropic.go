@@ -6,11 +6,11 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -99,38 +99,40 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 	// For streaming chunks, parse SSE format to extract token usage.
 	if !endOfStream {
 		// Parse SSE format - split by lines and look for data: lines.
-		lines := strings.Split(string(bodyBytes), "\n")
+		lines := bytes.Split(bodyBytes, []byte("\n"))
 		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "data: ") {
-				jsonData := strings.TrimPrefix(line, "data: ")
+			line = bytes.TrimSpace(line)
+			if bytes.HasPrefix(line, []byte("data: ")) {
+				jsonData := bytes.TrimPrefix(line, []byte("data: "))
 
 				var eventData map[string]any
-				if unmarshalErr := json.Unmarshal([]byte(jsonData), &eventData); unmarshalErr == nil {
-					if eventType, ok := eventData["type"].(string); ok {
-						switch eventType {
-						case "message_start":
-							// Extract input tokens from message.usage.
-							if messageData, ok := eventData["message"].(map[string]any); ok {
-								if usageData, ok := messageData["usage"].(map[string]any); ok {
-									if inputTokens, ok := usageData["input_tokens"].(float64); ok {
-										tokenUsage.InputTokens = uint32(inputTokens) //nolint:gosec
-									}
-									// Some message_start events may include initial output tokens.
-									if outputTokens, ok := usageData["output_tokens"].(float64); ok && outputTokens > 0 {
-										tokenUsage.OutputTokens = uint32(outputTokens) //nolint:gosec
-									}
-									tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
+				if unmarshalErr := json.Unmarshal(jsonData, &eventData); unmarshalErr != nil {
+					// Skip lines with invalid JSON (like ping events or malformed data).
+					continue
+				}
+				if eventType, ok := eventData["type"].(string); ok {
+					switch eventType {
+					case "message_start":
+						// Extract input tokens from message.usage.
+						if messageData, ok := eventData["message"].(map[string]any); ok {
+							if usageData, ok := messageData["usage"].(map[string]any); ok {
+								if inputTokens, ok := usageData["input_tokens"].(float64); ok {
+									tokenUsage.InputTokens = uint32(inputTokens) //nolint:gosec
 								}
+								// Some message_start events may include initial output tokens.
+								if outputTokens, ok := usageData["output_tokens"].(float64); ok && outputTokens > 0 {
+									tokenUsage.OutputTokens = uint32(outputTokens) //nolint:gosec
+								}
+								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
 							}
+						}
 
-						case "message_delta":
-							if usageData, ok := eventData["usage"].(map[string]any); ok {
-								if outputTokens, ok := usageData["output_tokens"].(float64); ok {
-									// Add to existing output tokens (in case message_start had some initial ones).
-									tokenUsage.OutputTokens += uint32(outputTokens) //nolint:gosec
-									tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
-								}
+					case "message_delta":
+						if usageData, ok := eventData["usage"].(map[string]any); ok {
+							if outputTokens, ok := usageData["output_tokens"].(float64); ok {
+								// Add to existing output tokens (in case message_start had some initial ones).
+								tokenUsage.OutputTokens += uint32(outputTokens) //nolint:gosec
+								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
 							}
 						}
 					}
