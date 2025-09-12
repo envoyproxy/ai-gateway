@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 

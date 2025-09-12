@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
