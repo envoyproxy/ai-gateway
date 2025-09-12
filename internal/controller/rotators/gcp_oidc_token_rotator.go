@@ -23,8 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 const (

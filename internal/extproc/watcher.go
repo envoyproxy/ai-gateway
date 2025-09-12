@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 // ConfigReceiver is an interface that can receive *filterapi.Config updates.
