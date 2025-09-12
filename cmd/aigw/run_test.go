@@ -37,7 +37,9 @@ func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (strin
 	awsCredTmpFile := filepath.Join(t.TempDir(), "aws-credentials")
 	err := os.WriteFile(awsCredTmpFile, []byte(credCtx.AWSFileLiteral), 0o600)
 	require.NoError(t, err)
-	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", awsCredTmpFile)
+	cfg, err := readConfig("", "")
+	require.NoError(t, err)
+	aiGatewayResources := strings.ReplaceAll(cfg, "~/.aws/credentials", awsCredTmpFile)
 	err = os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
 	require.NoError(t, err)
 	return aiGatewayResourcesPath, credCtx
