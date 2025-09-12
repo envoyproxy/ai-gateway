@@ -579,3 +579,74 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 		})
 	}
 }
+
+func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *testing.T) {
+	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+
+	tests := []struct {
+		name          string
+		chunk         string
+		expectedUsage LLMTokenUsage
+	}{
+		{
+			name:  "message_start without message field",
+			chunk: "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  0,
+				OutputTokens: 0,
+				TotalTokens:  0,
+			},
+		},
+		{
+			name:  "message_start without usage field",
+			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\"}}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  0,
+				OutputTokens: 0,
+				TotalTokens:  0,
+			},
+		},
+		{
+			name:  "message_start with output_tokens = 0",
+			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":20,\"output_tokens\":0}}}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  20,
+				OutputTokens: 0,
+				TotalTokens:  20,
+			},
+		},
+		{
+			name:  "message_delta without usage field",
+			chunk: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  0,
+				OutputTokens: 0,
+				TotalTokens:  0,
+			},
+		},
+		{
+			name:  "invalid json in data",
+			chunk: "event: message_start\ndata: {invalid json}\n\n",
+			expectedUsage: LLMTokenUsage{
+				InputTokens:  0,
+				OutputTokens: 0,
+				TotalTokens:  0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyReader := bytes.NewReader([]byte(tt.chunk))
+			respHeaders := map[string]string{"content-type": "application/json"}
+
+			headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(respHeaders, bodyReader, false)
+
+			require.NoError(t, err)
+			require.Nil(t, headerMutation)
+			require.NotNil(t, bodyMutation)
+			require.Equal(t, tt.chunk, string(bodyMutation.GetBody()))
+			require.Equal(t, tt.expectedUsage, tokenUsage)
+		})
+	}
+}
