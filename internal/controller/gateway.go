@@ -398,9 +398,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 ) error {
 	allPodsExtProcConfigured := true
-	for _, pod := range pods {
+	for i := range pods {
 		// Check if there's an extproc container with the current target image.
-		podSpec := &pod.Spec
+		podSpec := &pods[i].Spec
 		extProcConfigured := false
 		for i := range podSpec.Containers {
 			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
@@ -412,7 +412,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 	// If all pods have the extproc container configured, only annotating the pods is sufficient to reflect the change in the secret faster.
 	if allPodsExtProcConfigured {
-		for _, pod := range pods {
+		for i := range pods {
+			pod := &pods[i]
 			c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name, "uuid_annotation", uuid)
 			_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 				fmt.Appendf(nil,
@@ -424,7 +425,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		}
 	} else {
 		// Otherwise, we need to annotate the deployments and daemonsets to roll out the pods with the extproc container configured.
-		for _, dep := range deployments {
+		for i := range deployments {
+			dep := &deployments[i]
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name, "uuid_annotation", uuid)
 			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				fmt.Appendf(nil,
@@ -435,7 +437,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 			}
 		}
 
-		for _, daemonSet := range daemonSets {
+		for i := range daemonSets {
+			daemonSet := &daemonSets[i]
 			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
 			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
 				fmt.Appendf(nil,
