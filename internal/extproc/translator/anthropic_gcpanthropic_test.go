@@ -509,58 +509,58 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 	}{
 		{
 			name:        "regular streaming chunk without usage",
-			chunk:       `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" to me."}}`,
+			chunk:       "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
 			endOfStream: false,
 			expectedUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" to me."}}`,
+			expectedBody: "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
 		},
 		{
 			name:        "message_delta chunk with token usage",
-			chunk:       `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":84}}`,
+			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
 			endOfStream: false,
 			expectedUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 84,
 				TotalTokens:  84,
 			},
-			expectedBody: `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":84}}`,
+			expectedBody: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
 		},
 		{
 			name:        "message_stop chunk without usage",
-			chunk:       `{"type":"message_stop"}`,
+			chunk:       "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 			endOfStream: false,
 			expectedUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: `{"type":"message_stop"}`,
+			expectedBody: "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 		},
 		{
 			name:        "invalid json chunk",
-			chunk:       `{"invalid": "json"}`,
+			chunk:       "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
 			endOfStream: false,
 			expectedUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: `{"invalid": "json"}`,
+			expectedBody: "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
 		},
 		{
 			name:        "message_delta with decimal output_tokens",
-			chunk:       `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":42.0}}`,
+			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
 			endOfStream: false,
 			expectedUsage: LLMTokenUsage{
 				InputTokens:  0,
 				OutputTokens: 42,
 				TotalTokens:  42,
 			},
-			expectedBody: `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":42.0}}`,
+			expectedBody: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
 		},
 	}
 
@@ -574,7 +574,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
 			require.NotNil(t, bodyMutation)
-			require.JSONEq(t, tt.expectedBody, string(bodyMutation.GetBody()))
+			require.Equal(t, tt.expectedBody, string(bodyMutation.GetBody()))
 			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}
