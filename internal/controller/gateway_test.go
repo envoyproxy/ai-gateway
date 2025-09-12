@@ -532,7 +532,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			},
 			Spec: corev1.PodSpec{
 				// This indicates that the pod has extproc.
-				Containers: []corev1.Container{{Name: mutationNamePrefix + "foo"}},
+				Containers: []corev1.Container{{Name: extProcContainerName, Image: v2Container}},
 			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
@@ -601,13 +601,18 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid")
+		const uuid1, uuid2 = "uuid1", "uuid2"
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, uuid1)
 		require.NoError(t, err)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+		// However, pod itself should not be annotated as it does not have extproc.
+		pod, err = kube.CoreV1().Pods(egNamespace).Get(t.Context(), "pod3", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.NotContains(t, pod.Annotations, aigatewayUUIDAnnotationKey)
 
 		// Simulate the pod's container image is updated to the new version.
 		pod.Spec.Containers[0].Image = v2Container
@@ -615,12 +620,12 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid")
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, uuid2)
 		require.NoError(t, err)
 
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
-		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+		require.Equal(t, uuid1, deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 	})
 }
 

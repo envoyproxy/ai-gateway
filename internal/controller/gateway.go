@@ -397,31 +397,35 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	daemonSets []appsv1.DaemonSet,
 	uuid string,
 ) error {
-	rollout := true
+	allPodsExtProcConfigured := true
 	for _, pod := range pods {
-		// Get the pod spec and check if it has the extproc container.
-		podSpec := pod.Spec
+		// Check if there's an extproc container with the current target image.
+		podSpec := &pod.Spec
+		extProcConfigured := false
 		for i := range podSpec.Containers {
-			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
 			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
-				rollout = false
-				break
+				extProcConfigured = true
 			}
 		}
-
-		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
-		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
-			fmt.Appendf(nil,
-				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
-			metav1.PatchOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
-		}
+		allPodsExtProcConfigured = allPodsExtProcConfigured && extProcConfigured
 	}
 
-	if rollout {
+	// If all pods have the extproc container configured, only annotating the pods is sufficient to reflect the change in the secret faster.
+	if allPodsExtProcConfigured {
+		for _, pod := range pods {
+			c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name, "uuid_annotation", uuid)
+			_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
+				fmt.Appendf(nil,
+					`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
+				metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
+			}
+		}
+	} else {
+		// Otherwise, we need to annotate the deployments and daemonsets to roll out the pods with the extproc container configured.
 		for _, dep := range deployments {
-			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
+			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name, "uuid_annotation", uuid)
 			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				fmt.Appendf(nil,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
